@@ -1,0 +1,37 @@
+split_hotkey = ""
+reset_hotkey = ""
+undo_split_hotkey = ""
+skip_split_hotkey = ""
+pause_hotkey = ""
+screenshot_hotkey = ""
+toggle_auto_reset_image_hotkey = ""
+fps_limit = 60
+live_capture_region = true
+capture_method = "WINDOWS_GRAPHICS_CAPTURE"
+capture_device_id = -1
+capture_device_name = ""
+default_comparison_method = 0
+default_similarity_threshold = 0.9
+default_delay_time = 0
+default_pause_time = 10.0
+loop_splits = false
+start_also_resets = false
+enable_auto_reset = true
+split_image_directory = ""
+screenshot_directory = ""
+open_screenshot = true
+screenshot_on = [
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+]
+captured_window_title = ""
+
+[capture_region]
+x = 0
+y = 0
+width = 0
+height = 0

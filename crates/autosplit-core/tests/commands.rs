@@ -1,0 +1,41 @@
+//! Sending commands to the timer, matching AutoSplit's `send_command`.
+
+use autosplit_core::commands::{Command, Output, outputs_for};
+use autosplit_core::profile::UserProfile;
+use test_case::test_case;
+
+fn profile() -> UserProfile {
+    UserProfile {
+        split_hotkey: "num 1".into(),
+        reset_hotkey: "num 3".into(),
+        undo_split_hotkey: "num 8".into(),
+        skip_split_hotkey: "num 2".into(),
+        pause_hotkey: "num 5".into(),
+        ..UserProfile::default()
+    }
+}
+
+fn press(hotkey: &str) -> Vec<Output> {
+    vec![Output::PressHotkey(hotkey.into())]
+}
+
+#[test_case(Command::Split, profile() => press("num 1"); "split presses the split hotkey")]
+#[test_case(Command::Start, profile() => press("num 1"); "start presses the split hotkey")]
+#[test_case(Command::Start, UserProfile { start_also_resets: true, ..profile() } => press("num 3"); "start presses the reset hotkey when start also resets")]
+#[test_case(Command::Reset, profile() => press("num 3"); "reset presses the reset hotkey")]
+#[test_case(Command::Pause, profile() => press("num 5"); "pause presses the pause hotkey")]
+#[test_case(Command::Skip, profile() => press("num 2"); "skip presses the skip hotkey")]
+#[test_case(Command::Undo, profile() => press("num 8"); "undo presses the undo hotkey")]
+#[test_case(Command::Undo, UserProfile { undo_split_hotkey: String::new(), ..profile() } => Vec::<Output>::new(); "unset hotkey presses nothing")]
+#[test_case(Command::Split, UserProfile { screenshot_on: vec![Command::Split], ..profile() } => vec![Output::Screenshot, Output::PressHotkey("num 1".into())]; "screenshot on takes a screenshot before sending")]
+fn hotkey_outputs(command: Command, profile: UserProfile) -> Vec<Output> {
+    // Act, with the expected value checked by test_case
+    outputs_for(command, &profile, false)
+}
+
+#[test_case(Command::Split, profile() => vec![Output::PrintLine("split")]; "prints the command")]
+#[test_case(Command::Start, UserProfile { start_also_resets: true, ..profile() } => vec![Output::PrintLine("reset"), Output::PrintLine("start")]; "start prints reset first when start also resets")]
+fn auto_controlled_outputs(command: Command, profile: UserProfile) -> Vec<Output> {
+    // Act, with the expected value checked by test_case
+    outputs_for(command, &profile, true)
+}

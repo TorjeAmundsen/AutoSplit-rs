@@ -1,0 +1,73 @@
+name: Validate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  # Called by the release workflow, so releases are built and tested the same way
+  workflow_call:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Check formatting
+        run: cargo fmt --all --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: windows-x64
+            os: windows-latest
+          - name: windows-arm64
+            os: windows-11-arm
+          # Ubuntu 22.04 so the binaries run on its glibc and anything newer
+          - name: linux-x64
+            os: ubuntu-22.04
+          - name: linux-arm64
+            os: ubuntu-22.04-arm
+          # Apple Silicon. The x64 half of the universal binary is tested under Rosetta 2.
+          - name: macos-universal
+            os: macos-latest
+            extra-test-target: x86_64-apple-darwin
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.extra-test-target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.name }}
+
+      - name: Test
+        run: cargo test --workspace --release
+
+      - name: Test x64 under Rosetta 2
+        if: matrix.extra-test-target
+        run: cargo test --workspace --release --target ${{ matrix.extra-test-target }}
+
+      - name: Build release zip
+        shell: pwsh
+        run: ./build.ps1 ${{ matrix.name }}
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: build-${{ matrix.name }}
+          path: build/AutoSplit-*-${{ matrix.name }}.zip
+          if-no-files-found: error

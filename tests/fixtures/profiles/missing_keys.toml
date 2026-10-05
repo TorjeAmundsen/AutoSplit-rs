@@ -1,0 +1,9 @@
+split_hotkey = "num 1"
+fps_limit = 144
+split_image_directory = "C:/Users/Runner/Splits/OoT Any%/"
+
+[capture_region]
+x = 12
+y = 34
+width = 640
+height = 480

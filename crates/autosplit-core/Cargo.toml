@@ -1,0 +1,23 @@
+[package]
+name = "autosplit-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+image = { version = "0.25.10", default-features = false, features = ["png"] }
+serde = { version = "1.0.229", features = ["derive"] }
+thiserror = "2.0.21"
+toml = "1.1.6"
+
+[dev-dependencies]
+libtest-mimic = "0.8.2"
+serde_json = { version = "1.0.151", features = ["float_roundtrip"] }
+sha2 = "0.11.0"
+tempfile = "3.27.0"
+test-case = "3.4.0"
+
+[[test]]
+name = "golden"
+harness = false

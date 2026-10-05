@@ -1,0 +1,272 @@
+[
+ {
+  "filename": "split.png",
+  "threshold": null,
+  "pause": null,
+  "delay": null,
+  "loops": 1,
+  "comparison_method": null,
+  "flags": 0
+ },
+ {
+  "filename": "01_(0.9).png",
+  "threshold": 0.9,
+  "pause": null,
+  "delay": null,
+  "loops": 1,
+  "comparison_method": null,
+  "flags": 0
+ },
+ {
+  "filename": "01_(0.90)_[5]_#1000#_@3@_^2^_{b}.png",
+  "threshold": 0.9,
+  "pause": 5.0,
+  "delay": 1000,
+  "loops": 3,
+  "comparison_method": 2,
+  "flags": 2
+ },
+ {
+  "filename": "x_(1.0001).png",
+  "threshold": null,
+  "pause": null,
+  "delay": null,
+  "loops": 1,
+  "comparison_method": null,
+  "flags": 0
+ },
+ {
+  "filename": "x_(-0.1).png",
+  "threshold": null,
+  "pause": null,
+  "delay": null,
+  "loops": 1,
+  "comparison_method": null,
+  "flags": 0
+ },
+ {
+  "filename": "x_(nan).png",
+  "threshold": null,
+  "pause": null,
+  "delay": null,
+  "loops": 1,
+  "comparison_method": null,
+  "flags": 0
+ },
+ {
+  "filename": "x_(0.5.png",
+  "threshold": null,
+  "pause": null,
+  "delay": null,
+  "loops": 1,
+  "comparison_method": null,
+  "flags": 0
+ },
+ {
+  "filename": "x_[inf].png",
+  "threshold": null,
+  "pause": "inf",
+  "delay": null,
+  "loops": 1,
+  "comparison_method": null,
+  "flags": 0
+ },
+ {
+  "filename": "x_[1e2].png",
+  "threshold": null,
+  "pause": 100.0,
+  "delay": null,
+  "loops": 1,
+  "comparison_method": null,
+  "flags": 0
+ },
+ {
+  "filename": "x_[.5].png",
+  "threshold": null,
+  "pause": 0.5,
+  "delay": null,
+  "loops": 1,
+  "comparison_method": null,
+  "flags": 0
+ },
+ {
+  "filename": "x_[5.].png",
+  "threshold": null,
+  "pause": 5.0,
+  "delay": null,
+  "loops": 1,
+  "comparison_method": null,
+  "flags": 0
+ },
+ {
+  "filename": "x_#-5#.png",
+  "threshold": null,
+  "pause": null,
+  "delay": null,
+  "loops": 1,
+  "comparison_method": null,
+  "flags": 0
+ },
+ {
+  "filename": "x_#12.png",
+  "threshold": null,
+  "pause": null,
+  "delay": null,
+  "loops": 1,
+  "comparison_method": null,
+  "flags": 0
+ },
+ {
+  "filename": "x_#1.5#.png",
+  "threshold": null,
+  "pause": null,
+  "delay": null,
+  "loops": 1,
+  "comparison_method": null,
+  "flags": 0
+ },
+ {
+  "filename": "x_@0@.png",
+  "threshold": null,
+  "pause": null,
+  "delay": null,
+  "loops": 1,
+  "comparison_method": null,
+  "flags": 0
+ },
+ {
+  "filename": "x_@-3@.png",
+  "threshold": null,
+  "pause": null,
+  "delay": null,
+  "loops": 1,
+  "comparison_method": null,
+  "flags": 0
+ },
+ {
+  "filename": "x_^5^.png",
+  "threshold": null,
+  "pause": null,
+  "delay": null,
+  "loops": 1,
+  "comparison_method": 5,
+  "flags": 0
+ },
+ {
+  "filename": "x_^+1^.png",
+  "threshold": null,
+  "pause": null,
+  "delay": null,
+  "loops": 1,
+  "comparison_method": 1,
+  "flags": 0
+ },
+ {
+  "filename": "x_{d}.png",
+  "threshold": null,
+  "pause": null,
+  "delay": null,
+  "loops": 1,
+  "comparison_method": null,
+  "flags": 1
+ },
+ {
+  "filename": "x_{dp}.png",
+  "threshold": null,
+  "pause": null,
+  "delay": null,
+  "loops": 1,
+  "comparison_method": null,
+  "flags": 0
+ },
+ {
+  "filename": "x_{bp}.png",
+  "threshold": null,
+  "pause": null,
+  "delay": null,
+  "loops": 1,
+  "comparison_method": null,
+  "flags": 6
+ },
+ {
+  "filename": "x_{DM}.png",
+  "threshold": null,
+  "pause": null,
+  "delay": null,
+  "loops": 1,
+  "comparison_method": null,
+  "flags": 1
+ },
+ {
+  "filename": "x_{x}.png",
+  "threshold": null,
+  "pause": null,
+  "delay": null,
+  "loops": 1,
+  "comparison_method": null,
+  "flags": 0
+ },
+ {
+  "filename": "x_{}.png",
+  "threshold": null,
+  "pause": null,
+  "delay": null,
+  "loops": 1,
+  "comparison_method": null,
+  "flags": 0
+ },
+ {
+  "filename": "x_{d.png",
+  "threshold": null,
+  "pause": null,
+  "delay": null,
+  "loops": 1,
+  "comparison_method": null,
+  "flags": 0
+ },
+ {
+  "filename": "x_{b}_{d}.png",
+  "threshold": null,
+  "pause": null,
+  "delay": null,
+  "loops": 1,
+  "comparison_method": null,
+  "flags": 2
+ },
+ {
+  "filename": "reset_(0.96)_[0.1].png",
+  "threshold": 0.96,
+  "pause": 0.1,
+  "delay": null,
+  "loops": 1,
+  "comparison_method": null,
+  "flags": 0
+ },
+ {
+  "filename": "preset.png",
+  "threshold": null,
+  "pause": null,
+  "delay": null,
+  "loops": 1,
+  "comparison_method": null,
+  "flags": 0
+ },
+ {
+  "filename": "start_auto_splitter_reset.png",
+  "threshold": null,
+  "pause": null,
+  "delay": null,
+  "loops": 1,
+  "comparison_method": null,
+  "flags": 0
+ },
+ {
+  "filename": "x_(0.5)_(0.7).png",
+  "threshold": 0.5,
+  "pause": null,
+  "delay": null,
+  "loops": 1,
+  "comparison_method": null,
+  "flags": 0
+ }
+]

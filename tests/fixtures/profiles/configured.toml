@@ -1,0 +1,34 @@
+split_hotkey = "num 1"
+reset_hotkey = "num 3"
+undo_split_hotkey = "num 8"
+skip_split_hotkey = "num 2"
+pause_hotkey = "ctrl+shift+p"
+screenshot_hotkey = ""
+toggle_auto_reset_image_hotkey = ""
+fps_limit = 144
+live_capture_region = true
+capture_method = "VIDEO_CAPTURE_DEVICE"
+capture_device_id = 2
+capture_device_name = "OBS Virtual Camera"
+default_comparison_method = 2
+default_similarity_threshold = 0.96
+default_delay_time = 150
+default_pause_time = 2.5
+loop_splits = false
+start_also_resets = true
+enable_auto_reset = true
+split_image_directory = "C:/Users/Runner/Splits/OoT Any%/"
+screenshot_directory = ""
+open_screenshot = true
+screenshot_on = [
+    "split",
+    "reset",
+]
+captured_window_title = "Windowed Projector (Source) - Game Capture"
+a_future_setting = "kept"
+
+[capture_region]
+x = 12
+y = 34
+width = 640
+height = 480
