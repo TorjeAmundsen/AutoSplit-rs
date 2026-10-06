@@ -1,0 +1,50 @@
+# Development
+
+## Building
+
+Needs Rust 1.92 or newer. Linux builds also need CMake, plus NASM on x64, to build libjpeg-turbo. The window loads its Linux libraries (X11 or Wayland, xkbcommon, fontconfig) when it opens, so the build doesn't need them.
+
+`cargo run -p autosplit --example screenshots -- <folder>` draws every window to PNG files without a display, to check the layout.
+
+```sh
+cargo build --release
+cargo test --workspace
+```
+
+The tests need no network, Python or capture devices.
+
+## Release builds
+
+`build.ps1` (PowerShell 7) builds release zips into `build/`, named `AutoSplit-v{version}-{target}.zip`. It strips symbols unless you pass `--debug`. Windows zips have `autosplit.exe` and `autosplit.com` (see [From a terminal](TUTORIAL.md#from-a-terminal)).
+
+```sh
+./build.ps1                  # pick a target from a menu
+./build.ps1 linux-arm64      # one or more targets
+./build.ps1 --all            # every target this machine can build
+./build.ps1 --debug ...      # keep debug symbols
+```
+
+Targets are `windows-x64`, `windows-arm64`, `linux-x64`, `linux-arm64` and `macos-universal`, one binary for Apple Silicon and Intel Macs. A target for this machine's OS builds natively, and the others cross-compile:
+
+| Building on | Linux targets | Windows targets | macOS |
+| --- | --- | --- | --- |
+| Windows | [cargo-zigbuild](https://github.com/rust-cross/cargo-zigbuild), needs [Zig](https://ziglang.org/download) or `pip install ziglang` | native | not possible |
+| Linux | native, or cargo-zigbuild for the other architecture | [cargo-xwin](https://github.com/rust-cross/cargo-xwin), needs clang and lld | not possible |
+| macOS | cargo-zigbuild | cargo-xwin | native |
+
+The script installs the Rust targets and the cargo tools it needs. macOS builds need a Mac, because Apple's SDK may only be used there. Cross-compiled Linux binaries need glibc 2.35 or newer (Ubuntu 22.04). Windows ARM64 builds on Windows need the MSVC ARM64 build tools from the Visual Studio installer.
+
+## CI
+
+- `.github/workflows/validate.yml` runs on pull requests and pushes to `main`. It checks formatting and clippy and draws every window without a display. Then it runs the tests and a release build for every target, natively on Windows, Linux and macOS, x64 and ARM64. The x64 half of the macOS build is tested under Rosetta 2.
+- `.github/workflows/release.yml` runs on `v*` tags. It checks that the tag matches the version in `Cargo.toml`, runs the validate workflow, and creates a draft GitHub release with the zips. Tags with a `-` (like `v0.2.0-beta`) become prereleases. Linux release builds run on Ubuntu 22.04, so they work on 22.04 and newer.
+
+## Layout
+
+- `crates/autosplit-core`: everything that doesn't depend on the OS. `runner.rs` is the split state machine. It never blocks: the host calls `tick` with the latest frame when `next_wakeup` is due, and acts on the effects it returns.
+- `crates/autosplit-capture`: video capture devices, one backend per OS, and the pixel format conversions.
+- `crates/autosplit-input`: global hotkeys (through livesplit-hotkey), sending key presses and AutoSplit's hotkey names.
+- `crates/autosplit-cli`: the `autosplit` program. `session.rs` drives the runner from capture (`device.rs`), hotkeys (`hotkeys.rs`), LiveSplit (`livesplit.rs`) and LiveSplit One (`livesplit_one.rs`). `run.rs` runs a session in the terminal and `gui/` in the window, laid out in `ui/*.slint`. `tests/gui.rs` tests the window logic that doesn't need a window (`document.rs`, `messages.rs`, `settings_form.rs`). `src/bin/autosplit-console.rs` becomes `autosplit.com` on Windows.
+- `tests/fixtures`: split images, captures and profiles. `real/` holds split images made with AutoMask.
+- `tests/golden`: expected values from AutoSplit and OpenCV.
+- `tools/golden/generate.py`: regenerates the fixtures and golden values. Instructions are at the top of the file. Only rerun it when you mean to change the baseline.

@@ -1,6 +1,6 @@
 # Tutorial
 
-How to set up and use `autosplit`, the Rust rewrite of [AutoSplit](https://github.com/Toufool/AutoSplit). It reads AutoSplit's split images and profiles, so AutoSplit's guides mostly apply too. The [README](README.md#deliberate-differences-from-autosplit) lists the differences.
+How to set up and use `autosplit`, the Rust rewrite of [AutoSplit](https://github.com/Toufool/AutoSplit). It reads AutoSplit's split images and profiles, so AutoSplit's guides mostly apply too. [COMPATIBILITY.md](COMPATIBILITY.md#deliberate-differences) lists the differences.
 
 Only video capture devices work for now, meaning capture cards, webcams and OBS Virtual Camera. To split a game on the same computer, or a capture card that OBS already uses, go through [Setting up OBS](#setting-up-obs) first.
 
@@ -18,7 +18,7 @@ If it doesn't split, Help > View Log says why. The same log is in `autosplit.log
 
 ## Which timer setup to use
 
-- Windows with LiveSplit: add LiveSplit's AutoSplit Integration component, and in its settings choose `autosplit.exe` and your profile. LiveSplit starts `autosplit` and tells it when the timer starts, splits, skips, undoes and resets, like it does for AutoSplit. The window title says "(externally controlled)".
+- Windows with LiveSplit: add LiveSplit's AutoSplit Integration component, and in its settings choose `autosplit.exe` and your profile. LiveSplit starts `autosplit` and tells it when the timer starts, splits, skips, undoes and resets, like it does for AutoSplit. The window title says "(externally controlled)". If the component already runs AutoSplit, point it at `autosplit.exe` instead and keep your profile.
 - LiveSplit One, on any system: see [LiveSplit One](#livesplit-one). It needs no hotkeys and no permissions.
 - Any other timer: hotkeys, like AutoSplit. `autosplit` presses the profile's hotkeys, and the timer listens for them as global hotkeys.
 
@@ -257,6 +257,31 @@ Everything also works without the window. In the commands below, type `.\autospl
 3. Run `autosplit check settings.toml` to check the split images.
 4. Run `autosplit run settings.toml`. It prints what happens, with the current split image and its similarity on the last line. Press Ctrl+C to stop. `--split-dir <folder>` uses another split image folder.
 
-Without a capture device, `run` keeps going, shows `NO DEVICE` and looks for the device every 2 seconds. `autosplit --help` lists the other commands.
+Without a capture device, `run` keeps going, shows `NO DEVICE` and looks for the device every 2 seconds.
+
+All the commands, which `autosplit --help` also lists:
+
+```sh
+# List capture devices
+autosplit devices
+
+# Save a frame from a capture device, or with --profile only the part that gets compared
+autosplit grab --device "OBS Virtual Camera" frame.png [--profile settings.toml]
+
+# Split
+autosplit run settings.toml [--split-dir folder]
+
+# Validate a profile's split image folder and show how each image is read
+autosplit check settings.toml [--split-dir folder]
+
+# Similarity of a split image against a captured frame, with every method
+autosplit compare "split_(0.95).png" frame.png [--profile settings.toml]
+
+# Run the split state machine over a folder of recorded PNG frames
+autosplit replay settings.toml frames/ --fps 60 [--auto-controlled]
+
+# Time comparisons
+autosplit bench [split images...] --capture 1920x1080
+```
 
 The Windows zip has two programs. `autosplit.exe` opens the window without a console, and `autosplit.com` is for terminals. Typing `autosplit` in a terminal runs `autosplit.com`, which runs `autosplit.exe` inside the terminal so output and Ctrl+C work. Without a command, it opens the window and returns to the prompt.
