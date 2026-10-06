@@ -1,6 +1,7 @@
 //! Number formatting for the UI.
 
-use autosplit_core::text::{decimal, seconds_remaining_text};
+use autosplit_core::commands::Command;
+use autosplit_core::text::{Compared, decimal, seconds_remaining_text};
 use test_case::test_case;
 
 #[test_case(0.9, "0.900"; "pads to three decimals")]
@@ -31,4 +32,17 @@ fn seconds_remaining(seconds: f64, expected: &str) {
 
     // Assert
     assert_eq!(text, expected);
+}
+
+fn compared(below: bool) -> Compared {
+    Compared { filename: "05_bottle.png".into(), threshold: Some(0.93), below }
+}
+
+#[test_case(Some(compared(false)), Command::Split => " (05_bottle.png at 0.951 / 0.930)"; "split")]
+#[test_case(Some(compared(true)), Command::Pause => " (05_bottle.png dropped to 0.951, below 0.930)"; "below flag pause")]
+#[test_case(Some(compared(false)), Command::Reset => ""; "reset has no image")]
+#[test_case(None, Command::Split => ""; "nothing compared")]
+fn split_details(compared: Option<Compared>, command: Command) -> String {
+    // Act, with the expected value checked by test_case
+    Compared::details(compared.as_ref(), command, Some(0.951))
 }

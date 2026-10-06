@@ -18,8 +18,10 @@ use crate::session::{Notice, Snapshot, View};
 /// The live preview's size, like AutoSplit's.
 const PREVIEW_WIDTH: u32 = 320;
 const PREVIEW_HEIGHT: u32 = 240;
-/// How often the window is updated when it doesn't show a live preview.
-const STATUS_INTERVAL: Duration = Duration::from_millis(100);
+/// How often the window's texts are updated when it doesn't show a live preview.
+const TEXTS_INTERVAL: Duration = Duration::from_millis(100);
+/// The live preview's rate on macOS at most, where every preview frame redraws the whole window.
+const MACOS_PREVIEW_INTERVAL: Duration = Duration::from_millis(33);
 /// How often while it's minimized or covered, when nobody sees it.
 const HIDDEN_INTERVAL: Duration = Duration::from_millis(500);
 
@@ -34,7 +36,7 @@ pub enum Picture {
 
 impl Picture {
     /// This change after `older`, which the window hasn't shown yet.
-    fn after(self, older: Picture) -> Picture {
+    pub fn after(self, older: Picture) -> Picture {
         match self {
             Self::Keep => older,
             newer => newer,
@@ -62,6 +64,18 @@ pub struct Update {
     pub current: Picture,
 }
 
+impl Update {
+    /// This update after `older`, which the window hasn't shown yet: the newest texts and
+    /// pictures.
+    pub fn after(self, older: Update) -> Update {
+        Update {
+            texts: self.texts.or(older.texts),
+            live: self.live.after(older.live),
+            current: self.current.after(older.current),
+        }
+    }
+}
+
 /// Hands an update to the window's thread, which takes the newest one from the slot.
 pub type Deliver = Box<dyn Fn(Arc<Mutex<Option<Update>>>) + Send>;
 
@@ -78,7 +92,8 @@ pub struct GuiView {
     shown_frame: Option<u64>,
     /// The image shown as the current image, and which loading of the images it's from.
     shown_image: Option<(ImageRef, u64)>,
-    scratch: Vec<[u8; 4]>,
+    /// Whether the device sent frames at the last update.
+    receiving: bool,
 }
 
 impl GuiView {
@@ -91,7 +106,7 @@ impl GuiView {
             texts: None,
             shown_frame: None,
             shown_image: None,
-            scratch: Vec::new(),
+            receiving: false,
         }
     }
 
@@ -119,7 +134,7 @@ impl GuiView {
         // Right after the region changes, its part of the frame isn't converted yet
         let Some(view) = frame.region_view(&profile.capture_region) else { return (String::new(), Picture::Keep) };
         self.shown_frame = Some(frame.sequence());
-        (String::new(), Picture::Show(preview(view, &mut self.scratch)))
+        (String::new(), Picture::Show(preview(view)))
     }
 
     fn current_image(&mut self, snapshot: &Snapshot) -> Picture {
@@ -143,10 +158,11 @@ impl GuiView {
 }
 
 /// The capture region stretched to the preview's size.
-fn preview(view: BgraView, scratch: &mut Vec<[u8; 4]>) -> Pixels {
-    scratch.resize((PREVIEW_WIDTH * PREVIEW_HEIGHT) as usize, [0; 4]);
-    stretch_to_rgba(view, PREVIEW_WIDTH as usize, PREVIEW_HEIGHT as usize, scratch);
-    Pixels::clone_from_slice(scratch.as_flattened(), PREVIEW_WIDTH, PREVIEW_HEIGHT)
+fn preview(view: BgraView) -> Pixels {
+    let mut pixels = Pixels::new(PREVIEW_WIDTH, PREVIEW_HEIGHT);
+    let (rgba, _) = pixels.make_mut_bytes().as_chunks_mut::<4>();
+    stretch_to_rgba(view, PREVIEW_WIDTH as usize, PREVIEW_HEIGHT as usize, rgba);
+    pixels
 }
 
 /// A whole image in BGRA as RGBA, for the current image, which the window stretches itself.
@@ -166,10 +182,11 @@ impl View for GuiView {
         if !self.visible() {
             return HIDDEN_INTERVAL;
         }
-        // AutoSplit redraws the live preview at the comparison rate
-        let preview =
-            profile.live_capture_region.then(|| Duration::from_secs_f64(1.0 / profile.fps_limit.max(1) as f64));
-        preview.map_or(STATUS_INTERVAL, |preview| preview.min(STATUS_INTERVAL))
+        // AutoSplit redraws the live preview at the comparison rate, while frames come
+        let preview = (profile.live_capture_region && self.receiving)
+            .then(|| Duration::from_secs_f64(1.0 / profile.fps_limit.max(1) as f64))
+            .map(|preview| if cfg!(target_os = "macos") { preview.max(MACOS_PREVIEW_INTERVAL) } else { preview });
+        preview.map_or(TEXTS_INTERVAL, |preview| preview.min(TEXTS_INTERVAL))
     }
 
     fn wants_frames(&self, profile: &UserProfile) -> bool {
@@ -177,6 +194,7 @@ impl View for GuiView {
     }
 
     fn update(&mut self, snapshot: Snapshot<'_>) {
+        self.receiving = snapshot.receiving;
         let (live_message, live) =
             if self.visible() { self.live_preview(&snapshot) } else { (String::new(), Picture::Keep) };
         let current = self.current_image(&snapshot);
@@ -208,13 +226,7 @@ impl View for GuiView {
         let update = Update { texts: changed.then_some(texts), live, current };
         let mut pending = self.pending.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         match pending.take() {
-            Some(older) => {
-                *pending = Some(Update {
-                    texts: update.texts.or(older.texts),
-                    live: update.live.after(older.live),
-                    current: update.current.after(older.current),
-                });
-            }
+            Some(older) => *pending = Some(update.after(older)),
             None => {
                 *pending = Some(update);
                 drop(pending);

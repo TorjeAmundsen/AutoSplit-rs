@@ -5,9 +5,9 @@ import { SettingsWindow, HotkeyRow, Setting } from "settings.slint";
 import { AboutWindow } from "about.slint";
 import { LogWindow } from "log.slint";
 import { MessageWindow } from "message.slint";
-import { Button, Label, SpinBox, TextField, Theme } from "widgets.slint";
+import { Button, Label, SpinBox, TextField, Theme, Tip, WindowFocus } from "widgets.slint";
 
-export { SettingsWindow, HotkeyRow, Setting, AboutWindow, LogWindow, MessageWindow }
+export { SettingsWindow, HotkeyRow, Setting, AboutWindow, LogWindow, MessageWindow, WindowFocus }
 
 // A preview area: the image stretched to fill it like AutoSplit's, or a message.
 component Preview inherits Rectangle {
@@ -46,14 +46,19 @@ component SimilarityViewer inherits Rectangle {
     in property <string> reset-live;
     in property <string> reset-highest;
     in property <string> reset-threshold;
-    border-width: 1px;
-    border-color: Palette.border;
-    border-radius: 3px;
 
-    // The title on the frame, centered like AutoSplit's
+    // Qt's group box frame starts half a line below the top, where the title sits
+    Rectangle {
+        y: 7px;
+        height: parent.height - 7px;
+        border-width: 1px;
+        border-color: Palette.border;
+        border-radius: 3px;
+    }
+
     Rectangle {
         x: (parent.width - self.width) / 2;
-        y: -8px;
+        y: 0px;
         width: title.preferred-width + 6px;
         height: 16px;
         background: Palette.background;
@@ -157,24 +162,32 @@ export component MainWindow inherits Window {
     callback about();
     callback blocked-clicked();
 
+    function region-changed() {
+        root.region-edited(root.region-x, root.region-y, root.region-width, root.region-height);
+    }
+
     MenuBar {
         Menu {
             title: "File";
             MenuItem {
                 title: "Settings";
+                shortcut: @keys(Control + ",");
                 activated => { root.open-settings(); }
             }
             MenuSeparator { }
             MenuItem {
                 title: "Save Profile";
+                shortcut: @keys(Control + S);
                 activated => { root.save-profile(); }
             }
             MenuItem {
                 title: "Save Profile As...";
+                shortcut: @keys(Control + Shift + S);
                 activated => { root.save-profile-as(); }
             }
             MenuItem {
                 title: "Load Profile";
+                shortcut: @keys(Control + O);
                 activated => { root.load-profile(); }
             }
         }
@@ -182,6 +195,7 @@ export component MainWindow inherits Window {
             title: "Help";
             MenuItem {
                 title: "View Help";
+                shortcut: @keys(F1);
                 activated => { root.view-help(); }
             }
             MenuItem {
@@ -205,7 +219,7 @@ export component MainWindow inherits Window {
             Label {
                 x: 10px;
                 y: 9px;
-                width: 117px;
+                width: 111px;
                 height: 16px;
                 text: "Split Image Folder:";
             }
@@ -264,6 +278,12 @@ export component MainWindow inherits Window {
                 text: "<";
                 enabled: root.can-previous;
                 clicked => { root.previous-image(); }
+
+                Tooltip {
+                    Tip {
+                        text: "Previous image";
+                    }
+                }
             }
 
             Label {
@@ -283,6 +303,12 @@ export component MainWindow inherits Window {
                 text: ">";
                 enabled: root.can-next;
                 clicked => { root.next-image(); }
+
+                Tooltip {
+                    Tip {
+                        text: "Next image";
+                    }
+                }
             }
 
             // Window capture isn't supported yet, like AutoSplit disables these for capture devices
@@ -311,6 +337,12 @@ export component MainWindow inherits Window {
                 height: 24px;
                 text: "Align Region";
                 clicked => { root.align-region(); }
+
+                Tooltip {
+                    Tip {
+                        text: "Align the capture region using a reference image";
+                    }
+                }
             }
 
             Label {
@@ -338,7 +370,7 @@ export component MainWindow inherits Window {
                 height: 24px;
                 maximum: 999999999;
                 value <=> root.region-x;
-                edited => { root.region-edited(root.region-x, root.region-y, root.region-width, root.region-height); }
+                edited => { root.region-changed(); }
             }
 
             SpinBox {
@@ -348,7 +380,7 @@ export component MainWindow inherits Window {
                 height: 24px;
                 maximum: 999999999;
                 value <=> root.region-y;
-                edited => { root.region-edited(root.region-x, root.region-y, root.region-width, root.region-height); }
+                edited => { root.region-changed(); }
             }
 
             Label {
@@ -377,7 +409,7 @@ export component MainWindow inherits Window {
                 minimum: 1;
                 maximum: 10000;
                 value <=> root.region-width;
-                edited => { root.region-edited(root.region-x, root.region-y, root.region-width, root.region-height); }
+                edited => { root.region-changed(); }
             }
 
             SpinBox {
@@ -388,7 +420,7 @@ export component MainWindow inherits Window {
                 minimum: 1;
                 maximum: 10000;
                 value <=> root.region-height;
-                edited => { root.region-edited(root.region-x, root.region-y, root.region-width, root.region-height); }
+                edited => { root.region-changed(); }
             }
 
             Button {
@@ -408,6 +440,12 @@ export component MainWindow inherits Window {
                 text: "Max FPS";
                 enabled: !root.running;
                 clicked => { root.check-fps(); }
+
+                Tooltip {
+                    Tip {
+                        text: "Calculate the average max FPS of the set capture region";
+                    }
+                }
             }
 
             Label {

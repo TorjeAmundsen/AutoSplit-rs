@@ -7,7 +7,7 @@ pub mod log;
 pub mod messages;
 pub mod recorder;
 pub mod settings_form;
-mod view;
+pub mod view;
 
 pub mod ui {
     slint::include_modules!();
@@ -15,7 +15,7 @@ pub mod ui {
 
 use std::cell::{Cell, RefCell};
 use std::path::{Path, PathBuf};
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, mpsc};
 use std::time::Duration;
@@ -23,8 +23,8 @@ use std::time::Duration;
 use autosplit_capture::{DeviceInfo, list_devices};
 use autosplit_core::commands::{Command, TimerLink};
 use autosplit_core::hotkeys::HotkeyAction;
-use autosplit_core::profile::{TimerConnection, VIDEO_CAPTURE_DEVICE};
-use autosplit_input::{Modifiers, UsLayout, hotkey_name, parse_hotkey};
+use autosplit_core::profile::{TimerConnection, UserProfile};
+use autosplit_input::{Modifiers, UsLayout, hotkey_name, parse_hotkey, same_hotkey};
 use slint::winit_030::winit::event::{ElementState, KeyEvent, WindowEvent};
 use slint::winit_030::winit::keyboard::{Key, NamedKey};
 use slint::winit_030::winit::window::WindowLevel;
@@ -36,10 +36,10 @@ use self::log::LogLines;
 use self::messages::{Answer, Message, MessageQueue};
 use self::recorder::{key_character, modifiers_held, pressed_key};
 use self::settings_form::SettingEdit;
-use self::ui::{AboutWindow, HotkeyRow, LogWindow, MainWindow, MessageWindow, Setting, SettingsWindow};
+use self::ui::{AboutWindow, HotkeyRow, LogWindow, MainWindow, MessageWindow, Setting, SettingsWindow, WindowFocus};
 use self::view::{GuiView, Picture, Update};
 use crate::console::Console;
-use crate::session::{Event, Notice, Session, UiCommand, capture_method_name};
+use crate::session::{Event, Notice, Session, UiCommand};
 use crate::{livesplit, platform, profile};
 
 /// How the GUI was started.
@@ -72,7 +72,7 @@ pub const HOTKEY_ROWS: [(HotkeyAction, &str); 7] = [
     (HotkeyAction::SkipSplit, "Skip Split:"),
     (HotkeyAction::Pause, "Pause:"),
     (HotkeyAction::Screenshot, "Screenshot:"),
-    (HotkeyAction::ToggleAutoResetImage, "Toggle auto reset image"),
+    (HotkeyAction::ToggleAutoResetImage, "Toggle auto\nreset image"),
 ];
 
 /// Help > View Help and the settings' Tutorial button.
@@ -82,6 +82,10 @@ const IMAGE_SETTINGS_URL: &str =
 /// What to do once the profile is saved.
 type AfterSave = Box<dyn FnOnce(&Rc<Gui>)>;
 
+/// How often the main window is checked for being minimized.
+const VISIBILITY_INTERVAL: Duration = Duration::from_millis(500);
+/// AutoSplit's largest capture region position.
+const MAX_POSITION: i64 = 999_999_999;
 /// How long log lines are gathered before the log window shows them.
 const LOG_DELAY: Duration = Duration::from_millis(100);
 
@@ -110,16 +114,17 @@ struct State {
 }
 
 struct Gui {
-    main: MainWindow,
-    settings: SettingsWindow,
-    about: AboutWindow,
-    log: LogWindow,
-    message: MessageWindow,
+    windows: Windows,
+    /// For timers and callbacks to reach the GUI without keeping it alive.
+    me: Weak<Gui>,
     hotkeys: Rc<VecModel<HotkeyRow>>,
     state: RefCell<State>,
     events: mpsc::Sender<Event>,
     /// Whether the main window can be seen, for the live preview.
     visible: Arc<AtomicBool>,
+    occluded: Cell<bool>,
+    zero_size: Cell<bool>,
+    visibility_check: slint::Timer,
     log_flush: slint::Timer,
     log_dirty: Cell<bool>,
 }
@@ -172,7 +177,7 @@ fn panic_text(payload: &(dyn std::any::Any + Send)) -> String {
         .unwrap_or_else(|| "unknown error".into())
 }
 
-/// The windows, before anything shows.
+/// The windows: the main window, settings and the small ones.
 struct Windows {
     main: MainWindow,
     settings: SettingsWindow,
@@ -193,94 +198,42 @@ fn open_windows() -> anyhow::Result<Windows> {
     })
 }
 
-/// Opens the window, and runs until it's closed (or LiveSplit closes AutoSplit).
-pub fn run(options: Options) -> Result<(), Error> {
-    let windows =
-        open_windows().map_err(|error| Error::NoWindow(anyhow::anyhow!("Couldn't open a window: {error}")))?;
-    platform::keep_running_when_hidden();
-
-    let (events, receiver) = mpsc::channel();
-    let (mut console, log_path) = Console::with_listener(Box::new(|line| {
-        let line = line.to_owned();
-        with_gui(move |gui| gui.add_log_line(line));
-    }));
-    let mut first_messages = Vec::new();
-    let document = if options.auto_controlled {
-        livesplit::log_started(&mut console, log_path.as_deref());
-        Document::untitled()
-    } else {
-        console.log(format_args!("AutoSplit {}", env!("CARGO_PKG_VERSION")));
-        match profile_on_open(&exe_folder()) {
-            Ok((path, profile)) => {
-                console.log(format_args!("Loaded {}", path.display()));
-                Document::new(profile, Some(path))
-            }
-            Err(message) => {
-                console.error(&message);
-                first_messages.push(message);
-                Document::untitled()
-            }
-        }
-    };
-    let link =
-        if options.auto_controlled { TimerLink::AutoControlled } else { document.profile.timer_connection.into() };
-
-    let Windows { main, settings, about, log, message } = windows;
-    let visible = Arc::new(AtomicBool::new(!options.minimized));
-    let gui = Rc::new(Gui {
-        main,
-        settings,
-        about,
-        log,
-        message,
-        hotkeys: Rc::new(VecModel::default()),
-        state: RefCell::new(State {
-            started_with: document.profile.timer_connection,
-            document,
-            devices: Devices::default(),
-            recording: None,
-            link,
-            running: false,
-            capturing: false,
-            can_start: true,
-            log: LogLines::default(),
-            messages: MessageQueue::default(),
-        }),
-        events: events.clone(),
-        visible: visible.clone(),
-        log_flush: slint::Timer::default(),
-        log_dirty: Cell::new(false),
-    });
-    GUI.with(|cell| *cell.borrow_mut() = Some(gui.clone()));
-    gui.connect();
-    gui.main.set_window_title(
-        format!(
-            "AutoSplit v{}{}",
-            env!("CARGO_PKG_VERSION"),
-            if options.auto_controlled { " (externally controlled)" } else { "" }
-        )
-        .into(),
-    );
-    gui.settings.set_hotkeys(ModelRc::from(gui.hotkeys.clone()));
-    gui.settings.set_auto_controlled(options.auto_controlled);
-    gui.about.set_version(env!("CARGO_PKG_VERSION").into());
-    gui.log.set_log_path(log_path.as_ref().map(|path| path.display().to_string()).unwrap_or_default().into());
-    gui.show_profile();
-    gui.main.show().map_err(|error| Error::NoWindow(anyhow::anyhow!("Couldn't show the window: {error}")))?;
-    if options.minimized {
-        gui.main.window().set_minimized(true);
+/// The profile to start with: the one next to the executable, or none until LiveSplit sends one.
+/// Returns messages to show once the window is open.
+fn open_document(options: &Options, console: &mut Console, log_path: Option<&Path>) -> (Document, Vec<Message>) {
+    if options.auto_controlled {
+        livesplit::log_started(console, log_path);
+        return (Document::untitled(), Vec::new());
     }
+    console.log(format_args!("AutoSplit {}", env!("CARGO_PKG_VERSION")));
+    match profile_on_open(&exe_folder()) {
+        Ok((path, profile, warnings)) => {
+            console.log(format_args!("Loaded {}", path.display()));
+            for warning in &warnings {
+                console.warn(warning);
+            }
+            let messages = if warnings.is_empty() { Vec::new() } else { vec![Message::warning(warnings.join("\n\n"))] };
+            (Document::new(profile, Some(path)), messages)
+        }
+        Err(message) => {
+            console.error(&message);
+            (Document::untitled(), vec![Message::error(message)])
+        }
+    }
+}
 
-    let profile = {
-        let state = gui.state.borrow();
-        let mut profile = state.document.profile.clone();
-        profile.resolve_directories(&state.document.folder(&exe_folder()));
-        profile
-    };
-    let session_events = events.clone();
-    let thread = std::thread::Builder::new()
-        .name("session".into())
-        .spawn(move || {
+impl SessionThread {
+    /// Runs a session for `profile` on a thread of its own, shown in the window.
+    fn spawn(
+        profile: UserProfile,
+        link: TimerLink,
+        console: Console,
+        visible: Arc<AtomicBool>,
+        events: mpsc::Sender<Event>,
+        receiver: mpsc::Receiver<Event>,
+    ) -> std::io::Result<Self> {
+        let session_events = events.clone();
+        let thread = std::thread::Builder::new().name("session".into()).spawn(move || {
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 let deliver: view::Deliver = Box::new(|pending| {
                     with_gui(move |gui| {
@@ -303,33 +256,128 @@ pub fn run(options: Options) -> Result<(), Error> {
                 session.run(&receiver);
             }));
             // LiveSplit closed AutoSplit, the window was closed, or the session failed
-            let _ = slint::invoke_from_event_loop(|| {
-                let _ = slint::quit_event_loop();
-            });
+            let _ = slint::invoke_from_event_loop(quit);
             result.map_err(|payload| panic_text(&*payload))
-        })
+        })?;
+        Ok(Self { events, thread: Some(thread) })
+    }
+}
+
+/// Ends the event loop, which closes the program.
+fn quit() {
+    let _ = slint::quit_event_loop();
+}
+
+/// Opens the window, and runs until it's closed (or LiveSplit closes AutoSplit).
+pub fn run(options: Options) -> Result<(), Error> {
+    let windows =
+        open_windows().map_err(|error| Error::NoWindow(anyhow::anyhow!("Couldn't open a window: {error}")))?;
+    platform::keep_running_when_hidden();
+
+    let (events, receiver) = mpsc::channel();
+    let (mut console, log_path) = Console::with_listener(Box::new(|line| {
+        let line = line.to_owned();
+        with_gui(move |gui| gui.add_log_line(line));
+    }));
+    let (document, first_messages) = open_document(&options, &mut console, log_path.as_deref());
+    let link =
+        if options.auto_controlled { TimerLink::AutoControlled } else { document.profile.timer_connection.into() };
+
+    let visible = Arc::new(AtomicBool::new(!options.minimized));
+    let gui = Rc::new_cyclic(|me| Gui {
+        windows,
+        me: me.clone(),
+        hotkeys: Rc::new(VecModel::default()),
+        state: RefCell::new(State {
+            started_with: document.profile.timer_connection,
+            document,
+            devices: Devices::default(),
+            recording: None,
+            link,
+            running: false,
+            capturing: false,
+            can_start: true,
+            log: LogLines::default(),
+            messages: MessageQueue::default(),
+        }),
+        events: events.clone(),
+        visible: visible.clone(),
+        occluded: Cell::new(false),
+        zero_size: Cell::new(false),
+        visibility_check: slint::Timer::default(),
+        log_flush: slint::Timer::default(),
+        log_dirty: Cell::new(false),
+    });
+    GUI.with(|cell| *cell.borrow_mut() = Some(gui.clone()));
+    gui.connect();
+    let windows = &gui.windows;
+    windows.main.set_window_title(
+        format!(
+            "AutoSplit v{}{}",
+            env!("CARGO_PKG_VERSION"),
+            if options.auto_controlled { " (externally controlled)" } else { "" }
+        )
+        .into(),
+    );
+    windows.settings.set_hotkeys(ModelRc::from(gui.hotkeys.clone()));
+    windows.settings.set_auto_controlled(options.auto_controlled);
+    windows.about.set_version(env!("CARGO_PKG_VERSION").into());
+    windows.log.set_log_path(log_path.as_ref().map(|path| path.display().to_string()).unwrap_or_default().into());
+    gui.show_profile();
+    windows.main.show().map_err(|error| Error::NoWindow(anyhow::anyhow!("Couldn't show the window: {error}")))?;
+    if options.minimized {
+        windows.main.window().set_minimized(true);
+    }
+    gui.watch_visibility();
+
+    let profile = {
+        let state = gui.state.borrow();
+        let mut profile = state.document.profile.clone();
+        profile.resolve_directories(&state.document.folder(&exe_folder()));
+        profile
+    };
+    let session = SessionThread::spawn(profile, link, console, visible, events, receiver)
         .map_err(|error| Error::Failed(error.into()))?;
-    let session = SessionThread { events: events.clone(), thread: Some(thread) };
 
     for message in first_messages {
-        gui.show_message(Message::error(message));
+        gui.show_message(message);
     }
     slint::run_event_loop_until_quit().map_err(|error| Error::Failed(error.into()))?;
+    // Hidden first, since stopping the session can take a moment
+    gui.hide_all();
     let result = session.finish();
     GUI.with(|cell| cell.borrow_mut().take());
     result.map_err(|error| Error::Failed(anyhow::anyhow!("autosplit stopped because of an error: {error}")))
 }
 
-/// The windows' callbacks that act on the GUI.
+/// The windows' callbacks that act on the GUI. Message boxes are modal like AutoSplit's, so
+/// these do nothing while one is open; `always` ones still run. An `else` value is what the
+/// callback returns.
 macro_rules! on {
     ($weak:expr, $window:expr, $callback:ident, ($($argument:ident),*) $gui:ident => $body:expr) => {{
         let weak = $weak.clone();
         $window.$callback(move |$($argument),*| {
             if let Some($gui) = weak.upgrade() {
-                // Message boxes are modal, like AutoSplit's
                 if $gui.blocked() {
                     return $gui.focus_message();
                 }
+                $body;
+            }
+        });
+    }};
+    (always $weak:expr, $window:expr, $callback:ident, ($($argument:ident),*) $gui:ident => $body:block else $result:expr) => {{
+        let weak = $weak.clone();
+        $window.$callback(move |$($argument),*| {
+            if let Some($gui) = weak.upgrade() {
+                $body;
+            }
+            $result
+        });
+    }};
+    (always $weak:expr, $window:expr, $callback:ident, ($($argument:ident),*) $gui:ident => $body:expr) => {{
+        let weak = $weak.clone();
+        $window.$callback(move |$($argument),*| {
+            if let Some($gui) = weak.upgrade() {
                 $body;
             }
         });
@@ -362,13 +410,21 @@ impl Gui {
     }
 
     fn connect(self: &Rc<Self>) {
-        let weak = Rc::downgrade(self);
-        let main = &self.main;
+        self.connect_main();
+        self.connect_settings();
+        self.connect_small_windows();
+        self.connect_window_events();
+    }
+
+    fn connect_main(&self) {
+        let weak = self.me.clone();
+        let main = &self.windows.main;
         on!(weak, main, on_browse_folder, () gui => gui.browse_folder());
         on!(weak, main, on_region_edited, (x, y, width, height) gui => {
             let mut state = gui.state.borrow_mut();
             let region = &mut state.document.profile.capture_region;
-            let whole = |value: f32| value.round() as i64;
+            // Spin boxes hold f32, which rounds large whole numbers; AutoSplit's limit stays the limit
+            let whole = |value: f32| (value.round() as i64).min(MAX_POSITION);
             (region.x, region.y, region.width, region.height) = (whole(x), whole(y), whole(width), whole(height));
             drop(state);
             gui.send_profile(false);
@@ -376,7 +432,7 @@ impl Gui {
         on!(weak, main, on_align_region, () gui => gui.align_region());
         on!(weak, main, on_take_screenshot, () gui => gui.send(UiCommand::Screenshot));
         on!(weak, main, on_check_fps, () gui => {
-            gui.main.set_fps_value("...".into());
+            gui.windows.main.set_fps_value("...".into());
             gui.send(UiCommand::CheckFps);
         });
         on!(weak, main, on_start_auto_splitter, () gui => gui.send(UiCommand::StartAutoSplitter));
@@ -392,65 +448,74 @@ impl Gui {
         on!(weak, main, on_load_profile, () gui => gui.load_profile());
         on!(weak, main, on_view_help, () gui => gui.open(TUTORIAL_URL));
         on!(weak, main, on_view_log, () gui => gui.show_log());
-        on!(weak, main, on_about, () gui => gui.show_window(gui.about.window()));
-        on!(weak, main, on_blocked_clicked, () gui => {});
-        on!(weak, self.about, on_ok, () gui => {
-            let _ = gui.about.hide();
-        });
-        on!(weak, self.about, on_open_link, (link) gui => gui.open(link.as_str()));
-        on!(weak, self.log, on_open_log_file, () gui => {
-            let path = gui.log.get_log_path();
-            if !path.is_empty() {
-                gui.open(path.as_str());
-            }
-        });
+        on!(weak, main, on_about, () gui => gui.show_window(gui.windows.about.window()));
+        on!(always weak, main, on_blocked_clicked, () gui => gui.focus_message());
+        on!(always weak, main.window(), on_close_requested, () gui => {
+            gui.close_requested();
+        } else slint::CloseRequestResponse::KeepWindowShown);
+    }
 
-        let settings = &self.settings;
+    fn connect_settings(&self) {
+        let weak = self.me.clone();
+        let settings = &self.windows.settings;
         on!(weak, settings, on_changed, (setting) gui => gui.setting_changed(setting));
         on!(weak, settings, on_capture_devices_requested, () gui => gui.refresh_devices());
         on!(weak, settings, on_browse_screenshot_directory, () gui => gui.browse_screenshot_directory());
         on!(weak, settings, on_set_hotkey, (index) gui => {
-            let action = HOTKEY_ROWS[index as usize].0;
+            let Some(&(action, _)) = HOTKEY_ROWS.get(index as usize) else { return };
             let recording = gui.state.borrow().recording;
             gui.record_hotkey((recording != Some(action)).then_some(action));
         });
         let typed = weak.clone();
-        self.settings.on_hotkey_typed(move |index, text| {
+        settings.on_hotkey_typed(move |index, text| {
             let Some(gui) = typed.upgrade() else { return false };
-            gui.hotkey_typed(HOTKEY_ROWS[index as usize].0, &text)
+            let Some(&(action, _)) = HOTKEY_ROWS.get(index as usize) else { return false };
+            gui.hotkey_typed(action, &text)
         });
         on!(weak, settings, on_open_readme, () gui => gui.open(IMAGE_SETTINGS_URL));
-        on!(weak, settings, on_blocked_clicked, () gui => {});
+        on!(always weak, settings, on_blocked_clicked, () gui => gui.focus_message());
+        on!(always weak, settings.window(), on_close_requested, () gui => {
+            gui.record_hotkey(None);
+        } else slint::CloseRequestResponse::HideWindow);
+    }
 
-        let answered = weak.clone();
-        self.message.on_answered(move |button| {
-            if let Some(gui) = answered.upgrade() {
-                gui.message_answered(Some(button as usize));
+    fn connect_small_windows(&self) {
+        let weak = self.me.clone();
+        let (about, log, message) = (&self.windows.about, &self.windows.log, &self.windows.message);
+        on!(weak, about, on_ok, () gui => {
+            let _ = gui.windows.about.hide();
+        });
+        on!(weak, about, on_open_link, (link) gui => gui.open(link.as_str()));
+        on!(weak, log, on_open_log_file, () gui => {
+            let path = gui.windows.log.get_log_path();
+            if !path.is_empty() {
+                gui.open(path.as_str());
             }
         });
-        let dismissed = weak.clone();
-        self.message.on_dismissed(move || {
-            if let Some(gui) = dismissed.upgrade() {
-                gui.message_answered(None);
-            }
-        });
-        let closed = weak.clone();
-        self.message.window().on_close_requested(move || {
-            if let Some(gui) = closed.upgrade() {
-                gui.message_answered(None);
-            }
-            slint::CloseRequestResponse::KeepWindowShown
-        });
+        on!(always weak, message, on_answered, (button) gui => gui.message_answered(Some(button as usize)));
+        on!(always weak, message, on_dismissed, () gui => gui.message_answered(None));
+        on!(always weak, message.window(), on_close_requested, () gui => {
+            gui.message_answered(None);
+        } else slint::CloseRequestResponse::KeepWindowShown);
+    }
 
+    /// Key presses for Set Hotkey and AutoSplit's shortcuts, whether the windows are active, and
+    /// whether the live preview can be seen.
+    fn connect_window_events(&self) {
         // Set Hotkey reads the next key pressed while the settings window has focus. Otherwise
-        // AutoSplit's shortcuts work there too.
-        let keys = weak.clone();
+        // AutoSplit's shortcuts work there too; the main window's menu has them.
+        let weak = self.me.clone();
         let mut held = Modifiers::empty();
-        self.settings.window().on_winit_window_event(move |_, event| {
-            let Some(gui) = keys.upgrade() else { return EventResult::Propagate };
+        self.windows.settings.window().on_winit_window_event(move |_, event| {
+            let Some(gui) = weak.upgrade() else { return EventResult::Propagate };
             match event {
                 WindowEvent::ModifiersChanged(modifiers) => held = modifiers_held(modifiers.state()),
-                WindowEvent::Focused(false) => gui.record_hotkey(None),
+                WindowEvent::Focused(focused) => {
+                    gui.windows.settings.global::<WindowFocus>().set_active(*focused);
+                    if !focused {
+                        gui.record_hotkey(None);
+                    }
+                }
                 WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
                     let recording = gui.state.borrow().recording;
                     if let Some(action) = recording {
@@ -465,42 +530,56 @@ impl Gui {
             }
             EventResult::Propagate
         });
-        let closed = weak.clone();
-        self.settings.window().on_close_requested(move || {
-            if let Some(gui) = closed.upgrade() {
-                gui.record_hotkey(None);
-            }
-            slint::CloseRequestResponse::HideWindow
-        });
 
-        // AutoSplit's keyboard shortcuts, wherever the focus is in the main window, and whether
-        // the live preview can be seen
-        let keys = weak.clone();
-        let mut held = Modifiers::empty();
-        let mut occluded = false;
-        self.main.window().on_winit_window_event(move |window, event| {
-            let Some(gui) = keys.upgrade() else { return EventResult::Propagate };
+        let weak = self.me.clone();
+        self.windows.main.window().on_winit_window_event(move |_, event| {
+            let Some(gui) = weak.upgrade() else { return EventResult::Propagate };
             match event {
-                WindowEvent::ModifiersChanged(modifiers) => held = modifiers_held(modifiers.state()),
-                WindowEvent::Occluded(now) => occluded = *now,
-                WindowEvent::KeyboardInput { event, .. }
-                    if event.state == ElementState::Pressed && gui.shortcut(event, held) =>
-                {
-                    return EventResult::PreventDefault;
+                WindowEvent::Focused(focused) => gui.windows.main.global::<WindowFocus>().set_active(*focused),
+                WindowEvent::Occluded(occluded) => {
+                    gui.occluded.set(*occluded);
+                    gui.update_visibility();
+                }
+                // Windows minimizes to a size of 0
+                WindowEvent::Resized(size) => {
+                    gui.zero_size.set(size.width == 0 || size.height == 0);
+                    gui.update_visibility();
                 }
                 _ => {}
             }
-            gui.visible.store(!occluded && !window.is_minimized(), Ordering::Relaxed);
             EventResult::Propagate
         });
+    }
 
-        let close = weak.clone();
-        self.main.window().on_close_requested(move || {
-            if let Some(gui) = close.upgrade() {
-                gui.close_requested();
+    /// Checks now and then whether the main window can be seen, since not every system tells
+    /// when it's minimized (X11) or covered (Windows).
+    fn watch_visibility(&self) {
+        let weak = self.me.clone();
+        self.visibility_check.start(slint::TimerMode::Repeated, VISIBILITY_INTERVAL, move || {
+            if let Some(gui) = weak.upgrade() {
+                gui.update_visibility();
             }
-            slint::CloseRequestResponse::KeepWindowShown
         });
+    }
+
+    fn update_visibility(&self) {
+        let minimized =
+            self.windows.main.window().with_winit_window(|window| window.is_minimized()).flatten().unwrap_or(false);
+        let visible = !minimized && !self.zero_size.get() && !self.occluded.get();
+        self.visible.store(visible, Ordering::Relaxed);
+    }
+
+    fn hide_all(&self) {
+        let windows = &self.windows;
+        for window in [
+            windows.main.window(),
+            windows.settings.window(),
+            windows.about.window(),
+            windows.log.window(),
+            windows.message.window(),
+        ] {
+            let _ = window.hide();
+        }
     }
 
     /// AutoSplit's keyboard shortcuts. Returns whether the key was one.
@@ -525,7 +604,7 @@ impl Gui {
     fn record_hotkey(&self, action: Option<HotkeyAction>) {
         self.state.borrow_mut().recording = action;
         let index = action.and_then(|action| HOTKEY_ROWS.iter().position(|&(row, _)| row == action));
-        self.settings.set_setting_hotkey(index.map_or(-1, |index| index as i32));
+        self.windows.settings.set_setting_hotkey(index.map_or(-1, |index| index as i32));
         self.show_buttons();
     }
 
@@ -558,7 +637,7 @@ impl Gui {
     }
 
     fn assign_hotkey(&self, action: HotkeyAction, name: &str) {
-        action.assign(&mut self.state.borrow_mut().document.profile, name);
+        action.assign(&mut self.state.borrow_mut().document.profile, name, same_hotkey);
         self.record_hotkey(None);
         self.profile_edited();
     }
@@ -566,7 +645,7 @@ impl Gui {
     fn open_settings(&self) {
         self.show_profile();
         self.refresh_devices();
-        self.show_window(self.settings.window());
+        self.show_window(self.windows.settings.window());
     }
 
     fn show_window(&self, window: &slint::Window) {
@@ -600,7 +679,7 @@ impl Gui {
     fn show_profile(&self) {
         let state = self.state.borrow();
         let profile = &state.document.profile;
-        let main = &self.main;
+        let main = &self.windows.main;
         main.set_split_image_folder(if profile.split_image_directory.is_empty() {
             "No Folder Selected".into()
         } else {
@@ -613,35 +692,22 @@ impl Gui {
         main.set_region_width(region.width as f32);
         main.set_region_height(region.height as f32);
 
-        let settings = &self.settings;
+        let settings = &self.windows.settings;
         settings.set_fps_limit(profile.fps_limit as f32);
         settings.set_live_capture_region(profile.live_capture_region);
-        let mut methods = vec![SharedString::from("Video Capture Device")];
-        let other_method = !profile.capture_method.is_empty() && profile.capture_method != VIDEO_CAPTURE_DEVICE;
-        if other_method {
-            methods.push(format!("{} (not supported yet)", capture_method_name(&profile.capture_method)).into());
-        }
-        settings.set_capture_methods(ModelRc::new(VecModel::from(methods)));
-        settings.set_capture_method_index(i32::from(other_method));
-        let devices = &state.devices;
-        settings.set_capture_device_placeholder(
-            if other_method {
-                "Select \"Video Capture Device\" above"
-            } else if devices.scanning {
-                "Scanning for existing devices..."
-            } else if devices.list.is_empty() {
-                "No device found."
-            } else {
-                ""
-            }
-            .into(),
+        let shown = settings_form::Shown::new(
+            profile,
+            &state.devices.list,
+            state.devices.scanning,
+            state.link,
+            state.started_with,
         );
-        let names: Vec<SharedString> = devices.list.iter().map(|device| format!("* {}", device.name).into()).collect();
-        settings.set_capture_devices(ModelRc::new(VecModel::from(names)));
-        let selected =
-            autosplit_capture::pick_device(&devices.list, &profile.capture_device_name, profile.capture_device_id)
-                .and_then(|(picked, _)| devices.list.iter().position(|device| device == picked));
-        settings.set_capture_device_index(selected.map_or(-1, |index| index as i32));
+        let strings = |items: Vec<String>| ModelRc::new(VecModel::from_iter(items.into_iter().map(SharedString::from)));
+        settings.set_capture_methods(strings(shown.capture_methods));
+        settings.set_capture_method_index(shown.capture_method_index);
+        settings.set_capture_device_placeholder(shown.device_placeholder.into());
+        settings.set_capture_devices(strings(shown.device_names));
+        settings.set_capture_device_index(shown.device_index);
         settings.set_screenshot_directory(profile.screenshot_directory.as_str().into());
         settings.set_open_screenshot(profile.open_screenshot);
         let on = |command| profile.screenshot_on.contains(&command);
@@ -673,22 +739,15 @@ impl Gui {
                 }
             }
         }
-        settings.set_hotkeys_note(
-            if state.link == TimerLink::Hotkeys {
-                ""
-            } else {
-                "LiveSplit or LiveSplit One controls the timer, so only the screenshot and auto reset hotkeys are used."
-            }
-            .into(),
-        );
-        settings.set_timer_connection(i32::from(profile.timer_connection == TimerConnection::LiveSplitOne));
+        settings.set_hotkeys_note(shown.hotkeys_note.into());
+        settings.set_timer_connection(shown.timer_connection);
         settings.set_livesplit_one_port(f32::from(profile.livesplit_one_port));
-        settings.set_timer_connection_changed(profile.timer_connection != state.started_with);
+        settings.set_timer_connection_changed(shown.timer_connection_changed);
     }
 
     /// A setting the settings window changed.
     fn setting_changed(&self, setting: Setting) {
-        let settings = &self.settings;
+        let settings = &self.windows.settings;
         let edit = match setting {
             Setting::FpsLimit => SettingEdit::FpsLimit(settings.get_fps_limit().round() as i32),
             Setting::LiveCaptureRegion => SettingEdit::LiveCaptureRegion(settings.get_live_capture_region()),
@@ -734,7 +793,9 @@ impl Gui {
     fn notice(&self, notice: Notice) {
         match notice {
             Notice::Dialog(message) => self.show_message(Message::error(message)),
-            Notice::Fps(fps) => self.main.set_fps_value(fps.map_or(String::new(), |fps| fps.to_string()).into()),
+            Notice::Fps(fps) => {
+                self.windows.main.set_fps_value(fps.map_or(String::new(), |fps| fps.to_string()).into())
+            }
             Notice::RegionAligned(region) => {
                 self.state.borrow_mut().document.profile.capture_region = region;
                 // Sent back, so it isn't lost to an edit the session got in the meantime
@@ -753,10 +814,10 @@ impl Gui {
 
     /// What the session shows changed.
     fn show_update(&self, update: Update) {
-        let main = &self.main;
+        let main = &self.windows.main;
         if let Some(texts) = update.texts {
             main.set_running(texts.running);
-            self.settings.set_running(texts.running);
+            self.windows.settings.set_running(texts.running);
             main.set_device_name(if texts.device_name.is_empty() { "-".into() } else { texts.device_name.into() });
             main.set_live_message(texts.live_message.into());
             let window = texts.window;
@@ -801,7 +862,7 @@ impl Gui {
     /// Start Auto Splitter, which AutoSplit disables while Set Hotkey waits for a key.
     fn show_buttons(&self) {
         let state = self.state.borrow();
-        self.main.set_can_start(state.can_start && state.recording.is_none());
+        self.windows.main.set_can_start(state.can_start && state.recording.is_none());
     }
 
     fn browse_folder(self: &Rc<Self>) {
@@ -823,7 +884,17 @@ impl Gui {
     }
 
     fn browse_screenshot_directory(self: &Rc<Self>) {
-        let dialog = self.file_dialog("Select Screenshot Directory").pick_folder();
+        // AutoSplit starts in the screenshot folder, or else the split image folder
+        let state = self.state.borrow();
+        let profile = &state.document.profile;
+        let current = if profile.screenshot_directory.is_empty() {
+            &profile.split_image_directory
+        } else {
+            &profile.screenshot_directory
+        };
+        let start = state.document.folder(&exe_folder()).join(current);
+        drop(state);
+        let dialog = self.file_dialog("Select Screenshots Directory").set_directory(start).pick_folder();
         self.when_picked(dialog, |gui, folder| {
             gui.state.borrow_mut().document.profile.screenshot_directory = folder_text(&folder);
             gui.profile_edited();
@@ -849,7 +920,7 @@ impl Gui {
 
     /// A file dialog in front of the main window.
     fn file_dialog(&self, title: &str) -> rfd::AsyncFileDialog {
-        rfd::AsyncFileDialog::new().set_title(title).set_parent(&self.main.window().window_handle())
+        rfd::AsyncFileDialog::new().set_title(title).set_parent(&self.windows.main.window().window_handle())
     }
 
     /// Waits for a file dialog without blocking the window, then does `then` with the path.
@@ -918,7 +989,7 @@ impl Gui {
             };
             gui.add_log_line(format!("Loaded {}", path.display()));
             if !warnings.is_empty() {
-                gui.show_message(Message::error(warnings.join("\n\n")));
+                gui.show_message(Message::warning(warnings.join("\n\n")));
             }
             gui.state.borrow_mut().document = Document::new(profile, Some(path));
             gui.send_profile(true);
@@ -941,8 +1012,7 @@ impl Gui {
         let state = self.state.borrow();
         if !state.document.has_changes() {
             drop(state);
-            let _ = slint::quit_event_loop();
-            return;
+            return quit();
         }
         let name = state.document.name();
         drop(state);
@@ -952,15 +1022,8 @@ impl Gui {
             move |answer| {
                 let Some(gui) = gui.upgrade() else { return };
                 match answer {
-                    Answer::Yes => gui.save_profile(
-                        false,
-                        Some(Box::new(|_| {
-                            let _ = slint::quit_event_loop();
-                        })),
-                    ),
-                    Answer::No => {
-                        let _ = slint::quit_event_loop();
-                    }
+                    Answer::Yes => gui.save_profile(false, Some(Box::new(|_| quit()))),
+                    Answer::No => quit(),
                     Answer::Cancel => {}
                 }
             },
@@ -971,10 +1034,10 @@ impl Gui {
         self.state.borrow_mut().log.push(line);
         self.log_dirty.set(true);
         // Gathered for a moment, and only shown while the log window is open
-        if self.log.window().is_visible() && !self.log_flush.running() {
-            let weak = GUI.with(|gui| gui.borrow().as_ref().map(Rc::downgrade));
+        if self.windows.log.window().is_visible() && !self.log_flush.running() {
+            let weak = self.me.clone();
             self.log_flush.start(slint::TimerMode::SingleShot, LOG_DELAY, move || {
-                if let Some(gui) = weak.as_ref().and_then(std::rc::Weak::upgrade) {
+                if let Some(gui) = weak.upgrade() {
                     gui.flush_log();
                 }
             });
@@ -983,13 +1046,13 @@ impl Gui {
 
     fn flush_log(&self) {
         if self.log_dirty.replace(false) {
-            self.log.set_log(self.state.borrow().log.text().into());
+            self.windows.log.set_log(self.state.borrow().log.text().into());
         }
     }
 
     fn show_log(&self) {
         self.flush_log();
-        self.show_window(self.log.window());
+        self.show_window(self.windows.log.window());
     }
 
     fn show_message(&self, message: Message) {
@@ -1001,31 +1064,32 @@ impl Gui {
 
     fn present_message(&self, (text, buttons): messages::Shown) {
         let [primary, secondary, tertiary] = buttons.labels();
-        self.message.set_window_title(buttons.title().into());
-        self.message.set_message(text.into());
-        self.message.set_primary(primary.into());
-        self.message.set_secondary(secondary.into());
-        self.message.set_tertiary(tertiary.into());
-        self.main.set_blocked(true);
-        self.settings.set_blocked(true);
-        self.show_window(self.message.window());
-        self.message.window().with_winit_window(|window| window.set_window_level(WindowLevel::AlwaysOnTop));
+        self.windows.message.set_window_title(buttons.title().into());
+        self.windows.message.set_message(text.into());
+        self.windows.message.set_primary(primary.into());
+        self.windows.message.set_secondary(secondary.into());
+        self.windows.message.set_tertiary(tertiary.into());
+        self.windows.main.set_blocked(true);
+        self.windows.settings.set_blocked(true);
+        self.show_window(self.windows.message.window());
+        self.windows.message.window().with_winit_window(|window| window.set_window_level(WindowLevel::AlwaysOnTop));
+        self.windows.message.invoke_focus_keys();
         self.focus_message();
     }
 
     fn focus_message(&self) {
-        self.message.window().with_winit_window(|window| window.focus_window());
+        self.windows.message.window().with_winit_window(|window| window.focus_window());
     }
 
     /// A message box was answered with a button, or closed.
     fn message_answered(&self, button: Option<usize>) {
-        let _ = self.message.hide();
+        let _ = self.windows.message.hide();
         let (answered, next) = self.state.borrow_mut().messages.answer(button);
         match next {
             Some(next) => self.present_message(next),
             None => {
-                self.main.set_blocked(false);
-                self.settings.set_blocked(false);
+                self.windows.main.set_blocked(false);
+                self.windows.settings.set_blocked(false);
             }
         }
         if let Some((answered, answer)) = answered {

@@ -7,6 +7,8 @@ use std::collections::VecDeque;
 pub enum Buttons {
     /// An error, titled "Error" like AutoSplit's.
     Ok,
+    /// Something to know that doesn't stop anything, like keys in the wrong place in a profile.
+    Warning,
     /// A question, titled "AutoSplit".
     YesNoCancel,
 }
@@ -15,13 +17,14 @@ impl Buttons {
     pub fn title(self) -> &'static str {
         match self {
             Self::Ok => "Error",
+            Self::Warning => "Warning",
             Self::YesNoCancel => "AutoSplit",
         }
     }
 
     pub fn labels(self) -> [&'static str; 3] {
         match self {
-            Self::Ok => ["OK", "", ""],
+            Self::Ok | Self::Warning => ["OK", "", ""],
             Self::YesNoCancel => ["Yes", "No", "Cancel"],
         }
     }
@@ -29,7 +32,7 @@ impl Buttons {
     /// The answer of a button, by its position in [`Buttons::labels`].
     pub fn answer(self, button: usize) -> Answer {
         match (self, button) {
-            (Self::Ok, _) | (Self::YesNoCancel, 0) => Answer::Yes,
+            (Self::Ok | Self::Warning, _) | (Self::YesNoCancel, 0) => Answer::Yes,
             (Self::YesNoCancel, 1) => Answer::No,
             _ => Answer::Cancel,
         }
@@ -38,7 +41,7 @@ impl Buttons {
     /// The answer when the box is closed instead: OK for an error, Cancel for a question.
     pub fn dismissed(self) -> Answer {
         match self {
-            Self::Ok => Answer::Yes,
+            Self::Ok | Self::Warning => Answer::Yes,
             Self::YesNoCancel => Answer::Cancel,
         }
     }
@@ -58,14 +61,18 @@ pub type Answered = Box<dyn FnOnce(Answer)>;
 pub type Shown = (String, Buttons);
 
 pub struct Message {
-    pub text: String,
-    pub buttons: Buttons,
+    text: String,
+    buttons: Buttons,
     answered: Option<Answered>,
 }
 
 impl Message {
     pub fn error(text: impl Into<String>) -> Self {
         Self { text: text.into(), buttons: Buttons::Ok, answered: None }
+    }
+
+    pub fn warning(text: impl Into<String>) -> Self {
+        Self { text: text.into(), buttons: Buttons::Warning, answered: None }
     }
 
     pub fn question(text: impl Into<String>, answered: impl FnOnce(Answer) + 'static) -> Self {

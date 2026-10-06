@@ -364,6 +364,34 @@ fn reset_image_is_paused_during_its_pause_time_after_the_start() {
 }
 
 #[test]
+fn pause_wakes_up_when_the_reset_image_pause_is_over() {
+    // Arrange
+    let mut harness = Harness::new(&[("1_[30].png", RED), ("2.png", BLUE), ("reset_[3].png", BLACK)], defaults());
+    harness.start();
+    harness.feed(Some(RED), ms(100));
+
+    // Act
+    let wakeup = harness.runner.next_wakeup().unwrap();
+
+    // Assert
+    assert!(wakeup >= ms(3000), "woke at {wakeup:?}");
+}
+
+#[test]
+fn reset_image_is_checked_once_its_pause_is_over() {
+    // Arrange
+    let mut harness = Harness::new(&[("1_[30].png", RED), ("2.png", BLUE), ("reset_[3].png", BLACK)], defaults());
+    harness.start();
+    harness.feed(Some(RED), ms(100));
+
+    // Act
+    harness.feed(Some(BLACK), ms(3100));
+
+    // Assert
+    assert_eq!(harness.sent(), [Command::Split, Command::Reset]);
+}
+
+#[test]
 fn disabled_auto_reset_ignores_the_reset_image() {
     // Arrange
     let settings = RunnerSettings { enable_auto_reset: false, ..defaults() };

@@ -39,9 +39,6 @@ The license texts are at <https://github.com/libjpeg-turbo/libjpeg-turbo/blob/ma
 The window is made with [Slint](https://slint.dev), used under the GNU General Public License
 v3.0 (one of its license options). Copyright (C) SixtyFPS GmbH.
 
-`vendor/i-slint-renderer-software` is Slint's CPU renderer with two changes for crisper text,
-described in `vendor/README.md`, under the same license.
-
 ## AutoSplit
 
 This project is a rewrite of [AutoSplit](https://github.com/Toufool/AutoSplit), licensed under

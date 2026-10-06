@@ -20,7 +20,7 @@ use autosplit_core::profile::UserProfile;
 use autosplit_core::runner::{Captured, Effect, Runner, RunnerSettings, Showing};
 use autosplit_core::split_folder::{FolderLoad, SplitSet, load_profile_folder, load_profile_folder_to_start};
 use autosplit_core::split_image::{ImageType, SplitContent, SplitImage};
-use autosplit_core::text::{decimal, decimal_or_dash};
+use autosplit_core::text::{Compared, decimal, decimal_or_dash};
 use clap::{Parser, Subcommand};
 
 /// Ticks at one timestamp after which `replay` gives up: the run is splitting in a loop.
@@ -149,9 +149,12 @@ fn main() -> ExitCode {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) if error.downcast_ref::<Reported>().is_some() => ExitCode::FAILURE,
         Err(error) => {
-            if terminal {
+            // Windows GUI programs have no stderr without a terminal. Elsewhere it may still be
+            // read, and the dialog needs a display (and zenity on Linux) to show.
+            if terminal || !cfg!(windows) {
                 eprintln!("error: {error:#}");
-            } else {
+            }
+            if !terminal {
                 // Started from a file manager, a shortcut or LiveSplit, with nowhere to print
                 platform::show_error(&format!("{error:#}"));
             }
@@ -403,7 +406,7 @@ fn replay(
     let mut loaded: Option<(usize, BgraImage)> = None;
     let mut now = Duration::ZERO;
     let mut ticks_at_now = 0;
-    let mut compared: Option<(String, Option<f64>, bool)> = None;
+    let mut compared: Option<Compared> = None;
     while let Some(next) = runner.next_wakeup().filter(|next| *next < end) {
         ticks_at_now = if next > now { 0 } else { ticks_at_now + 1 };
         if ticks_at_now > MAX_TICKS_WITHOUT_TIME_PASSING {
@@ -419,10 +422,7 @@ fn replay(
                 .with_context(|| format!("loading {}", paths[frame_index].display()))?;
             loaded = Some((frame_index, frame));
         }
-        let status = runner.status();
-        if let Some(filename) = &status.current_filename {
-            compared = Some((filename.clone(), status.threshold, status.below));
-        }
+        Compared::follow(&mut compared, runner.status());
         let capture = loaded.as_ref().map(|(index, frame)| Captured { view: frame.view(), sequence: *index as u64 });
         runner.tick(now, capture);
         for effect in runner.take_effects() {
@@ -437,14 +437,7 @@ fn replay(
                             Output::LiveSplitOne(message) => format!("send {message}"),
                         })
                         .collect();
-                    let details = match &compared {
-                        Some((filename, threshold, _)) if matches!(command.name(), "split" | "pause") => format!(
-                            "  {filename} at {} / {}",
-                            decimal_or_dash(runner.status().similarity),
-                            decimal_or_dash(*threshold)
-                        ),
-                        _ => String::new(),
-                    };
+                    let details = Compared::details(compared.as_ref(), command, runner.status().similarity);
                     print(now, frame_index, &format!("{:<6} {}{details}", command.name(), outputs.join(", ")));
                 }
                 Effect::RequestStart => {
@@ -509,7 +502,7 @@ fn bench(split_images: &[PathBuf], capture_size: &str, iterations: u32) -> Resul
                 std::hint::black_box(image.compare(Some(capture), Some(method), &mut scratch));
             }
             let per_compare = started.elapsed() / iterations;
-            println!("{name:<32} {:<12} {:>9.1} µs", method.name(), per_compare.as_secs_f64() * 1e6);
+            println!("{name:<32} {:<12} {:>9.1} us", method.name(), per_compare.as_secs_f64() * 1e6);
         }
     }
     Ok(())

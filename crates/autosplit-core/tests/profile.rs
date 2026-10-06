@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use autosplit_core::commands::Command;
 use autosplit_core::image::Rect;
-use autosplit_core::profile::{ProfileError, Region, RegionFit, TimerConnection, UserProfile};
+use autosplit_core::profile::{ProfileError, Region, RegionFit, TimerConnection, UserProfile, capture_method_name};
 use test_case::test_case;
 
 fn fixture(name: &str) -> PathBuf {
@@ -254,4 +254,14 @@ fn resolves_split_folder_against_the_profile(directory: &str, expected: &str) {
 
     // Assert
     assert_eq!(profile.split_image_directory, expected);
+}
+
+#[test_case("WINDOWS_GRAPHICS_CAPTURE" => "Windows Graphics Capture"; "windows graphics capture")]
+#[test_case("BITBLT" => "BitBlt"; "bitblt")]
+#[test_case("PRINTWINDOW_RENDERFULLCONTENT" => "Force Full Content Rendering"; "full content rendering")]
+#[test_case("DESKTOP_DUPLICATION" => "Direct3D Desktop Duplication"; "desktop duplication")]
+#[test_case("SOMETHING_NEW" => "SOMETHING_NEW"; "unknown method")]
+fn names_capture_methods(method: &str) -> &str {
+    // Act, with the expected value checked by test_case
+    capture_method_name(method)
 }

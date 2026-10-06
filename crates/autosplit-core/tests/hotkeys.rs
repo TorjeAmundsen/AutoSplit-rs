@@ -53,7 +53,7 @@ fn assign(action: HotkeyAction, hotkey: &str) -> (String, String, String) {
     let mut profile = profile_with_hotkeys();
 
     // Act
-    action.assign(&mut profile, hotkey);
+    action.assign(&mut profile, hotkey, |first, second| first == second);
 
     // Assert, with the expected value checked by test_case
     (profile.split_hotkey, profile.reset_hotkey, profile.undo_split_hotkey)

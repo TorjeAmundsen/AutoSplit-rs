@@ -1,8 +1,8 @@
 //! What the settings window's fields change in the profile.
 
 use autosplit_capture::DeviceInfo;
-use autosplit_core::commands::Command;
-use autosplit_core::profile::{TimerConnection, UserProfile, VIDEO_CAPTURE_DEVICE};
+use autosplit_core::commands::{Command, TimerLink};
+use autosplit_core::profile::{TimerConnection, UserProfile, VIDEO_CAPTURE_DEVICE, capture_method_name};
 
 /// A field's new value, as the settings window has it.
 #[derive(Clone, Debug, PartialEq)]
@@ -102,4 +102,64 @@ pub fn apply(profile: &mut UserProfile, edit: SettingEdit, devices: &[DeviceInfo
         | SettingEdit::LiveSplitOnePort(_) => return false,
     }
     true
+}
+
+/// What the settings window shows that isn't a profile value as it is.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Shown {
+    pub capture_methods: Vec<String>,
+    pub capture_method_index: i32,
+    /// Shown instead of the devices, and disabling the list, when not empty.
+    pub device_placeholder: &'static str,
+    pub device_names: Vec<String>,
+    /// -1 when the profile's device isn't connected.
+    pub device_index: i32,
+    pub hotkeys_note: &'static str,
+    pub timer_connection: i32,
+    /// The profile asks for another timer connection than the one autosplit started with.
+    pub timer_connection_changed: bool,
+}
+
+impl Shown {
+    /// `scanning` while the devices are being listed. `link` is how the session tells the timer,
+    /// and `started_with` the profile's timer connection when autosplit started.
+    pub fn new(
+        profile: &UserProfile,
+        devices: &[DeviceInfo],
+        scanning: bool,
+        link: TimerLink,
+        started_with: TimerConnection,
+    ) -> Self {
+        // AutoSplit's list items, with the profile's window capture method when it has one
+        let mut capture_methods = vec!["- Video Capture Device (see below)".to_owned()];
+        let other_method = !profile.capture_method.is_empty() && profile.capture_method != VIDEO_CAPTURE_DEVICE;
+        if other_method {
+            capture_methods.push(format!("- {} (not supported yet)", capture_method_name(&profile.capture_method)));
+        }
+        let device_placeholder = if other_method {
+            "Select \"Video Capture Device\" above"
+        } else if scanning {
+            "Scanning for existing devices..."
+        } else if devices.is_empty() {
+            "No device found."
+        } else {
+            ""
+        };
+        let selected = autosplit_capture::pick_device(devices, &profile.capture_device_name, profile.capture_device_id)
+            .and_then(|(picked, _)| devices.iter().position(|device| device == picked));
+        Self {
+            capture_methods,
+            capture_method_index: i32::from(other_method),
+            device_placeholder,
+            device_names: devices.iter().map(|device| format!("* {}", device.name)).collect(),
+            device_index: selected.map_or(-1, |index| index as i32),
+            hotkeys_note: if link == TimerLink::Hotkeys {
+                ""
+            } else {
+                "LiveSplit or LiveSplit One controls the timer, so only the screenshot and auto reset hotkeys are used."
+            },
+            timer_connection: i32::from(profile.timer_connection == TimerConnection::LiveSplitOne),
+            timer_connection_changed: profile.timer_connection != started_with,
+        }
+    }
 }

@@ -4,6 +4,7 @@
 use std::rc::Rc;
 
 use autosplit::gui::HOTKEY_ROWS;
+use autosplit::gui::messages::Buttons;
 use autosplit::gui::ui::{AboutWindow, HotkeyRow, LogWindow, MainWindow, MessageWindow, SettingsWindow};
 use slint::platform::software_renderer::{MinimalSoftwareWindow, RepaintBufferType, Rgb565Pixel};
 use slint::platform::{Platform, WindowAdapter};
@@ -74,9 +75,10 @@ fn main() {
 
     let message = MessageWindow::new().unwrap();
     message.set_message("Do you want to save changes made to settings file settings.toml?".into());
-    message.set_secondary("No".into());
-    message.set_tertiary("Cancel".into());
-    message.set_primary("Yes".into());
+    let [primary, secondary, tertiary] = Buttons::YesNoCancel.labels();
+    message.set_primary(primary.into());
+    message.set_secondary(secondary.into());
+    message.set_tertiary(tertiary.into());
     message.show().unwrap();
     save(&window, PhysicalSize::new(380, 120), &folder.join("message.png"));
     message.hide().unwrap();

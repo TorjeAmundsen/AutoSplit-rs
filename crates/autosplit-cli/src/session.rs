@@ -16,13 +16,13 @@ use autosplit_core::commands::{Command, ControlRequest, Output, TimerLink, Timer
 use autosplit_core::compare::CompareScratch;
 use autosplit_core::hotkeys::HotkeyAction;
 use autosplit_core::image::BgraImage;
-use autosplit_core::profile::{Region, UserProfile};
+use autosplit_core::profile::{Region, UserProfile, capture_method_name};
 use autosplit_core::runner::{Captured, Effect, Runner, RunnerSettings, Status};
 use autosplit_core::split_folder::{
     FolderLoad, SplitSet, ValidationError, load_profile_folder, load_profile_folder_to_start,
 };
 use autosplit_core::split_image::{SplitDefaults, SplitImage};
-use autosplit_core::text::{decimal_or_dash, status_line};
+use autosplit_core::text::{Compared, status_line};
 
 use crate::console::Console;
 use crate::device::{self, Device, Opened};
@@ -144,13 +144,6 @@ struct FpsCheck {
     last_frame_at: Instant,
 }
 
-/// The image compared before a tick, to say in the log what split.
-struct Compared {
-    filename: String,
-    threshold: Option<f64>,
-    below: bool,
-}
-
 pub struct Session {
     profile: UserProfile,
     /// With `--auto-controlled`, nothing is set up until LiveSplit sends a profile.
@@ -158,8 +151,10 @@ pub struct Session {
     link: TimerLink,
     runner: Runner,
     console: Console,
-    /// The window, or `None` for the terminal's status line.
+    /// The window, or `None` for the terminal's status line. Taken out while it updates.
     view: Option<Box<dyn View>>,
+    /// Whether there's a window, which the texts point to instead of the terminal.
+    windowed: bool,
     images_loaded: u64,
     fps_check: Option<FpsCheck>,
     started: Instant,
@@ -176,17 +171,6 @@ pub struct Session {
     timer: PreciseTimer,
     next_view: Instant,
     quit: bool,
-}
-
-/// AutoSplit's names for its window capture methods.
-pub fn capture_method_name(method: &str) -> &str {
-    match method {
-        "WINDOWS_GRAPHICS_CAPTURE" => "Windows Graphics Capture",
-        "BITBLT" => "BitBlt",
-        "PRINTWINDOW_RENDERFULLCONTENT" => "Force Full Content Rendering",
-        "DESKTOP_DUPLICATION" => "Direct3D Desktop Duplication",
-        other => other,
-    }
 }
 
 impl Session {
@@ -207,6 +191,7 @@ impl Session {
             profile_loaded: true,
             link,
             console,
+            windowed: view.is_some(),
             view,
             images_loaded: 0,
             fps_check: None,
@@ -370,7 +355,7 @@ impl Session {
             }
             // Waits are only precise to Windows' 15.6 ms tick unless asked for, which costs
             // power, so precision is asked for while comparing and just before other wakeups
-            let mut precise = self.runner.needs_frames(self.elapsed());
+            let mut precise = self.runner.needs_frames(self.elapsed()) || self.fps_check.is_some();
             if let Some(due) = self.runner.next_wakeup().map(|due| self.started + due) {
                 if precise || due <= now + PRECISE_LEAD {
                     precise = true;
@@ -389,21 +374,14 @@ impl Session {
     }
 
     fn tick(&mut self) {
-        let status = self.runner.status();
-        // Kept through a split delay, which shows no image, so the delayed split still says
-        // which image split
-        if let Some(filename) = &status.current_filename
-            && self.compared.as_ref().is_none_or(|compared| compared.filename != *filename)
-        {
-            self.compared =
-                Some(Compared { filename: filename.clone(), threshold: status.threshold, below: status.below });
-        }
-        let frame = self.device.latest();
+        Compared::follow(&mut self.compared, self.runner.status());
+        let now = self.elapsed();
+        // During pauses, when nothing is compared, the frame isn't converted for nothing
+        let frame = if self.runner.needs_frames(now) { self.device.latest() } else { None };
         let capture = frame.as_ref().and_then(|frame| {
             let view = frame.region_view(&self.profile.capture_region)?;
             Some(Captured { view, sequence: frame.sequence() })
         });
-        let now = self.elapsed();
         self.runner.tick(now, capture);
         drop(frame);
         self.handle_effects();
@@ -420,9 +398,10 @@ impl Session {
         let wanted = self.runner.needs_frames(self.elapsed())
             || self.fps_check.is_some()
             || self.view.as_ref().is_some_and(|view| view.wants_frames(&self.profile));
-        let (name, index) = (self.profile.capture_device_name.clone(), self.profile.capture_device_id);
-        let events = self.events.clone();
+        let (name, index) = (&self.profile.capture_device_name, self.profile.capture_device_id);
+        let events = &self.events;
         self.device.update(now, &self.profile.capture_region, wanted, &mut self.console, |generation| {
+            let (name, events) = (name.clone(), events.clone());
             std::thread::spawn(move || {
                 let _ = events.send(Event::DeviceOpened(generation, device::open(&name, index)));
             });
@@ -506,7 +485,7 @@ impl Session {
             return;
         }
         let load = load_profile_folder(&self.profile, self.link.timer_synced());
-        let Some(images) = self.folder(load, true) else {
+        let Ok(images) = self.folder(load, true) else {
             return self.notify(Notice::Fps(None));
         };
         let now = Instant::now();
@@ -664,21 +643,9 @@ impl Session {
         }
     }
 
-    /// What split, for the log: the image and the similarity that matched.
-    fn split_details(&self) -> String {
-        let Some(Compared { filename, threshold, below }) = &self.compared else { return String::new() };
-        let (similarity, threshold) = (decimal_or_dash(self.runner.status().similarity), decimal_or_dash(*threshold));
-        if *below {
-            format!(" ({filename} dropped to {similarity}, below {threshold})")
-        } else {
-            format!(" ({filename} at {similarity} / {threshold})")
-        }
-    }
-
     fn send(&mut self, command: Command) {
         let outputs = outputs_for(command, &self.profile, self.link);
-        let details =
-            if matches!(command, Command::Split | Command::Pause) { self.split_details() } else { String::new() };
+        let details = Compared::details(self.compared.as_ref(), command, self.runner.status().similarity);
         let name = command.name();
         for output in outputs {
             match output {
@@ -707,7 +674,7 @@ impl Session {
     /// shown in message boxes for `dialogs`, when a button asked for the folder like in
     /// AutoSplit. Otherwise each message is only logged once, since the folder is loaded again
     /// and again.
-    fn folder(&mut self, load: FolderLoad, dialogs: bool) -> Option<SplitSet> {
+    fn folder(&mut self, load: FolderLoad, dialogs: bool) -> Result<SplitSet, String> {
         let errors =
             load.load_errors.iter().map(ToString::to_string).chain(load.result.as_ref().err().map(ToString::to_string));
         for error in errors.collect::<Vec<_>>() {
@@ -724,8 +691,7 @@ impl Session {
                 self.console.log(message);
             }
         }
-        self.folder_error = load.result.as_ref().err().map(ToString::to_string);
-        load.result.ok()
+        load.result.map_err(|error| error.to_string())
     }
 
     /// Loads the split image folder and looks for its start image. `asked` when a button asked,
@@ -733,8 +699,11 @@ impl Session {
     fn arm(&mut self, asked: bool) {
         let load = load_profile_folder(&self.profile, self.link.timer_synced());
         self.images_loaded += 1;
-        match self.folder(load, asked) {
-            Some(images) => {
+        let images = self.folder(load, asked);
+        // Only arming decides whether the folder is retried, since only it watches the folder
+        self.folder_error = images.as_ref().err().cloned();
+        match images {
+            Ok(images) => {
                 let has_start = images.start.is_some();
                 let now = self.elapsed();
                 if self.runner.arm(images, now) && has_start {
@@ -745,7 +714,7 @@ impl Session {
                     );
                 }
             }
-            None => {
+            Err(_) => {
                 self.runner.disarm();
             }
         }
@@ -767,24 +736,27 @@ impl Session {
     fn start_run(&mut self) {
         let run_start = self.elapsed();
         let load = load_profile_folder_to_start(&self.profile, self.link.timer_synced());
-        let no_split_hotkey = matches!(load.result, Err(ValidationError::NoSplitHotkey));
-        self.images_loaded += 1;
-        let Some(images) = self.folder(load, false) else {
-            let reason = self.folder_error.clone().unwrap_or_default();
-            if no_split_hotkey {
-                return self.dialog(reason);
-            }
-            let retry = match (self.link, self.view.is_some()) {
-                (TimerLink::Hotkeys, true) => "Fix it, then press Start Auto Splitter or the split hotkey.",
-                (TimerLink::Hotkeys, false) => "Fix it, then press the split hotkey to try again.",
-                _ => "Fix it, then reset the timer and start it again.",
-            };
-            return self.dialog(format_args!("The run couldn't start: {reason} {retry}"));
-        };
-        let now = self.elapsed();
-        if self.runner.start(images, now, run_start) {
-            self.console.log("Run started");
+        // Not a problem with the folder, which stays watched as it was
+        if let Err(error @ ValidationError::NoSplitHotkey) = &load.result {
+            return self.dialog(error);
         }
+        self.images_loaded += 1;
+        let reason = match self.folder(load, false) {
+            Ok(images) => {
+                let now = self.elapsed();
+                if self.runner.start(images, now, run_start) {
+                    self.console.log("Run started");
+                }
+                return;
+            }
+            Err(reason) => reason,
+        };
+        let retry = match (self.link, self.windowed) {
+            (TimerLink::Hotkeys, true) => "Fix it, then press Start Auto Splitter or the split hotkey.",
+            (TimerLink::Hotkeys, false) => "Fix it, then press the split hotkey to try again.",
+            _ => "Fix it, then reset the timer and start it again.",
+        };
+        self.dialog(format_args!("The run couldn't start: {reason} {retry}"));
     }
 
     fn load_settings(&mut self, path: &str) {
@@ -883,7 +855,7 @@ impl Session {
     /// What the session is waiting for, when no image is shown.
     fn idle_text(&self) -> String {
         let link = self.livesplit_one.as_ref();
-        let see_log = if self.view.is_some() { "see Help > View Log" } else { "see above" };
+        let see_log = if self.windowed { "see Help > View Log" } else { "see above" };
         match self.link {
             TimerLink::AutoControlled if !self.profile_loaded => "waiting for LiveSplit to send a profile".into(),
             _ if self.folder_error.is_some() => format!("can't start: fix the split images ({see_log})"),

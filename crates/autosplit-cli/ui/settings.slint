@@ -1,7 +1,7 @@
 // AutoSplit's settings window (settings.ui), with an extra tab for the timer connection.
 
 import { CheckBox, ComboBox, TabWidget } from "std-widgets.slint";
-import { Button, Label, SpinBox, TextField } from "widgets.slint";
+import { Button, Label, SpinBox, TextField, Theme, Tip, WindowFocus } from "widgets.slint";
 
 export enum Setting {
     fps-limit,
@@ -99,6 +99,12 @@ export component SettingsWindow inherits Window {
                     width: 141px;
                     height: 24px;
                     text: "Comparison FPS Limit:";
+
+                    Tooltip {
+                        Tip {
+                            text: "This value will limit the amount of frames per second that AutoSplit will run comparisons";
+                        }
+                    }
                 }
 
                 SpinBox {
@@ -138,6 +144,12 @@ export component SettingsWindow inherits Window {
                     model: root.capture-methods;
                     current-index <=> root.capture-method-index;
                     selected => { root.changed(Setting.capture-method); }
+
+                    Tooltip {
+                        Tip {
+                            text: "Video Capture Device :\nUses a Video Capture Device, like a webcam, virtual cam, or capture card.\nYou can select one from the Capture Device dropdown below.\nSee this guide on using the OBS Virtual Camera.\nhttps://obsproject.com/kb/virtual-camera-guide";
+                        }
+                    }
                 }
 
                 Label {
@@ -278,6 +290,12 @@ export component SettingsWindow inherits Window {
                     model: ["L2 Norm", "Histograms", "pHash"];
                     current-index <=> root.default-comparison-method;
                     selected => { root.changed(Setting.default-comparison-method); }
+
+                    Tooltip {
+                        Tip {
+                            text: "L2 Norm:\nThis method should be fine to use for most cases.\nIt finds the difference between each pixel, squares it, sums it over the entire image and takes the square root.\nThis is very fast but is a problem if your image is high frequency.\nAny translational movement or rotation can cause similarity to be very different.\n\nHistograms:\nAn explanation on Histograms comparison can be found here\nhttps://mpatacchiola.github.io/blog/2016/11/12/the-simplest-classifier-histogram-intersection.html\nThis is a great method to use if you are using several masked images.\n> This algorithm is particular reliable when the colour is a strong predictor of the object identity.\n> The histogram intersection [...] is robust to occluding objects in the foreground.\n\nPerceptual Hash:\nAn explanation on pHash comparison can be found here\nhttp://www.hackerfactor.com/blog/index.php?/archives/432-Looks-Like-It.html\nIt is highly recommended to NOT use pHash if you use masked images, or it'll be very inaccurate.";
+                        }
+                    }
                 }
 
                 Label {
@@ -298,6 +316,12 @@ export component SettingsWindow inherits Window {
                     decimals: 2;
                     value <=> root.default-similarity-threshold;
                     edited => { root.changed(Setting.default-similarity-threshold); }
+
+                    Tooltip {
+                        Tip {
+                            text: "Threshold that the live similarity will need to go above to consider the image a match.";
+                        }
+                    }
                 }
 
                 Label {
@@ -316,6 +340,12 @@ export component SettingsWindow inherits Window {
                     maximum: 999999999;
                     value <=> root.default-delay-time;
                     edited => { root.changed(Setting.default-delay-time); }
+
+                    Tooltip {
+                        Tip {
+                            text: "After an image is matched, this is the amount of time in milliseconds that will be delayed before splitting.";
+                        }
+                    }
                 }
 
                 Label {
@@ -335,6 +365,12 @@ export component SettingsWindow inherits Window {
                     decimals: 2;
                     value <=> root.default-pause-time;
                     edited => { root.changed(Setting.default-pause-time); }
+
+                    Tooltip {
+                        Tip {
+                            text: "The amount of time in seconds that comparison will be paused before moving to the next image.";
+                        }
+                    }
                 }
 
                 CheckBox {
@@ -368,6 +404,7 @@ export component SettingsWindow inherits Window {
                 }
 
                 Text {
+                    color: Theme.text;
                     x: 10px;
                     y: 208px;
                     width: 360px;
@@ -398,6 +435,13 @@ export component SettingsWindow inherits Window {
                     height: 28px;
                     property <string> hotkey: row.hotkey;
 
+                    // A name that isn't a hotkey shows the hotkey again
+                    function commit(text: string) {
+                        if (!root.hotkey-typed(index, text)) {
+                            field.text = row.hotkey;
+                        }
+                    }
+
                     // Typing replaces the binding to the row, so later changes are shown by hand
                     changed hotkey => {
                         if (!field.has-focus) {
@@ -411,7 +455,6 @@ export component SettingsWindow inherits Window {
                         height: 100%;
                         text: row.name;
                         wrap: word-wrap;
-                        font-size: row.name.character-count > 14 ? 10px : 12px;
                         opacity: row.enabled ? 1 : 0.5;
                     }
 
@@ -423,13 +466,11 @@ export component SettingsWindow inherits Window {
                         enabled: row.enabled && !root.running;
                         text: row.hotkey;
                         accepted(text) => {
-                            if (!root.hotkey-typed(index, text)) {
-                                self.text = row.hotkey;
-                            }
+                            parent.commit(text);
                         }
                         changed has-focus => {
-                            if (!self.has-focus && self.text != row.hotkey && !root.hotkey-typed(index, self.text)) {
-                                self.text = row.hotkey;
+                            if (!self.has-focus && WindowFocus.active && self.text != row.hotkey) {
+                                parent.commit(self.text);
                             }
                         }
                     }
@@ -446,6 +487,7 @@ export component SettingsWindow inherits Window {
                 }
 
                 if root.hotkeys-note != "": Text {
+                    color: Theme.text;
                     x: 10px;
                     y: 224px;
                     width: 360px;
@@ -500,6 +542,7 @@ export component SettingsWindow inherits Window {
                 }
 
                 Text {
+                    color: Theme.text;
                     x: 10px;
                     y: 94px;
                     width: 360px;

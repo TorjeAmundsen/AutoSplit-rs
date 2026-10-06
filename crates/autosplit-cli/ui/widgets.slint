@@ -16,6 +16,31 @@ export global Theme {
     out property <color> focus: dark ? #2a82da : #308cc6;
     out property <color> frame: dark ? #ffffff : #a0a0a0;
     out property <color> selection: dark ? #2a82da : #308cc6;
+    out property <color> link: dark ? #5aa0ff : #2a6fd6;
+    out property <color> tooltip: dark ? #2d2d2d : #ffffdc;
+}
+
+// Whether the window is the active one. Losing focus to another window isn't finishing an edit,
+// like Qt's editingFinished ignores it, so fields only commit while this is true. Set from Rust.
+export global WindowFocus {
+    in-out property <bool> active: true;
+}
+
+// A tooltip's content, drawn like Qt's: plain text in a box. Used as `Tooltip { Tip { text: ... } }`.
+export component Tip inherits Rectangle {
+    in property <string> text;
+    background: Theme.tooltip;
+    border-width: 1px;
+    border-color: Theme.outline;
+
+    VerticalLayout {
+        padding: 4px;
+
+        Text {
+            text: root.text;
+            color: Theme.text;
+        }
+    }
 }
 
 export component Label inherits Text {
@@ -87,8 +112,12 @@ export component Button inherits Rectangle {
         }
     }
 
+    // Zero width, so a click reaches the touch area instead of taking the focus first
     focus := FocusScope {
+        x: 0;
+        width: 0px;
         enabled: root.enabled;
+        focus-on-click: false;
         key-pressed(event) => {
             if (event.text == " " || event.text == "\n") {
                 root.clicked();
@@ -165,7 +194,8 @@ export component TextField inherits Rectangle {
 }
 
 // A spin box: a number field with up and down arrows, like Qt's. The value is corrected into
-// the range when editing ends.
+// the range when editing ends. Arrows repeat while held, and the mouse wheel and PageUp and
+// PageDown step too.
 export component SpinBox inherits Rectangle {
     in-out property <float> value;
     in property <float> minimum: 0;
@@ -175,15 +205,29 @@ export component SpinBox inherits Rectangle {
     in property <bool> enabled: true;
     callback edited(float);
     forward-focus: input;
+    // The arrow held down: 1 up, -1 down, 0 none
+    property <int> holding;
 
     function shown(number: float) -> string {
         return root.decimals == 0 ? round(number) : number.to-fixed(root.decimals);
     }
 
+    // Sets a value, corrected into the range, and reports it when it changed
     function set(number: float) {
-        root.value = max(root.minimum, min(root.maximum, number));
-        input.text = root.shown(root.value);
-        root.edited(root.value);
+        let corrected = max(root.minimum, min(root.maximum, number));
+        input.text = root.shown(corrected);
+        if (corrected != root.value) {
+            root.value = corrected;
+            root.edited(root.value);
+        }
+    }
+
+    function commit() {
+        if (input.text.is-float()) {
+            root.set(input.text.to-float());
+        } else {
+            input.text = root.shown(root.value);
+        }
     }
 
     // Typing replaces the binding to value, so changes from elsewhere are shown by hand
@@ -198,6 +242,18 @@ export component SpinBox inherits Rectangle {
         height: 100%;
         focused: input.has-focus;
         enabled: root.enabled;
+    }
+
+    TouchArea {
+        enabled: root.enabled;
+        scroll-event(event) => {
+            if (event.delta-y > 0) {
+                root.set(root.value + root.step);
+            } else if (event.delta-y < 0) {
+                root.set(root.value - root.step);
+            }
+            accept
+        }
     }
 
     Rectangle {
@@ -217,25 +273,17 @@ export component SpinBox inherits Rectangle {
             selection-background-color: Theme.selection;
             text: root.shown(root.value);
             edited => {
-                if (self.text.is-float() && self.text.to-float() >= root.minimum && self.text.to-float() <= root.maximum) {
+                if (self.text.is-float() && self.text.to-float() >= root.minimum && self.text.to-float() <= root.maximum && self.text.to-float() != root.value) {
                     root.value = self.text.to-float();
                     root.edited(root.value);
                 }
             }
             accepted => {
-                if (self.text.is-float()) {
-                    root.set(self.text.to-float());
-                } else {
-                    self.text = root.shown(root.value);
-                }
+                root.commit();
             }
             changed has-focus => {
-                if (!self.has-focus) {
-                    if (self.text.is-float()) {
-                        root.set(self.text.to-float());
-                    } else {
-                        self.text = root.shown(root.value);
-                    }
+                if (!self.has-focus && WindowFocus.active) {
+                    root.commit();
                 }
             }
             key-pressed(event) => {
@@ -247,7 +295,29 @@ export component SpinBox inherits Rectangle {
                     root.set(root.value - root.step);
                     return accept;
                 }
+                if (event.text == Key.PageUp) {
+                    root.set(root.value + 10 * root.step);
+                    return accept;
+                }
+                if (event.text == Key.PageDown) {
+                    root.set(root.value - 10 * root.step);
+                    return accept;
+                }
                 reject
+            }
+        }
+    }
+
+    // Qt repeats a held arrow after a moment
+    repeat := Timer {
+        interval: 350ms;
+        running: root.holding != 0;
+        triggered => {
+            self.interval = 60ms;
+            root.set(root.value + root.holding * root.step);
+            // The arrow is disabled at the end of the range, so its release never comes
+            if ((root.holding > 0 && root.value >= root.maximum) || (root.holding < 0 && root.value <= root.minimum)) {
+                root.holding = 0;
             }
         }
     }
@@ -257,18 +327,20 @@ export component SpinBox inherits Rectangle {
         y: index == 0 ? 0px : parent.height / 2;
         width: 16px;
         height: parent.height / 2;
+        // Greyed at the end of the range, like Qt's
+        property <bool> usable: root.enabled && (arrow.up ? root.value < root.maximum : root.value > root.minimum);
 
         Face {
             width: 100%;
             height: 100%;
-            pressed: arrow-touch.pressed && root.enabled;
-            hovered: arrow-touch.has-hover && root.enabled;
+            pressed: arrow-touch.pressed && parent.usable;
+            hovered: arrow-touch.has-hover && parent.usable;
         }
 
         Path {
             width: 7px;
             height: 4px;
-            stroke: root.enabled ? Theme.arrow : Theme.disabled-text;
+            stroke: parent.usable ? Theme.arrow : Theme.disabled-text;
             stroke-width: 1px;
             viewbox-width: 7;
             viewbox-height: 4;
@@ -276,9 +348,16 @@ export component SpinBox inherits Rectangle {
         }
 
         arrow-touch := TouchArea {
-            enabled: root.enabled;
-            clicked => {
-                root.set(root.value + (arrow.up ? root.step : -root.step));
+            enabled: parent.usable;
+            // Steps on press, like Qt, then repeats while held
+            pointer-event(event) => {
+                if (event.kind == PointerEventKind.down && event.button == PointerEventButton.left) {
+                    root.set(root.value + (arrow.up ? root.step : -root.step));
+                    repeat.interval = 350ms;
+                    root.holding = arrow.up ? 1 : -1;
+                } else if (event.kind == PointerEventKind.up || event.kind == PointerEventKind.cancel) {
+                    root.holding = 0;
+                }
             }
         }
     }

@@ -1,7 +1,6 @@
 [workspace]
 resolver = "3"
 members = ["crates/autosplit-core", "crates/autosplit-cli", "crates/autosplit-capture", "crates/autosplit-input"]
-exclude = ["vendor/i-slint-renderer-software"]
 
 [workspace.package]
 version = "0.1.0"
@@ -14,8 +13,3 @@ rust-version = "1.92"
 lto = "fat"
 strip = true
 codegen-units = 1
-
-# Slint's CPU renderer with crisper text: font hinting on and glyphs on whole pixels. See
-# vendor/README.md. Remove this when upgrading Slint, or patch the new version the same way.
-[patch.crates-io]
-i-slint-renderer-software = { path = "vendor/i-slint-renderer-software" }

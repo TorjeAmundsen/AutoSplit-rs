@@ -304,6 +304,18 @@ pub fn parse_hotkey(text: &str, layout: &dyn Layout) -> Result<ParsedHotkey, Hot
     Ok(ParsedHotkey { listen, send, combo: true })
 }
 
+/// Whether two hotkey names are the same keys, written differently: `F1` and `f1`, or
+/// `shift+ctrl+a` and `ctrl+shift+a`. Names that don't parse are only the same when equal.
+pub fn same_hotkey(first: &str, second: &str) -> bool {
+    match (parse_hotkey(first, &UsLayout), parse_hotkey(second, &UsLayout)) {
+        (Ok(first), Ok(second)) => {
+            first.listen.iter().all(|hotkey| second.listen.contains(hotkey))
+                && second.listen.iter().all(|hotkey| first.listen.contains(hotkey))
+        }
+        _ => first.trim() == second.trim(),
+    }
+}
+
 /// The `keyboard` library lowercases names longer than one character; single characters keep
 /// their case.
 fn lowercase_if_word(name: &str) -> String {

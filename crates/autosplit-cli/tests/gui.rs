@@ -9,9 +9,10 @@ use autosplit::gui::document::{Document, folder_text, profile_on_open};
 use autosplit::gui::log::{LOG_LINES, LogLines};
 use autosplit::gui::messages::{Answer, Buttons, Message, MessageQueue};
 use autosplit::gui::recorder::key_code;
-use autosplit::gui::settings_form::{SettingEdit, apply};
+use autosplit::gui::settings_form::{SettingEdit, Shown, apply};
+use autosplit::gui::view::{Picture, Pixels, Update};
 use autosplit_capture::DeviceInfo;
-use autosplit_core::commands::Command;
+use autosplit_core::commands::{Command, TimerLink};
 use autosplit_core::profile::{TimerConnection, UserProfile, VIDEO_CAPTURE_DEVICE};
 use autosplit_input::KeyCode;
 use slint::winit_030::winit::keyboard;
@@ -42,8 +43,25 @@ fn picks_the_profile_on_open(files: &[&str]) -> Result<PathBuf, bool> {
     // Assert, with the expected value checked by test_case: the file name, or whether the
     // error says none was found
     found
-        .map(|(path, _)| PathBuf::from(path.file_name().unwrap()))
+        .map(|(path, _, _)| PathBuf::from(path.file_name().unwrap()))
         .map_err(|message| message.starts_with("No settings file found"))
+}
+
+#[test]
+fn profile_on_open_warns_about_misplaced_keys() {
+    // Arrange
+    let folder = tempfile::tempdir().unwrap();
+    std::fs::write(
+        folder.path().join("settings.toml"),
+        "[capture_region]\nx = 0\ny = 0\nwidth = 640\nheight = 480\nfps_limit = 30\n",
+    )
+    .unwrap();
+
+    // Act
+    let (_, _, warnings) = profile_on_open(folder.path()).unwrap();
+
+    // Assert
+    assert_eq!(warnings.len(), 1);
 }
 
 #[test]
@@ -199,6 +217,8 @@ fn devices() -> Vec<DeviceInfo> {
 #[test_case(SettingEdit::DefaultPauseTime(f64::INFINITY) => false; "endless pause")]
 #[test_case(SettingEdit::LiveSplitOnePort(0.0) => false; "port 0")]
 #[test_case(SettingEdit::LiveSplitOnePort(16834.0) => true; "port")]
+#[test_case(SettingEdit::LiveSplitOnePort(65536.0) => false; "port above 65535")]
+#[test_case(SettingEdit::CaptureMethod(0) => true; "video capture device")]
 #[test_case(SettingEdit::CaptureDevice(-1) => false; "no device picked")]
 #[test_case(SettingEdit::CaptureDevice(5) => false; "device gone")]
 fn validates_settings(edit: SettingEdit) -> bool {
@@ -313,4 +333,120 @@ fn log_text_has_a_line_each() {
 
     // Assert
     assert_eq!(log.text(), "Loaded settings.toml\nRun started");
+}
+
+#[test]
+fn picking_the_unsupported_method_keeps_the_profiles() {
+    // Arrange
+    let mut profile = UserProfile { capture_method: "BITBLT".into(), ..UserProfile::default() };
+
+    // Act
+    apply(&mut profile, SettingEdit::CaptureMethod(1), &devices());
+
+    // Assert
+    assert_eq!(profile.capture_method, "BITBLT");
+}
+
+#[test]
+fn pause_time_keeps_two_decimals() {
+    // Arrange
+    let mut profile = UserProfile::default();
+
+    // Act
+    apply(&mut profile, SettingEdit::DefaultPauseTime(10.004), &devices());
+
+    // Assert
+    assert_eq!(profile.default_pause_time, 10.0);
+}
+
+#[test]
+fn errors_answered_with_any_button_say_ok() {
+    // Arrange
+    let mut queue = MessageQueue::default();
+    queue.push(Message::error("broken"));
+
+    // Act
+    let (answered, next) = queue.answer(Some(2));
+
+    // Assert
+    assert_eq!((answered.is_none(), next), (true, None));
+}
+
+fn shown(capture_method: &str, devices: &[DeviceInfo], scanning: bool) -> Shown {
+    let profile = UserProfile {
+        capture_method: capture_method.into(),
+        capture_device_name: "OBS Virtual Camera".into(),
+        ..UserProfile::default()
+    };
+    Shown::new(&profile, devices, scanning, TimerLink::Hotkeys, TimerConnection::Hotkeys)
+}
+
+#[test_case(VIDEO_CAPTURE_DEVICE, false, false => ""; "devices listed")]
+#[test_case(VIDEO_CAPTURE_DEVICE, true, false => "Scanning for existing devices..."; "scanning")]
+#[test_case(VIDEO_CAPTURE_DEVICE, false, true => "No device found."; "none found")]
+#[test_case("BITBLT", false, false => "Select \"Video Capture Device\" above"; "window capture method")]
+fn device_placeholder(capture_method: &str, scanning: bool, no_devices: bool) -> &'static str {
+    // Arrange
+    let devices = if no_devices { Vec::new() } else { devices() };
+
+    // Act, with the expected value checked by test_case
+    shown(capture_method, &devices, scanning).device_placeholder
+}
+
+#[test_case(VIDEO_CAPTURE_DEVICE => (vec!["- Video Capture Device (see below)".to_owned()], 0); "video capture device")]
+#[test_case("BITBLT" => (vec!["- Video Capture Device (see below)".to_owned(), "- BitBlt (not supported yet)".to_owned()], 1); "window capture method")]
+fn capture_methods(capture_method: &str) -> (Vec<String>, i32) {
+    // Act
+    let shown = shown(capture_method, &devices(), false);
+
+    // Assert, with the expected value checked by test_case
+    (shown.capture_methods, shown.capture_method_index)
+}
+
+#[test]
+fn selects_the_profiles_device() {
+    // Act
+    let shown = shown(VIDEO_CAPTURE_DEVICE, &devices(), false);
+
+    // Assert
+    assert_eq!(shown.device_index, 1);
+}
+
+#[test]
+fn hotkeys_note_when_livesplit_controls_the_timer() {
+    // Act
+    let shown = Shown::new(&UserProfile::default(), &[], false, TimerLink::AutoControlled, TimerConnection::Hotkeys);
+
+    // Assert
+    assert!(!shown.hotkeys_note.is_empty());
+}
+
+fn pixels(red: u8) -> Picture {
+    let mut pixels = Pixels::new(1, 1);
+    pixels.make_mut_bytes().copy_from_slice(&[red, 0, 0, 255]);
+    Picture::Show(pixels)
+}
+
+fn red(picture: &Picture) -> Option<u8> {
+    match picture {
+        Picture::Show(pixels) => Some(pixels.as_bytes()[0]),
+        Picture::Clear => Some(0),
+        Picture::Keep => None,
+    }
+}
+
+#[test_case(pixels(1), Picture::Keep => Some(1); "keeps the older picture")]
+#[test_case(pixels(1), pixels(2) => Some(2); "newer picture wins")]
+#[test_case(pixels(1), Picture::Clear => Some(0); "newer clear wins")]
+#[test_case(Picture::Keep, Picture::Keep => None; "nothing to show")]
+fn merging_updates_keeps_the_newest_picture(older: Picture, newer: Picture) -> Option<u8> {
+    // Arrange
+    let older = Update { texts: None, live: older, current: Picture::Keep };
+    let newer = Update { texts: None, live: newer, current: Picture::Keep };
+
+    // Act
+    let merged = newer.after(older);
+
+    // Assert, with the expected value checked by test_case
+    red(&merged.live)
 }

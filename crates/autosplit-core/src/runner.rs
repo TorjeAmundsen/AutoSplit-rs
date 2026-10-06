@@ -334,11 +334,27 @@ impl Runner {
     /// Within the start or reset image's pause time since the run started, when the reset
     /// image isn't checked.
     fn in_reset_pause_window(&self, now: Duration) -> bool {
+        self.reset_pause_secs().is_some_and(|pause| now.saturating_sub(self.run_start).as_secs_f64() <= pause)
+    }
+
+    /// The reset image's pause time, or the start image's when that's longer.
+    fn reset_pause_secs(&self) -> Option<f64> {
         let defaults = self.settings.defaults;
-        let Some(reset) = &self.images.reset else { return false };
+        let reset = self.images.reset.as_ref()?;
         let start_pause = self.images.start.as_ref().map_or(0.0, |start| start.pause_time_secs(&defaults));
-        let pause_window = reset.pause_time_secs(&defaults).max(start_pause);
-        now.saturating_sub(self.run_start).as_secs_f64() <= pause_window
+        Some(reset.pause_time_secs(&defaults).max(start_pause))
+    }
+
+    /// When to check the reset image next during a pause or delay: at its FPS limit, but not
+    /// before its pause time is over, since nothing is compared until then.
+    fn next_reset_check(&self, now: Duration) -> Duration {
+        let next = now.saturating_add(self.reset_check_interval());
+        match self.reset_pause_secs() {
+            Some(pause) if self.in_reset_pause_window(now) => {
+                next.max(self.run_start.saturating_add(Duration::try_from_secs_f64(pause).unwrap_or(Duration::MAX)))
+            }
+            _ => next,
+        }
     }
 
     pub fn take_effects(&mut self) -> Vec<Effect> {
@@ -617,7 +633,7 @@ impl Runner {
                     // the timer instead.
                     self.begin_split(now);
                 } else {
-                    let check_at = now.saturating_add(self.reset_check_interval());
+                    let check_at = self.next_reset_check(now);
                     if let State::Paused { next_tick, .. } = &mut self.state {
                         *next_tick = check_at;
                     }
@@ -632,8 +648,7 @@ impl Runner {
                     self.send_split();
                     self.advance(now);
                 } else {
-                    self.state =
-                        State::SplitDelay { until, next_tick: now.saturating_add(self.reset_check_interval()) };
+                    self.state = State::SplitDelay { until, next_tick: self.next_reset_check(now) };
                 }
             }
             State::WaitingForStart { .. } | State::StartDelay { .. } | State::Comparing { .. } => {}

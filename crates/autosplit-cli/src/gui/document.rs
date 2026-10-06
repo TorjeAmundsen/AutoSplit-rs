@@ -65,8 +65,9 @@ impl Document {
     }
 }
 
-/// AutoSplit's `load_settings_on_open`: the only `.toml` in `folder`, the executable's.
-pub fn profile_on_open(folder: &Path) -> Result<(PathBuf, UserProfile), String> {
+/// AutoSplit's `load_settings_on_open`: the only `.toml` in `folder`, the executable's, with
+/// warnings about keys in the wrong place.
+pub fn profile_on_open(folder: &Path) -> Result<(PathBuf, UserProfile, Vec<String>), String> {
     let mut found: Vec<PathBuf> = std::fs::read_dir(folder)
         .map(|entries| entries.flatten().map(|entry| entry.path()).collect())
         .unwrap_or_default();
@@ -75,7 +76,9 @@ pub fn profile_on_open(folder: &Path) -> Result<(PathBuf, UserProfile), String> 
         [] => Err("No settings file found. One can be loaded on open if placed in the same folder as the AutoSplit \
                    executable."
             .into()),
-        [path] => UserProfile::load(path).map(|profile| (path.clone(), profile)).map_err(|error| error.to_string()),
+        [path] => crate::profile::load_raw(path)
+            .map(|(profile, warnings)| (path.clone(), profile, warnings))
+            .map_err(|error| format!("{error:#}")),
         _ => Err("Too many settings files found. Only one can be loaded on open if placed in the same folder as the \
                   AutoSplit executable."
             .into()),

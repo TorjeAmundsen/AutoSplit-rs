@@ -24,6 +24,7 @@ windows = { version = "0.62", features = ["Win32_Foundation", "Win32_Media", "Wi
 
 # Keeps App Nap from slowing comparisons down while the window is hidden
 [target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
 objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSProcessInfo", "NSString", "NSObject"] }
 
 [dev-dependencies]

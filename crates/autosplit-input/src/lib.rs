@@ -16,7 +16,7 @@ use std::sync::Arc;
 use livesplit_hotkey::{ConsumePreference, Hook, Hotkey};
 
 pub use livesplit_hotkey::{KeyCode, Modifiers};
-pub use names::{HotkeyError, Layout, ParsedHotkey, UsLayout, hotkey_name, parse_hotkey};
+pub use names::{HotkeyError, Layout, ParsedHotkey, UsLayout, hotkey_name, parse_hotkey, same_hotkey};
 
 /// The layout hotkey names are read with: the system's on Windows (AutoSplit's names follow it
 /// there, localized ones included), US elsewhere.

@@ -56,9 +56,9 @@ The second row is the same for the reset image. Image Loop shows which loop of a
 
 ### Buttons
 
-- Start Auto Splitter starts the run, like the split hotkey. With a start image, it starts looking for it instead.
-- Reset stops the run, like the reset hotkey.
-- Undo and Skip move to the previous or next split, like the undo and skip hotkeys.
+- Start Auto Splitter starts comparing the split images. It doesn't start the timer: start that yourself, or use the split hotkey, which the timer hears too. With a start image, `autosplit` already looks for it once the folder is loaded, and Start Auto Splitter skips it.
+- Reset stops comparing, without resetting the timer.
+- Undo and Skip move to the previous or next split and press the undo and skip hotkeys, so the timer moves too.
 - Reload Start Image loads the split image folder again and looks for the start image.
 
 ## Settings
@@ -83,12 +83,12 @@ These are the defaults for images whose file names don't set their own.
 - Default Delay Time: how long to wait after a match before splitting, in milliseconds.
 - Default Pause Time: how long to stop comparing after a split, in seconds. It keeps two identical images in a row from splitting twice, and saves CPU.
 - Loop Last Split Image to First Split Image: after the last image splits, start over with the first one. Otherwise comparing stops.
-- Start also Resets: starting (with the start image) also resets the timer first, so a running timer starts over.
+- Start also Resets: when the start image matches, the timer is reset too. With LiveSplit or LiveSplit One it's reset and then started. With hotkeys only the reset hotkey is pressed, like AutoSplit, so the timer still has to be started.
 - Enable auto reset image: use the reset image. The toggle auto reset image hotkey turns it on and off, for example when a mistake in the run would show the reset image.
 
 ### Hotkeys
 
-The split, reset, undo, skip and pause hotkeys must be the same as your timer's, with global hotkeys on in the timer. `autosplit` presses them, and also listens for them: pressing the split hotkey starts the run, reset stops it, and undo and skip move along with the timer. The pause hotkey is only pressed for images with the `{p}` flag.
+The split, reset, undo, skip and pause hotkeys must be the same as your timer's, with global hotkeys on in the timer. `autosplit` presses them, and also listens for them: pressing the split hotkey starts the run, reset stops it, and undo and skip move along with the timer. The pause hotkey is only pressed for images with the `{p}` flag. The screenshot hotkey takes a screenshot like Take Screenshot, and the toggle auto reset image hotkey turns the reset image on and off.
 
 To set one, click Set Hotkey and press the key, with any modifiers. Escape clears it, and clicking Set Hotkey again cancels. You can also type a name in the field and press Enter, like `num 1`, `ctrl+shift+f5`, `page up` or `plus`. A hotkey can only be used once: setting it for one action clears it from another.
 
@@ -99,7 +99,7 @@ When LiveSplit or LiveSplit One controls the timer, only the screenshot and togg
 ### Other
 
 - Tell the timer with: hotkeys, or LiveSplit One. It's used after a restart.
-- LiveSplit One port: the port LiveSplit One connects to, 16835 unless it's taken.
+- LiveSplit One port: the port LiveSplit One connects to, 16835 by default. Change it if another program uses that port.
 
 ## Split image file names
 

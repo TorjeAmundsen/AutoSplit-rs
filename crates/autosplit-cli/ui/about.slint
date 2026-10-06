@@ -1,6 +1,6 @@
 // About AutoSplit, like AutoSplit's about.ui.
 
-import { Button } from "widgets.slint";
+import { Button, Theme } from "widgets.slint";
 
 export component AboutWindow inherits Window {
     title: "About AutoSplit";
@@ -13,6 +13,7 @@ export component AboutWindow inherits Window {
     callback open-link(string);
 
     Text {
+        color: Theme.text;
         x: 10px;
         y: 21px;
         width: 170px;
@@ -21,14 +22,16 @@ export component AboutWindow inherits Window {
     }
 
     Text {
+        color: Theme.text;
         x: 10px;
         y: 44px;
         width: 244px;
         wrap: word-wrap;
-        text: "A rewrite in Rust of AutoSplit, created by Toufool and Faschz, maintained by Avasam.";
+        text: "A Rust rewrite of AutoSplit. AutoSplit was created by Toufool and Faschz, and is maintained by Avasam.";
     }
 
     Text {
+        color: Theme.text;
         x: 10px;
         y: 110px;
         width: 244px;
@@ -41,7 +44,7 @@ export component AboutWindow inherits Window {
         y: 160px;
         width: 244px;
         text: "AutoSplit on GitHub";
-        color: #3478f6;
+        color: Theme.link;
 
         TouchArea {
             mouse-cursor: pointer;
@@ -51,9 +54,9 @@ export component AboutWindow inherits Window {
 
     Button {
         x: 180px;
-        y: 216px;
+        y: 220px;
         width: 75px;
-        height: 26px;
+        height: 24px;
         text: "OK";
         clicked => { root.ok(); }
     }

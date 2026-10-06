@@ -1,7 +1,7 @@
 //! The few places where the host needs the OS directly.
 
 /// Decodes stdin bytes that aren't UTF-8. LiveSplit writes AutoSplit's stdin in the ANSI code
-/// page, so a profile path with é or ø arrives that way on Windows.
+/// page, so a profile path with letters outside ASCII arrives that way on Windows.
 pub fn decode_ansi(bytes: &[u8]) -> String {
     #[cfg(windows)]
     {
@@ -32,12 +32,20 @@ pub fn leave_own_console() {
 
 /// Makes waits precise to about a millisecond while frames are compared. Windows rounds waits
 /// up to its timer tick (15.6 ms by default), which would make comparisons uneven and splits
-/// late. The precision costs a little power, so it's only asked for while comparing.
+/// late, and macOS's App Nap stretches them while the window is hidden. The precision costs a
+/// little power, so it's only asked for while comparing.
 #[derive(Default)]
 pub struct PreciseTimer {
     #[cfg_attr(not(windows), allow(dead_code))]
     active: bool,
+    #[cfg(target_os = "macos")]
+    activity: Option<Retained<ProtocolObject<dyn objc2_foundation::NSObjectProtocol>>>,
 }
+
+#[cfg(target_os = "macos")]
+use objc2::rc::Retained;
+#[cfg(target_os = "macos")]
+use objc2::runtime::ProtocolObject;
 
 impl PreciseTimer {
     pub fn set(&mut self, precise: bool) {
@@ -53,7 +61,22 @@ impl PreciseTimer {
             }
             self.active = precise;
         }
-        #[cfg(not(windows))]
+        #[cfg(target_os = "macos")]
+        if precise != self.activity.is_some() {
+            use objc2_foundation::{NSActivityOptions, NSProcessInfo, NSString};
+            let process = NSProcessInfo::processInfo();
+            match self.activity.take() {
+                Some(activity) => unsafe { process.endActivity(&activity) },
+                None => {
+                    let reason = NSString::from_str("Comparing frames for splits");
+                    self.activity = Some(process.beginActivityWithOptions_reason(
+                        NSActivityOptions::UserInitiatedAllowingIdleSystemSleep | NSActivityOptions::LatencyCritical,
+                        &reason,
+                    ));
+                }
+            }
+        }
+        #[cfg(not(any(windows, target_os = "macos")))]
         let _ = precise;
     }
 }
@@ -134,20 +157,20 @@ pub fn open(target: impl AsRef<std::ffi::OsStr>) -> std::io::Result<()> {
     Ok(())
 }
 
-/// Keeps the OS from slowing the session down while the window is minimized or covered, which
+/// Keeps Windows from slowing the session down while the window is minimized or covered, which
 /// it does to windowed programs but not to console ones: Windows 11 drops the precise timer
-/// [`PreciseTimer`] asks for, and macOS's App Nap stretches waits.
+/// [`PreciseTimer`] asks for, and power throttling can move comparisons to slower cores.
 pub fn keep_running_when_hidden() {
     #[cfg(windows)]
     unsafe {
         use windows::Win32::System::Threading::{
-            GetCurrentProcess, PROCESS_POWER_THROTTLING_CURRENT_VERSION,
+            GetCurrentProcess, PROCESS_POWER_THROTTLING_CURRENT_VERSION, PROCESS_POWER_THROTTLING_EXECUTION_SPEED,
             PROCESS_POWER_THROTTLING_IGNORE_TIMER_RESOLUTION, PROCESS_POWER_THROTTLING_STATE, ProcessPowerThrottling,
             SetProcessInformation,
         };
         let state = PROCESS_POWER_THROTTLING_STATE {
             Version: PROCESS_POWER_THROTTLING_CURRENT_VERSION,
-            ControlMask: PROCESS_POWER_THROTTLING_IGNORE_TIMER_RESOLUTION,
+            ControlMask: PROCESS_POWER_THROTTLING_IGNORE_TIMER_RESOLUTION | PROCESS_POWER_THROTTLING_EXECUTION_SPEED,
             StateMask: 0,
         };
         let _ = SetProcessInformation(
@@ -156,16 +179,5 @@ pub fn keep_running_when_hidden() {
             std::ptr::from_ref(&state).cast(),
             size_of::<PROCESS_POWER_THROTTLING_STATE>() as u32,
         );
-    }
-    #[cfg(target_os = "macos")]
-    {
-        use objc2_foundation::{NSActivityOptions, NSProcessInfo, NSString};
-        let reason = NSString::from_str("Comparing frames for splits");
-        let activity = NSProcessInfo::processInfo().beginActivityWithOptions_reason(
-            NSActivityOptions::UserInitiatedAllowingIdleSystemSleep | NSActivityOptions::LatencyCritical,
-            &reason,
-        );
-        // For as long as the program runs
-        std::mem::forget(activity);
     }
 }

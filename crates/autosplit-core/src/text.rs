@@ -2,6 +2,7 @@
 
 use std::time::Duration;
 
+use crate::commands::Command;
 use crate::runner::{ImageRef, ResetReading, Showing, StartStatus, Status};
 
 /// Truncates to 3 decimals, so a similarity just under a threshold never shows as reaching it.
@@ -119,5 +120,40 @@ pub fn window_texts(status: &Status, now: Duration, idle: &str, capture: bool) -
             StartStatus::NotReady => "not ready",
         }
         .into(),
+    }
+}
+
+/// The image compared before a tick, to say in the log what split.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Compared {
+    pub filename: String,
+    pub threshold: Option<f64>,
+    pub below: bool,
+}
+
+impl Compared {
+    /// Follows the image the status shows. It's kept through a split delay, which shows no
+    /// image, so the delayed split still says which image split.
+    pub fn follow(compared: &mut Option<Compared>, status: &Status) {
+        if let Some(filename) = &status.current_filename
+            && compared.as_ref().is_none_or(|compared| compared.filename != *filename)
+        {
+            *compared = Some(Compared { filename: filename.clone(), threshold: status.threshold, below: status.below });
+        }
+    }
+
+    /// What split, for the log: the image and the similarity that matched. Only splits and
+    /// pauses come from an image.
+    pub fn details(compared: Option<&Compared>, command: Command, similarity: Option<f64>) -> String {
+        let Some(Compared { filename, threshold, below }) = compared else { return String::new() };
+        if !matches!(command, Command::Split | Command::Pause) {
+            return String::new();
+        }
+        let (similarity, threshold) = (decimal_or_dash(similarity), decimal_or_dash(*threshold));
+        if *below {
+            format!(" ({filename} dropped to {similarity}, below {threshold})")
+        } else {
+            format!(" ({filename} at {similarity} / {threshold})")
+        }
     }
 }

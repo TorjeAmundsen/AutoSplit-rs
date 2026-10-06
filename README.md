@@ -110,13 +110,17 @@ Window:
 - Hotkey fields can be typed in, like `ctrl+shift+f5`, with the same check AutoSplit does when setting one. AutoSplit's fields are read-only.
 - Set Hotkey reads the key while the settings window has focus, not globally. Escape clears the hotkey, and clicking Set Hotkey again cancels.
 - Set Hotkey names keys without what Shift types on them (`shift+1`, not `shift+!`), and keypad keys as `num 7` whether Num Lock is on or not (AutoSplit records `home` with Num Lock off). The hotkey library used here can't tell Num Lock's state.
-- Keyboard shortcuts (Ctrl+S and the others) also work in the settings window.
+- Keyboard shortcuts (Ctrl+S and the others) work in the main and settings windows, not in About or the log window. AutoSplit's work in all of its windows.
 - Max FPS is disabled during a run, and measures without holding up hotkeys and the timer.
 - There's no save prompt when nothing changed. AutoSplit asks for every new profile, because its window's defaults differ from its profile defaults.
 - Warnings about a loaded profile (keys in the wrong place) are shown in one message box.
 - The live preview stops while the window is minimized or covered, which saves the work of converting frames nobody sees.
 - The window is drawn on the CPU, which only redraws what changed: mostly the 320x240 preview.
-- Buttons and spin boxes are drawn like AutoSplit's (Qt's Fusion style). Text is grayscale antialiased, without ClearType's colored edges.
+- Buttons and spin boxes are drawn like AutoSplit's (Qt's Fusion style). Text is drawn by Slint, smoothed in grayscale, so it looks a little softer than Qt's ClearType text.
+- The settings window is larger than AutoSplit's (380x360 instead of 284x334) and laid out differently. Its tabs, combo boxes and check boxes use Slint's own style.
+- Capture devices are listed by name only. AutoSplit adds the backend and whether the device is in use.
+- About has no donate button or links to the authors' pages.
+- The live preview redraws at most 30 times a second on macOS, where each preview frame redraws the whole window. Comparisons aren't affected.
 
 Image math:
 
@@ -128,15 +132,15 @@ Cost of one comparison, including the resize from a 1920x1080 capture. Median of
 
 | Split image | Method | This rewrite | AutoSplit |
 | --- | --- | --- | --- |
-| Opaque (compared at 320x240) | L2 norm | 69 µs | 66 µs |
-| Opaque | Histograms | 67 µs | 186 µs |
-| Opaque | pHash | 60 µs | 174 µs |
-| Masked, large visible area (compared at 887x499) | L2 norm | 72 µs | 514 µs |
-| Masked, large visible area | Histograms | 71 µs | 879 µs |
-| Masked, large visible area | pHash | 363 µs | 3090 µs |
-| Masked, small visible area (real AutoMask reset image) | L2 norm | 3.7 µs | 159 µs |
-| Masked, small visible area | Histograms | 5.0 µs | 276 µs |
-| Masked, small visible area | pHash | 135 µs | 1132 µs |
+| Opaque (compared at 320x240) | L2 norm | 69 us | 66 us |
+| Opaque | Histograms | 67 us | 186 us |
+| Opaque | pHash | 60 us | 174 us |
+| Masked, large visible area (compared at 887x499) | L2 norm | 72 us | 514 us |
+| Masked, large visible area | Histograms | 71 us | 879 us |
+| Masked, large visible area | pHash | 363 us | 3090 us |
+| Masked, small visible area (real AutoMask reset image) | L2 norm | 3.7 us | 159 us |
+| Masked, small visible area | Histograms | 5.0 us | 276 us |
+| Masked, small visible area | pHash | 135 us | 1132 us |
 
 Opaque L2 is the one case where OpenCV is faster: its SSE2/AVX2 code computes the squared differences quicker than what LLVM generates from safe Rust. For masked images only the visible pixels are resized and compared. Nothing is allocated per frame, the split image's histogram and hash are computed once at load, and a split image and the reset image of the same size share one resize per frame. Run `autosplit bench` to measure on your machine.
 
@@ -144,9 +148,9 @@ Converting a whole 1080p frame to BGRA takes 0.26 to 0.64 ms, more than most com
 
 | Format | Whole frame | 640x360 | 320x240 | Raw copy |
 | --- | --- | --- | --- | --- |
-| NV12 | 568 µs | 68 µs | 21 µs | 98 µs |
-| YUYV | 644 µs | 76 µs | 24 µs | 131 µs |
-| BGR24, bottom-up | 256 µs | 30 µs | 9.2 µs | 196 µs |
+| NV12 | 568 us | 68 us | 21 us | 98 us |
+| YUYV | 644 us | 76 us | 24 us | 131 us |
+| BGR24, bottom-up | 256 us | 30 us | 9.2 us | 196 us |
 
 So:
 
@@ -224,7 +228,6 @@ autosplit bench [split images...] --capture 1920x1080
 - `crates/autosplit-capture`: video capture devices, one backend per OS, and the pixel format conversions.
 - `crates/autosplit-input`: global hotkeys (through livesplit-hotkey), sending key presses and AutoSplit's hotkey names.
 - `crates/autosplit-cli`: the `autosplit` program. `session.rs` drives the runner from capture (`device.rs`), hotkeys (`hotkeys.rs`), LiveSplit (`livesplit.rs`) and LiveSplit One (`livesplit_one.rs`). `run.rs` runs a session in the terminal, `gui/` in the window, laid out in `ui/*.slint`; the window's logic that needs no window (`document.rs`, `messages.rs`, `settings_form.rs`) is tested in `tests/gui.rs`. `src/bin/autosplit-console.rs` becomes `autosplit.com` on Windows.
-- `vendor/i-slint-renderer-software`: Slint's CPU renderer with font hinting on and glyphs on whole pixels, for text as crisp as AutoSplit's. `vendor/README.md` says what changed and how to redo it when upgrading Slint.
 - `tests/fixtures`: split images, captures and profiles. `real/` holds split images made with AutoMask.
 - `tests/golden`: expected values from AutoSplit and OpenCV.
 - `tools/golden/generate.py`: regenerates the fixtures and golden values. Instructions are at the top of the file. Only rerun it when you mean to change the baseline.

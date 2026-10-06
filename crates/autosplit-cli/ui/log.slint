@@ -1,7 +1,7 @@
 // Everything autosplit logged since it started, which autosplit.log also has.
 
 import { TextEdit } from "std-widgets.slint";
-import { Button } from "widgets.slint";
+import { Button, Theme } from "widgets.slint";
 
 export component LogWindow inherits Window {
     title: "AutoSplit Log";
@@ -30,6 +30,7 @@ export component LogWindow inherits Window {
             spacing: 6px;
 
             Text {
+                color: Theme.text;
                 vertical-alignment: center;
                 overflow: elide;
                 text: root.log-path;

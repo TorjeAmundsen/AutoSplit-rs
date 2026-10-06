@@ -1,6 +1,6 @@
 //! AutoSplit hotkey strings: what they listen for and what they send.
 
-use autosplit_input::{HotkeyError, UsLayout, parse_hotkey};
+use autosplit_input::{HotkeyError, UsLayout, parse_hotkey, same_hotkey};
 use livesplit_hotkey::{Hotkey, KeyCode, Modifiers};
 use test_case::test_case;
 
@@ -69,16 +69,11 @@ fn listen_keys(text: &str, key_code: KeyCode, modifiers: Modifiers) -> bool {
 #[test_case(KeyCode::NumpadEnter, None, Modifiers::empty() => Some("enter".to_owned()); "keypad enter")]
 #[test_case(KeyCode::PageUp, None, Modifiers::empty() => Some("page up".to_owned()); "named key")]
 #[test_case(KeyCode::ShiftLeft, None, Modifiers::SHIFT => None; "modifier alone")]
-fn names_pressed_keys(key: KeyCode, character: Option<char>, modifiers: Modifiers) -> Option<String> {
-    // Act, with the expected value checked by test_case
-    autosplit_input::hotkey_name(key, character, modifiers)
-}
-
 #[test_case(KeyCode::NumpadDivide, None, Modifiers::empty() => Some("/".to_owned()); "keypad divide")]
 #[test_case(KeyCode::NumpadMultiply, None, Modifiers::empty() => Some("*".to_owned()); "keypad multiply")]
 #[test_case(KeyCode::NumpadSubtract, None, Modifiers::empty() => Some("-".to_owned()); "keypad subtract")]
 #[test_case(KeyCode::NumpadDecimal, None, Modifiers::empty() => Some("decimal".to_owned()); "keypad decimal")]
-fn names_keypad_keys(key: KeyCode, character: Option<char>, modifiers: Modifiers) -> Option<String> {
+fn names_pressed_keys(key: KeyCode, character: Option<char>, modifiers: Modifiers) -> Option<String> {
     // Act, with the expected value checked by test_case
     autosplit_input::hotkey_name(key, character, modifiers)
 }
@@ -99,4 +94,15 @@ fn recorded_names_listen_for_the_key(key: KeyCode, character: Option<char>, modi
 
     // Assert
     assert!(parsed.listen.contains(&Hotkey { key_code: key, modifiers }), "{name}");
+}
+
+#[test_case("f1", "F1" => true; "case of a key name")]
+#[test_case("shift+ctrl+a", "ctrl+shift+a" => true; "modifier order")]
+#[test_case(" num 1", "num 1" => true; "spaces")]
+#[test_case("num 1", "1" => false; "keypad and main row digits")]
+#[test_case("ctrl+a", "a" => false; "combo and single key")]
+#[test_case("hyperdrive", "hyperdrive" => true; "same unknown name")]
+fn same_hotkeys(first: &str, second: &str) -> bool {
+    // Act, with the expected value checked by test_case
+    same_hotkey(first, second)
 }

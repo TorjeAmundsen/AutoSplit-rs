@@ -1,7 +1,7 @@
 // A message box for errors, like AutoSplit's, and for questions like saving changes. Buttons
 // are in the order given, like Qt's Yes, No, Cancel.
 
-import { Button } from "widgets.slint";
+import { Button, Theme } from "widgets.slint";
 
 export component MessageWindow inherits Window {
     in property <string> window-title: "AutoSplit";
@@ -19,6 +19,11 @@ export component MessageWindow inherits Window {
     // Escape, like closing the box
     callback dismissed();
     forward-focus: keys;
+
+    // Each box answers Enter and Escape, whatever had the focus in the one before
+    public function focus-keys() {
+        keys.focus();
+    }
 
     // Enter picks the first button and Escape closes, like Qt's message boxes
     keys := FocusScope {
@@ -40,6 +45,7 @@ export component MessageWindow inherits Window {
         spacing: 14px;
 
         Text {
+            color: Theme.text;
             text: root.message;
             wrap: word-wrap;
         }

@@ -172,6 +172,17 @@ pub enum ProfileError {
     Invalid { reason: String },
 }
 
+/// AutoSplit's names for its capture methods, for the window capture ones a profile can have.
+pub fn capture_method_name(method: &str) -> &str {
+    match method {
+        "WINDOWS_GRAPHICS_CAPTURE" => "Windows Graphics Capture",
+        "BITBLT" => "BitBlt",
+        "PRINTWINDOW_RENDERFULLCONTENT" => "Force Full Content Rendering",
+        "DESKTOP_DUPLICATION" => "Direct3D Desktop Duplication",
+        other => other,
+    }
+}
+
 impl UserProfile {
     pub fn load(path: &Path) -> Result<Self, ProfileError> {
         if path.extension().is_some_and(|extension| extension == "pkl") {
