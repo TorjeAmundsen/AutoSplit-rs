@@ -105,8 +105,12 @@ pub struct BgraView<'a> {
 impl<'a> BgraView<'a> {
     /// `None` if `stride` is shorter than a row or `data` is too short for the last row.
     pub fn new(data: &'a [u8], width: usize, height: usize, stride: usize) -> Option<Self> {
-        let needed = if height == 0 { 0 } else { stride * (height - 1) + width * 4 };
-        (stride >= width * 4 && data.len() >= needed).then_some(Self { data, width, height, stride })
+        (stride >= width * 4 && data.len() >= bytes_needed(height, stride, width * 4)).then_some(Self {
+            data,
+            width,
+            height,
+            stride,
+        })
     }
 
     pub fn width(&self) -> usize {
@@ -139,6 +143,10 @@ impl<'a> BgraView<'a> {
         BgraView { data, width, height, stride: self.stride }
     }
 
+    pub fn crop_rect(&self, rect: Rect) -> BgraView<'a> {
+        self.crop(rect.left, rect.right, rect.top, rect.bottom)
+    }
+
     /// Copies into a tightly packed image.
     pub fn to_image(&self) -> BgraImage {
         let mut data = Vec::with_capacity(self.width * self.height * 4);
@@ -146,5 +154,41 @@ impl<'a> BgraView<'a> {
             data.extend_from_slice(self.row(y));
         }
         BgraImage::from_raw(self.width, self.height, data)
+    }
+}
+
+/// Bytes that `rows` rows `stride` apart take, with `row_bytes` used in the last one.
+pub fn bytes_needed(rows: usize, stride: usize, row_bytes: usize) -> usize {
+    if rows == 0 { 0 } else { stride * (rows - 1) + row_bytes }
+}
+
+/// A rectangle of pixels, `right` and `bottom` exclusive.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Rect {
+    pub left: usize,
+    pub top: usize,
+    pub right: usize,
+    pub bottom: usize,
+}
+
+impl Rect {
+    pub fn full(width: usize, height: usize) -> Self {
+        Self { left: 0, top: 0, right: width, bottom: height }
+    }
+
+    pub fn width(&self) -> usize {
+        self.right - self.left
+    }
+
+    pub fn height(&self) -> usize {
+        self.bottom - self.top
+    }
+
+    pub fn area(&self) -> usize {
+        self.width() * self.height()
+    }
+
+    pub fn contains(&self, other: &Rect) -> bool {
+        self.left <= other.left && self.top <= other.top && other.right <= self.right && other.bottom <= self.bottom
     }
 }

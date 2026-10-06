@@ -1,7 +1,8 @@
 //! The LiveSplit `--auto-controlled` protocol, matching AutoSplit's `AutoControlledThread.py`.
 
-use autosplit_core::auto_controlled::{ControlRequest, handshake_lines, parse_control_line};
+use autosplit_core::auto_controlled::{decode_line, handshake_lines, parse_control_line};
 use autosplit_core::commands::Command;
+use autosplit_core::commands::ControlRequest;
 use autosplit_core::profile::UserProfile;
 use test_case::test_case;
 
@@ -41,4 +42,16 @@ fn handshake_is_the_version_then_the_process_id() {
 
     // Assert
     assert_eq!(lines, ["2.3.2".to_owned(), std::process::id().to_string()]);
+}
+
+#[test_case(b"split\n" => "split"; "newline is dropped")]
+#[test_case(b"split\r\n" => "split"; "windows line ending is dropped")]
+#[test_case("settings|C:/Users/Jos\u{e9}/a.toml\r\n".as_bytes() => "settings|C:/Users/Jos\u{e9}/a.toml"; "utf-8 is read as utf-8")]
+#[test_case(b"settings|C:/Users/Jos\xe9/a.toml\r\n" => "settings|C:/Users/Jos\u{e9}/a.toml"; "other bytes go to the fallback")]
+fn decodes_lines(bytes: &[u8]) -> String {
+    // Arrange
+    let latin1 = |bytes: &[u8]| bytes.iter().map(|&byte| char::from(byte)).collect();
+
+    // Act, with the expected value checked by test_case
+    decode_line(bytes, latin1)
 }

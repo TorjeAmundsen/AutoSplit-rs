@@ -87,6 +87,14 @@ function BuildTriple($triple) {
     # Windows and macOS toolchains build for both architectures, Linux needs a cross linker
     $native = $os -eq $hostOs -and ($os -ne "linux" -or $triple -like "$hostArch-*")
 
+    if ($os -eq "linux") {
+        # libjpeg-turbo, for MJPEG capture devices, is built from source
+        Require "cmake" "libjpeg-turbo is built with CMake (https://cmake.org/download)."
+        if ($triple -like "x86_64-*") {
+            Require "nasm" "libjpeg-turbo's x64 SIMD code is assembled with NASM (https://nasm.us)."
+        }
+    }
+
     if ($native) {
         Invoke-Cargo (@("build") + $profileArgs + @("--target", $triple))
     }

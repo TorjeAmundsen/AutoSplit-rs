@@ -1,8 +1,11 @@
-//! Timer commands and how they are sent, matching AutoSplit's `hotkeys.send_command`.
+//! Timer commands and how they are sent, matching AutoSplit's `hotkeys.send_command`, plus
+//! LiveSplit One.
 
 use serde::{Deserialize, Serialize};
 
-use crate::profile::UserProfile;
+use crate::hotkeys::HotkeyAction;
+use crate::livesplit_one;
+use crate::profile::{TimerConnection, UserProfile};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -34,6 +37,37 @@ impl Command {
     }
 }
 
+/// What the timer (or LiveSplit's stdin) asks AutoSplit to do.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ControlRequest {
+    Start,
+    /// The timer split or skipped. Both move AutoSplit to the next split, like the "Skip Split"
+    /// button.
+    Skip,
+    Undo,
+    Reset,
+    /// Load this profile. Empty when nothing followed "settings".
+    LoadSettings(String),
+    /// Close AutoSplit. Used in development.
+    Kill,
+}
+
+/// Something the timer reported: a line from LiveSplit or an event from LiveSplit One.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct TimerReport {
+    /// The report read as a command name, for the profile's "screenshot on" option.
+    pub command: Option<Command>,
+    pub request: Option<ControlRequest>,
+}
+
+impl TimerReport {
+    /// AutoSplit takes a screenshot when the report names a command in `screenshot_on`, on top
+    /// of handling the request.
+    pub fn wants_screenshot(&self, profile: &UserProfile) -> bool {
+        self.command.is_some_and(|command| profile.screenshot_on.contains(&command))
+    }
+}
+
 /// One thing to do to deliver a command.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Output {
@@ -43,31 +77,63 @@ pub enum Output {
     PressHotkey(String),
     /// Print this line to stdout for LiveSplit.
     PrintLine(&'static str),
+    /// Send this message to LiveSplit One.
+    LiveSplitOne(&'static str),
+}
+
+/// Where commands go.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TimerLink {
+    Hotkeys,
+    /// Started by LiveSplit's AutoSplit Integration component with `--auto-controlled`.
+    AutoControlled,
+    LiveSplitOne,
+}
+
+impl From<TimerConnection> for TimerLink {
+    fn from(connection: TimerConnection) -> Self {
+        match connection {
+            TimerConnection::Hotkeys => Self::Hotkeys,
+            TimerConnection::LiveSplitOne => Self::LiveSplitOne,
+        }
+    }
+}
+
+impl TimerLink {
+    /// The timer tells AutoSplit about its splits, skips, undos and resets, so AutoSplit follows
+    /// it instead of needing hotkeys.
+    pub fn timer_synced(self) -> bool {
+        self != Self::Hotkeys
+    }
 }
 
 /// `send_command`: what to do for `command`, in order.
-pub fn outputs_for(command: Command, profile: &UserProfile, auto_controlled: bool) -> Vec<Output> {
+pub fn outputs_for(command: Command, profile: &UserProfile, link: TimerLink) -> Vec<Output> {
     let mut outputs = Vec::new();
     if profile.screenshot_on.contains(&command) {
         outputs.push(Output::Screenshot);
     }
-    if auto_controlled {
-        if command == Command::Start && profile.start_also_resets {
-            outputs.push(Output::PrintLine(Command::Reset.name()));
-        }
-        outputs.push(Output::PrintLine(command.name()));
+    // A synced timer did the skip or undo itself
+    if link.timer_synced() && matches!(command, Command::Skip | Command::Undo) {
         return outputs;
     }
-    let hotkey = match command {
-        Command::Start if profile.start_also_resets => &profile.reset_hotkey,
-        Command::Reset => &profile.reset_hotkey,
-        Command::Start | Command::Split => &profile.split_hotkey,
-        Command::Pause => &profile.pause_hotkey,
-        Command::Skip => &profile.skip_split_hotkey,
-        Command::Undo => &profile.undo_split_hotkey,
+    let sent: &[Command] = if command == Command::Start && profile.start_also_resets {
+        &[Command::Reset, Command::Start]
+    } else {
+        &[command]
     };
-    if !hotkey.is_empty() {
-        outputs.push(Output::PressHotkey(hotkey.clone()));
+    match link {
+        TimerLink::AutoControlled => outputs.extend(sent.iter().map(|command| Output::PrintLine(command.name()))),
+        TimerLink::LiveSplitOne => {
+            outputs.extend(sent.iter().map(|&command| Output::LiveSplitOne(livesplit_one::message_for(command))))
+        }
+        TimerLink::Hotkeys => {
+            // Only the reset hotkey for "start also resets": the first matching case in AutoSplit
+            let hotkey = HotkeyAction::from(sent[0]).hotkey(profile);
+            if !hotkey.is_empty() {
+                outputs.push(Output::PressHotkey(hotkey.to_owned()));
+            }
+        }
     }
     outputs
 }

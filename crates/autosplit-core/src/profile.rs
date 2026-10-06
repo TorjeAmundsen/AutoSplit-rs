@@ -5,6 +5,7 @@ use std::path::Path;
 use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::commands::Command;
+use crate::image::Rect;
 use crate::split_image::SplitDefaults;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -13,6 +14,70 @@ pub struct Region {
     pub y: i64,
     pub width: i64,
     pub height: i64,
+}
+
+impl Region {
+    /// The part of a capture device frame AutoSplit compares: the start is kept inside the
+    /// frame, the end is clamped to it.
+    /// The pixels AutoSplit compares from a frame of this size: the start is kept inside the
+    /// frame, the end is clamped to it.
+    pub fn rect(&self, width: usize, height: usize) -> Rect {
+        let start = |position: i64, size: usize| position.clamp(0, size.saturating_sub(1) as i64) as usize;
+        let (left, top) = (start(self.x, width), start(self.y, height));
+        let end = |start: usize, length: i64, size: usize| {
+            start.saturating_add(usize::try_from(length).unwrap_or(0)).min(size).max(start)
+        };
+        Rect { left, top, right: end(left, self.width, width), bottom: end(top, self.height, height) }
+    }
+
+    /// How the region fits frames of this size.
+    pub fn fit(&self, width: usize, height: usize) -> RegionFit {
+        if self.width <= 0 || self.height <= 0 {
+            return RegionFit::Empty;
+        }
+        let rect = self.rect(width, height);
+        let whole = rect.left as i64 == self.x
+            && rect.top as i64 == self.y
+            && rect.width() as i64 == self.width
+            && rect.height() as i64 == self.height;
+        if whole { RegionFit::Inside } else { RegionFit::Partly }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RegionFit {
+    /// Width or height is 0, so nothing is compared.
+    Empty,
+    /// Only part of the region is in the frame, and only that part is compared.
+    Partly,
+    Inside,
+}
+
+/// How commands reach the timer.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TimerConnection {
+    /// Pressing the profile's hotkeys, like AutoSplit.
+    #[default]
+    Hotkeys,
+    /// LiveSplit One connecting to AutoSplit's WebSocket server.
+    #[serde(rename = "livesplit_one")]
+    LiveSplitOne,
+}
+
+/// AutoSplit's `capture_method` value for video capture devices.
+pub const VIDEO_CAPTURE_DEVICE: &str = "VIDEO_CAPTURE_DEVICE";
+
+/// LiveSplit One's server connection has no default port, so this one is AutoSplit's choice:
+/// next to LiveSplit Server's 16834.
+pub const DEFAULT_LIVESPLIT_ONE_PORT: u16 = 16835;
+
+fn is_default<T: Default + PartialEq>(value: &T) -> bool {
+    *value == T::default()
+}
+
+fn is_default_livesplit_one_port(port: &u16) -> bool {
+    *port == DEFAULT_LIVESPLIT_ONE_PORT
 }
 
 /// A settings profile. Field order is the key order AutoSplit writes.
@@ -49,6 +114,12 @@ pub struct UserProfile {
     pub screenshot_on: Vec<Command>,
     pub captured_window_title: String,
     pub capture_region: Region,
+    /// Not in AutoSplit. Only written when changed, so profiles stay as AutoSplit writes them.
+    #[serde(skip_serializing_if = "is_default")]
+    pub timer_connection: TimerConnection,
+    /// Not in AutoSplit. Only written when changed.
+    #[serde(skip_serializing_if = "is_default_livesplit_one_port")]
+    pub livesplit_one_port: u16,
     /// Keys this version doesn't know, kept so saving doesn't drop them.
     #[serde(flatten)]
     pub unknown: toml::Table,
@@ -84,6 +155,8 @@ impl Default for UserProfile {
             screenshot_on: Vec::new(),
             captured_window_title: String::new(),
             capture_region: Region { x: 0, y: 0, width: 0, height: 0 },
+            timer_connection: TimerConnection::Hotkeys,
+            livesplit_one_port: DEFAULT_LIVESPLIT_ONE_PORT,
             unknown: toml::Table::new(),
         }
     }
@@ -110,7 +183,25 @@ impl UserProfile {
     }
 
     pub fn parse(text: &str) -> Result<Self, ProfileError> {
-        toml::from_str(text).map_err(|error| ProfileError::Invalid { reason: error.to_string() })
+        toml::from_str(text).map_err(|error| ProfileError::Invalid { reason: plain_toml_error(&error) })
+    }
+
+    /// Keys written after `[capture_region]`, which TOML puts inside that table, where they're
+    /// ignored. Easy to do by adding a setting at the end of the file.
+    pub fn keys_inside_capture_region(text: &str) -> Vec<String> {
+        let Ok(table) = text.parse::<toml::Table>() else { return Vec::new() };
+        let Some(region) = table.get("capture_region").and_then(toml::Value::as_table) else { return Vec::new() };
+        region.keys().filter(|key| !["x", "y", "width", "height"].contains(&key.as_str())).cloned().collect()
+    }
+
+    /// Makes relative split image and screenshot folders relative to `base`, the profile's
+    /// folder, instead of wherever AutoSplit was started from.
+    pub fn resolve_directories(&mut self, base: &Path) {
+        for directory in [&mut self.split_image_directory, &mut self.screenshot_directory] {
+            if !directory.is_empty() && Path::new(directory.as_str()).is_relative() {
+                *directory = base.join(directory.as_str()).to_string_lossy().into_owned();
+            }
+        }
     }
 
     pub fn to_toml(&self) -> String {
@@ -119,6 +210,17 @@ impl UserProfile {
 
     pub fn save(&self, path: &Path) -> std::io::Result<()> {
         std::fs::write(path, self.to_toml())
+    }
+
+    /// Whether a capture device is set, by name or by number.
+    pub fn has_capture_device(&self) -> bool {
+        !self.capture_device_name.is_empty() || self.capture_device_id >= 0
+    }
+
+    /// The window capture method the profile uses, which isn't supported yet, if it uses one.
+    pub fn window_capture_method(&self) -> Option<&str> {
+        let method = self.capture_method.as_str();
+        (!method.is_empty() && method != VIDEO_CAPTURE_DEVICE).then_some(method)
     }
 
     pub fn split_defaults(&self) -> SplitDefaults {
@@ -144,4 +246,17 @@ fn deserialize_screenshot_on<'de, D: Deserializer<'de>>(deserializer: D) -> Resu
         }
     }
     Ok(commands)
+}
+
+/// TOML's message, with Rust type names put in words and a hint for Windows paths.
+fn plain_toml_error(error: &toml::de::Error) -> String {
+    let mut message = error
+        .to_string()
+        .replace("expected i64", "expected a whole number")
+        .replace("expected u16", "expected a whole number from 0 to 65535")
+        .replace("expected f64", "expected a number");
+    if message.contains("escape") || message.contains("unicode") {
+        message.push_str("\nUse / instead of \\ in paths, or put the path in 'single quotes'.");
+    }
+    message
 }

@@ -112,6 +112,11 @@ pub struct Status {
     pub threshold: Option<f64>,
     /// (current loop, total loops) of the current split image.
     pub loop_position: Option<(i64, i64)>,
+    /// (position, count) of the current image among all split images, loops counted.
+    pub split_position: Option<(usize, usize)>,
+    /// The current image has the below flag, `{b}`: it splits once the similarity drops back
+    /// below the threshold.
+    pub below: bool,
     pub reset_similarity: Option<ResetReading>,
     pub reset_highest: Option<f64>,
     pub reset_threshold: Option<f64>,
@@ -119,7 +124,7 @@ pub struct Status {
 }
 
 impl Status {
-    fn idle(auto_controlled: bool) -> Self {
+    fn idle(timer_synced: bool) -> Self {
         Self {
             running: false,
             start_status: StartStatus::NotFound,
@@ -129,11 +134,13 @@ impl Status {
             highest: None,
             threshold: None,
             loop_position: None,
+            split_position: None,
+            below: false,
             reset_similarity: None,
             reset_highest: None,
             reset_threshold: None,
             buttons: Buttons {
-                start: !auto_controlled,
+                start: !timer_synced,
                 reset: false,
                 skip_split: false,
                 undo_split: false,
@@ -173,8 +180,9 @@ enum State {
 
 pub struct Runner {
     settings: RunnerSettings,
-    /// Controlled by LiveSplit. Fixed for the runner's lifetime, like AutoSplit's command line flag.
-    auto_controlled: bool,
+    /// The timer reports its splits, skips, undos and resets (LiveSplit with `--auto-controlled`,
+    /// or LiveSplit One). Fixed for the runner's lifetime, like AutoSplit's command line flag.
+    timer_synced: bool,
     images: SplitSet,
     /// `split_images_and_loop_number`: each split image repeated by its loop count.
     plan: Vec<(usize, i64)>,
@@ -190,8 +198,61 @@ pub struct Runner {
     below_armed: bool,
     run_start: Duration,
     scratch: CompareScratch,
+    cache: ComparisonCache,
     status: Status,
     effects: Vec<Effect>,
+}
+
+/// Which image a comparison was of.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Compared {
+    Start,
+    Reset,
+    /// Index into [`SplitSet::splits`].
+    Split(usize),
+}
+
+/// A captured frame, with a number that's different for every frame.
+#[derive(Clone, Copy, Debug)]
+pub struct Captured<'a> {
+    pub view: BgraView<'a>,
+    pub sequence: u64,
+}
+
+/// Similarities computed for the current frame.
+#[derive(Debug, Default)]
+struct ComparisonCache {
+    frame: Option<u64>,
+    results: Vec<(Compared, f64)>,
+}
+
+impl ComparisonCache {
+    /// Starts a tick of `frame`. Results stay when it's the frame of the previous tick.
+    fn begin(&mut self, frame: Option<u64>) {
+        if self.frame != frame || frame.is_none() {
+            self.frame = frame;
+            self.results.clear();
+        }
+    }
+
+    /// The similarity of `compared` against the current frame, computed only the first time.
+    fn get_or_compare(&mut self, compared: Compared, compare: impl FnOnce() -> f64) -> f64 {
+        if self.frame.is_none() {
+            return compare();
+        }
+        if let Some(&(_, similarity)) = self.results.iter().find(|(cached, _)| *cached == compared) {
+            return similarity;
+        }
+        let similarity = compare();
+        self.results.push((compared, similarity));
+        similarity
+    }
+
+    /// Images or settings changed, so earlier results don't apply.
+    fn clear(&mut self) {
+        self.frame = None;
+        self.results.clear();
+    }
 }
 
 /// At least 1ns, so absurd FPS limits can't make the runner wake up without time passing.
@@ -214,10 +275,10 @@ fn next_grid_tick(epoch: Duration, now: Duration, interval: Duration) -> Duratio
 }
 
 impl Runner {
-    pub fn new(settings: RunnerSettings, auto_controlled: bool) -> Self {
+    pub fn new(settings: RunnerSettings, timer_synced: bool) -> Self {
         Self {
             settings,
-            auto_controlled,
+            timer_synced,
             images: SplitSet::default(),
             plan: Vec::new(),
             groups: Vec::new(),
@@ -229,7 +290,8 @@ impl Runner {
             below_armed: false,
             run_start: Duration::ZERO,
             scratch: CompareScratch::default(),
-            status: Status::idle(auto_controlled),
+            cache: ComparisonCache::default(),
+            status: Status::idle(timer_synced),
             effects: Vec::new(),
         }
     }
@@ -241,6 +303,7 @@ impl Runner {
     /// Takes effect from the next comparison, like editing settings mid-run in AutoSplit.
     pub fn set_settings(&mut self, settings: RunnerSettings) {
         self.settings = settings;
+        self.cache.clear();
     }
 
     pub fn status(&self) -> &Status {
@@ -253,6 +316,29 @@ impl Runner {
 
     pub fn is_running(&self) -> bool {
         matches!(self.state, State::Paused { .. } | State::Comparing { .. } | State::SplitDelay { .. })
+    }
+
+    /// Whether ticks at `now` compare frames: while looking for the start image or a split
+    /// image, and during pauses and delays when the reset image is checked, which it isn't
+    /// during its pause time.
+    pub fn needs_frames(&self, now: Duration) -> bool {
+        match self.state {
+            State::Idle | State::StartDelay { .. } => false,
+            State::WaitingForStart { .. } | State::Comparing { .. } => true,
+            State::Paused { .. } | State::SplitDelay { .. } => {
+                self.reset_check_interval() != Duration::MAX && !self.in_reset_pause_window(now)
+            }
+        }
+    }
+
+    /// Within the start or reset image's pause time since the run started, when the reset
+    /// image isn't checked.
+    fn in_reset_pause_window(&self, now: Duration) -> bool {
+        let defaults = self.settings.defaults;
+        let Some(reset) = &self.images.reset else { return false };
+        let start_pause = self.images.start.as_ref().map_or(0.0, |start| start.pause_time_secs(&defaults));
+        let pause_window = reset.pause_time_secs(&defaults).max(start_pause);
+        now.saturating_sub(self.run_start).as_secs_f64() <= pause_window
     }
 
     pub fn take_effects(&mut self) -> Vec<Effect> {
@@ -280,8 +366,9 @@ impl Runner {
         if self.is_running() {
             return false;
         }
+        self.cache.clear();
         self.images = images;
-        self.status = Status::idle(self.auto_controlled);
+        self.status = Status::idle(self.timer_synced);
         self.index = 0;
         self.highest = 0.0;
         self.reset_highest = 0.0;
@@ -303,7 +390,7 @@ impl Runner {
             return false;
         }
         self.state = State::Idle;
-        self.status = Status::idle(self.auto_controlled);
+        self.status = Status::idle(self.timer_synced);
         true
     }
 
@@ -318,6 +405,7 @@ impl Runner {
         if self.is_running() {
             return false;
         }
+        self.cache.clear();
         self.images = images;
         self.run_start = run_start;
         self.build_plan();
@@ -379,15 +467,16 @@ impl Runner {
     fn show_image(&mut self, image_ref: ImageRef) {
         let defaults = self.settings.defaults;
         let image = self.image(image_ref);
-        let (filename, threshold) = (image.filename.clone(), image.similarity_threshold(&defaults));
+        let (filename, threshold) = (image.display_name(), image.similarity_threshold(&defaults));
+        self.status.below = image.is_below();
         self.status.showing = Showing::Image(image_ref);
         self.status.current_filename = Some(filename);
         self.status.threshold = Some(threshold);
-        self.status.loop_position = match image_ref {
-            ImageRef::Start => None,
+        (self.status.loop_position, self.status.split_position) = match image_ref {
+            ImageRef::Start => (None, None),
             ImageRef::Split(_) => {
                 let (split, loop_number) = self.plan[self.index];
-                Some((loop_number, self.images.splits[split].loops))
+                (Some((loop_number, self.images.splits[split].loops)), Some((self.index + 1, self.plan.len())))
             }
         };
     }
@@ -404,7 +493,7 @@ impl Runner {
         true
     }
 
-    /// Reset button or hotkey, or LiveSplit's "reset". Nothing is sent: the timer was already
+    /// Reset button or hotkey, or the timer's reset. Nothing is sent: the timer was already
     /// reset by whatever triggered this.
     pub fn reset(&mut self) {
         if self.is_running() {
@@ -414,7 +503,7 @@ impl Runner {
 
     /// "Skip Split" (`navigate_image_only = false`): moves past the current split and the dummies
     /// before it, and presses the skip hotkey. "Next Img." or the skip hotkey (`true`): moves to
-    /// the next image only. Neither moves past the last split. LiveSplit's own split does, and
+    /// the next image only. Neither moves past the last split. The timer's own split does, and
     /// ends the run there like it ends the timer.
     pub fn skip(&mut self, now: Duration, navigate_image_only: bool) {
         if !self.can_navigate() {
@@ -425,8 +514,8 @@ impl Runner {
         } else {
             self.groups[self.group_of[self.index]].last().unwrap() + 1
         };
-        let livesplit_split = self.auto_controlled && !navigate_image_only;
-        if target >= self.plan.len() && !livesplit_split {
+        let timer_split = self.timer_synced && !navigate_image_only;
+        if target >= self.plan.len() && !timer_split {
             return;
         }
         self.index = target;
@@ -459,8 +548,9 @@ impl Runner {
 
     fn after_navigation(&mut self, now: Duration, navigate_image_only: bool, command: Command) {
         let in_range = self.update_split_image();
-        // When LiveSplit controls the timer, it skipped or undid already
-        if !navigate_image_only && !self.auto_controlled {
+        // A synced timer skipped or undid already, so it isn't sent this back, but "screenshot on"
+        // still applies (see `outputs_for`)
+        if !navigate_image_only {
             self.effects.push(Effect::Send(command));
         }
         if !in_range {
@@ -475,14 +565,14 @@ impl Runner {
     }
 
     /// Which buttons can do something right now, by the same rules as [`Runner::skip`] and
-    /// [`Runner::undo`]. Skip and undo split are LiveSplit's job when it controls the timer.
+    /// [`Runner::undo`]. Skip and undo split are the timer's job when it's synced.
     fn refresh_buttons(&mut self) {
         if !self.is_running() {
             return;
         }
         let navigable = self.can_navigate();
         let group = if navigable { self.group_of[self.index] } else { 0 };
-        let manual = !self.auto_controlled;
+        let manual = !self.timer_synced;
         self.status.buttons = Buttons {
             start: false,
             reset: manual,
@@ -493,14 +583,24 @@ impl Runner {
         };
     }
 
-    /// Processes everything due at `now`. `capture` is `None` (or empty) when the capture was lost.
-    pub fn tick(&mut self, now: Duration, capture: Option<BgraView>) {
-        self.process(now, capture.filter(|capture| !capture.is_empty()));
+    /// Processes everything due at `now`. `capture` is `None` (or empty) when the capture was
+    /// lost.
+    ///
+    /// Comparisons against a frame already compared, by its sequence number, reuse their
+    /// results: ticks often come faster than new frames, and AutoSplit compares the same frame
+    /// again every time, so this changes nothing but the CPU time.
+    pub fn tick(&mut self, now: Duration, capture: Option<Captured>) {
+        let capture = capture.filter(|capture| !capture.view.is_empty());
+        let sequence = capture.map(|capture| capture.sequence);
+        self.cache.begin(sequence);
+        if let Some(sequence) = sequence {
+            self.scratch.begin_frame(sequence);
+        }
+        self.process(now, capture.map(|capture| capture.view));
         self.refresh_buttons();
     }
 
     fn process(&mut self, now: Duration, capture: Option<BgraView>) {
-        self.scratch.begin_frame();
         match self.state {
             State::Idle => {}
             State::WaitingForStart { epoch, next_tick } if now >= next_tick => {
@@ -544,7 +644,9 @@ impl Runner {
     fn compare_start_image(&mut self, epoch: Duration, now: Duration, capture: Option<BgraView>) {
         let defaults = self.settings.defaults;
         let start = self.images.start.as_ref().expect("start image");
-        let similarity = start.compare(capture, start.comparison_method(&defaults), &mut self.scratch);
+        let similarity = self.cache.get_or_compare(Compared::Start, || {
+            start.compare(capture, start.comparison_method(&defaults), &mut self.scratch)
+        });
         let threshold = start.similarity_threshold(&defaults);
         let (below, dummy, delay) = (start.is_below(), start.is_dummy(), start.delay_time_ms(&defaults));
         let next_tick = next_grid_tick(epoch, now, interval(self.settings.defaults.fps_limit));
@@ -608,8 +710,11 @@ impl Runner {
             return;
         }
         let defaults = self.settings.defaults;
-        let image = &self.images.splits[self.plan[self.index].0];
-        let similarity = image.compare(capture, image.comparison_method(&defaults), &mut self.scratch);
+        let split = self.plan[self.index].0;
+        let image = &self.images.splits[split];
+        let similarity = self.cache.get_or_compare(Compared::Split(split), || {
+            image.compare(capture, image.comparison_method(&defaults), &mut self.scratch)
+        });
         let threshold = image.similarity_threshold(&defaults);
         let below = image.is_below();
         let next_tick = next_grid_tick(epoch, now, interval(self.settings.defaults.fps_limit));
@@ -695,14 +800,14 @@ impl Runner {
             Some(_) if !self.settings.enable_auto_reset => self.status.reset_similarity = Some(ResetReading::Disabled),
             Some(reset) => {
                 let threshold = reset.similarity_threshold(&defaults);
-                let start_pause = self.images.start.as_ref().map_or(0.0, |start| start.pause_time_secs(&defaults));
-                let pause_window = reset.pause_time_secs(&defaults).max(start_pause);
-                let paused = now.saturating_sub(self.run_start).as_secs_f64() <= pause_window;
+                let paused = self.in_reset_pause_window(now);
                 self.status.reset_threshold = Some(threshold);
                 if paused {
                     self.status.reset_similarity = Some(ResetReading::Paused);
                 } else {
-                    let similarity = reset.compare(capture, reset.comparison_method(&defaults), &mut self.scratch);
+                    let similarity = self.cache.get_or_compare(Compared::Reset, || {
+                        reset.compare(capture, reset.comparison_method(&defaults), &mut self.scratch)
+                    });
                     self.reset_highest = self.reset_highest.max(similarity);
                     self.status.reset_similarity = Some(ResetReading::Similarity(similarity));
                     self.status.reset_highest = Some(self.reset_highest);
@@ -718,7 +823,7 @@ impl Runner {
 
     fn stop(&mut self) {
         self.state = State::Idle;
-        self.status = Status::idle(self.auto_controlled);
+        self.status = Status::idle(self.timer_synced);
         self.effects.push(Effect::Stopped);
     }
 }

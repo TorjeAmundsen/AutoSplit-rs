@@ -12,19 +12,15 @@ use autosplit_core::split_image::{LoadError, LoadWarning};
 use tempfile::TempDir;
 use test_case::test_case;
 
-const ALL_HOTKEYS: ValidationContext = ValidationContext {
-    split_hotkey_set: true,
-    reset_hotkey_set: true,
-    pause_hotkey_set: true,
-    auto_controlled: false,
-};
+const ALL_HOTKEYS: ValidationContext =
+    ValidationContext { split_hotkey_set: true, reset_hotkey_set: true, pause_hotkey_set: true, timer_synced: false };
 const NO_HOTKEYS: ValidationContext = ValidationContext {
     split_hotkey_set: false,
     reset_hotkey_set: false,
     pause_hotkey_set: false,
-    auto_controlled: false,
+    timer_synced: false,
 };
-const AUTO_CONTROLLED: ValidationContext = ValidationContext { auto_controlled: true, ..NO_HOTKEYS };
+const TIMER_SYNCED: ValidationContext = ValidationContext { timer_synced: true, ..NO_HOTKEYS };
 
 fn folder(names: &[&str]) -> TempDir {
     let directory = tempfile::tempdir().unwrap();
@@ -56,7 +52,7 @@ fn validation_error(names: &[&str], context: ValidationContext) -> Option<Valida
 #[test_case(&["reset.bmp", "1.png"], ALL_HOTKEYS => matches Some(ValidationError::InvalidImage(LoadError::NotPng(_))); "unusable reset image")]
 #[test_case(&["start_auto_splitter.bmp", "1.png"], ALL_HOTKEYS => matches Some(ValidationError::InvalidImage(LoadError::NotPng(_))); "unusable start image")]
 #[test_case(&["xstart_auto_splitter.png", "1.png"], NO_HOTKEYS => None; "start keyword must be its own word")]
-#[test_case(&["start_auto_splitter.png", "reset.png", "1_{p}.png"], AUTO_CONTROLLED => None; "auto controlled needs no hotkeys")]
+#[test_case(&["start_auto_splitter.png", "reset.png", "1_{p}.png"], TIMER_SYNCED => None; "a synced timer needs no hotkeys")]
 #[test_case(&["1.png", ".hidden.bmp"], ALL_HOTKEYS => None; "hidden files are ignored")]
 fn folder_validation(names: &[&str], context: ValidationContext) -> Option<ValidationError> {
     // Arrange, Act
@@ -123,14 +119,14 @@ fn ocr_split_file_reports_that_ocr_is_unsupported() {
 
 #[test_case(false => Some(ValidationError::NoSplitHotkey); "needs a split hotkey")]
 #[test_case(true => None; "auto controlled needs none")]
-fn starting_without_a_split_hotkey(auto_controlled: bool) -> Option<ValidationError> {
+fn starting_without_a_split_hotkey(timer_synced: bool) -> Option<ValidationError> {
     // Arrange
     let directory = folder(&["1.png"]);
     let profile =
         UserProfile { split_image_directory: directory.path().to_string_lossy().into(), ..UserProfile::default() };
 
     // Act
-    let result = load_profile_folder_to_start(&profile, auto_controlled).result;
+    let result = load_profile_folder_to_start(&profile, timer_synced).result;
 
     // Assert, with the expected value checked by test_case
     result.err()

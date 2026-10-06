@@ -3,7 +3,9 @@
 use std::path::{Path, PathBuf};
 
 use autosplit_core::commands::Command;
-use autosplit_core::profile::{ProfileError, Region, UserProfile};
+use autosplit_core::image::Rect;
+use autosplit_core::profile::{ProfileError, Region, RegionFit, TimerConnection, UserProfile};
+use test_case::test_case;
 
 fn fixture(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/profiles").join(name)
@@ -147,4 +149,109 @@ fn missing_profile_file_is_reported_as_invalid_settings() {
 
     // Assert
     assert!(matches!(result, Err(ProfileError::Unreadable { .. })));
+}
+
+#[test_case("timer_connection"; "timer connection")]
+#[test_case("livesplit_one_port"; "livesplit one port")]
+fn timer_connection_keys_are_left_out_when_unchanged(key: &str) {
+    // Act
+    let saved = configured().to_toml();
+
+    // Assert
+    assert!(!saved.contains(key));
+}
+
+#[test]
+fn livesplit_one_settings_load_back() {
+    // Arrange
+    let profile =
+        UserProfile { timer_connection: TimerConnection::LiveSplitOne, livesplit_one_port: 20000, ..configured() };
+
+    // Act
+    let reloaded = UserProfile::parse(&profile.to_toml()).unwrap();
+
+    // Assert
+    assert_eq!(reloaded, profile);
+}
+
+#[test]
+fn livesplit_one_is_written_as_snake_case() {
+    // Arrange
+    let profile = UserProfile { timer_connection: TimerConnection::LiveSplitOne, ..configured() };
+
+    // Act
+    let saved = profile.to_toml();
+
+    // Assert
+    assert!(saved.contains("timer_connection = \"livesplit_one\""));
+}
+
+#[test_case(Region { x: 1, y: 1, width: 2, height: 1 } => Rect { left: 1, top: 1, right: 3, bottom: 2 }; "inside the frame")]
+#[test_case(Region { x: 2, y: 1, width: 100, height: 100 } => Rect { left: 2, top: 1, right: 4, bottom: 3 }; "end is clamped to the frame")]
+#[test_case(Region { x: 10, y: 10, width: 5, height: 5 } => Rect { left: 3, top: 2, right: 4, bottom: 3 }; "start past the frame is moved to the last pixel")]
+#[test_case(Region { x: -5, y: -5, width: 2, height: 2 } => Rect { left: 0, top: 0, right: 2, bottom: 2 }; "negative start is clamped to zero")]
+#[test_case(Region { x: 0, y: 0, width: 0, height: 0 } => Rect { left: 0, top: 0, right: 0, bottom: 0 }; "empty region")]
+#[test_case(Region { x: 1, y: 1, width: -3, height: 2 } => Rect { left: 1, top: 1, right: 1, bottom: 3 }; "negative size")]
+fn region_rect_in_a_4x3_frame(region: Region) -> Rect {
+    // Act, with the expected value checked by test_case
+    region.rect(4, 3)
+}
+
+#[test_case(Region { x: 0, y: 0, width: 4, height: 3 } => RegionFit::Inside; "whole frame")]
+#[test_case(Region { x: 2, y: 1, width: 4, height: 1 } => RegionFit::Partly; "past the right edge")]
+#[test_case(Region { x: -1, y: 0, width: 2, height: 2 } => RegionFit::Partly; "negative start")]
+#[test_case(Region { x: 0, y: 0, width: 0, height: 5 } => RegionFit::Empty; "no width")]
+fn region_fit_in_a_4x3_frame(region: Region) -> RegionFit {
+    // Act, with the expected value checked by test_case
+    region.fit(4, 3)
+}
+
+#[test_case(UserProfile { capture_device_name: "Elgato".into(), ..UserProfile::default() } => true; "by name")]
+#[test_case(UserProfile { capture_device_id: 0, ..UserProfile::default() } => true; "by number")]
+#[test_case(UserProfile::default() => false; "none")]
+fn has_capture_device(profile: UserProfile) -> bool {
+    // Act, with the expected value checked by test_case
+    profile.has_capture_device()
+}
+
+#[test_case("VIDEO_CAPTURE_DEVICE" => None; "video capture device")]
+#[test_case("" => None; "not set")]
+#[test_case("WINDOWS_GRAPHICS_CAPTURE" => Some("WINDOWS_GRAPHICS_CAPTURE".to_owned()); "window capture")]
+fn window_capture_method(method: &str) -> Option<String> {
+    // Arrange
+    let profile = UserProfile { capture_method: method.into(), ..UserProfile::default() };
+
+    // Act
+    profile.window_capture_method().map(str::to_owned)
+}
+
+#[test_case("fps_limit = 60\n[capture_region]\nx = 1\ntimer_connection = \"livesplit_one\"\n" => vec!["timer_connection".to_owned()]; "key after the table")]
+#[test_case("timer_connection = \"livesplit_one\"\n[capture_region]\nx = 1\n" => Vec::<String>::new(); "key before the table")]
+fn finds_keys_inside_capture_region(text: &str) -> Vec<String> {
+    // Act, with the expected value checked by test_case
+    UserProfile::keys_inside_capture_region(text)
+}
+
+#[test_case("fps_limit = 60.0" => true; "float for a whole number")]
+#[test_case("split_image_directory = \"C:\\Users\\me\"" => true; "windows path with backslashes")]
+fn invalid_profile_errors_are_in_words(text: &str) -> bool {
+    // Act
+    let error = UserProfile::parse(text).unwrap_err().to_string();
+
+    // Assert
+    error.contains("whole number") || error.contains("single quotes")
+}
+
+#[test_case("splits", "/home/me/profiles/splits"; "relative folder")]
+#[test_case("/data/splits", "/data/splits"; "absolute folder")]
+#[test_case("", ""; "no folder")]
+fn resolves_split_folder_against_the_profile(directory: &str, expected: &str) {
+    // Arrange
+    let mut profile = UserProfile { split_image_directory: directory.into(), ..UserProfile::default() };
+
+    // Act
+    profile.resolve_directories(Path::new("/home/me/profiles"));
+
+    // Assert
+    assert_eq!(profile.split_image_directory, expected);
 }

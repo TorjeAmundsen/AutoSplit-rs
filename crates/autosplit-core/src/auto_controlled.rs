@@ -2,41 +2,9 @@
 //! AutoSplit's `AutoControlledThread.py`. LiveSplit writes requests to stdin, and AutoSplit
 //! prints commands to stdout (see [`crate::commands::outputs_for`]).
 
-use crate::commands::Command;
-use crate::profile::UserProfile;
+use crate::commands::{Command, ControlRequest, TimerReport};
 
-/// A request read from stdin.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum ControlRequest {
-    Start,
-    /// LiveSplit sends "split" and "skip" when the user splits or skips manually.
-    /// Both move AutoSplit to the next split, like the "Skip Split" button.
-    Skip,
-    Undo,
-    Reset,
-    /// Load this profile. Empty when nothing followed "settings".
-    LoadSettings(String),
-    /// Close AutoSplit. Used in development.
-    Kill,
-}
-
-/// What a stdin line asks for.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct ControlLine {
-    /// The line read as a command name, for the profile's "screenshot on" option.
-    pub command: Option<Command>,
-    pub request: Option<ControlRequest>,
-}
-
-impl ControlLine {
-    /// AutoSplit takes a screenshot when the line names a command in `screenshot_on`, on top of
-    /// handling the request.
-    pub fn wants_screenshot(&self, profile: &UserProfile) -> bool {
-        self.command.is_some_and(|command| profile.screenshot_on.contains(&command))
-    }
-}
-
-pub fn parse_control_line(line: &str) -> ControlLine {
+pub fn parse_control_line(line: &str) -> TimerReport {
     let request = match line {
         "kill" => Some(ControlRequest::Kill),
         "start" => Some(ControlRequest::Start),
@@ -47,7 +15,18 @@ pub fn parse_control_line(line: &str) -> ControlLine {
         _ if line.starts_with("settings") => Some(ControlRequest::LoadSettings(line.chars().skip(9).collect())),
         _ => None,
     };
-    ControlLine { command: Command::from_name(line), request }
+    TimerReport { command: Command::from_name(line), request }
+}
+
+/// Decodes a line from LiveSplit. LiveSplit writes in the system's ANSI code page (it never sets
+/// an encoding for AutoSplit's stdin), so anything that isn't UTF-8 is decoded with `fallback`.
+pub fn decode_line(bytes: &[u8], fallback: impl FnOnce(&[u8]) -> String) -> String {
+    let bytes = bytes.strip_suffix(b"\n").unwrap_or(bytes);
+    let bytes = bytes.strip_suffix(b"\r").unwrap_or(bytes);
+    match std::str::from_utf8(bytes) {
+        Ok(line) => line.to_owned(),
+        Err(_) => fallback(bytes),
+    }
 }
 
 /// The first two lines printed when auto-controlled, which LiveSplit reads before anything

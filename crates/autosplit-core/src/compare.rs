@@ -35,6 +35,15 @@ impl ComparisonMethod {
         }
     }
 
+    /// The name AutoSplit's settings window uses.
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::L2Norm => "L2 Norm",
+            Self::Histograms => "Histograms",
+            Self::PHash => "pHash",
+        }
+    }
+
     pub fn index(self) -> i64 {
         match self {
             Self::L2Norm => 0,
@@ -113,13 +122,19 @@ pub struct CompareScratch {
     pub(crate) resized_for_frame: Option<(usize, usize)>,
     /// Only the runner starts frames, so callers comparing one-off images never reuse a resize.
     pub(crate) frame_active: bool,
+    /// The frame `resized_for_frame` belongs to.
+    frame: Option<u64>,
 }
 
 impl CompareScratch {
-    /// Forgets resizes of the previous frame. The runner calls this once per tick.
-    pub(crate) fn begin_frame(&mut self) {
+    /// Forgets resizes of the previous frame, unless `frame` is that frame again. The runner
+    /// calls this once per tick.
+    pub(crate) fn begin_frame(&mut self, frame: u64) {
         self.frame_active = true;
-        self.resized_for_frame = None;
+        if self.frame != Some(frame) {
+            self.frame = Some(frame);
+            self.resized_for_frame = None;
+        }
     }
 }
 

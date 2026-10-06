@@ -362,6 +362,69 @@ def generate_profiles():
     (profiles / "missing_keys.toml").write_bytes(tomli_w.dumps(old).encode())
 
 
+CAPTURE = FIXTURES / "capture"
+
+YUV_FORMATS = {
+    # name: (cv2 conversion code, bytes for a width x height frame)
+    "nv12": (cv2.COLOR_YUV2BGR_NV12, lambda w, h: w * h * 3 // 2),
+    "nv21": (cv2.COLOR_YUV2BGR_NV21, lambda w, h: w * h * 3 // 2),
+    "i420": (cv2.COLOR_YUV2BGR_I420, lambda w, h: w * h * 3 // 2),
+    "yv12": (cv2.COLOR_YUV2BGR_YV12, lambda w, h: w * h * 3 // 2),
+    "yuyv": (cv2.COLOR_YUV2BGR_YUYV, lambda w, h: w * h * 2),
+    "uyvy": (cv2.COLOR_YUV2BGR_UYVY, lambda w, h: w * h * 2),
+}
+
+
+def golden_capture():
+    """
+    Pixel conversions OpenCV does for AutoSplit's video capture devices: YUV formats with
+    cv2.cvtColor (DirectShow NV12 from OBS Virtual Camera, V4L2 on Linux) and MJPEG frames with
+    cv2.imdecode (V4L2 on Linux).
+    """
+    rng = np.random.default_rng(1080)
+    CAPTURE.mkdir(parents=True, exist_ok=True)
+    yuv_cases = []
+    for name, (code, size) in YUV_FORMATS.items():
+        for width, height in ((64, 48), (34, 18), (2, 2)):
+            data = rng.integers(0, 256, size(width, height), np.uint8)
+            # Include the extremes the formulas clamp
+            extremes = [0, 255, 16, 235, 128, 127, 1, 254]
+            data[: len(extremes)] = extremes[: len(data)]
+            rows = height * 3 // 2 if size(width, height) == width * height * 3 // 2 else height
+            shaped = data.reshape(rows, -1) if name not in ("yuyv", "uyvy") else data.reshape(height, width, 2)
+            bgr = cv2.cvtColor(shaped, code)
+            yuv_cases.append({
+                "format": name,
+                "width": width,
+                "height": height,
+                "input": data.tolist(),
+                "bgr_sha256": sha256(bgr),
+            })
+    # OBS Virtual Camera's fallback frame is filled with byte 127
+    placeholder = cv2.cvtColor(np.full((6, 4), 127, np.uint8), cv2.COLOR_YUV2BGR_NV12)[0, 0].tolist()
+
+    jpeg_cases = []
+    image = shapes(rng, 61, 97)
+    image = cv2.GaussianBlur(image, (0, 0), 1.5) + rng.integers(0, 12, image.shape, np.uint8)
+    samplings = {
+        "420": cv2.IMWRITE_JPEG_SAMPLING_FACTOR_420,
+        "422": cv2.IMWRITE_JPEG_SAMPLING_FACTOR_422,
+        "444": cv2.IMWRITE_JPEG_SAMPLING_FACTOR_444,
+    }
+    for label, factor in samplings.items():
+        for quality in (60, 95):
+            path = CAPTURE / f"frame_{label}_q{quality}.jpg"
+            ok, encoded = cv2.imencode(".jpg", image, [cv2.IMWRITE_JPEG_QUALITY, quality, cv2.IMWRITE_JPEG_SAMPLING_FACTOR, factor])
+            assert ok
+            path.write_bytes(encoded.tobytes())
+            jpeg_cases.append({"path": rel(path), "bgr_sha256": sha256(cv2.imdecode(encoded, cv2.IMREAD_COLOR))})
+    gray_path = CAPTURE / "frame_gray.jpg"
+    ok, encoded = cv2.imencode(".jpg", cv2.cvtColor(image, cv2.COLOR_BGR2GRAY), [cv2.IMWRITE_JPEG_QUALITY, 90])
+    gray_path.write_bytes(encoded.tobytes())
+    jpeg_cases.append({"path": rel(gray_path), "bgr_sha256": sha256(cv2.imdecode(encoded, cv2.IMREAD_COLOR))})
+    return {"yuv": yuv_cases, "obs_placeholder_bgr": placeholder, "jpeg": jpeg_cases}
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--autosplit-src", type=Path, required=True)
@@ -379,9 +442,10 @@ def main():
         "phash.json": golden_phash(compare),
         "area.json": golden_area(loaded),
         "filenames.json": golden_filenames(split_parser),
+        "capture.json": golden_capture(),
     }
     for name, value in outputs.items():
-        indent = None if name == "phash.json" else 1
+        indent = None if name in ("phash.json", "capture.json") else 1
         (GOLDEN / name).write_text(json.dumps(value, indent=indent, ensure_ascii=False) + "\n", encoding="utf-8")
     print(f"opencv {cv2.__version__}, wrote {', '.join(outputs)}")
 

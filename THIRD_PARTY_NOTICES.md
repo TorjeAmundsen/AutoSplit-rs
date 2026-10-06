@@ -7,6 +7,10 @@ ports of OpenCV 4.11 routines (`resize`, `cvtColor`, `calcHist`, `normalize`, `c
 the `img_hash` module's pHash from opencv_contrib 4.11. They follow the original rounding so that
 results match OpenCV exactly.
 
+`crates/autosplit-capture/src/convert.rs` ports OpenCV's YUV to BGR conversions, and
+`crates/autosplit-capture/src/dshow.rs` follows the DirectShow capture setup of OpenCV's
+`videoio` module (`cap_dshow.cpp`), so frames match what AutoSplit gets from OpenCV.
+
 OpenCV and opencv_contrib are licensed under the Apache License, Version 2.0.
 Copyright (C) 2000-2022, Intel Corporation, all rights reserved.
 Copyright (C) 2009-2011, Willow Garage Inc., all rights reserved.
@@ -19,6 +23,16 @@ Copyright (C) 2019-2022, Shenzhen Institute of Artificial Intelligence and Robot
 Copyright (C) 2022-2023, Southern University of Science and Technology, all rights reserved.
 
 The license text is at <https://www.apache.org/licenses/LICENSE-2.0>.
+
+## libjpeg-turbo
+
+Linux builds include libjpeg-turbo 3.1, to decode MJPEG capture devices the way OpenCV does.
+It's licensed under the Independent JPEG Group License, the Modified (3-clause) BSD License and
+the zlib License. This software is based in part on the work of the Independent JPEG Group.
+Copyright (C) 2009-2024 D. R. Commander. Copyright (C) 2015, 2020 Google, Inc.
+Copyright (C) 1991-2020, Thomas G. Lane, Guido Vollbeding.
+
+The license texts are at <https://github.com/libjpeg-turbo/libjpeg-turbo/blob/main/LICENSE.md>.
 
 ## AutoSplit
 

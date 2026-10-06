@@ -1,6 +1,7 @@
 //! Sending commands to the timer, matching AutoSplit's `send_command`.
 
-use autosplit_core::commands::{Command, Output, outputs_for};
+use autosplit_core::commands::{Command, Output, TimerLink, outputs_for};
+use autosplit_core::profile::TimerConnection;
 use autosplit_core::profile::UserProfile;
 use test_case::test_case;
 
@@ -30,12 +31,34 @@ fn press(hotkey: &str) -> Vec<Output> {
 #[test_case(Command::Split, UserProfile { screenshot_on: vec![Command::Split], ..profile() } => vec![Output::Screenshot, Output::PressHotkey("num 1".into())]; "screenshot on takes a screenshot before sending")]
 fn hotkey_outputs(command: Command, profile: UserProfile) -> Vec<Output> {
     // Act, with the expected value checked by test_case
-    outputs_for(command, &profile, false)
+    outputs_for(command, &profile, TimerLink::Hotkeys)
 }
 
 #[test_case(Command::Split, profile() => vec![Output::PrintLine("split")]; "prints the command")]
+#[test_case(Command::Skip, profile() => Vec::<Output>::new(); "skip isn't printed back")]
+#[test_case(Command::Undo, UserProfile { screenshot_on: vec![Command::Undo], ..profile() } => vec![Output::Screenshot]; "undo still takes its screenshot")]
 #[test_case(Command::Start, UserProfile { start_also_resets: true, ..profile() } => vec![Output::PrintLine("reset"), Output::PrintLine("start")]; "start prints reset first when start also resets")]
 fn auto_controlled_outputs(command: Command, profile: UserProfile) -> Vec<Output> {
     // Act, with the expected value checked by test_case
-    outputs_for(command, &profile, true)
+    outputs_for(command, &profile, TimerLink::AutoControlled)
+}
+
+#[test_case(Command::Split, profile() => vec![Output::LiveSplitOne(r#"{"command":"split"}"#)]; "split sends split")]
+#[test_case(Command::Start, profile() => vec![Output::LiveSplitOne(r#"{"command":"start"}"#)]; "start sends start")]
+#[test_case(Command::Start, UserProfile { start_also_resets: true, ..profile() } => vec![Output::LiveSplitOne(r#"{"command":"reset","saveAttempt":true}"#), Output::LiveSplitOne(r#"{"command":"start"}"#)]; "start sends reset first when start also resets")]
+#[test_case(Command::Pause, profile() => vec![Output::LiveSplitOne(r#"{"command":"togglePauseOrStart"}"#)]; "pause toggles pause like LiveSplit")]
+#[test_case(Command::Reset, profile() => vec![Output::LiveSplitOne(r#"{"command":"reset","saveAttempt":true}"#)]; "reset sends reset")]
+#[test_case(Command::Skip, profile() => Vec::<Output>::new(); "skip isn't sent back")]
+#[test_case(Command::Skip, UserProfile { screenshot_on: vec![Command::Skip], ..profile() } => vec![Output::Screenshot]; "skip still takes its screenshot")]
+#[test_case(Command::Reset, UserProfile { screenshot_on: vec![Command::Reset], ..profile() } => vec![Output::Screenshot, Output::LiveSplitOne(r#"{"command":"reset","saveAttempt":true}"#)]; "screenshot on takes a screenshot before sending to LiveSplit One")]
+fn livesplit_one_outputs(command: Command, profile: UserProfile) -> Vec<Output> {
+    // Act, with the expected value checked by test_case
+    outputs_for(command, &profile, TimerLink::LiveSplitOne)
+}
+
+#[test_case(TimerConnection::Hotkeys => TimerLink::Hotkeys; "hotkeys")]
+#[test_case(TimerConnection::LiveSplitOne => TimerLink::LiveSplitOne; "livesplit one")]
+fn timer_link_from_profile(connection: TimerConnection) -> TimerLink {
+    // Act, with the expected value checked by test_case
+    TimerLink::from(connection)
 }

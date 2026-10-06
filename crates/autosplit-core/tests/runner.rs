@@ -5,7 +5,7 @@ use std::time::Duration;
 use autosplit_core::commands::Command;
 use autosplit_core::compare::{CompareScratch, ComparisonMethod};
 use autosplit_core::image::BgraImage;
-use autosplit_core::runner::{Buttons, Effect, ResetReading, Runner, RunnerSettings, StartStatus};
+use autosplit_core::runner::{Buttons, Captured, Effect, ResetReading, Runner, RunnerSettings, StartStatus};
 use autosplit_core::split_folder::{SplitSet, ValidationContext, load_split_folder};
 use autosplit_core::split_image::SplitDefaults;
 use autosplit_core::split_image::SplitImage;
@@ -37,12 +37,8 @@ fn defaults() -> RunnerSettings {
     }
 }
 
-const ALL_HOTKEYS_SET: ValidationContext = ValidationContext {
-    split_hotkey_set: true,
-    reset_hotkey_set: true,
-    pause_hotkey_set: true,
-    auto_controlled: false,
-};
+const ALL_HOTKEYS_SET: ValidationContext =
+    ValidationContext { split_hotkey_set: true, reset_hotkey_set: true, pause_hotkey_set: true, timer_synced: false };
 
 /// Plays the host's part: reloads the folder on start and after a run, like AutoSplit does.
 struct Harness {
@@ -50,20 +46,36 @@ struct Harness {
     runner: Runner,
     now: Duration,
     effects: Vec<(Duration, Effect)>,
+    /// Numbers frames for the runner's comparison cache.
+    next_sequence: u64,
+    /// Gives every tick a new frame number, which turns the cache off.
+    new_frame_every_tick: bool,
 }
 
 impl Harness {
     fn new(files: &[(&str, Bgr)], settings: RunnerSettings) -> Self {
-        Self::with_control(files, settings, false)
+        Self::with_link(files, settings, false)
     }
 
-    fn with_control(files: &[(&str, Bgr)], settings: RunnerSettings, auto_controlled: bool) -> Self {
+    /// Driven by LiveSplit or LiveSplit One, which report the timer's splits.
+    fn synced(files: &[(&str, Bgr)], settings: RunnerSettings) -> Self {
+        Self::with_link(files, settings, true)
+    }
+
+    fn with_link(files: &[(&str, Bgr)], settings: RunnerSettings, timer_synced: bool) -> Self {
         let directory = tempfile::tempdir().unwrap();
         for (name, color) in files {
             std::fs::write(directory.path().join(name), solid(*color).encode_png().unwrap()).unwrap();
         }
-        let runner = Runner::new(settings, auto_controlled);
-        let mut harness = Self { directory, runner, now: Duration::ZERO, effects: Vec::new() };
+        let runner = Runner::new(settings, timer_synced);
+        let mut harness = Self {
+            directory,
+            runner,
+            now: Duration::ZERO,
+            effects: Vec::new(),
+            next_sequence: 0,
+            new_frame_every_tick: false,
+        };
         let images = harness.load();
         harness.runner.arm(images, Duration::ZERO);
         harness
@@ -82,12 +94,17 @@ impl Harness {
     /// Feeds `frame` (or a lost capture) for `duration`, ticking whenever the runner asks to.
     fn feed(&mut self, frame: Option<Bgr>, duration: Duration) {
         let frame = frame.map(solid);
+        self.next_sequence += 1;
         let end = self.now + duration;
         for _ in 0..100_000 {
             match self.runner.next_wakeup() {
                 Some(next) if next <= end => {
                     self.now = self.now.max(next);
-                    self.runner.tick(self.now, frame.as_ref().map(BgraImage::view));
+                    if self.new_frame_every_tick {
+                        self.next_sequence += 1;
+                    }
+                    let sequence = self.next_sequence;
+                    self.runner.tick(self.now, frame.as_ref().map(|frame| Captured { view: frame.view(), sequence }));
                     self.handle_effects();
                 }
                 _ => break,
@@ -102,7 +119,9 @@ impl Harness {
         let end = self.now + duration;
         while let Some(next) = self.runner.next_wakeup().filter(|next| *next <= end) {
             self.now = self.now.max(next);
-            self.runner.tick(self.now, Some(empty.view()));
+            self.next_sequence += 1;
+            let sequence = self.next_sequence;
+            self.runner.tick(self.now, Some(Captured { view: empty.view(), sequence }));
             self.handle_effects();
         }
         self.now = end;
@@ -516,7 +535,7 @@ fn wakeups_always_move_forward(fps_limit: i64) {
         let next = harness.runner.next_wakeup().unwrap();
         stalled |= previous.is_some_and(|previous| next <= previous);
         previous = Some(next);
-        harness.runner.tick(next, Some(solid(BLUE).view()));
+        harness.runner.tick(next, Some(Captured { view: solid(BLUE).view(), sequence: 1 }));
     }
 
     // Assert
@@ -534,7 +553,7 @@ fn comparisons_follow_the_fps_limit() {
     let end = harness.now + SECOND;
     while let Some(next) = harness.runner.next_wakeup().filter(|next| *next < end) {
         harness.now = next;
-        harness.runner.tick(next, Some(solid(BLUE).view()));
+        harness.runner.tick(next, Some(Captured { view: solid(BLUE).view(), sequence: 1 }));
         ticks += 1;
     }
 
@@ -573,7 +592,7 @@ fn undo_split_button_on_the_first_split_is_ignored() {
 #[test]
 fn livesplit_undo_on_the_first_split_does_nothing() {
     // Arrange
-    let mut harness = Harness::with_control(&[("1.png", RED), ("2.png", BLUE)], defaults(), true);
+    let mut harness = Harness::synced(&[("1.png", RED), ("2.png", BLUE)], defaults());
     harness.start();
     harness.feed(Some(BLACK), ms(100));
 
@@ -585,9 +604,9 @@ fn livesplit_undo_on_the_first_split_does_nothing() {
 }
 
 #[test]
-fn livesplit_skip_moves_on_without_printing_back() {
+fn livesplit_skip_moves_on_and_reports_the_skip_for_screenshots() {
     // Arrange
-    let mut harness = Harness::with_control(&[("1.png", RED), ("2.png", BLUE)], defaults(), true);
+    let mut harness = Harness::synced(&[("1.png", RED), ("2.png", BLUE)], defaults());
     harness.start();
     harness.feed(Some(BLACK), ms(100));
 
@@ -595,13 +614,13 @@ fn livesplit_skip_moves_on_without_printing_back() {
     harness.skip(false);
 
     // Assert
-    assert_eq!((harness.sent(), harness.current_filename()), (vec![], Some("2.png")));
+    assert_eq!((harness.sent(), harness.current_filename()), (vec![Command::Skip], Some("2.png")));
 }
 
 #[test]
 fn livesplit_split_on_the_last_split_ends_the_run() {
     // Arrange
-    let mut harness = Harness::with_control(&[("1.png", RED)], defaults(), true);
+    let mut harness = Harness::synced(&[("1.png", RED)], defaults());
     harness.start();
     harness.feed(Some(BLACK), ms(100));
 
@@ -609,7 +628,7 @@ fn livesplit_split_on_the_last_split_ends_the_run() {
     harness.skip(false);
 
     // Assert
-    assert_eq!((harness.sent(), harness.runner.is_running()), (vec![], false));
+    assert_eq!((harness.sent(), harness.runner.is_running()), (vec![Command::Skip], false));
 }
 
 #[test]
@@ -714,7 +733,7 @@ fn wakeups_move_forward_during_pauses_with_an_absurd_fps_limit() {
         let next = harness.runner.next_wakeup().unwrap();
         stalled |= next <= previous;
         previous = next;
-        harness.runner.tick(next, Some(solid(BLUE).view()));
+        harness.runner.tick(next, Some(Captured { view: solid(BLUE).view(), sequence: 1 }));
     }
 
     // Assert
@@ -797,4 +816,82 @@ fn reset_image_sharing_a_resize_with_the_split_image_compares_the_same() {
 
     // Assert
     assert_eq!(harness.runner.status().reset_similarity, Some(ResetReading::Similarity(expected)));
+}
+
+#[test]
+fn needs_no_frames_while_idle() {
+    // Arrange
+    let harness = Harness::new(&[("1.png", RED)], defaults());
+
+    // Act
+    let needs = harness.runner.needs_frames(harness.now);
+
+    // Assert
+    assert!(!needs);
+}
+
+#[test]
+fn needs_frames_while_comparing() {
+    // Arrange
+    let mut harness = Harness::new(&[("1.png", RED)], defaults());
+
+    // Act
+    harness.start();
+
+    // Assert
+    assert!(harness.runner.needs_frames(harness.now));
+}
+
+#[test]
+fn needs_no_frames_during_a_pause_without_a_reset_image() {
+    // Arrange
+    let mut harness = Harness::new(&[("1_[5].png", RED), ("2.png", BLUE)], defaults());
+    harness.start();
+
+    // Act
+    harness.feed(Some(RED), ms(100));
+
+    // Assert
+    assert!(!harness.runner.needs_frames(harness.now));
+}
+
+#[test]
+fn needs_frames_during_a_pause_with_a_reset_image() {
+    // Arrange
+    let mut harness = Harness::new(&[("1_[5].png", RED), ("2.png", BLUE), ("reset.png", GREEN)], defaults());
+    harness.start();
+
+    // Act
+    harness.feed(Some(RED), ms(100));
+
+    // Assert
+    assert!(harness.runner.needs_frames(harness.now));
+}
+
+type Feed = (Option<Bgr>, u64);
+
+/// Feeds the same frames with the cache on and off, returning what each run sent when.
+fn sent_with_and_without_cache(files: &[(&str, Bgr)], feeds: &[Feed]) -> [Vec<(Duration, Command)>; 2] {
+    [false, true].map(|new_frame_every_tick| {
+        let mut harness = Harness::new(files, defaults());
+        harness.new_frame_every_tick = new_frame_every_tick;
+        harness.start();
+        for &(frame, milliseconds) in feeds {
+            harness.feed(frame, ms(milliseconds));
+        }
+        harness.sent_at()
+    })
+}
+
+#[test_case(&[("1.png", RED), ("2.png", BLUE)], &[(Some(BLACK), 100), (Some(RED), 50), (Some(BLUE), 50)]; "plain splits")]
+#[test_case(&[("1_{d}.png", RED), ("2_{d}.png", RED), ("3.png", RED)], &[(Some(RED), 100)]; "dummy chain on one frame")]
+#[test_case(&[("1_{b}.png", RED), ("2.png", BLUE)], &[(Some(RED), 100), (Some(BLACK), 100), (Some(BLUE), 100)]; "below flag")]
+#[test_case(&[("1_[0.2].png", RED), ("2.png", BLUE), ("reset_[0.1].png", GREEN)], &[(Some(RED), 100), (Some(GREEN), 300)]; "reset during a pause")]
+#[test_case(&[("1_#200#.png", RED), ("2.png", BLUE)], &[(Some(RED), 50), (Some(BLUE), 400)]; "split delay")]
+fn cached_comparisons_split_at_the_same_times(files: &[(&str, Bgr)], feeds: &[Feed]) {
+    // Act
+    let [cached, uncached] = sent_with_and_without_cache(files, feeds);
+
+    // Assert
+    assert_eq!((cached.is_empty(), cached), (false, uncached));
 }

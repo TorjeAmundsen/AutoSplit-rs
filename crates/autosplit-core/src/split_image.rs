@@ -33,19 +33,19 @@ pub enum SplitContent {
 /// Why a file in the split image folder can't be used.
 #[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
 pub enum LoadError {
-    #[error("'{}' couldn't be read as an image.", .0.display())]
+    #[error("'{}' couldn't be read as an image.", file_name(.0))]
     Unreadable(PathBuf),
-    #[error("'{}' isn't a PNG file. Only PNG split images are supported.", .0.display())]
+    #[error("'{}' isn't a PNG file. Only PNG split images are supported.", file_name(.0))]
     NotPng(PathBuf),
-    #[error("'{}' is an OCR split file. OCR split files aren't supported yet.", .0.display())]
+    #[error("'{}' is an OCR split file. OCR split files aren't supported yet.", file_name(.0))]
     OcrUnsupported(PathBuf),
-    #[error("'{}' is fully transparent, so there's nothing to compare.", .0.display())]
+    #[error("'{}' is fully transparent, so there's nothing to compare.", file_name(.0))]
     FullyTransparent(PathBuf),
 }
 
 /// A filename value that's ignored, with the file it's in.
 #[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
-#[error("'{}': {warning}", .path.display())]
+#[error("'{}': {warning}", file_name(.path))]
 pub struct LoadWarning {
     pub path: PathBuf,
     pub warning: FilenameWarning,
@@ -110,6 +110,11 @@ impl SplitImage {
         }
     }
 
+    /// The file name as it is on disk. [`SplitImage::filename`] is lowercased.
+    pub fn display_name(&self) -> String {
+        file_name(&self.path)
+    }
+
     pub fn load_error(&self) -> Option<&LoadError> {
         match &self.content {
             SplitContent::Invalid(error) => Some(error),
@@ -160,7 +165,7 @@ impl SplitImage {
             return 0.0;
         };
         let size = (pixels.width(), pixels.height());
-        let CompareScratch { resize, resized, resized_visible, masked, resized_for_frame, frame_active } = scratch;
+        let CompareScratch { resize, resized, resized_visible, masked, resized_for_frame, frame_active, .. } = scratch;
         let resized_capture = match mask {
             _ if *resized_for_frame == Some(size) => &*resized,
             // The comparisons only read the visible pixels
@@ -232,4 +237,9 @@ fn prepare_for_comparison(image: &BgraImage) -> (BgraImage, Option<Mask>) {
     imgproc::resize_nearest(image.view(), width, height, scale, scale, &mut buffers, &mut resized);
     let mask = resized.data().as_chunks::<4>().0.iter().map(|pixel| if pixel[3] >= 1 { 255 } else { 0 }).collect();
     (resized, Some(Mask::new(mask)))
+}
+
+/// The file name, which is enough to find a file in the split image folder.
+fn file_name(path: &Path) -> String {
+    path.file_name().map_or_else(|| path.display().to_string(), |name| name.to_string_lossy().into_owned())
 }

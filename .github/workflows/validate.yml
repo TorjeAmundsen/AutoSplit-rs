@@ -19,6 +19,10 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
+      # libjpeg-turbo is built from source, its x64 SIMD code with NASM (CMake is preinstalled)
+      - name: Install NASM
+        run: sudo apt-get update && sudo apt-get install -y nasm
+
       - name: Check formatting
         run: cargo fmt --all --check
 
@@ -50,10 +54,19 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.extra-test-target }}
+          components: clippy
 
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.name }}
+
+      - name: Install NASM
+        if: matrix.name == 'linux-x64'
+        run: sudo apt-get update && sudo apt-get install -y nasm
+
+      # The lint job only sees Linux code; the Windows and macOS backends are linted here
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: Test
         run: cargo test --workspace --release
