@@ -181,25 +181,31 @@ Image math:
 
 ## Performance
 
-Cost of one comparison, including the resize from a 1920x1080 capture. Median of 3 runs on one core of an Intel Core Ultra 7 155H. AutoSplit is its own Python code on OpenCV 4.11, limited to one thread.
-
-These are rough numbers. They were measured in a container on a shared VM while other work ran on the same machine, so only the comparison between columns means much, not the absolute times. They'll be re-measured on a dedicated machine with nothing else running.
+Cost of one comparison, including the resize from a 1920x1080 capture. Median of 5 runs, each a process pinned to one core of an AMD Ryzen 7 7800X3D. AutoSplit is its own Python code on OpenCV 5.0, limited to one thread.
 
 | Split image | Method | This rewrite | AutoSplit |
 | --- | --- | --- | --- |
-| Opaque (compared at 320x240) | L2 norm | 87 µs | 50 µs |
-| Opaque | Histograms | 72 µs | 210 µs |
-| Opaque | pHash | 70 µs | 170 µs |
-| Masked, large visible area (compared at 887x499) | L2 norm | 77 µs | 406 µs |
-| Masked, large visible area | Histograms | 65 µs | 646 µs |
-| Masked, large visible area | pHash | 446 µs | 2201 µs |
-| Masked, small visible area (real AutoMask reset image) | L2 norm | 4 µs | 123 µs |
-| Masked, small visible area | Histograms | 4.5 µs | 212 µs |
-| Masked, small visible area | pHash | 160 µs | 822 µs |
+| Opaque (compared at 320x240) | L2 norm | 69 µs | 66 µs |
+| Opaque | Histograms | 67 µs | 186 µs |
+| Opaque | pHash | 60 µs | 174 µs |
+| Masked, large visible area (compared at 887x499) | L2 norm | 72 µs | 514 µs |
+| Masked, large visible area | Histograms | 71 µs | 879 µs |
+| Masked, large visible area | pHash | 363 µs | 3090 µs |
+| Masked, small visible area (real AutoMask reset image) | L2 norm | 3.7 µs | 159 µs |
+| Masked, small visible area | Histograms | 5.0 µs | 276 µs |
+| Masked, small visible area | pHash | 135 µs | 1132 µs |
 
 Opaque L2 is the one case where OpenCV is faster: its SSE2/AVX2 code computes the squared differences quicker than what LLVM generates from safe Rust. For masked images only the visible pixels are resized and compared. Nothing is allocated per frame, the split image's histogram and hash are computed once at load, and a split image and the reset image of the same size share one resize per frame. Run `autosplit bench` to measure on your machine.
 
-Capturing costs more than comparing: converting a 1080p frame to BGRA takes milliseconds, comparing it microseconds. So:
+Converting a whole 1080p frame to BGRA takes 0.26 to 0.64 ms, more than most comparisons above. Median of 5 runs on one core of the same CPU, using AVX2. The areas are cut from the middle of a 1920x1080 frame. A raw copy is what keeping a frame to convert later costs. The test frame fits in this CPU's 96 MB L3 cache, so a frame fresh from the device can take longer.
+
+| Format | Whole frame | 640x360 | 320x240 | Raw copy |
+| --- | --- | --- | --- | --- |
+| NV12 | 568 µs | 68 µs | 21 µs | 98 µs |
+| YUYV | 644 µs | 76 µs | 24 µs | 131 µs |
+| BGR24, bottom-up | 256 µs | 30 µs | 9.2 µs | 196 µs |
+
+So:
 
 - Only the capture region is converted (except MJPEG frames, which libjpeg-turbo decodes whole), using AVX2 or SSE4.1 when the CPU has them.
 - Frames are only converted while something compares them. During pauses, delays and while waiting for the split hotkey, a frame is copied instead when that's cheaper than converting its region, and the newest one is converted when it's needed.
