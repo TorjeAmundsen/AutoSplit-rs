@@ -166,7 +166,8 @@ function Build($name) {
             Copy-Item "$($folders[0])/$binaryName" "$output/$binaryName"
         }
     }
-    foreach ($file in @("README.md", "TUTORIAL.md", "LICENSE", "THIRD_PARTY_NOTICES.md")) {
+    # The licenses have to ship with the binaries
+    foreach ($file in @("LICENSE", "THIRD_PARTY_NOTICES.txt")) {
         Copy-Item "$PSScriptRoot/$file" $output
     }
 

@@ -2,7 +2,7 @@
 //!
 //! They follow OpenCV's integer and floating point rounding step by step, so that similarity
 //! values match AutoSplit for the same inputs. OpenCV is licensed under Apache-2.0, see
-//! THIRD_PARTY_NOTICES.md. Only 8-bit images are supported, because that's all AutoSplit uses.
+//! THIRD_PARTY_NOTICES.txt. Only 8-bit images are supported, because that's all AutoSplit uses.
 
 use std::ops::Range;
 
