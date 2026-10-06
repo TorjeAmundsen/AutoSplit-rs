@@ -15,17 +15,20 @@ autosplit-input = { version = "0.1.0", path = "../autosplit-input" }
 clap = { version = "4.6.7", features = ["derive"] }
 ctrlc = "3.5.2"
 rfd = "0.17.2"
-serde = { version = "1.0.229", features = ["derive"] }
-slint = { version = "1.18.1", default-features = false, features = ["std", "backend-winit", "backend-winit-x11", "backend-winit-wayland", "renderer-femtovg-wgpu", "renderer-software", "accessibility", "compat-1-2", "unstable-winit-030"] }
-toml = "1.1.6"
+slint = { version = "1.18.1", default-features = false, features = ["std", "backend-winit", "backend-winit-x11", "backend-winit-wayland", "renderer-software", "compat-1-2", "raw-window-handle-06", "unstable-winit-030"] }
 tungstenite = { version = "0.30.0", default-features = false, features = ["handshake"] }
 unicode-width = "0.2.2"
 
 [target.'cfg(windows)'.dependencies]
-windows = { version = "0.62", features = ["Win32_Foundation", "Win32_Media", "Win32_System_Console", "Win32_Globalization"] }
+windows = { version = "0.62", features = ["Win32_Foundation", "Win32_Media", "Win32_System_Console", "Win32_System_Threading", "Win32_Globalization"] }
+
+# Keeps App Nap from slowing comparisons down while the window is hidden
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSProcessInfo", "NSString", "NSObject"] }
 
 [dev-dependencies]
 image = { version = "0.25.10", default-features = false, features = ["png"] }
+tempfile = "3.27.0"
 test-case = "3.3.1"
 
 [build-dependencies]

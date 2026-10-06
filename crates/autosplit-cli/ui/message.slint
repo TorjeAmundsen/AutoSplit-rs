@@ -1,10 +1,11 @@
-// A message box for errors, like AutoSplit's, and for questions like saving changes.
+// A message box for errors, like AutoSplit's, and for questions like saving changes. Buttons
+// are in the order given, like Qt's Yes, No, Cancel.
 
 import { Button } from "std-widgets.slint";
 
 export component MessageWindow inherits Window {
-    title: "AutoSplit";
-    icon: @image-url("icon.png");
+    in property <string> window-title: "AutoSplit";
+    title: root.window-title;
     preferred-width: 380px;
     min-width: 300px;
     default-font-size: 12px;
@@ -29,9 +30,10 @@ export component MessageWindow inherits Window {
             alignment: end;
             spacing: 8px;
 
-            if root.tertiary != "": Button {
-                text: root.tertiary;
-                clicked => { root.answered(2); }
+            Button {
+                text: root.primary;
+                primary: true;
+                clicked => { root.answered(0); }
             }
 
             if root.secondary != "": Button {
@@ -39,10 +41,9 @@ export component MessageWindow inherits Window {
                 clicked => { root.answered(1); }
             }
 
-            Button {
-                text: root.primary;
-                primary: true;
-                clicked => { root.answered(0); }
+            if root.tertiary != "": Button {
+                text: root.tertiary;
+                clicked => { root.answered(2); }
             }
         }
     }

@@ -4,6 +4,7 @@ use std::time::Duration;
 
 use autosplit_core::commands::{Command, TimerLink};
 use autosplit_core::hotkeys::{HotkeyAction, OwnPresses};
+use autosplit_core::profile::UserProfile;
 use test_case::test_case;
 
 #[test_case(HotkeyAction::Split, TimerLink::Hotkeys => true; "split with hotkeys")]
@@ -37,4 +38,23 @@ fn own_presses(hotkey: &str, after: Duration) -> bool {
 fn command_hotkeys(command: Command) -> HotkeyAction {
     // Act, with the expected value checked by test_case
     HotkeyAction::from(command)
+}
+
+fn profile_with_hotkeys() -> UserProfile {
+    UserProfile { split_hotkey: "num 1".into(), reset_hotkey: "num 3".into(), ..UserProfile::default() }
+}
+
+#[test_case(HotkeyAction::UndoSplit, "num 8" => ("num 1".to_owned(), "num 3".to_owned(), "num 8".to_owned()); "new hotkey")]
+#[test_case(HotkeyAction::UndoSplit, "num 1" => (String::new(), "num 3".to_owned(), "num 1".to_owned()); "taken from another action")]
+#[test_case(HotkeyAction::Split, "num 1" => ("num 1".to_owned(), "num 3".to_owned(), String::new()); "same action again")]
+#[test_case(HotkeyAction::Split, "" => (String::new(), "num 3".to_owned(), String::new()); "cleared")]
+fn assign(action: HotkeyAction, hotkey: &str) -> (String, String, String) {
+    // Arrange
+    let mut profile = profile_with_hotkeys();
+
+    // Act
+    action.assign(&mut profile, hotkey);
+
+    // Assert, with the expected value checked by test_case
+    (profile.split_hotkey, profile.reset_hotkey, profile.undo_split_hotkey)
 }

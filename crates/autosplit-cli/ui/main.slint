@@ -1,49 +1,55 @@
 // AutoSplit's main window, at the positions of AutoSplit's design.ui.
 
 import { Button, LineEdit, Palette } from "std-widgets.slint";
-import { SettingsWindow, HotkeyRow } from "settings.slint";
+import { SettingsWindow, HotkeyRow, Setting } from "settings.slint";
 import { AboutWindow } from "about.slint";
 import { LogWindow } from "log.slint";
 import { MessageWindow } from "message.slint";
+import { Label } from "common.slint";
 
-export { SettingsWindow, HotkeyRow, AboutWindow, LogWindow, MessageWindow }
-
-component Label inherits Text {
-    vertical-alignment: center;
-    overflow: elide;
-}
+export { SettingsWindow, HotkeyRow, Setting, AboutWindow, LogWindow, MessageWindow }
 
 // A spin box narrow enough for AutoSplit's 51 pixels: a number field and arrow keys.
 component NumberBox inherits Rectangle {
     in-out property <int> value;
     in property <int> minimum: 0;
-    in property <int> maximum: 999999;
-    in property <bool> enabled: true;
-    callback edited(int);
+    in property <int> maximum;
+    callback edited();
+
+    // Typing replaces the binding to value, so changes from elsewhere are shown by hand
+    changed value => {
+        if (!edit.has-focus) {
+            edit.text = root.value;
+        }
+    }
 
     edit := LineEdit {
         width: 100%;
         height: 100%;
         input-type: number;
-        enabled: root.enabled;
         text: root.value;
         edited(text) => {
             if (text.is-float()) {
                 root.value = max(root.minimum, min(root.maximum, text.to-float()));
-                root.edited(root.value);
+                root.edited();
+            }
+        }
+        changed has-focus => {
+            if (!self.has-focus) {
+                self.text = root.value;
             }
         }
         key-pressed(event) => {
             if (event.text == Key.UpArrow) {
                 root.value = min(root.maximum, root.value + 1);
                 self.text = root.value;
-                root.edited(root.value);
+                root.edited();
                 return accept;
             }
             if (event.text == Key.DownArrow) {
                 root.value = max(root.minimum, root.value - 1);
                 self.text = root.value;
-                root.edited(root.value);
+                root.edited();
                 return accept;
             }
             reject
@@ -141,8 +147,8 @@ component SimilarityViewer inherits Rectangle {
 }
 
 export component MainWindow inherits Window {
-    title: "AutoSplit";
-    icon: @image-url("icon.png");
+    in property <string> window-title: "AutoSplit";
+    title: root.window-title;
     default-font-size: 12px;
 
     in property <string> split-image-folder: "No Folder Selected";
@@ -154,7 +160,6 @@ export component MainWindow inherits Window {
     in-out property <int> region-height;
     in property <image> live-image;
     in property <string> live-message;
-    in property <string> current-image-title: "Current Image";
     in property <string> current-image-file: "-";
     in property <image> current-image;
     in property <string> current-image-message;
@@ -173,6 +178,8 @@ export component MainWindow inherits Window {
     in property <bool> can-undo;
     in property <bool> can-next;
     in property <bool> can-previous;
+    // A message box is open, which AutoSplit's are modal
+    in property <bool> blocked;
 
     callback browse-folder();
     callback region-edited(int, int, int, int);
@@ -193,6 +200,7 @@ export component MainWindow inherits Window {
     callback view-help();
     callback view-log();
     callback about();
+    callback blocked-clicked();
 
     MenuBar {
         Menu {
@@ -289,7 +297,7 @@ export component MainWindow inherits Window {
                 y: 31px;
                 width: 318px;
                 height: 20px;
-                text: root.current-image-title;
+                text: "Current Image";
                 horizontal-alignment: center;
             }
 
@@ -371,6 +379,7 @@ export component MainWindow inherits Window {
                 y: 165px;
                 width: 51px;
                 height: 24px;
+                maximum: 999999999;
                 value <=> root.region-x;
                 edited => { root.region-edited(root.region-x, root.region-y, root.region-width, root.region-height); }
             }
@@ -380,6 +389,7 @@ export component MainWindow inherits Window {
                 y: 165px;
                 width: 51px;
                 height: 24px;
+                maximum: 999999999;
                 value <=> root.region-y;
                 edited => { root.region-edited(root.region-x, root.region-y, root.region-width, root.region-height); }
             }
@@ -406,6 +416,7 @@ export component MainWindow inherits Window {
                 width: 51px;
                 height: 24px;
                 minimum: 1;
+                maximum: 10000;
                 value <=> root.region-width;
                 edited => { root.region-edited(root.region-x, root.region-y, root.region-width, root.region-height); }
             }
@@ -416,6 +427,7 @@ export component MainWindow inherits Window {
                 width: 51px;
                 height: 24px;
                 minimum: 1;
+                maximum: 10000;
                 value <=> root.region-height;
                 edited => { root.region-edited(root.region-x, root.region-y, root.region-width, root.region-height); }
             }
@@ -432,7 +444,7 @@ export component MainWindow inherits Window {
             Button {
                 x: 10px;
                 y: 270px;
-                width: 53px;
+                width: 62px;
                 height: 24px;
                 text: "Max FPS";
                 enabled: !root.running;
@@ -440,15 +452,15 @@ export component MainWindow inherits Window {
             }
 
             Label {
-                x: 65px;
+                x: 74px;
                 y: 272px;
-                width: 26px;
+                width: 22px;
                 height: 20px;
                 text: root.fps-value;
             }
 
             Label {
-                x: 92px;
+                x: 97px;
                 y: 272px;
                 width: 21px;
                 height: 20px;
@@ -497,7 +509,7 @@ export component MainWindow inherits Window {
             Label {
                 x: 537px;
                 y: 313px;
-                width: 121px;
+                width: 100px;
                 height: 20px;
                 text: root.image-loop;
             }
@@ -513,7 +525,7 @@ export component MainWindow inherits Window {
             Label {
                 x: 577px;
                 y: 344px;
-                width: 81px;
+                width: 60px;
                 height: 20px;
                 text: root.start-image-status;
             }
@@ -529,9 +541,9 @@ export component MainWindow inherits Window {
             }
 
             Button {
-                x: 657px;
+                x: 640px;
                 y: 310px;
-                width: 59px;
+                width: 67px;
                 height: 27px;
                 text: "Undo";
                 enabled: root.can-undo;
@@ -539,9 +551,9 @@ export component MainWindow inherits Window {
             }
 
             Button {
-                x: 719px;
+                x: 711px;
                 y: 310px;
-                width: 59px;
+                width: 67px;
                 height: 27px;
                 text: "Skip";
                 enabled: root.can-skip;
@@ -549,9 +561,9 @@ export component MainWindow inherits Window {
             }
 
             Button {
-                x: 657px;
+                x: 640px;
                 y: 339px;
-                width: 121px;
+                width: 138px;
                 height: 27px;
                 text: "Reset";
                 enabled: root.can-reset;
@@ -559,14 +571,18 @@ export component MainWindow inherits Window {
             }
 
             Button {
-                x: 657px;
+                x: 640px;
                 y: 369px;
-                width: 121px;
+                width: 138px;
                 height: 27px;
                 text: root.running ? "Running..." : "Start Auto Splitter";
                 enabled: root.can-start;
                 clicked => { root.start-auto-splitter(); }
             }
         }
+    }
+
+    if root.blocked: TouchArea {
+        clicked => { root.blocked-clicked(); }
     }
 }

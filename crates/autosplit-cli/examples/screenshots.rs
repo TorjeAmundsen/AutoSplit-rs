@@ -3,6 +3,7 @@
 
 use std::rc::Rc;
 
+use autosplit::gui::HOTKEY_ROWS;
 use autosplit::gui::ui::{AboutWindow, HotkeyRow, LogWindow, MainWindow, MessageWindow, SettingsWindow};
 use slint::platform::software_renderer::{MinimalSoftwareWindow, RepaintBufferType, Rgb565Pixel};
 use slint::platform::{Platform, WindowAdapter};
@@ -45,17 +46,17 @@ fn main() {
     main.set_live_message("Waiting for capture device...".into());
     main.set_current_image_file("05_Bottle_(0.93)_[35]_#1100#_{b}.png".into());
     main.set_current_image_message("None (Paused). 9.9 seconds remaining".into());
-    main.set_fps_value("62".into());
+    main.set_fps_value("240".into());
+    main.set_window_title("AutoSplit v0.1.0".into());
     main.show().unwrap();
     save(&window, PhysicalSize::new(786, 450), &folder.join("main.png"));
     main.hide().unwrap();
 
     let settings = SettingsWindow::new().unwrap();
-    let hotkeys: Vec<HotkeyRow> =
-        ["Start / Split:", "Reset:", "Undo Split:", "Skip Split:", "Pause:", "Screenshot:", "Toggle auto reset image"]
-            .iter()
-            .map(|name| HotkeyRow { name: (*name).into(), hotkey: "num 1".into() })
-            .collect();
+    let hotkeys: Vec<HotkeyRow> = HOTKEY_ROWS
+        .iter()
+        .map(|&(_, name)| HotkeyRow { name: name.into(), hotkey: "num 1".into(), enabled: true })
+        .collect();
     settings.set_hotkeys(std::rc::Rc::new(slint::VecModel::from(hotkeys)).into());
     settings.set_setting_hotkey(2);
     settings.show().unwrap();
@@ -72,7 +73,10 @@ fn main() {
     about.hide().unwrap();
 
     let message = MessageWindow::new().unwrap();
-    message.set_message("The run couldn't start: The split image folder has no split images. Fix it, then press the split hotkey to try again.".into());
+    message.set_message("Do you want to save changes made to settings file settings.toml?".into());
+    message.set_secondary("No".into());
+    message.set_tertiary("Cancel".into());
+    message.set_primary("Yes".into());
     message.show().unwrap();
     save(&window, PhysicalSize::new(380, 120), &folder.join("message.png"));
     message.hide().unwrap();

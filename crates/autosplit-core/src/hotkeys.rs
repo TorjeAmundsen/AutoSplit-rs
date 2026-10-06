@@ -46,6 +46,31 @@ impl HotkeyAction {
         }
     }
 
+    pub fn hotkey_mut(self, profile: &mut UserProfile) -> &mut String {
+        match self {
+            Self::Split => &mut profile.split_hotkey,
+            Self::Reset => &mut profile.reset_hotkey,
+            Self::SkipSplit => &mut profile.skip_split_hotkey,
+            Self::UndoSplit => &mut profile.undo_split_hotkey,
+            Self::Pause => &mut profile.pause_hotkey,
+            Self::Screenshot => &mut profile.screenshot_hotkey,
+            Self::ToggleAutoResetImage => &mut profile.toggle_auto_reset_image_hotkey,
+        }
+    }
+
+    /// Sets this action's hotkey, `""` to clear it. Like AutoSplit, a hotkey belongs to one
+    /// action, so another action with the same hotkey loses it.
+    pub fn assign(self, profile: &mut UserProfile, hotkey: &str) {
+        if !hotkey.is_empty() {
+            for other in Self::ALL {
+                if other != self && other.hotkey(profile) == hotkey {
+                    other.hotkey_mut(profile).clear();
+                }
+            }
+        }
+        *self.hotkey_mut(profile) = hotkey.to_owned();
+    }
+
     pub fn name(self) -> &'static str {
         match self {
             Self::Split => "split",

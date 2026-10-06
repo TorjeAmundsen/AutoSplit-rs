@@ -166,7 +166,7 @@ function Build($name) {
             Copy-Item "$($folders[0])/$binaryName" "$output/$binaryName"
         }
     }
-    foreach ($file in @("README.md", "LICENSE", "THIRD_PARTY_NOTICES.md")) {
+    foreach ($file in @("README.md", "TUTORIAL.md", "LICENSE", "THIRD_PARTY_NOTICES.md")) {
         Copy-Item "$PSScriptRoot/$file" $output
     }
 
@@ -177,6 +177,7 @@ function Build($name) {
 
 if ($debug) {
     $env:CARGO_PROFILE_RELEASE_DEBUG = "full"
+    $env:CARGO_PROFILE_RELEASE_STRIP = "none"
 }
 
 $selected = if ($all) {

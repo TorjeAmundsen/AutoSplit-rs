@@ -29,6 +29,10 @@ jobs:
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
+      # Draws every window without a display, which catches UI errors that only show when it runs
+      - name: Render the windows
+        run: cargo run -p autosplit --example screenshots -- "$RUNNER_TEMP"
+
   build:
     strategy:
       fail-fast: false

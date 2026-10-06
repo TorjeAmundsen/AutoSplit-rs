@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use crate::runner::{ImageRef, ResetReading, Showing, Status};
+use crate::runner::{ImageRef, ResetReading, Showing, StartStatus, Status};
 
 /// Truncates to 3 decimals, so a similarity just under a threshold never shows as reaching it.
 ///
@@ -62,4 +62,60 @@ pub fn status_line(status: &Status, now: Duration, idle: &str, capture: bool) ->
         line += &format!("  {filename}");
     }
     line
+}
+
+/// The texts of AutoSplit's main window for a run's status.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct WindowTexts {
+    /// The current image's file name, `-` when none is shown.
+    pub current_file: String,
+    /// Shown instead of the current image: a countdown, or `idle`.
+    pub current_message: String,
+    /// The similarity viewer: live, highest and threshold, for the current image then the
+    /// reset image.
+    pub table: [String; 6],
+    pub image_loop: String,
+    pub start_status: String,
+}
+
+/// AutoSplit's main window texts. `idle` is shown when there's no image to show. Without a
+/// capture, the live similarities show as `-` instead of the 0 that comparing nothing gives.
+pub fn window_texts(status: &Status, now: Duration, idle: &str, capture: bool) -> WindowTexts {
+    let left = |until: Duration| seconds_remaining_text(until.saturating_sub(now).as_secs_f64());
+    let current_message = match status.showing {
+        Showing::StartDelay { until } => format!("Delayed Before Starting:\n {}", left(until)),
+        Showing::Pause { until } => format!("None (Paused). {}", left(until)),
+        Showing::SplitDelay { until } => format!("Delayed Split: {}", left(until)),
+        Showing::Image(_) => String::new(),
+        Showing::Nothing => idle.to_owned(),
+    };
+    let current_live = decimal_or_dash(if capture { status.similarity } else { None });
+    let reset = |live: String| [live, decimal_or_dash(status.reset_highest), decimal_or_dash(status.reset_threshold)];
+    let [reset_live, reset_highest, reset_threshold] = match status.reset_similarity {
+        None | Some(ResetReading::NotApplicable) => ["N/A".into(), "N/A".into(), "N/A".into()],
+        Some(ResetReading::Disabled) => reset("disabled".into()),
+        Some(ResetReading::Paused) => reset("paused".into()),
+        Some(ResetReading::Similarity(similarity)) => reset(if capture { decimal(similarity) } else { "-".into() }),
+    };
+    WindowTexts {
+        current_file: status.current_filename.clone().unwrap_or_else(|| "-".into()),
+        current_message,
+        table: [
+            current_live,
+            decimal_or_dash(status.highest),
+            decimal_or_dash(status.threshold),
+            reset_live,
+            reset_highest,
+            reset_threshold,
+        ],
+        image_loop: status.loop_position.map_or("N/A".into(), |(at, of)| format!("{at}/{of}")),
+        start_status: match status.start_status {
+            StartStatus::NotFound => "not found",
+            StartStatus::Ready => "ready",
+            StartStatus::DelayingStart => "delaying start...",
+            StartStatus::Started => "started",
+            StartStatus::NotReady => "not ready",
+        }
+        .into(),
+    }
 }

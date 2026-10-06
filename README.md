@@ -9,94 +9,7 @@ A from-scratch Rust rewrite of [AutoSplit](https://github.com/Toufool/AutoSplit)
 
 In this README, "AutoSplit" is the original Python program, and `autosplit` is this one.
 
-## Getting started
-
-1. Download the zip for your system from the releases (`windows-x64`, `windows-arm64`, `linux-x64`, `linux-arm64` or `macos-universal`) and unzip it.
-2. macOS blocks the first start because the program isn't notarized. Run `xattr -d com.apple.quarantine autosplit`, or allow it in System Settings > Privacy & Security > Open Anyway.
-3. On Linux and macOS, set up the [permissions](#permissions).
-4. Start `autosplit` (`autosplit.exe` on Windows). It opens AutoSplit's window. Like AutoSplit, it loads the profile next to it when there's exactly one `.toml` file there. Otherwise use File > Load Profile, or set it up in File > Settings and save it with File > Save Profile As.
-5. In Settings, choose your capture device. Live Capture Region shows what it captures. Set the region with X, Y, Width and Height, or let Align Region find a split image in the capture.
-6. Choose the split image folder with Browse..., then press Start Auto Splitter.
-
-Only video capture devices (capture cards, OBS Virtual Camera, webcams) work for now. Screen and window capture come later.
-
-### From a terminal
-
-Everything also works without the window, see [CLI](#cli). In the commands below, type `.\autosplit` on Windows and `./autosplit` on macOS and Linux instead of `autosplit`. Put paths with spaces in "quotes".
-
-1. Run `autosplit devices` and note your capture device's name.
-2. Run `autosplit grab --device "<name>" frame.png` and check that `frame.png` shows the game.
-3. Run `autosplit check settings.toml` to check the split images. `settings.toml` is the profile you saved in AutoSplit (File > Save Profile As).
-4. Run `autosplit run settings.toml`. It prints what happens, with the current split image and its similarity on the last line. Press Ctrl+C to stop.
-
-Without a capture device, `run` keeps going, looks for the device every 2 seconds and shows `NO DEVICE`.
-
-The Windows zip has two programs: `autosplit.exe` opens the window without a console, and `autosplit.com` is for terminals. Typing `autosplit` in a terminal runs `autosplit.com`, which runs `autosplit.exe` inside the terminal so its output and Ctrl+C work there. A Windows program is either a window program or a console program; a window program started from a terminal returns to the prompt at once and prints its output over whatever you type next.
-
-### Which timer setup to use
-
-- Windows with LiveSplit: add LiveSplit's AutoSplit Integration component, and in its settings choose `autosplit.exe` and your profile. LiveSplit then starts `autosplit` with `--auto-controlled`, which opens the window like AutoSplit (`--minimized` starts it minimized). If it doesn't split, check Help > View Log, or `autosplit.log` next to `autosplit.exe` (or in the temp folder when that folder is read-only).
-- LiveSplit One, on any system: the [LiveSplit One](#livesplit-one) connection. Browsers only see key presses while focused, so hotkeys don't reach LiveSplit One in a browser.
-- Otherwise: hotkeys, like AutoSplit. `autosplit` presses the profile's hotkeys, which the timer listens for.
-
-### LiveSplit One
-
-LiveSplit One (the web version or the desktop app) can be controlled without hotkeys. Choose LiveSplit One in Settings > Other and restart `autosplit`, or add these lines near the top of the profile, above the `[capture_region]` line (lines after it belong to the capture region and are ignored):
-
-```toml
-timer_connection = "livesplit_one"
-livesplit_one_port = 16835  # optional, this is the default
-```
-
-Then start `autosplit`, and in LiveSplit One's menu choose "Connect to Server" and enter `ws://localhost:16835`.
-
-- `autosplit` sends starts, splits, resets and pauses (images with the `{p}` flag). Resets save the attempt without asking, like LiveSplit does for AutoSplit.
-- Starting, splitting, skipping, undoing and resetting in LiveSplit One moves `autosplit` along too, like the LiveSplit integration does.
-- Start `autosplit` first. LiveSplit One doesn't reconnect by itself: after restarting `autosplit`, choose Connect to Server again.
-- LiveSplit One must run on the same computer. Only LiveSplit One can connect, not other web pages.
-- Only one LiveSplit One can be connected. A new connection replaces the older one.
-- If the browser refuses to connect (Safari has blocked this in the past), use Chrome, Edge or Firefox, or the LiveSplit One desktop app. Chrome and Edge may ask whether one.livesplit.org may access devices on your network: allow it.
-
-AutoSplit ignores these keys, so the profile keeps working with it.
-
-### Making a profile without AutoSplit
-
-AutoSplit has no macOS version, so Mac users can write a profile by hand. Keys that are left out get the defaults of AutoSplit's settings window.
-
-```toml
-split_hotkey = "num 1"
-reset_hotkey = "num 3"
-undo_split_hotkey = "num 8"
-skip_split_hotkey = "num 2"
-capture_method = "VIDEO_CAPTURE_DEVICE"
-capture_device_name = "OBS Virtual Camera"  # as `autosplit devices` shows it
-split_image_directory = "/Users/me/Splits/OoT Any%"  # on Windows, use / or 'single quotes'
-default_similarity_threshold = 0.95
-timer_connection = "livesplit_one"  # optional, see LiveSplit One
-
-[capture_region]  # in pixels of the device's frames; `autosplit grab` shows their size
-x = 0
-y = 0
-width = 1920
-height = 1080
-```
-
-The four hotkeys aren't needed with `timer_connection = "livesplit_one"`. Relative folders are read from the profile's folder.
-
-### Using a profile from another computer
-
-- Change `split_image_directory` to where the split images are now, or use `autosplit run --split-dir <folder>`.
-- Device names can differ between systems. Check `capture_device_name` against `autosplit devices`.
-- If the device's frames have another size there, change `[capture_region]` to match. `autosplit grab --profile settings.toml --device "<name>" region.png` saves exactly what gets compared.
-
-### Permissions
-
-- Linux:
-  - Global hotkeys need to read the keyboards: `sudo usermod -a -G input $USER`, then log out and back in. Any program you run can then read your keystrokes.
-  - Sending key presses needs `/dev/uinput`: `echo 'KERNEL=="uinput", TAG+="uaccess"' | sudo tee /etc/udev/rules.d/50-uinput.rules`, then restart. If `/dev/uinput` doesn't exist, load it with `sudo modprobe uinput` (and `echo uinput | sudo tee /etc/modules-load.d/uinput.conf` to keep it after a restart). Under WSL, key presses can't be sent.
-  - Capture devices need the `video` group, which desktop users usually have.
-  - Without these, AutoSplit still runs and says what's missing. The LiveSplit One connection needs none of them.
-- macOS: in System Settings > Privacy & Security, allow `autosplit` (or your terminal app, like Terminal or iTerm, when you start it from there) under Camera for capture devices, Accessibility for pressing hotkeys and Input Monitoring for listening to them. Then restart it.
+[TUTORIAL.md](TUTORIAL.md) explains how to set it up and use it: the window, the settings, split image file names, profiles, LiveSplit One and the permissions Linux and macOS need. Help > View Help opens it.
 
 ## Status
 
@@ -172,7 +85,7 @@ Capture and hotkeys:
 - Hotkeys that AutoSplit presses itself are ignored by its own hotkeys for half a second. Otherwise "start also resets" would reset the run it just started, and the last split could start a new run.
 - When two hotkeys are the same, the first one keeps it, with a warning (combos are registered before single keys). AutoSplit clears all but the last one from the profile.
 - With `--auto-controlled`, the screenshot and toggle auto reset image hotkeys from the profile work. AutoSplit only has them work once set again in the settings window.
-- With `--auto-controlled`, AutoSplit exits when LiveSplit closes its input. AutoSplit keeps running.
+- With `--auto-controlled`, `autosplit` exits when LiveSplit closes its input. AutoSplit keeps running.
 - Hotkey names follow the keyboard layout on Windows, including localized key names, like AutoSplit. On Linux and macOS they follow the US layout.
 - Navigation keys (`home`, `end`, `up`, ...) only fire for those keys, not for the numpad keys that share them with Num Lock off. `num 7` fires whatever the Num Lock state. AutoSplit tells these apart by Num Lock state, which the hotkey library used here doesn't report.
 - OBS Virtual Camera's "not started" placeholder frames are skipped, so the last real frame stays current, and they don't count as frames: after a second, `autosplit` says there are no frames, or that OBS Virtual Camera isn't started. AutoSplit means to skip them too, but checks a color they don't convert to with OpenCV 4.11, so it compares the gray placeholder.
@@ -189,11 +102,20 @@ Settings and display:
 
 Window:
 
-- AutoSplit's settings dialog has a fourth tab, Other: the timer connection, the LiveSplit One port and hardware acceleration.
-- Help > View Log shows what `autosplit` logged, which is also in `autosplit.log`. AutoSplit only shows errors, in dialogs. Those dialogs are here too.
+- The settings window has a fourth tab, Other, for the timer connection and the LiveSplit One port. It's disabled when LiveSplit started `autosplit`.
+- Help > View Log shows what `autosplit` logged, which is also in `autosplit.log`. AutoSplit only shows errors, in message boxes. Those message boxes are here too.
+- Errors about the split image folder only show in a message box when a button (Start Auto Splitter, Reload Start Image, Max FPS) or a start asked for the folder. Otherwise they're logged, and the current image area says the folder can't be used. AutoSplit is the same for most of them.
 - About shows the version, and there's no update check.
-- Set Hotkey reads the key while the settings window has focus, not globally. Escape clears the hotkey.
-- The window draws with the GPU through wgpu, or on the CPU when there's no usable GPU or hardware acceleration is off (Settings > Other, applies after a restart). It's stored per computer in `app.toml`, in `%APPDATA%\AutoSplit` on Windows, `~/Library/Application Support/AutoSplit` on macOS and `~/.config/autosplit` on Linux, not in profiles. `AUTOSPLIT_RENDERER=software` or `gpu` overrides it for one start. The log's first line says which one is used.
+- Help > View Help and the settings' Tutorial button open [TUTORIAL.md](TUTORIAL.md), not AutoSplit's tutorial.
+- Hotkey fields can be typed in, like `ctrl+shift+f5`, with the same check AutoSplit does when setting one. AutoSplit's fields are read-only.
+- Set Hotkey reads the key while the settings window has focus, not globally. Escape clears the hotkey, and clicking Set Hotkey again cancels.
+- Set Hotkey names keys without what Shift types on them (`shift+1`, not `shift+!`), and keypad keys as `num 7` whether Num Lock is on or not (AutoSplit records `home` with Num Lock off). The hotkey library used here can't tell Num Lock's state.
+- Keyboard shortcuts (Ctrl+S and the others) also work in the settings window.
+- Max FPS is disabled during a run, and measures without holding up hotkeys and the timer.
+- There's no save prompt when nothing changed. AutoSplit asks for every new profile, because its window's defaults differ from its profile defaults.
+- Warnings about a loaded profile (keys in the wrong place) are shown in one message box.
+- The live preview stops while the window is minimized or covered, which saves the work of converting frames nobody sees.
+- The window is drawn on the CPU, which only redraws what changed: mostly the 320x240 preview.
 
 Image math:
 
@@ -235,6 +157,8 @@ So:
 
 Needs Rust 1.92 or newer. Linux builds also need CMake, and NASM for x64, to build libjpeg-turbo. The window's libraries on Linux (X11 or Wayland, xkbcommon, fontconfig) are loaded when it opens, so building needs none of them.
 
+`cargo run -p autosplit --example screenshots -- <folder>` draws every window to PNG files without a display, to check the layout.
+
 ```sh
 cargo build --release
 cargo test --workspace
@@ -244,7 +168,7 @@ The tests need no network, Python or capture devices.
 
 ### Release builds
 
-`build.ps1` (PowerShell 7) builds release zips into `build/`, named `AutoSplit-v{version}-{target}.zip`:
+`build.ps1` (PowerShell 7) builds release zips into `build/`, named `AutoSplit-v{version}-{target}.zip`. Release binaries are stripped of symbols; `--debug` keeps them. Windows zips have `autosplit.exe` and `autosplit.com` (see [From a terminal](TUTORIAL.md#from-a-terminal)).
 
 ```sh
 ./build.ps1                  # pick a target from a menu
@@ -265,7 +189,7 @@ The script installs the Rust targets and the cargo tools it needs. macOS builds 
 
 ### CI
 
-- `.github/workflows/validate.yml` runs on pull requests and pushes to `main`: formatting and clippy, then the tests and a release build for every target, natively on Windows, Linux and macOS, on x64 and ARM64. The x64 half of the macOS build is tested under Rosetta 2.
+- `.github/workflows/validate.yml` runs on pull requests and pushes to `main`: formatting, clippy and drawing every window without a display, then the tests and a release build for every target, natively on Windows, Linux and macOS, on x64 and ARM64. The x64 half of the macOS build is tested under Rosetta 2.
 - `.github/workflows/release.yml` runs on `v*` tags. It checks that the tag matches the version in `Cargo.toml`, runs the validate workflow, and creates a draft GitHub release with the zips. Tags with a `-` (like `v0.2.0-beta`) become prereleases. Linux release builds run on Ubuntu 22.04, so they work on 22.04 and newer.
 
 ## CLI
@@ -298,11 +222,11 @@ autosplit bench [split images...] --capture 1920x1080
 - `crates/autosplit-core`: everything that doesn't depend on the OS. `runner.rs` is the split state machine. It never blocks: the host calls `tick` with the latest frame when `next_wakeup` is due, and acts on the effects it returns.
 - `crates/autosplit-capture`: video capture devices, one backend per OS, and the pixel format conversions.
 - `crates/autosplit-input`: global hotkeys (through livesplit-hotkey), sending key presses and AutoSplit's hotkey names.
-- `crates/autosplit-cli`: the `autosplit` program. `session.rs` drives the runner from capture (`device.rs`), hotkeys (`hotkeys.rs`), LiveSplit and LiveSplit One (`livesplit_one.rs`). `run.rs` shows a session in the terminal, `gui/` in the window, laid out in `ui/*.slint`. `src/bin/autosplit-console.rs` becomes `autosplit.com` on Windows.
+- `crates/autosplit-cli`: the `autosplit` program. `session.rs` drives the runner from capture (`device.rs`), hotkeys (`hotkeys.rs`), LiveSplit (`livesplit.rs`) and LiveSplit One (`livesplit_one.rs`). `run.rs` runs a session in the terminal, `gui/` in the window, laid out in `ui/*.slint`; the window's logic that needs no window (`document.rs`, `messages.rs`, `settings_form.rs`) is tested in `tests/gui.rs`. `src/bin/autosplit-console.rs` becomes `autosplit.com` on Windows.
 - `tests/fixtures`: split images, captures and profiles. `real/` holds split images made with AutoMask.
 - `tests/golden`: expected values from AutoSplit and OpenCV.
 - `tools/golden/generate.py`: regenerates the fixtures and golden values. Instructions are at the top of the file. Only rerun it when you mean to change the baseline.
 
 ## License
 
-GPL-3.0-only, like AutoSplit. Parts of the image processing are ports of OpenCV, the window uses Slint under its GPL-3.0 license, and the icon is AutoSplit's, see `THIRD_PARTY_NOTICES.md`.
+GPL-3.0-only, like AutoSplit. Parts of the image processing are ports of OpenCV, and the window uses Slint under its GPL-3.0 license, see `THIRD_PARTY_NOTICES.md`.

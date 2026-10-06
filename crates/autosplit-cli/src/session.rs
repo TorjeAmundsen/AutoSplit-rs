@@ -1,6 +1,6 @@
 //! A splitting session: captures from the profile's video capture device and splits, driven by
-//! hotkeys, LiveSplit (stdin and stdout) or LiveSplit One (WebSocket). The command line and the
-//! GUI each show it through a [`View`], and the GUI drives it with [`UiCommand`]s.
+//! hotkeys, LiveSplit (stdin and stdout) or LiveSplit One (WebSocket). The command line shows it
+//! with a status line, the window through a [`View`], which drives it with [`UiCommand`]s.
 
 use std::collections::HashSet;
 use std::io::Write;
@@ -13,11 +13,15 @@ use autosplit_capture::Frame;
 use autosplit_core::align::align_region;
 use autosplit_core::auto_controlled::parse_control_line;
 use autosplit_core::commands::{Command, ControlRequest, Output, TimerLink, TimerReport, outputs_for};
+use autosplit_core::compare::CompareScratch;
 use autosplit_core::hotkeys::HotkeyAction;
 use autosplit_core::image::BgraImage;
-use autosplit_core::profile::UserProfile;
+use autosplit_core::profile::{Region, UserProfile};
 use autosplit_core::runner::{Captured, Effect, Runner, RunnerSettings, Status};
-use autosplit_core::split_folder::{FolderLoad, SplitSet, load_profile_folder, load_profile_folder_to_start};
+use autosplit_core::split_folder::{
+    FolderLoad, SplitSet, ValidationError, load_profile_folder, load_profile_folder_to_start,
+};
+use autosplit_core::split_image::{SplitDefaults, SplitImage};
 use autosplit_core::text::{decimal_or_dash, status_line};
 
 use crate::console::Console;
@@ -25,7 +29,7 @@ use crate::device::{self, Device, Opened};
 use crate::hotkeys::Hotkeys;
 use crate::livesplit_one::{self, Link, ServerEvent};
 use crate::platform::PreciseTimer;
-use crate::{profile, screenshot};
+use crate::{livesplit, profile, screenshot};
 
 /// How many new frames each image is compared with to measure the comparison rate, like
 /// AutoSplit's Max FPS button.
@@ -36,6 +40,10 @@ const MAX_SLEEP: Duration = Duration::from_millis(250);
 const FOLDER_RETRY_INTERVAL: Duration = Duration::from_secs(2);
 /// How long before a wakeup Windows' timer is made precise, when it isn't already for comparing.
 const PRECISE_LEAD: Duration = Duration::from_millis(32);
+/// How often the terminal's status line is redrawn.
+const STATUS_INTERVAL: Duration = Duration::from_millis(100);
+/// How long Max FPS waits for a new frame before giving up.
+const CHECK_FPS_PATIENCE: Duration = Duration::from_secs(2);
 
 pub enum Event {
     Hotkey(HotkeyAction),
@@ -63,39 +71,77 @@ pub enum UiCommand {
     /// "Max FPS": how many comparisons a second the profile's images can do.
     CheckFps,
     ReloadStartImage,
-    /// The profile as edited in the GUI. Relative folders are read from `folder`.
+    /// The profile as edited in the GUI. Relative folders are read from `folder`. `loaded`
+    /// when it was just loaded from a file, which looks for the start image again, like
+    /// AutoSplit.
     SetProfile {
         profile: Box<UserProfile>,
         folder: PathBuf,
+        loaded: bool,
     },
     /// Move the capture region onto where this image is in the capture.
     AlignRegion(PathBuf),
 }
 
-/// Shows a session: the command line's status line, or the GUI's window.
-pub trait View: Send {
-    /// How often [`View::update`] wants calling, `None` for never.
-    fn interval(&self, profile: &UserProfile) -> Option<Duration>;
-
-    /// Whether frames have to be converted for showing, besides comparing.
-    fn wants_frames(&self, _profile: &UserProfile) -> bool {
-        false
-    }
-
-    fn update(&mut self, session: &Session, console: &mut Console);
-
+/// What the session tells the window, besides what [`View::update`] shows.
+pub enum Notice {
     /// An error that needs the runner to do something, which AutoSplit shows in a message box.
     /// It's already logged.
-    fn dialog(&mut self, _message: &str) {}
+    Dialog(String),
+    /// "Max FPS" finished, `None` when it failed.
+    Fps(Option<u32>),
+    /// Align Region moved the capture region.
+    RegionAligned(Region),
+    /// The toggle auto reset image hotkey was pressed.
+    AutoResetToggled(bool),
+    /// LiveSplit sent a profile, which the session loaded. It's as in its file.
+    ProfileLoaded { path: PathBuf, profile: Box<UserProfile> },
+}
 
-    /// "Max FPS" finished.
-    fn fps(&mut self, _fps: Option<u32>) {}
+/// What a [`View`] shows of the session.
+pub struct Snapshot<'a> {
+    pub status: &'a Status,
+    pub profile: &'a UserProfile,
+    /// The runner's clock.
+    pub now: Duration,
+    /// What the session is waiting for, when no image is shown.
+    pub idle: String,
+    /// The capture device's name, when it's open.
+    pub device_name: Option<&'a str>,
+    /// Whether the device sends frames.
+    pub receiving: bool,
+    /// The newest frame, when the view wants frames.
+    pub frame: Option<Arc<Frame>>,
+    pub images: &'a SplitSet,
+    /// Changes whenever the images are loaded again.
+    pub images_loaded: u64,
+}
 
-    /// The session changed the profile itself, like Align Region does.
-    fn profile_changed(&mut self, _profile: &UserProfile) {}
+/// Shows a session in a window.
+pub trait View: Send {
+    /// How often [`View::update`] wants calling.
+    fn interval(&self, profile: &UserProfile) -> Duration;
 
-    /// LiveSplit sent a profile, which the session loaded.
-    fn profile_loaded(&mut self, _path: &Path) {}
+    /// Whether frames have to be converted for showing, besides comparing.
+    fn wants_frames(&self, profile: &UserProfile) -> bool;
+
+    fn update(&mut self, snapshot: Snapshot<'_>);
+
+    fn notice(&mut self, notice: Notice);
+}
+
+/// AutoSplit's Max FPS in progress: each image is compared with new frames, one comparison
+/// per frame, without holding up hotkeys and LiveSplit.
+struct FpsCheck {
+    images: Vec<SplitImage>,
+    defaults: SplitDefaults,
+    scratch: CompareScratch,
+    /// The image being compared, and how many frames it was compared with.
+    image: usize,
+    compared: u32,
+    last_frame: Option<u64>,
+    started: Instant,
+    last_frame_at: Instant,
 }
 
 /// The image compared before a tick, to say in the log what split.
@@ -112,7 +158,10 @@ pub struct Session {
     link: TimerLink,
     runner: Runner,
     console: Console,
+    /// The window, or `None` for the terminal's status line.
     view: Option<Box<dyn View>>,
+    images_loaded: u64,
+    fps_check: Option<FpsCheck>,
     started: Instant,
     events: mpsc::Sender<Event>,
     hotkeys: Hotkeys,
@@ -141,12 +190,13 @@ pub fn capture_method_name(method: &str) -> &str {
 }
 
 impl Session {
-    /// A session for `profile`. Call [`Session::start`] once, then [`Session::run`].
+    /// A session for `profile`. Call [`Session::connect_timer`] and [`Session::start`] once,
+    /// then [`Session::run`].
     pub fn new(
         profile: UserProfile,
         link: TimerLink,
         console: Console,
-        view: Box<dyn View>,
+        view: Option<Box<dyn View>>,
         events: mpsc::Sender<Event>,
     ) -> Self {
         let now = Instant::now();
@@ -157,7 +207,9 @@ impl Session {
             profile_loaded: true,
             link,
             console,
-            view: Some(view),
+            view,
+            images_loaded: 0,
+            fps_check: None,
             started: now,
             events,
             hotkeys: Hotkeys::new(link, move |action| {
@@ -175,8 +227,7 @@ impl Session {
         }
     }
 
-    /// The runner's clock.
-    pub fn elapsed(&self) -> Duration {
+    fn elapsed(&self) -> Duration {
         self.started.elapsed()
     }
 
@@ -184,79 +235,52 @@ impl Session {
         &mut self.console
     }
 
-    pub fn profile(&self) -> &UserProfile {
-        &self.profile
-    }
-
-    pub fn profile_loaded(&self) -> bool {
-        self.profile_loaded
-    }
-
-    pub fn runner(&self) -> &Runner {
-        &self.runner
-    }
-
-    pub fn status(&self) -> &Status {
-        self.runner.status()
-    }
-
-    pub fn link(&self) -> TimerLink {
-        self.link
-    }
-
-    /// The capture device's name, when it's open.
-    pub fn device_name(&self) -> Option<&str> {
-        self.device.capture().map(|capture| capture.device().name.as_str())
-    }
-
-    pub fn receiving(&self) -> bool {
-        self.device.receiving()
-    }
-
-    /// The newest frame, when the device sends frames.
-    pub fn latest_frame(&self) -> Option<Arc<Frame>> {
-        self.device.latest()
-    }
-
-    /// Whether `autosplit` waits for LiveSplit One to connect.
-    pub fn livesplit_one_waiting(&self) -> Option<String> {
-        self.livesplit_one.as_ref().filter(|link| !link.connected()).map(Link::address)
+    fn notify(&mut self, notice: Notice) {
+        if let Some(view) = &mut self.view {
+            view.notice(notice);
+        }
     }
 
     /// Logs an error that AutoSplit would show in a message box, and lets the view show it.
-    fn dialog(&mut self, message: impl std::fmt::Display) {
+    pub fn dialog(&mut self, message: impl std::fmt::Display) {
         let message = message.to_string();
         self.console.error(&message);
-        if let Some(view) = &mut self.view {
-            view.dialog(&message);
+        self.notify(Notice::Dialog(message));
+    }
+
+    /// Connects to how the timer is told: LiveSplit's stdin and stdout, LiveSplit One, or
+    /// pressing hotkeys.
+    pub fn connect_timer(&mut self) -> anyhow::Result<()> {
+        match self.link {
+            TimerLink::AutoControlled => {
+                // Nothing is set up until LiveSplit sends a profile
+                self.profile_loaded = false;
+                livesplit::connect(&self.events)
+            }
+            TimerLink::LiveSplitOne => self.listen_for_livesplit_one(self.profile.livesplit_one_port),
+            TimerLink::Hotkeys => {
+                self.hotkeys.start_sending(&mut self.console);
+                Ok(())
+            }
         }
     }
 
     /// Listens for LiveSplit One on `port`. Fails when the port is taken.
-    pub fn listen_for_livesplit_one(&mut self, port: u16) -> anyhow::Result<()> {
+    fn listen_for_livesplit_one(&mut self, port: u16) -> anyhow::Result<()> {
         let events = self.events.clone();
         livesplit_one::listen(port, move |event| {
             let _ = events.send(Event::LiveSplitOne(event));
         })
         .map_err(|error| match error.kind() {
             std::io::ErrorKind::AddrInUse => anyhow::anyhow!(
-                "Port {port} is already in use, probably by another autosplit that's still running. Close it, or set \
-                 livesplit_one_port in the profile to another port and use that port in LiveSplit One."
+                "Port {port} is already in use, probably by another autosplit that's still running. Close it, or \
+                 change the LiveSplit One port (in Settings > Other, or livesplit_one_port in the profile), restart, \
+                 and use that port in LiveSplit One."
             ),
             _ => anyhow::anyhow!("Couldn't listen for LiveSplit One on port {port}: {error}"),
         })?;
         self.livesplit_one = Some(Link::new(port));
         Ok(())
-    }
-
-    /// Prepares pressing hotkeys for the timer, when hotkeys are how the timer is told.
-    pub fn start_sending_hotkeys(&mut self) {
-        self.hotkeys.start_sending(&mut self.console);
-    }
-
-    /// With `--auto-controlled`, nothing is set up until LiveSplit sends a profile.
-    pub fn wait_for_profile(&mut self) {
-        self.profile_loaded = false;
     }
 
     /// Logs how the timer is told, and sets up the profile.
@@ -306,7 +330,7 @@ impl Session {
             ));
         }
         if !self.runner.is_running() {
-            self.arm();
+            self.arm(false);
         }
     }
 
@@ -327,10 +351,14 @@ impl Session {
             if self.runner.next_wakeup().is_some_and(|due| self.elapsed() >= due) {
                 self.tick();
             }
+            self.check_fps_step(now);
             self.update_view(now);
 
             let now = Instant::now();
             let mut wake = now + MAX_SLEEP;
+            if self.fps_check.is_some() {
+                wake = now + Duration::from_millis(1);
+            }
             if self.view_interval().is_some() {
                 wake = wake.min(self.next_view);
             }
@@ -390,6 +418,7 @@ impl Session {
             return;
         }
         let wanted = self.runner.needs_frames(self.elapsed())
+            || self.fps_check.is_some()
             || self.view.as_ref().is_some_and(|view| view.wants_frames(&self.profile));
         let (name, index) = (self.profile.capture_device_name.clone(), self.profile.capture_device_id);
         let events = self.events.clone();
@@ -451,13 +480,19 @@ impl Session {
             UiCommand::ReloadStartImage => {
                 if !self.runner.is_running() {
                     self.logged_folder_messages.clear();
-                    self.arm();
+                    self.arm(true);
                 }
             }
-            UiCommand::SetProfile { profile, folder } => {
+            UiCommand::SetProfile { profile, folder, loaded } => {
                 let mut profile = *profile;
                 profile.resolve_directories(&folder);
-                self.apply_profile(profile);
+                if self.profile_loaded {
+                    self.apply_profile(profile, loaded);
+                } else {
+                    // Still waiting for LiveSplit's profile, which sets everything up
+                    self.profile = profile;
+                    self.runner.set_settings(RunnerSettings::from_profile(&self.profile));
+                }
             }
             UiCommand::AlignRegion(path) => self.align_region(&path),
         }
@@ -467,41 +502,54 @@ impl Session {
     /// AutoSplit's Max FPS: compares each image with new frames, and reports how many
     /// comparisons a second that makes.
     fn check_fps(&mut self) {
-        let load = load_profile_folder(&self.profile, self.link.timer_synced());
-        let Some(images) = self.folder(load) else {
-            if let Some(view) = &mut self.view {
-                view.fps(None);
-            }
+        if self.fps_check.is_some() {
             return;
+        }
+        let load = load_profile_folder(&self.profile, self.link.timer_synced());
+        let Some(images) = self.folder(load, true) else {
+            return self.notify(Notice::Fps(None));
         };
-        let images: Vec<_> = images.splits.into_iter().chain(images.start).chain(images.reset).collect();
-        let defaults = self.profile.split_defaults();
-        let mut scratch = autosplit_core::compare::CompareScratch::default();
-        let started = Instant::now();
-        let deadline = started + Duration::from_secs(30);
-        let mut last = None;
-        for image in &images {
-            let mut count = 0;
-            while count < CHECK_FPS_ITERATIONS && Instant::now() < deadline {
-                let frame = self.device.latest();
-                let capture = frame.as_ref().and_then(|frame| frame.region_view(&self.profile.capture_region));
-                image.compare(capture, image.comparison_method(&defaults), &mut scratch);
-                let sequence = frame.as_ref().map(|frame| frame.sequence());
-                if sequence != last {
-                    count += 1;
-                } else {
-                    std::thread::sleep(Duration::from_millis(1));
-                }
-                last = sequence;
+        let now = Instant::now();
+        self.fps_check = Some(FpsCheck {
+            images: images.splits.into_iter().chain(images.start).chain(images.reset).collect(),
+            defaults: self.profile.split_defaults(),
+            scratch: CompareScratch::default(),
+            image: 0,
+            compared: 0,
+            last_frame: None,
+            started: now,
+            last_frame_at: now,
+        });
+    }
+
+    /// Compares the next image with a new frame, when one came.
+    fn check_fps_step(&mut self, now: Instant) {
+        let Some(check) = &mut self.fps_check else { return };
+        let frame = self.device.latest();
+        let sequence = frame.as_ref().map(|frame| frame.sequence());
+        if sequence.is_some() && sequence != check.last_frame {
+            let capture = frame.as_ref().and_then(|frame| frame.region_view(&self.profile.capture_region));
+            if let Some(image) = check.images.get(check.image) {
+                image.compare(capture, image.comparison_method(&check.defaults), &mut check.scratch);
+            }
+            check.last_frame = sequence;
+            check.last_frame_at = now;
+            check.compared += 1;
+            if check.compared == CHECK_FPS_ITERATIONS {
+                check.image += 1;
+                check.compared = 0;
             }
         }
-        let comparisons = CHECK_FPS_ITERATIONS * images.len() as u32;
-        let fps = (Instant::now() < deadline).then(|| (comparisons as f64 / started.elapsed().as_secs_f64()) as u32);
-        if fps.is_none() {
+        drop(frame);
+        if check.image >= check.images.len() {
+            let comparisons = CHECK_FPS_ITERATIONS as usize * check.images.len();
+            let fps = (comparisons as f64 / check.started.elapsed().as_secs_f64()) as u32;
+            self.fps_check = None;
+            self.notify(Notice::Fps(Some(fps)));
+        } else if now.duration_since(check.last_frame_at) > CHECK_FPS_PATIENCE {
+            self.fps_check = None;
             self.dialog("Max FPS needs frames from the capture device, and none came.");
-        }
-        if let Some(view) = &mut self.view {
-            view.fps(fps);
+            self.notify(Notice::Fps(None));
         }
     }
 
@@ -513,18 +561,22 @@ impl Session {
             Err(error) => return self.dialog(format_args!("Couldn't read {} as a PNG image: {error}", path.display())),
         };
         let frame = self.device.latest();
-        let Some(capture) = frame.as_ref().and_then(|frame| frame.region_view(&self.profile.capture_region)) else {
+        let found = frame.as_ref().and_then(|frame| {
+            let capture = frame.region_view(&self.profile.capture_region)?;
+            let (width, height) = frame.frame_size();
+            Some((self.profile.capture_region.rect(width, height), align_region(capture, template.view())))
+        });
+        let Some((rect, aligned)) = found else {
             return self.dialog("There's no capture to align the region in.");
         };
-        let Some(aligned) = align_region(capture, &template.view()) else {
-            return self.dialog(
-                "The reference image doesn't match the capture well enough. Check that it's in the capture region.",
-            );
-        };
         drop(frame);
+        let Some(aligned) = aligned else {
+            return self.dialog("No area in capture region matched reference image. Alignment failed.");
+        };
+        // From where the region really starts in the frame, which a region partly outside it doesn't
         let region = &mut self.profile.capture_region;
-        region.x += aligned.x as i64;
-        region.y += aligned.y as i64;
+        region.x = (rect.left + aligned.x) as i64;
+        region.y = (rect.top + aligned.y) as i64;
         region.width = aligned.width as i64;
         region.height = aligned.height as i64;
         self.console.log(format_args!(
@@ -535,9 +587,7 @@ impl Session {
             region.width,
             region.height
         ));
-        if let Some(view) = &mut self.view {
-            view.profile_changed(&self.profile);
-        }
+        self.notify(Notice::RegionAligned(self.profile.capture_region));
     }
 
     /// Something the timer reported, from LiveSplit's stdin or a LiveSplit One event.
@@ -589,9 +639,7 @@ impl Session {
                 self.runner.set_settings(RunnerSettings::from_profile(&self.profile));
                 let state = if self.profile.enable_auto_reset { "on" } else { "off" };
                 self.console.log(format_args!("Auto reset image turned {state}"));
-                if let Some(view) = &mut self.view {
-                    view.profile_changed(&self.profile);
-                }
+                self.notify(Notice::AutoResetToggled(self.profile.enable_auto_reset));
             }
         }
         self.handle_effects();
@@ -609,7 +657,7 @@ impl Session {
                     Effect::RequestStart => self.start_run(),
                     Effect::Stopped => {
                         self.console.log("Run ended");
-                        self.arm();
+                        self.arm(false);
                     }
                 }
             }
@@ -655,36 +703,46 @@ impl Session {
         }
     }
 
-    /// Logs a folder's errors and warnings, once each, and returns its images if it's valid.
-    fn folder(&mut self, load: FolderLoad) -> Option<SplitSet> {
-        let messages = load
-            .load_errors
-            .iter()
-            .map(|error| format!("error: {error}"))
-            .chain(load.warnings.iter().map(|warning| format!("warning: {warning}")))
-            .chain(load.result.as_ref().err().map(|error| format!("error: {error}")));
-        for message in messages.collect::<Vec<_>>() {
-            if !self.logged_folder_messages.insert(message.clone()) {
-                continue;
+    /// Logs a folder's errors and warnings, and returns its images if it's valid. Errors are
+    /// shown in message boxes for `dialogs`, when a button asked for the folder like in
+    /// AutoSplit. Otherwise each message is only logged once, since the folder is loaded again
+    /// and again.
+    fn folder(&mut self, load: FolderLoad, dialogs: bool) -> Option<SplitSet> {
+        let errors =
+            load.load_errors.iter().map(ToString::to_string).chain(load.result.as_ref().err().map(ToString::to_string));
+        for error in errors.collect::<Vec<_>>() {
+            if dialogs {
+                self.logged_folder_messages.insert(format!("error: {error}"));
+                self.dialog(error);
+            } else if self.logged_folder_messages.insert(format!("error: {error}")) {
+                self.console.error(error);
             }
-            match message.strip_prefix("error: ") {
-                Some(error) => self.dialog(error),
-                None => self.console.log(message),
+        }
+        for warning in &load.warnings {
+            let message = format!("warning: {warning}");
+            if self.logged_folder_messages.insert(message.clone()) {
+                self.console.log(message);
             }
         }
         self.folder_error = load.result.as_ref().err().map(ToString::to_string);
         load.result.ok()
     }
 
-    /// Loads the split image folder and looks for its start image.
-    fn arm(&mut self) {
+    /// Loads the split image folder and looks for its start image. `asked` when a button asked,
+    /// which shows errors in message boxes.
+    fn arm(&mut self, asked: bool) {
         let load = load_profile_folder(&self.profile, self.link.timer_synced());
-        match self.folder(load) {
+        self.images_loaded += 1;
+        match self.folder(load, asked) {
             Some(images) => {
                 let has_start = images.start.is_some();
                 let now = self.elapsed();
                 if self.runner.arm(images, now) && has_start {
                     self.console.log("Looking for the start image");
+                } else if asked && !has_start {
+                    self.dialog(
+                        "Your Split Image Folder does not contain an image with the keyword 'start_auto_splitter'.",
+                    );
                 }
             }
             None => {
@@ -699,7 +757,7 @@ impl Session {
             return;
         }
         self.next_folder_retry = now + FOLDER_RETRY_INTERVAL;
-        self.arm();
+        self.arm(false);
         if self.folder_error.is_none() {
             self.console.log("The split image folder is OK now");
             self.logged_folder_messages.clear();
@@ -709,14 +767,19 @@ impl Session {
     fn start_run(&mut self) {
         let run_start = self.elapsed();
         let load = load_profile_folder_to_start(&self.profile, self.link.timer_synced());
-        let Some(images) = self.folder(load) else {
+        let no_split_hotkey = matches!(load.result, Err(ValidationError::NoSplitHotkey));
+        self.images_loaded += 1;
+        let Some(images) = self.folder(load, false) else {
             let reason = self.folder_error.clone().unwrap_or_default();
-            let retry = match self.link {
-                TimerLink::Hotkeys => "Fix it, then press the split hotkey to try again.",
+            if no_split_hotkey {
+                return self.dialog(reason);
+            }
+            let retry = match (self.link, self.view.is_some()) {
+                (TimerLink::Hotkeys, true) => "Fix it, then press Start Auto Splitter or the split hotkey.",
+                (TimerLink::Hotkeys, false) => "Fix it, then press the split hotkey to try again.",
                 _ => "Fix it, then reset the timer and start it again.",
             };
-            self.dialog(format_args!("The run couldn't start: {reason} {retry}"));
-            return;
+            return self.dialog(format_args!("The run couldn't start: {reason} {retry}"));
         };
         let now = self.elapsed();
         if self.runner.start(images, now, run_start) {
@@ -729,23 +792,24 @@ impl Session {
             self.console.warn("LiveSplit asked to load a profile without giving its path");
             return;
         }
-        let (profile, warnings) = match profile::load(Path::new(path), None) {
+        let path = Path::new(path);
+        let (raw, warnings) = match profile::load_raw(path) {
             Ok(loaded) => loaded,
             Err(error) => return self.dialog(format_args!("{error:#}")),
         };
-        self.console.log(format_args!("Loaded {path}"));
+        self.console.log(format_args!("Loaded {}", path.display()));
         for warning in warnings {
             self.console.warn(warning);
         }
-        if let Some(view) = &mut self.view {
-            view.profile_loaded(Path::new(path));
-        }
-        self.apply_profile(profile);
+        let mut profile = raw.clone();
+        profile.resolve_directories(path.parent().unwrap_or(Path::new(".")));
+        self.notify(Notice::ProfileLoaded { path: path.to_owned(), profile: Box::new(raw) });
+        self.apply_profile(profile, true);
     }
 
     /// Switches to `profile`: reopens the device when it changed, and sets up hotkeys and the
-    /// start image again when they did.
-    fn apply_profile(&mut self, profile: UserProfile) {
+    /// start image again when they did, or when it was just `loaded` from a file.
+    fn apply_profile(&mut self, profile: UserProfile, loaded: bool) {
         let device_changed = (&profile.capture_method, &profile.capture_device_name, profile.capture_device_id)
             != (&self.profile.capture_method, &self.profile.capture_device_name, self.profile.capture_device_id);
         let hotkeys_changed =
@@ -764,9 +828,9 @@ impl Session {
         if hotkeys_changed {
             self.hotkeys.set_profile(&self.profile, &mut self.console);
         }
-        if folder_changed && !self.runner.is_running() {
+        if (folder_changed || loaded) && !self.runner.is_running() {
             self.logged_folder_messages.clear();
-            self.arm();
+            self.arm(false);
         }
     }
 
@@ -785,7 +849,10 @@ impl Session {
     }
 
     fn view_interval(&self) -> Option<Duration> {
-        self.view.as_ref().and_then(|view| view.interval(&self.profile))
+        match &self.view {
+            Some(view) => Some(view.interval(&self.profile)),
+            None => self.console.shows_status().then_some(STATUS_INTERVAL),
+        }
     }
 
     fn update_view(&mut self, now: Instant) {
@@ -794,25 +861,37 @@ impl Session {
             return;
         }
         self.next_view = now + interval;
-        if let Some(mut view) = self.view.take() {
-            let mut console = std::mem::replace(&mut self.console, Console::silent());
-            view.update(self, &mut console);
-            self.console = console;
-            self.view = Some(view);
-        }
+        let Some(mut view) = self.view.take() else {
+            let line = self.status_line();
+            return self.console.status(&line);
+        };
+        let frame = view.wants_frames(&self.profile).then(|| self.device.latest()).flatten();
+        view.update(Snapshot {
+            status: self.runner.status(),
+            profile: &self.profile,
+            now: self.elapsed(),
+            idle: self.idle_text(),
+            device_name: self.device.capture().map(|capture| capture.device().name.as_str()),
+            receiving: self.device.receiving(),
+            frame,
+            images: self.runner.images(),
+            images_loaded: self.images_loaded,
+        });
+        self.view = Some(view);
     }
 
     /// What the session is waiting for, when no image is shown.
-    pub fn idle_text(&self) -> String {
+    fn idle_text(&self) -> String {
         let link = self.livesplit_one.as_ref();
+        let see_log = if self.view.is_some() { "see Help > View Log" } else { "see above" };
         match self.link {
             TimerLink::AutoControlled if !self.profile_loaded => "waiting for LiveSplit to send a profile".into(),
-            _ if self.folder_error.is_some() => "can't start: fix the split images (see above)".into(),
+            _ if self.folder_error.is_some() => format!("can't start: fix the split images ({see_log})"),
             TimerLink::Hotkeys if self.profile.split_hotkey.is_empty() => {
                 "can't start: the profile has no split hotkey".into()
             }
             TimerLink::Hotkeys if self.hotkeys.listening_failed() => {
-                "can't start: hotkeys don't work (see above)".into()
+                format!("can't start: hotkeys don't work ({see_log})")
             }
             TimerLink::Hotkeys => format!("ready: press {} to start", self.profile.split_hotkey),
             TimerLink::AutoControlled => "ready: start the timer in LiveSplit".into(),
@@ -824,7 +903,7 @@ impl Session {
     }
 
     /// The command line's one-line status.
-    pub fn status_line(&self) -> String {
+    fn status_line(&self) -> String {
         let link = self.livesplit_one.as_ref();
         let idle = self.idle_text();
         let mut problems = Vec::new();

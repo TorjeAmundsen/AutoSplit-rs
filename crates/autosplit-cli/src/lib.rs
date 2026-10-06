@@ -5,6 +5,7 @@ pub mod console;
 pub mod device;
 pub mod gui;
 pub mod hotkeys;
+pub mod livesplit;
 pub mod livesplit_one;
 pub mod platform;
 pub mod profile;

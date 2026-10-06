@@ -530,3 +530,38 @@ pub fn bgr_to_gray(src: &[u8], cn: usize, dst: &mut [u8]) {
         *out = (sum >> SHIFT) as u8;
     }
 }
+
+/// Stretches `view` to `width` x `height` with bilinear filtering, as RGBA for showing on
+/// screen. Not an OpenCV port: it's for the live preview, so it uses 8-bit fixed point weights.
+pub fn stretch_to_rgba(view: BgraView, width: usize, height: usize, out: &mut [[u8; 4]]) {
+    debug_assert_eq!(out.len(), width * height);
+    if view.is_empty() {
+        out.fill([0; 4]);
+        return;
+    }
+    // Where each output pixel's center falls in the source, as two neighbors and the weight of
+    // the second in 1/256
+    let taps = |out_size: usize, size: usize| -> Vec<(usize, usize, u32)> {
+        let scale = size as f32 / out_size as f32;
+        (0..out_size)
+            .map(|i| {
+                let at = ((i as f32 + 0.5) * scale - 0.5).clamp(0.0, (size - 1) as f32);
+                let first = at as usize;
+                (first, (first + 1).min(size - 1), ((at - first as f32) * 256.0).round() as u32)
+            })
+            .collect()
+    };
+    let columns = taps(width, view.width());
+    for ((y0, y1, fy), row) in taps(height, view.height()).into_iter().zip(out.chunks_exact_mut(width.max(1))) {
+        let (top, bottom) = (view.row(y0), view.row(y1));
+        for (&(x0, x1, fx), pixel) in columns.iter().zip(row) {
+            let mix = |channel: usize| {
+                let blend = |source: &[u8]| {
+                    u32::from(source[x0 * 4 + channel]) * (256 - fx) + u32::from(source[x1 * 4 + channel]) * fx
+                };
+                ((blend(top) * (256 - fy) + blend(bottom) * fy + (1 << 15)) >> 16) as u8
+            };
+            *pixel = [mix(2), mix(1), mix(0), mix(3)];
+        }
+    }
+}

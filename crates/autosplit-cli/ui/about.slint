@@ -4,7 +4,6 @@ import { Button } from "std-widgets.slint";
 
 export component AboutWindow inherits Window {
     title: "About AutoSplit";
-    icon: @image-url("icon.png");
     width: 264px;
     height: 250px;
     default-font-size: 12px;
@@ -21,18 +20,10 @@ export component AboutWindow inherits Window {
         text: "Version: " + root.version;
     }
 
-    Image {
-        x: 190px;
-        y: 17px;
-        width: 64px;
-        height: 64px;
-        source: @image-url("icon.png");
-    }
-
     Text {
         x: 10px;
         y: 44px;
-        width: 175px;
+        width: 244px;
         wrap: word-wrap;
         text: "A rewrite in Rust of AutoSplit, created by Toufool and Faschz, maintained by Avasam.";
     }

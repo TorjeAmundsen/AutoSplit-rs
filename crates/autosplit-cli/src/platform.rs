@@ -65,19 +65,22 @@ impl Drop for PreciseTimer {
 }
 
 /// On Windows, where `autosplit.exe` is a GUI program, writes to the console of the terminal it
-/// was started from: autosplit.com's, or the terminal's when started directly.
-pub fn attach_console() {
+/// was started from: autosplit.com's, or the terminal's when started directly. Returns whether
+/// there was one; elsewhere, whether stderr is a terminal.
+pub fn attach_console() -> bool {
     #[cfg(windows)]
     unsafe {
         use std::os::windows::io::IntoRawHandle;
         use windows::Win32::Foundation::HANDLE;
         use windows::Win32::System::Console::{
             ATTACH_PARENT_PROCESS, AttachConsole, GetStdHandle, STD_ERROR_HANDLE, STD_HANDLE, STD_INPUT_HANDLE,
-            STD_OUTPUT_HANDLE, SetStdHandle,
+            STD_OUTPUT_HANDLE, SetConsoleCtrlHandler, SetStdHandle,
         };
         if AttachConsole(ATTACH_PARENT_PROCESS).is_err() {
-            return;
+            return false;
         }
+        // Ignoring Ctrl+C is inherited, and a launcher may have asked for it for itself
+        let _ = SetConsoleCtrlHandler(None, false);
         // Handles the terminal didn't redirect go to the console
         let handles: [(STD_HANDLE, &str, bool); 3] = [
             (STD_INPUT_HANDLE, "CONIN$", false),
@@ -92,19 +95,77 @@ pub fn attach_console() {
                 let _ = SetStdHandle(which, HANDLE(file.into_raw_handle()));
             }
         }
+        true
+    }
+    #[cfg(not(windows))]
+    {
+        use std::io::IsTerminal;
+        std::io::stderr().is_terminal()
     }
 }
 
-/// Shows an error in a message box on Windows, where a GUI program has no console to print it in.
+/// Shows an error in a message box, for when there's no terminal to print it in.
 pub fn show_error(message: &str) {
+    let _ = rfd::MessageDialog::new()
+        .set_title("Error")
+        .set_description(message)
+        .set_level(rfd::MessageLevel::Error)
+        .show();
+}
+
+/// Opens a file or link with its default app, like AutoSplit's `open_file`, without waiting
+/// for the app.
+pub fn open(target: impl AsRef<std::ffi::OsStr>) -> std::io::Result<()> {
+    let opener = if cfg!(windows) {
+        "explorer"
+    } else if cfg!(target_os = "macos") {
+        "open"
+    } else {
+        "xdg-open"
+    };
+    let mut child = std::process::Command::new(opener)
+        .arg(target)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()?;
+    // Reaped in the background, so it doesn't stay a zombie
+    std::thread::spawn(move || child.wait());
+    Ok(())
+}
+
+/// Keeps the OS from slowing the session down while the window is minimized or covered, which
+/// it does to windowed programs but not to console ones: Windows 11 drops the precise timer
+/// [`PreciseTimer`] asks for, and macOS's App Nap stretches waits.
+pub fn keep_running_when_hidden() {
     #[cfg(windows)]
-    {
-        let _ = rfd::MessageDialog::new()
-            .set_title("AutoSplit")
-            .set_description(message)
-            .set_level(rfd::MessageLevel::Error)
-            .show();
+    unsafe {
+        use windows::Win32::System::Threading::{
+            GetCurrentProcess, PROCESS_POWER_THROTTLING_CURRENT_VERSION,
+            PROCESS_POWER_THROTTLING_IGNORE_TIMER_RESOLUTION, PROCESS_POWER_THROTTLING_STATE, ProcessPowerThrottling,
+            SetProcessInformation,
+        };
+        let state = PROCESS_POWER_THROTTLING_STATE {
+            Version: PROCESS_POWER_THROTTLING_CURRENT_VERSION,
+            ControlMask: PROCESS_POWER_THROTTLING_IGNORE_TIMER_RESOLUTION,
+            StateMask: 0,
+        };
+        let _ = SetProcessInformation(
+            GetCurrentProcess(),
+            ProcessPowerThrottling,
+            std::ptr::from_ref(&state).cast(),
+            size_of::<PROCESS_POWER_THROTTLING_STATE>() as u32,
+        );
     }
-    #[cfg(not(windows))]
-    let _ = message;
+    #[cfg(target_os = "macos")]
+    {
+        use objc2_foundation::{NSActivityOptions, NSProcessInfo, NSString};
+        let reason = NSString::from_str("Comparing frames for splits");
+        let activity = NSProcessInfo::processInfo().beginActivityWithOptions_reason(
+            NSActivityOptions::UserInitiatedAllowingIdleSystemSleep | NSActivityOptions::LatencyCritical,
+            &reason,
+        );
+        // For as long as the program runs
+        std::mem::forget(activity);
+    }
 }

@@ -106,7 +106,7 @@ impl Hotkeys {
                 Ok(listener) => self.listener = Some(listener),
                 Err(error) => {
                     console.warn(format_args!(
-                        "Hotkeys won't work. {error} Or use LiveSplit One (see README.md), which needs no permissions."
+                        "Hotkeys won't work. {error} Or use LiveSplit One (see TUTORIAL.md), which needs no permissions."
                     ));
                     self.listening_failed = true;
                 }

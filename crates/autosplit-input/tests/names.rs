@@ -74,14 +74,29 @@ fn names_pressed_keys(key: KeyCode, character: Option<char>, modifiers: Modifier
     autosplit_input::hotkey_name(key, character, modifiers)
 }
 
-#[test_case("num 1"; "keypad digit")]
-#[test_case("ctrl+shift+p"; "combo")]
-#[test_case("page up"; "named key")]
-#[test_case("f12"; "function key")]
-fn recorded_names_parse_back(name: &str) {
+#[test_case(KeyCode::NumpadDivide, None, Modifiers::empty() => Some("/".to_owned()); "keypad divide")]
+#[test_case(KeyCode::NumpadMultiply, None, Modifiers::empty() => Some("*".to_owned()); "keypad multiply")]
+#[test_case(KeyCode::NumpadSubtract, None, Modifiers::empty() => Some("-".to_owned()); "keypad subtract")]
+#[test_case(KeyCode::NumpadDecimal, None, Modifiers::empty() => Some("decimal".to_owned()); "keypad decimal")]
+fn names_keypad_keys(key: KeyCode, character: Option<char>, modifiers: Modifiers) -> Option<String> {
+    // Act, with the expected value checked by test_case
+    autosplit_input::hotkey_name(key, character, modifiers)
+}
+
+#[test_case(KeyCode::Numpad1, None, Modifiers::empty(); "keypad digit")]
+#[test_case(KeyCode::KeyP, Some('p'), Modifiers::CONTROL | Modifiers::SHIFT; "combo")]
+#[test_case(KeyCode::PageUp, None, Modifiers::empty(); "named key")]
+#[test_case(KeyCode::F12, None, Modifiers::ALT; "function key")]
+#[test_case(KeyCode::KeyX, Some('x'), Modifiers::META; "windows or command key")]
+#[test_case(KeyCode::NumpadDecimal, None, Modifiers::empty(); "keypad decimal")]
+#[test_case(KeyCode::NumpadAdd, None, Modifiers::empty(); "keypad plus")]
+fn recorded_names_listen_for_the_key(key: KeyCode, character: Option<char>, modifiers: Modifiers) {
+    // Arrange
+    let name = autosplit_input::hotkey_name(key, character, modifiers).unwrap();
+
     // Act
-    let parsed = parse_hotkey(name, &UsLayout);
+    let parsed = parse_hotkey(&name, &UsLayout).unwrap();
 
     // Assert
-    assert!(parsed.is_ok());
+    assert!(parsed.listen.contains(&Hotkey { key_code: key, modifiers }), "{name}");
 }

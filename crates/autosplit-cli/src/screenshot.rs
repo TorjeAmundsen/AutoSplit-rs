@@ -40,12 +40,10 @@ pub fn save(
             .map_err(|error| error.to_string())
             .and_then(|png| (&file).write_all(&png).map_err(|error| error.to_string()));
         done(match written {
-            Ok(()) => {
-                if open {
-                    open_file(&path);
-                }
-                Ok(format!("Saved screenshot {}", path.display()))
-            }
+            Ok(()) => match open.then(|| crate::platform::open(&path)) {
+                Some(Err(error)) => Err(format!("Saved screenshot {}, but couldn't open it: {error}", path.display())),
+                _ => Ok(format!("Saved screenshot {}", path.display())),
+            },
             Err(error) => Err(format!("Screenshot: couldn't write {}: {error}", path.display())),
         });
     });
@@ -63,16 +61,4 @@ fn claim_path(directory: &Path) -> Option<(PathBuf, std::fs::File)> {
         }
     }
     None
-}
-
-/// Opens the file (or link) with its default app, like AutoSplit's `open_file`.
-pub fn open_file(path: &Path) {
-    let opener = if cfg!(windows) {
-        "explorer"
-    } else if cfg!(target_os = "macos") {
-        "open"
-    } else {
-        "xdg-open"
-    };
-    let _ = std::process::Command::new(opener).arg(path).status();
 }

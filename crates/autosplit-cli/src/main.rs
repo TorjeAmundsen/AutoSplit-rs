@@ -34,7 +34,7 @@ const MAX_TICKS_WITHOUT_TIME_PASSING: u32 = 10_000;
     about,
     args_conflicts_with_subcommands = true,
     after_help = "Start with `autosplit devices`, then `autosplit check <profile.toml>`, then `autosplit run \
-                  <profile.toml>`. README.md in the zip explains each step."
+                  <profile.toml>`. TUTORIAL.md in the zip explains each step."
 )]
 struct Cli {
     #[command(subcommand)]
@@ -43,7 +43,7 @@ struct Cli {
     /// for starting by hand.
     #[arg(long)]
     auto_controlled: bool,
-    /// Sent by LiveSplit along with --auto-controlled. There's no window to minimize.
+    /// Sent by LiveSplit along with --auto-controlled: starts with the window minimized.
     #[arg(long, requires = "auto_controlled", hide = true)]
     minimized: bool,
 }
@@ -144,14 +144,16 @@ impl std::error::Error for Reported {}
 fn main() -> ExitCode {
     // Commands write to the terminal they were started from
     let auto_controlled = std::env::args_os().any(|argument| argument == "--auto-controlled");
-    if std::env::args_os().len() > 1 && !auto_controlled {
-        platform::attach_console();
-    }
+    let terminal = std::env::args_os().len() > 1 && !auto_controlled && platform::attach_console();
     match run_command() {
         Ok(()) => ExitCode::SUCCESS,
+        Err(error) if error.downcast_ref::<Reported>().is_some() => ExitCode::FAILURE,
         Err(error) => {
-            if error.downcast_ref::<Reported>().is_none() {
+            if terminal {
                 eprintln!("error: {error:#}");
+            } else {
+                // Started from a file manager, a shortcut or LiveSplit, with nowhere to print
+                platform::show_error(&format!("{error:#}"));
             }
             ExitCode::FAILURE
         }
@@ -161,14 +163,14 @@ fn main() -> ExitCode {
 fn run_command() -> Result<()> {
     let cli = Cli::parse();
     if cli.auto_controlled {
-        // Without a window, LiveSplit can still be served
-        return gui::run(Options { auto_controlled: true, minimized: cli.minimized })
-            .or_else(|_| run::auto_controlled());
+        return match gui::run(Options { auto_controlled: true, minimized: cli.minimized }) {
+            // Without a window, LiveSplit can still be served
+            Err(gui::Error::NoWindow(error)) => run::auto_controlled(Some(error)),
+            result => result.map_err(gui::Error::into_inner),
+        };
     }
     let Some(command) = cli.command else {
-        return gui::run(Options { auto_controlled: false, minimized: false }).inspect_err(|error| {
-            platform::show_error(&format!("{error:#}"));
-        });
+        return gui::run(Options { auto_controlled: false, minimized: false }).map_err(gui::Error::into_inner);
     };
     match command {
         CliCommand::Run { profile, split_dir } => run::run(&profile, split_dir),

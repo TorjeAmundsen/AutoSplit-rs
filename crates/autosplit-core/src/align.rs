@@ -67,7 +67,7 @@ fn scales() -> impl Iterator<Item = f64> {
 
 /// Finds `template` in `capture`. `None` when no size matches with at least
 /// [`ALIGN_THRESHOLD`], or the template never fits.
-pub fn align_region(capture: BgraView, template: &BgraView) -> Option<Aligned> {
+pub fn align_region(capture: BgraView, template: BgraView) -> Option<Aligned> {
     let (width, height) = (capture.width(), capture.height());
     if width == 0 || height == 0 || template.is_empty() {
         return None;
@@ -111,7 +111,7 @@ pub fn align_region(capture: BgraView, template: &BgraView) -> Option<Aligned> {
         if w == 0 || h == 0 || w > width || h > height {
             continue;
         }
-        resize_nearest_to(*template, w, h, &mut buffers, &mut resized);
+        resize_nearest_to(template, w, h, &mut buffers, &mut resized);
         let template_squares: f64 = resized.data().iter().map(|&v| f64::from(v) * f64::from(v)).sum();
 
         // Sum over channels of the capture correlated with the template, in one inverse FFT
@@ -149,4 +149,18 @@ pub fn align_region(capture: BgraView, template: &BgraView) -> Option<Aligned> {
         }
     }
     best.filter(|best| best.similarity >= ALIGN_THRESHOLD)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn scales_are_numpys_linspace() {
+        // Act
+        let scales: Vec<f64> = scales().collect();
+
+        // Assert
+        assert_eq!((scales.len(), scales[0], scales[55]), (56, 0.2, 3.0));
+    }
 }

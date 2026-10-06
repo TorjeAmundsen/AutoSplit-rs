@@ -22,7 +22,7 @@ fn finds_a_reference_cut_from_the_capture() {
     let reference = capture.view().crop(20, 60, 10, 40).to_image();
 
     // Act
-    let aligned = align_region(capture.view(), &reference.view()).unwrap();
+    let aligned = align_region(capture.view(), reference.view()).unwrap();
 
     // Assert
     assert_eq!((aligned.x, aligned.y, aligned.width, aligned.height), (20, 10, 40, 30));
@@ -38,7 +38,7 @@ fn finds_a_reference_twice_the_size() {
     autosplit_core::imgproc::resize_nearest_to(cut.view(), 64, 64, &mut buffers, &mut reference);
 
     // Act
-    let aligned = align_region(capture.view(), &reference.view()).unwrap();
+    let aligned = align_region(capture.view(), reference.view()).unwrap();
 
     // Assert
     assert_eq!((aligned.x, aligned.y, aligned.width, aligned.height), (32, 16, 32, 32));
@@ -51,7 +51,44 @@ fn unrelated_reference_doesnt_align() {
     let reference = BgraImage::from_raw(16, 16, [255, 255, 255, 0].repeat(256));
 
     // Act
-    let aligned = align_region(capture.view(), &reference.view());
+    let aligned = align_region(capture.view(), reference.view());
+
+    // Assert
+    assert_eq!(aligned, None);
+}
+
+#[test]
+fn empty_capture_doesnt_align() {
+    // Arrange
+    let reference = capture().view().crop(0, 16, 0, 16).to_image();
+
+    // Act
+    let aligned = align_region(BgraImage::default().view(), reference.view());
+
+    // Assert
+    assert_eq!(aligned, None);
+}
+
+#[test]
+fn empty_reference_doesnt_align() {
+    // Arrange
+    let capture = capture();
+
+    // Act
+    let aligned = align_region(capture.view(), BgraImage::default().view());
+
+    // Assert
+    assert_eq!(aligned, None);
+}
+
+#[test]
+fn reference_too_large_at_every_size_doesnt_align() {
+    // Arrange
+    let capture = capture().view().crop(0, 8, 0, 8).to_image();
+    let reference = BgraImage::from_raw(64, 64, [10, 20, 30, 255].repeat(64 * 64));
+
+    // Act
+    let aligned = align_region(capture.view(), reference.view());
 
     // Assert
     assert_eq!(aligned, None);
