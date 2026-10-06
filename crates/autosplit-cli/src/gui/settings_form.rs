@@ -104,6 +104,15 @@ pub fn apply(profile: &mut UserProfile, edit: SettingEdit, devices: &[DeviceInfo
     true
 }
 
+/// Gives a profile without a capture device the first listed one, which the device list
+/// shows selected, like AutoSplit's list picks it when filled. Returns whether it did.
+pub fn pick_first_device(profile: &mut UserProfile, devices: &[DeviceInfo]) -> bool {
+    if devices.is_empty() || profile.has_capture_device() || profile.window_capture_method().is_some() {
+        return false;
+    }
+    apply(profile, SettingEdit::CaptureDevice(0), devices)
+}
+
 /// What the settings window shows that isn't a profile value as it is.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Shown {

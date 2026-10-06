@@ -9,7 +9,7 @@ use autosplit::gui::document::{Document, folder_text, profile_on_open};
 use autosplit::gui::log::{LOG_LINES, LogLines};
 use autosplit::gui::messages::{Answer, Buttons, Message, MessageQueue};
 use autosplit::gui::recorder::key_code;
-use autosplit::gui::settings_form::{SettingEdit, Shown, apply};
+use autosplit::gui::settings_form::{SettingEdit, Shown, apply, pick_first_device};
 use autosplit::gui::view::{Picture, Pixels, Update};
 use autosplit_capture::DeviceInfo;
 use autosplit_core::commands::{Command, TimerLink};
@@ -266,6 +266,43 @@ fn picking_a_device_saves_its_name_and_number() {
         (profile.capture_device_name.as_str(), profile.capture_device_id, profile.capture_method.as_str()),
         ("OBS Virtual Camera", 3, VIDEO_CAPTURE_DEVICE)
     );
+}
+
+#[test_case("", -1, VIDEO_CAPTURE_DEVICE => Some(("Webcam".to_owned(), 0)); "no device")]
+#[test_case("", -1, "" => Some(("Webcam".to_owned(), 0)); "no capture method")]
+#[test_case("Elgato", -1, VIDEO_CAPTURE_DEVICE => None; "device not connected")]
+#[test_case("", 3, VIDEO_CAPTURE_DEVICE => None; "device by number")]
+#[test_case("", -1, "BITBLT" => None; "window capture method")]
+fn listing_devices_picks_the_first_for_a_profile_without_one(
+    name: &str,
+    id: i64,
+    capture_method: &str,
+) -> Option<(String, i64)> {
+    // Arrange
+    let mut profile = UserProfile {
+        capture_device_name: name.into(),
+        capture_device_id: id,
+        capture_method: capture_method.into(),
+        ..UserProfile::default()
+    };
+
+    // Act
+    let picked = pick_first_device(&mut profile, &devices());
+
+    // Assert, with the expected value checked by test_case
+    picked.then_some((profile.capture_device_name, profile.capture_device_id))
+}
+
+#[test]
+fn listing_no_devices_picks_none() {
+    // Arrange
+    let mut profile = UserProfile::default();
+
+    // Act
+    let picked = pick_first_device(&mut profile, &[]);
+
+    // Assert
+    assert_eq!((picked, profile), (false, UserProfile::default()));
 }
 
 #[test]

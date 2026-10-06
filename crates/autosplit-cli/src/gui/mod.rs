@@ -650,6 +650,9 @@ impl Gui {
         if let Err(error) = window.show() {
             self.add_log_line(format!("error: Couldn't show a window: {error}"));
         }
+        // Wayland only maps a window once it draws, and the windows got their first redraw
+        // while hidden at startup, so the first show would wait for some other redraw
+        window.request_redraw();
     }
 
     /// Lists capture devices in the background, since some take a while to answer.
@@ -665,8 +668,12 @@ impl Gui {
             with_gui(move |gui| {
                 let mut state = gui.state.borrow_mut();
                 if state.devices.generation == generation {
+                    let picked = settings_form::pick_first_device(&mut state.document.profile, &list);
                     state.devices = Devices { list, scanning: false, generation };
                     drop(state);
+                    if picked {
+                        gui.send_profile(false);
+                    }
                     gui.show_profile();
                 }
             });
