@@ -252,8 +252,8 @@ fn resolves_split_folder_against_the_profile(directory: &str, expected: &str) {
     // Act
     profile.resolve_directories(Path::new("/home/me/profiles"));
 
-    // Assert
-    assert_eq!(profile.split_image_directory, expected);
+    // Assert, as paths, since Windows joins with a backslash
+    assert_eq!(Path::new(&profile.split_image_directory), Path::new(expected));
 }
 
 #[test_case("WINDOWS_GRAPHICS_CAPTURE" => "Windows Graphics Capture"; "windows graphics capture")]
