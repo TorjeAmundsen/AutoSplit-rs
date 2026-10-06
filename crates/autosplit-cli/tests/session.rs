@@ -46,7 +46,6 @@ impl View for FakeView {
         let text = match notice {
             Notice::Dialog(message) => format!("dialog: {message}"),
             Notice::AutoResetToggled(on) => format!("auto reset {on}"),
-            Notice::Fps(fps) => format!("fps {fps:?}"),
             Notice::RegionAligned(_) => "region aligned".into(),
             Notice::ProfileLoaded { .. } => "profile loaded".into(),
             Notice::TimerLinkChanged(link) => format!("timer link {link:?}"),

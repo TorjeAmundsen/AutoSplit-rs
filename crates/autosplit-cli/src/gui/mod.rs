@@ -429,10 +429,6 @@ impl Gui {
         });
         on!(weak, main, on_align_region, () gui => gui.align_region());
         on!(weak, main, on_take_screenshot, () gui => gui.send(UiCommand::Screenshot));
-        on!(weak, main, on_check_fps, () gui => {
-            gui.windows.main.set_fps_value("...".into());
-            gui.send(UiCommand::CheckFps);
-        });
         on!(weak, main, on_start_auto_splitter, () gui => gui.send(UiCommand::StartAutoSplitter));
         on!(weak, main, on_reset, () gui => gui.send(UiCommand::Reset));
         on!(weak, main, on_skip_split, () gui => gui.send(UiCommand::SkipSplit));
@@ -792,9 +788,6 @@ impl Gui {
     fn notice(&self, notice: Notice) {
         match notice {
             Notice::Dialog(message) => self.show_message(Message::error(message)),
-            Notice::Fps(fps) => {
-                self.windows.main.set_fps_value(fps.map_or(String::new(), |fps| fps.to_string()).into())
-            }
             Notice::RegionAligned(region) => {
                 self.state.borrow_mut().document.profile.capture_region = region;
                 // Sent back, so it isn't lost to an edit the session got in the meantime

@@ -30,7 +30,7 @@ Milestone 3 is done: AutoSplit's window and settings, for video capture devices 
 | LiveSplit One (WebSocket) | Done, new |
 | Screenshots | Done |
 | Screen and window capture | Later |
-| Window (Slint): main window, settings, Align Region, Set Hotkey, Max FPS | Done, for capture devices |
+| Window (Slint): main window, settings, Align Region, Set Hotkey | Done, for capture devices |
 | Select Region and Select Window | Later, with screen and window capture |
 | LiveSplit integration component (Windows only) | Later |
 
@@ -104,14 +104,14 @@ Window:
 
 - The settings window has a fourth tab, Other, for the timer connection and the LiveSplit One port. It's disabled when LiveSplit started `autosplit`.
 - Help > View Log shows what `autosplit` logged, which is also in `autosplit.log`. AutoSplit only shows errors, in message boxes. Those message boxes are here too.
-- Errors about the split image folder only show in a message box when a button (Start Auto Splitter, Reload Start Image, Max FPS) or a start asked for the folder. Otherwise they're logged, and the current image area says the folder can't be used. AutoSplit is the same for most of them.
+- Errors about the split image folder only show in a message box when a button (Start Auto Splitter, Reload Start Image) or a start asked for the folder. Otherwise they're logged, and the current image area says the folder can't be used. AutoSplit is the same for most of them.
 - About shows the version, and there's no update check.
 - Help > View Help and the settings' Tutorial button open [TUTORIAL.md](TUTORIAL.md), not AutoSplit's tutorial.
 - Hotkey fields can be typed in, like `ctrl+shift+f5`, with the same check AutoSplit does when setting one. AutoSplit's fields are read-only.
 - Set Hotkey reads the key while the settings window has focus, not globally. Escape clears the hotkey, and clicking Set Hotkey again cancels.
 - Set Hotkey names keys without what Shift types on them (`shift+1`, not `shift+!`), and keypad keys as `num 7` whether Num Lock is on or not (AutoSplit records `home` with Num Lock off). The hotkey library used here can't tell Num Lock's state.
 - Keyboard shortcuts (Ctrl+S and the others) work in the main and settings windows, not in About or the log window. AutoSplit's work in all of its windows.
-- Max FPS is disabled during a run, and measures without holding up hotkeys and the timer.
+- There's no Max FPS button. It waited for a new frame per comparison, so it only showed the capture device's frame rate.
 - There's no save prompt when nothing changed. AutoSplit asks for every new profile, because its window's defaults differ from its profile defaults.
 - Warnings about a loaded profile (keys in the wrong place) are shown in one message box.
 - The live preview stops while the window is minimized or covered, which saves the work of converting frames nobody sees.

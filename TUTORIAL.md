@@ -40,10 +40,6 @@ Select Region and Select Window are for screen and window capture, which don't e
 
 Turn off Live Capture Region in the settings once the region is right. The preview then stops, which saves a little CPU.
 
-### Max FPS
-
-Compares each split image with 10 new frames and shows how many comparisons a second that makes. It can't be more than the device's frame rate. Set the FPS limit in the settings near what the game runs at; more only costs CPU.
-
 ### Current image
 
 Shows the split image being compared, with its file name above it. `<` and `>` move to the previous and next image without telling the timer. The similarity viewer below the live preview shows:
@@ -65,7 +61,7 @@ The second row is the same for the reset image. Image Loop shows which loop of a
 
 ### Capture settings
 
-- Comparison FPS Limit: how often the capture is compared, 20 to 240 times a second.
+- Comparison FPS Limit: how often the capture is compared, 20 to 240 times a second. Set it near what the game runs at; more only costs CPU.
 - Live Capture Region: show the live preview.
 - Capture device: the device to capture from. `autosplit` finds it by name, so it keeps working when devices are added or removed.
 - Screenshots folder: where Take Screenshot and the "Screenshot on" options save. Open screenshots on capture opens each one.

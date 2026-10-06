@@ -123,7 +123,6 @@ export component MainWindow inherits Window {
     in property <string> current-image-file: "-";
     in property <image> current-image;
     in property <string> current-image-message;
-    in property <string> fps-value;
     in property <string> current-live: "-";
     in property <string> current-highest: "-";
     in property <string> current-threshold: "-";
@@ -145,7 +144,6 @@ export component MainWindow inherits Window {
     callback region-edited(float, float, float, float);
     callback align-region();
     callback take-screenshot();
-    callback check-fps();
     callback start-auto-splitter();
     callback reset();
     callback skip-split();
@@ -430,39 +428,6 @@ export component MainWindow inherits Window {
                 height: 24px;
                 text: "Take Screenshot";
                 clicked => { root.take-screenshot(); }
-            }
-
-            Button {
-                x: 10px;
-                y: 270px;
-                width: 53px;
-                height: 24px;
-                text: "Max FPS";
-                enabled: !root.running;
-                clicked => { root.check-fps(); }
-
-                Tooltip {
-                    Tip {
-                        text: "Calculate the average max FPS of the set capture region";
-                    }
-                }
-            }
-
-            Label {
-                x: 65px;
-                y: 272px;
-                width: 26px;
-                height: 20px;
-                text: root.fps-value;
-            }
-
-            // Wider than AutoSplit's 21px, since Slint's text is a little wider than Qt's
-            Label {
-                x: 92px;
-                y: 272px;
-                width: 26px;
-                height: 20px;
-                text: "FPS";
             }
 
             Preview {

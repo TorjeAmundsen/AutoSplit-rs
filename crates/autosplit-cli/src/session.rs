@@ -13,7 +13,6 @@ use autosplit_capture::Frame;
 use autosplit_core::align::align_region;
 use autosplit_core::auto_controlled::parse_control_line;
 use autosplit_core::commands::{Command, ControlRequest, Output, TimerLink, TimerReport, outputs_for};
-use autosplit_core::compare::CompareScratch;
 use autosplit_core::hotkeys::HotkeyAction;
 use autosplit_core::image::BgraImage;
 use autosplit_core::profile::{Region, UserProfile, capture_method_name};
@@ -21,7 +20,6 @@ use autosplit_core::runner::{Captured, Effect, Runner, RunnerSettings, Status};
 use autosplit_core::split_folder::{
     FolderLoad, SplitSet, ValidationError, load_profile_folder, load_profile_folder_to_start,
 };
-use autosplit_core::split_image::{SplitDefaults, SplitImage};
 use autosplit_core::text::{Compared, status_line};
 
 use crate::console::Console;
@@ -31,9 +29,6 @@ use crate::livesplit_one::{self, Link, ServerEvent};
 use crate::platform::PreciseTimer;
 use crate::{livesplit, profile, screenshot};
 
-/// How many new frames each image is compared with to measure the comparison rate, like
-/// AutoSplit's Max FPS button.
-const CHECK_FPS_ITERATIONS: u32 = 10;
 /// The longest the loop sleeps, so a failed capture device is noticed.
 const MAX_SLEEP: Duration = Duration::from_millis(250);
 /// How often a split image folder with errors is checked again.
@@ -42,8 +37,6 @@ const FOLDER_RETRY_INTERVAL: Duration = Duration::from_secs(2);
 const PRECISE_LEAD: Duration = Duration::from_millis(32);
 /// How often the terminal's status line is redrawn.
 const STATUS_INTERVAL: Duration = Duration::from_millis(100);
-/// How long Max FPS waits for a new frame before giving up.
-const CHECK_FPS_PATIENCE: Duration = Duration::from_secs(2);
 
 pub enum Event {
     Hotkey(HotkeyAction),
@@ -68,8 +61,6 @@ pub enum UiCommand {
     NextImage,
     PreviousImage,
     Screenshot,
-    /// "Max FPS": how many comparisons a second the profile's images can do.
-    CheckFps,
     ReloadStartImage,
     /// The profile as edited in the GUI. Relative folders are read from `folder`. `loaded`
     /// when it was just loaded from a file, which looks for the start image again, like
@@ -88,8 +79,6 @@ pub enum Notice {
     /// An error that needs the runner to do something, which AutoSplit shows in a message box.
     /// It's already logged.
     Dialog(String),
-    /// "Max FPS" finished, `None` when it failed.
-    Fps(Option<u32>),
     /// Align Region moved the capture region.
     RegionAligned(Region),
     /// The toggle auto reset image hotkey was pressed.
@@ -132,20 +121,6 @@ pub trait View: Send {
     fn notice(&mut self, notice: Notice);
 }
 
-/// AutoSplit's Max FPS in progress: each image is compared with new frames, one comparison
-/// per frame, without holding up hotkeys and LiveSplit.
-struct FpsCheck {
-    images: Vec<SplitImage>,
-    defaults: SplitDefaults,
-    scratch: CompareScratch,
-    /// The image being compared, and how many frames it was compared with.
-    image: usize,
-    compared: u32,
-    last_frame: Option<u64>,
-    started: Instant,
-    last_frame_at: Instant,
-}
-
 pub struct Session {
     profile: UserProfile,
     /// With `--auto-controlled`, nothing is set up until LiveSplit sends a profile.
@@ -162,7 +137,6 @@ pub struct Session {
     /// Whether there's a window, which the texts point to instead of the terminal.
     windowed: bool,
     images_loaded: u64,
-    fps_check: Option<FpsCheck>,
     started: Instant,
     events: mpsc::Sender<Event>,
     hotkeys: Hotkeys,
@@ -202,7 +176,6 @@ impl Session {
             windowed: view.is_some(),
             view,
             images_loaded: 0,
-            fps_check: None,
             started: now,
             events,
             hotkeys: Hotkeys::new(link, move |action| {
@@ -381,14 +354,10 @@ impl Session {
             if self.runner.next_wakeup().is_some_and(|due| self.elapsed() >= due) {
                 self.tick();
             }
-            self.check_fps_step(now);
             self.update_view(now);
 
             let now = Instant::now();
             let mut wake = now + MAX_SLEEP;
-            if self.fps_check.is_some() {
-                wake = now + Duration::from_millis(1);
-            }
             if self.view_interval().is_some() {
                 wake = wake.min(self.next_view);
             }
@@ -400,7 +369,7 @@ impl Session {
             }
             // Waits are only precise to Windows' 15.6 ms tick unless asked for, which costs
             // power, so precision is asked for while comparing and just before other wakeups
-            let mut precise = self.runner.needs_frames(self.elapsed()) || self.fps_check.is_some();
+            let mut precise = self.runner.needs_frames(self.elapsed());
             if let Some(due) = self.runner.next_wakeup().map(|due| self.started + due) {
                 if precise || due <= now + PRECISE_LEAD {
                     precise = true;
@@ -441,7 +410,6 @@ impl Session {
             return;
         }
         let wanted = self.runner.needs_frames(self.elapsed())
-            || self.fps_check.is_some()
             || self.view.as_ref().is_some_and(|view| view.wants_frames(&self.profile));
         let (name, index) = (&self.profile.capture_device_name, self.profile.capture_device_id);
         let events = &self.events;
@@ -500,7 +468,6 @@ impl Session {
             UiCommand::NextImage => self.runner.skip(now, true),
             UiCommand::PreviousImage => self.runner.undo(now, true),
             UiCommand::Screenshot => self.screenshot(),
-            UiCommand::CheckFps => self.check_fps(),
             UiCommand::ReloadStartImage => {
                 if !self.runner.is_running() {
                     self.logged_folder_messages.clear();
@@ -521,60 +488,6 @@ impl Session {
             UiCommand::AlignRegion(path) => self.align_region(&path),
         }
         self.handle_effects();
-    }
-
-    /// AutoSplit's Max FPS: compares each image with new frames, and reports how many
-    /// comparisons a second that makes.
-    fn check_fps(&mut self) {
-        if self.fps_check.is_some() {
-            return;
-        }
-        let load = load_profile_folder(&self.profile, self.link.timer_synced());
-        let Ok(images) = self.folder(load, true) else {
-            return self.notify(Notice::Fps(None));
-        };
-        let now = Instant::now();
-        self.fps_check = Some(FpsCheck {
-            images: images.splits.into_iter().chain(images.start).chain(images.reset).collect(),
-            defaults: self.profile.split_defaults(),
-            scratch: CompareScratch::default(),
-            image: 0,
-            compared: 0,
-            last_frame: None,
-            started: now,
-            last_frame_at: now,
-        });
-    }
-
-    /// Compares the next image with a new frame, when one came.
-    fn check_fps_step(&mut self, now: Instant) {
-        let Some(check) = &mut self.fps_check else { return };
-        let frame = self.device.latest();
-        let sequence = frame.as_ref().map(|frame| frame.sequence());
-        if sequence.is_some() && sequence != check.last_frame {
-            let capture = frame.as_ref().and_then(|frame| frame.region_view(&self.profile.capture_region));
-            if let Some(image) = check.images.get(check.image) {
-                image.compare(capture, image.comparison_method(&check.defaults), &mut check.scratch);
-            }
-            check.last_frame = sequence;
-            check.last_frame_at = now;
-            check.compared += 1;
-            if check.compared == CHECK_FPS_ITERATIONS {
-                check.image += 1;
-                check.compared = 0;
-            }
-        }
-        drop(frame);
-        if check.image >= check.images.len() {
-            let comparisons = CHECK_FPS_ITERATIONS as usize * check.images.len();
-            let fps = (comparisons as f64 / check.started.elapsed().as_secs_f64()) as u32;
-            self.fps_check = None;
-            self.notify(Notice::Fps(Some(fps)));
-        } else if now.duration_since(check.last_frame_at) > CHECK_FPS_PATIENCE {
-            self.fps_check = None;
-            self.dialog("Max FPS needs frames from the capture device, and none came.");
-            self.notify(Notice::Fps(None));
-        }
     }
 
     /// AutoSplit's Align Region: finds the image in the current capture region, and makes the
