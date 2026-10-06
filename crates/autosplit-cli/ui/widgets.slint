@@ -50,23 +50,69 @@ export component Label inherits Text {
 }
 
 // The face of a button or a spin box arrow: Fusion's gradient with a light top edge.
+// A 1px outline with Qt Fusion's 2px rounded corners: the corner pixel is left out and a faint
+// pixel inside it rounds the corner. Slint's own rounded border blends the fill into the corner
+// pixel, which shows as a brighter dot.
+component Outline inherits Rectangle {
+    in property <color> line: Theme.outline;
+
+    for edge in [
+        { x: 2px, y: 0px, w: root.width - 4px, h: 1px },
+        { x: 2px, y: root.height - 1px, w: root.width - 4px, h: 1px },
+        { x: 0px, y: 2px, w: 1px, h: root.height - 4px },
+        { x: root.width - 1px, y: 2px, w: 1px, h: root.height - 4px },
+    ]: Rectangle {
+        x: edge.x;
+        y: edge.y;
+        width: edge.w;
+        height: edge.h;
+        background: root.line;
+    }
+
+    for corner in [
+        { x: 1px, y: 1px },
+        { x: root.width - 2px, y: 1px },
+        { x: 1px, y: root.height - 2px },
+        { x: root.width - 2px, y: root.height - 2px },
+    ]: Rectangle {
+        x: corner.x;
+        y: corner.y;
+        width: 1px;
+        height: 1px;
+        background: root.line;
+        opacity: 0.5;
+    }
+}
+
+// The face of a button or a spin box arrow: Fusion's gradient with a light top edge.
 component Face inherits Rectangle {
     in property <bool> pressed;
     in property <bool> hovered;
-    border-radius: 2px;
-    border-width: 1px;
-    border-color: Theme.outline;
-    background: pressed
-        ? @linear-gradient(180deg, Theme.button-bottom 0%, Theme.button-bottom 100%)
-        : @linear-gradient(180deg, hovered ? Theme.button-top.brighter(8%) : Theme.button-top 0%, Theme.button-bottom 100%);
+    in property <color> outline-color: Theme.outline;
 
     Rectangle {
         x: 1px;
         y: 1px;
         width: parent.width - 2px;
+        height: parent.height - 2px;
+        background: root.pressed
+            ? @linear-gradient(180deg, Theme.button-bottom 0%, Theme.button-bottom 100%)
+            : @linear-gradient(180deg, root.hovered ? Theme.button-top.brighter(8%) : Theme.button-top 0%, Theme.button-bottom 100%);
+    }
+
+    Rectangle {
+        x: 2px;
+        y: 1px;
+        width: parent.width - 4px;
         height: 1px;
         background: Theme.button-highlight;
         visible: !root.pressed;
+    }
+
+    Outline {
+        width: 100%;
+        height: 100%;
+        line: root.outline-color;
     }
 }
 
@@ -90,7 +136,7 @@ export component Button inherits Rectangle {
         height: 100%;
         pressed: touch.pressed && root.enabled;
         hovered: touch.has-hover && root.enabled;
-        border-color: root.primary || focus.has-focus ? Theme.focus : Theme.outline;
+        outline-color: root.primary || focus.has-focus ? Theme.focus : Theme.outline;
     }
 
     label := Text {
@@ -132,11 +178,21 @@ export component Button inherits Rectangle {
 component FieldFrame inherits Rectangle {
     in property <bool> focused;
     in property <bool> enabled: true;
-    border-radius: 2px;
-    border-width: 1px;
-    border-color: focused ? Theme.focus : Theme.outline;
-    background: Theme.field;
     opacity: enabled ? 1 : 0.6;
+
+    Rectangle {
+        x: 1px;
+        y: 1px;
+        width: parent.width - 2px;
+        height: parent.height - 2px;
+        background: Theme.field;
+    }
+
+    Outline {
+        width: 100%;
+        height: 100%;
+        line: root.focused ? Theme.focus : Theme.outline;
+    }
 }
 
 // A one-line text field.

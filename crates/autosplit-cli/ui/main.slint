@@ -456,10 +456,11 @@ export component MainWindow inherits Window {
                 text: root.fps-value;
             }
 
+            // Wider than AutoSplit's 21px, since Slint's text is a little wider than Qt's
             Label {
                 x: 92px;
                 y: 272px;
-                width: 21px;
+                width: 26px;
                 height: 20px;
                 text: "FPS";
             }
