@@ -34,7 +34,18 @@ Copyright (C) 1991-2020, Thomas G. Lane, Guido Vollbeding.
 
 The license texts are at <https://github.com/libjpeg-turbo/libjpeg-turbo/blob/main/LICENSE.md>.
 
+## Slint
+
+The window is made with [Slint](https://slint.dev), used under the GNU General Public License
+v3.0 (one of its license options). Copyright (C) SixtyFPS GmbH.
+
 ## AutoSplit
 
 This project is a rewrite of [AutoSplit](https://github.com/Toufool/AutoSplit), licensed under
 the GNU General Public License v3.0, which this project is also licensed under (see `LICENSE`).
+The window's layout follows AutoSplit's, and `crates/autosplit-cli/ui/icon.png` and `icon.ico`
+are AutoSplit's icon.
+
+`crates/autosplit-core/src/align.rs` ports AutoSplit's Align Region, which uses OpenCV's
+`matchTemplate` (TM_SQDIFF); the matching is computed here with
+[rustfft](https://github.com/ejmahler/RustFFT) (MIT or Apache-2.0).

@@ -309,3 +309,89 @@ pub fn parse_hotkey(text: &str, layout: &dyn Layout) -> Result<ParsedHotkey, Hot
 fn lowercase_if_word(name: &str) -> String {
     if name.chars().count() > 1 { name.to_lowercase() } else { name.to_owned() }
 }
+
+/// The name AutoSplit gives a key when it records a hotkey, with the modifiers held. `character`
+/// is what the key types without modifiers, from the keyboard layout. `None` for a modifier on
+/// its own, since a hotkey needs another key.
+pub fn hotkey_name(key: KeyCode, character: Option<char>, modifiers: Modifiers) -> Option<String> {
+    use KeyCode::*;
+    if Modifier::from_key(key).is_some() {
+        return None;
+    }
+    let digits = [Numpad0, Numpad1, Numpad2, Numpad3, Numpad4, Numpad5, Numpad6, Numpad7, Numpad8, Numpad9];
+    let name = if let Some(digit) = digits.iter().position(|&numpad| numpad == key) {
+        format!("num {digit}")
+    } else {
+        let keypad = match key {
+            NumpadDecimal => Some("decimal"),
+            NumpadAdd => Some("plus"),
+            NumpadSubtract => Some("-"),
+            NumpadMultiply => Some("*"),
+            NumpadDivide => Some("/"),
+            Enter | NumpadEnter => Some("enter"),
+            _ => None,
+        };
+        match keypad.map(str::to_owned).or_else(|| key_name(key)) {
+            Some(name) => name,
+            None => match character?.to_lowercase().next()? {
+                '+' => "plus".to_owned(),
+                c => c.to_string(),
+            },
+        }
+    };
+    let meta = if cfg!(target_os = "macos") { "command" } else { "windows" };
+    let held =
+        [(Modifiers::CONTROL, "ctrl"), (Modifiers::ALT, "alt"), (Modifiers::SHIFT, "shift"), (Modifiers::META, meta)];
+    let mut parts: Vec<String> =
+        held.iter().filter(|(flag, _)| modifiers.contains(*flag)).map(|(_, name)| (*name).to_owned()).collect();
+    parts.push(name);
+    Some(parts.join("+"))
+}
+
+/// The first name [`named_key`] knows `key` by.
+fn key_name(key: KeyCode) -> Option<String> {
+    use KeyCode::*;
+    let functions =
+        [F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12, F13, F14, F15, F16, F17, F18, F19, F20, F21, F22, F23, F24];
+    if let Some(number) = functions.iter().position(|&function| function == key) {
+        return Some(format!("f{}", number + 1));
+    }
+    const NAMES: [&str; 31] = [
+        "space",
+        "tab",
+        "backspace",
+        "esc",
+        "caps lock",
+        "num lock",
+        "scroll lock",
+        "insert",
+        "delete",
+        "home",
+        "end",
+        "page up",
+        "page down",
+        "up",
+        "down",
+        "left",
+        "right",
+        "print screen",
+        "pause",
+        "menu",
+        "volume mute",
+        "volume down",
+        "volume up",
+        "next track",
+        "previous track",
+        "stop media",
+        "play/pause media",
+        "browser back",
+        "browser forward",
+        "browser refresh",
+        "browser stop",
+    ];
+    NAMES
+        .iter()
+        .chain(&["browser search key", "browser favorites", "browser start and home", "clear"])
+        .find(|name| named_key(name) == Some(key) || (**name == "clear" && key == NumpadClear))
+        .map(|name| (*name).to_owned())
+}

@@ -13,19 +13,37 @@ const STATUS_MAX_WIDTH: usize = 79;
 /// The log file starts over once it's this big.
 const LOG_MAX_BYTES: u64 = 1_000_000;
 
+/// Gets each log line, like the GUI's log window.
+pub type Listener = Box<dyn FnMut(&str) + Send>;
+
 pub struct Console {
-    out: Option<Box<dyn Write>>,
+    out: Option<Box<dyn Write + Send>>,
     terminal: bool,
     /// Also gets the log, when LiveSplit started AutoSplit and nothing else would show it.
     file: Option<File>,
     /// The status line currently shown, empty when none is.
     shown: String,
+    listener: Option<Listener>,
     started: Instant,
 }
 
 impl Console {
-    fn with(out: Option<Box<dyn Write>>, terminal: bool, file: Option<File>) -> Self {
-        Self { out, terminal, file, shown: String::new(), started: Instant::now() }
+    fn with(out: Option<Box<dyn Write + Send>>, terminal: bool, file: Option<File>) -> Self {
+        Self { out, terminal, file, shown: String::new(), listener: None, started: Instant::now() }
+    }
+
+    /// Logs nowhere.
+    pub fn silent() -> Self {
+        Self::with(None, false, None)
+    }
+
+    /// Logs to `autosplit.log` (see [`Console::auto_controlled`]) and to `listener`, for the
+    /// GUI, which has no terminal. Also to stderr when that's a terminal.
+    pub fn with_listener(listener: Listener) -> (Self, Option<PathBuf>) {
+        let (mut console, path) = Self::auto_controlled();
+        console.terminal = false;
+        console.listener = Some(listener);
+        (console, path)
     }
 
     /// Logs to stdout.
@@ -40,7 +58,7 @@ impl Console {
         let terminal = std::io::stderr().is_terminal();
         let opened = log_paths().into_iter().find_map(|path| open_log(&path).map(|file| (file, path)));
         let (file, path) = opened.unzip();
-        let out = terminal.then(|| Box::new(std::io::stderr()) as Box<dyn Write>);
+        let out = terminal.then(|| Box::new(std::io::stderr()) as Box<dyn Write + Send>);
         (Self::with(out, terminal, file), path)
     }
 
@@ -53,6 +71,9 @@ impl Console {
         let line = format!("{:>9.3}s  {message}", self.started.elapsed().as_secs_f64());
         if let Some(file) = &mut self.file {
             let _ = writeln!(file, "{line}");
+        }
+        if let Some(listener) = &mut self.listener {
+            listener(&line);
         }
         self.clear_status();
         if let Some(out) = &mut self.out {

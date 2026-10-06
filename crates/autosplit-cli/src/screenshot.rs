@@ -65,8 +65,8 @@ fn claim_path(directory: &Path) -> Option<(PathBuf, std::fs::File)> {
     None
 }
 
-/// Opens the file with its default app, like AutoSplit's `open_file`.
-fn open_file(path: &Path) {
+/// Opens the file (or link) with its default app, like AutoSplit's `open_file`.
+pub fn open_file(path: &Path) {
     let opener = if cfg!(windows) {
         "explorer"
     } else if cfg!(target_os = "macos") {

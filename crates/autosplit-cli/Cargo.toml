@@ -1,5 +1,7 @@
 [package]
 name = "autosplit"
+# autosplit-console is autosplit.com, the launcher for terminals on Windows
+default-run = "autosplit"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -12,11 +14,24 @@ autosplit-core = { version = "0.1.0", path = "../autosplit-core" }
 autosplit-input = { version = "0.1.0", path = "../autosplit-input" }
 clap = { version = "4.6.7", features = ["derive"] }
 ctrlc = "3.5.2"
+rfd = "0.17.2"
+serde = { version = "1.0.229", features = ["derive"] }
+slint = { version = "1.18.1", default-features = false, features = ["std", "backend-winit", "backend-winit-x11", "backend-winit-wayland", "renderer-femtovg-wgpu", "renderer-software", "accessibility", "compat-1-2", "unstable-winit-030"] }
+toml = "1.1.6"
 tungstenite = { version = "0.30.0", default-features = false, features = ["handshake"] }
 unicode-width = "0.2.2"
 
 [target.'cfg(windows)'.dependencies]
-windows = { version = "0.62", features = ["Win32_Media", "Win32_System_Console", "Win32_Globalization"] }
+windows = { version = "0.62", features = ["Win32_Foundation", "Win32_Media", "Win32_System_Console", "Win32_Globalization"] }
 
 [dev-dependencies]
+image = { version = "0.25.10", default-features = false, features = ["png"] }
 test-case = "3.3.1"
+
+[build-dependencies]
+slint-build = "1.18.1"
+
+# Slint finds fonts with fontconfig on Linux. Loaded when the program runs instead of linked, so
+# builds and cross builds don't need its development files.
+[target.'cfg(target_os = "linux")'.dependencies]
+fontique = { version = "0.11.1", default-features = false, features = ["fontconfig-dlopen"] }

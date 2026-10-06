@@ -1,0 +1,572 @@
+// AutoSplit's main window, at the positions of AutoSplit's design.ui.
+
+import { Button, LineEdit, Palette } from "std-widgets.slint";
+import { SettingsWindow, HotkeyRow } from "settings.slint";
+import { AboutWindow } from "about.slint";
+import { LogWindow } from "log.slint";
+import { MessageWindow } from "message.slint";
+
+export { SettingsWindow, HotkeyRow, AboutWindow, LogWindow, MessageWindow }
+
+component Label inherits Text {
+    vertical-alignment: center;
+    overflow: elide;
+}
+
+// A spin box narrow enough for AutoSplit's 51 pixels: a number field and arrow keys.
+component NumberBox inherits Rectangle {
+    in-out property <int> value;
+    in property <int> minimum: 0;
+    in property <int> maximum: 999999;
+    in property <bool> enabled: true;
+    callback edited(int);
+
+    edit := LineEdit {
+        width: 100%;
+        height: 100%;
+        input-type: number;
+        enabled: root.enabled;
+        text: root.value;
+        edited(text) => {
+            if (text.is-float()) {
+                root.value = max(root.minimum, min(root.maximum, text.to-float()));
+                root.edited(root.value);
+            }
+        }
+        key-pressed(event) => {
+            if (event.text == Key.UpArrow) {
+                root.value = min(root.maximum, root.value + 1);
+                self.text = root.value;
+                root.edited(root.value);
+                return accept;
+            }
+            if (event.text == Key.DownArrow) {
+                root.value = max(root.minimum, root.value - 1);
+                self.text = root.value;
+                root.edited(root.value);
+                return accept;
+            }
+            reject
+        }
+    }
+}
+
+// A preview area: the image stretched to fill it like AutoSplit's, or a message.
+component Preview inherits Rectangle {
+    in property <image> source;
+    in property <string> message;
+    border-width: 1px;
+    border-color: Palette.border;
+    background: Palette.alternate-background;
+
+    Image {
+        width: 100%;
+        height: 100%;
+        source: root.source;
+        image-fit: fill;
+        visible: root.message == "";
+    }
+
+    Text {
+        width: 100%;
+        height: 100%;
+        text: root.message;
+        wrap: word-wrap;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
+// AutoSplit's "Similarity Viewer" box: live, highest and threshold of the current and reset
+// images, with its grid lines.
+component SimilarityViewer inherits Rectangle {
+    in property <string> current-live;
+    in property <string> current-highest;
+    in property <string> current-threshold;
+    in property <string> reset-live;
+    in property <string> reset-highest;
+    in property <string> reset-threshold;
+    border-width: 1px;
+    border-color: Palette.border;
+    border-radius: 3px;
+
+    Rectangle {
+        x: 8px;
+        y: -7px;
+        width: title.preferred-width + 6px;
+        height: 14px;
+        background: Palette.background;
+
+        title := Text {
+            text: "Similarity Viewer";
+            font-size: 11px;
+        }
+    }
+
+    for line in [{ y: 39px }, { y: 61px }]: Rectangle {
+        x: 0px;
+        y: line.y;
+        width: 100%;
+        height: 1px;
+        background: Palette.border;
+    }
+
+    for line in [{ x: 129px }, { x: 193px }, { x: 257px }]: Rectangle {
+        x: line.x;
+        y: 20px;
+        width: 1px;
+        height: parent.height - 21px;
+        background: Palette.border;
+    }
+
+    for cell in [
+        { x: 133px, y: 22px, text: "Live" },
+        { x: 197px, y: 22px, text: "Highest" },
+        { x: 261px, y: 22px, text: "Threshold" },
+        { x: 10px, y: 42px, text: "Current Image" },
+        { x: 10px, y: 64px, text: "Reset Image" },
+        { x: 133px, y: 43px, text: root.current-live },
+        { x: 197px, y: 43px, text: root.current-highest },
+        { x: 261px, y: 43px, text: root.current-threshold },
+        { x: 133px, y: 64px, text: root.reset-live },
+        { x: 197px, y: 64px, text: root.reset-highest },
+        { x: 261px, y: 64px, text: root.reset-threshold },
+    ]: Label {
+        x: cell.x;
+        y: cell.y;
+        width: cell.x < 100px ? 111px : 60px;
+        height: 16px;
+        text: cell.text;
+    }
+}
+
+export component MainWindow inherits Window {
+    title: "AutoSplit";
+    icon: @image-url("icon.png");
+    default-font-size: 12px;
+
+    in property <string> split-image-folder: "No Folder Selected";
+    in property <bool> running;
+    in property <string> device-name: "-";
+    in-out property <int> region-x;
+    in-out property <int> region-y;
+    in-out property <int> region-width;
+    in-out property <int> region-height;
+    in property <image> live-image;
+    in property <string> live-message;
+    in property <string> current-image-title: "Current Image";
+    in property <string> current-image-file: "-";
+    in property <image> current-image;
+    in property <string> current-image-message;
+    in property <string> fps-value;
+    in property <string> current-live: "-";
+    in property <string> current-highest: "-";
+    in property <string> current-threshold: "-";
+    in property <string> reset-live: "-";
+    in property <string> reset-highest: "-";
+    in property <string> reset-threshold: "-";
+    in property <string> image-loop: "N/A";
+    in property <string> start-image-status: "not found";
+    in property <bool> can-start: true;
+    in property <bool> can-reset;
+    in property <bool> can-skip;
+    in property <bool> can-undo;
+    in property <bool> can-next;
+    in property <bool> can-previous;
+
+    callback browse-folder();
+    callback region-edited(int, int, int, int);
+    callback align-region();
+    callback take-screenshot();
+    callback check-fps();
+    callback start-auto-splitter();
+    callback reset();
+    callback skip-split();
+    callback undo-split();
+    callback next-image();
+    callback previous-image();
+    callback reload-start-image();
+    callback open-settings();
+    callback save-profile();
+    callback save-profile-as();
+    callback load-profile();
+    callback view-help();
+    callback view-log();
+    callback about();
+
+    MenuBar {
+        Menu {
+            title: "File";
+            MenuItem {
+                title: "Settings";
+                activated => { root.open-settings(); }
+            }
+            MenuSeparator { }
+            MenuItem {
+                title: "Save Profile";
+                activated => { root.save-profile(); }
+            }
+            MenuItem {
+                title: "Save Profile As...";
+                activated => { root.save-profile-as(); }
+            }
+            MenuItem {
+                title: "Load Profile";
+                activated => { root.load-profile(); }
+            }
+        }
+        Menu {
+            title: "Help";
+            MenuItem {
+                title: "View Help";
+                activated => { root.view-help(); }
+            }
+            MenuItem {
+                title: "View Log";
+                activated => { root.view-log(); }
+            }
+            MenuSeparator { }
+            MenuItem {
+                title: "About AutoSplit";
+                activated => { root.about(); }
+            }
+        }
+    }
+
+    // AutoSplit's 786x404 window below its menu bar. The layout sizes the window to fit it.
+    VerticalLayout {
+        Rectangle {
+            width: 786px;
+            height: 404px;
+
+            Label {
+                x: 10px;
+                y: 9px;
+                width: 117px;
+                height: 16px;
+                text: "Split Image Folder:";
+            }
+
+            LineEdit {
+                x: 127px;
+                y: 4px;
+                width: 561px;
+                height: 26px;
+                read-only: true;
+                text: root.split-image-folder;
+            }
+
+            Button {
+                x: 696px;
+                y: 4px;
+                width: 81px;
+                height: 26px;
+                text: "Browse...";
+                enabled: !root.running;
+                clicked => { root.browse-folder(); }
+            }
+
+            Label {
+                x: 127px;
+                y: 31px;
+                width: 318px;
+                height: 20px;
+                text: "Capture Region";
+                horizontal-alignment: center;
+            }
+
+            Label {
+                x: 127px;
+                y: 49px;
+                width: 318px;
+                height: 18px;
+                text: root.device-name;
+                horizontal-alignment: center;
+            }
+
+            Label {
+                x: 456px;
+                y: 31px;
+                width: 318px;
+                height: 20px;
+                text: root.current-image-title;
+                horizontal-alignment: center;
+            }
+
+            Button {
+                x: 455px;
+                y: 49px;
+                width: 27px;
+                height: 18px;
+                text: "<";
+                enabled: root.can-previous;
+                clicked => { root.previous-image(); }
+            }
+
+            Label {
+                x: 484px;
+                y: 49px;
+                width: 264px;
+                height: 18px;
+                text: root.current-image-file;
+                horizontal-alignment: center;
+            }
+
+            Button {
+                x: 750px;
+                y: 49px;
+                width: 27px;
+                height: 18px;
+                text: ">";
+                enabled: root.can-next;
+                clicked => { root.next-image(); }
+            }
+
+            // Window capture isn't supported yet, like AutoSplit disables these for capture devices
+            Button {
+                x: 10px;
+                y: 67px;
+                width: 107px;
+                height: 24px;
+                text: "Select Region";
+                enabled: false;
+            }
+
+            Button {
+                x: 10px;
+                y: 93px;
+                width: 107px;
+                height: 24px;
+                text: "Select Window";
+                enabled: false;
+            }
+
+            Button {
+                x: 10px;
+                y: 119px;
+                width: 107px;
+                height: 24px;
+                text: "Align Region";
+                clicked => { root.align-region(); }
+            }
+
+            Label {
+                x: 11px;
+                y: 145px;
+                width: 49px;
+                height: 20px;
+                text: "X";
+            }
+
+            Label {
+                x: 66px;
+                y: 145px;
+                width: 49px;
+                height: 20px;
+                text: "Y";
+            }
+
+            NumberBox {
+                x: 11px;
+                y: 165px;
+                width: 51px;
+                height: 24px;
+                value <=> root.region-x;
+                edited => { root.region-edited(root.region-x, root.region-y, root.region-width, root.region-height); }
+            }
+
+            NumberBox {
+                x: 66px;
+                y: 165px;
+                width: 51px;
+                height: 24px;
+                value <=> root.region-y;
+                edited => { root.region-edited(root.region-x, root.region-y, root.region-width, root.region-height); }
+            }
+
+            Label {
+                x: 11px;
+                y: 190px;
+                width: 49px;
+                height: 20px;
+                text: "Width";
+            }
+
+            Label {
+                x: 66px;
+                y: 190px;
+                width: 49px;
+                height: 20px;
+                text: "Height";
+            }
+
+            NumberBox {
+                x: 11px;
+                y: 210px;
+                width: 51px;
+                height: 24px;
+                minimum: 1;
+                value <=> root.region-width;
+                edited => { root.region-edited(root.region-x, root.region-y, root.region-width, root.region-height); }
+            }
+
+            NumberBox {
+                x: 66px;
+                y: 210px;
+                width: 51px;
+                height: 24px;
+                minimum: 1;
+                value <=> root.region-height;
+                edited => { root.region-edited(root.region-x, root.region-y, root.region-width, root.region-height); }
+            }
+
+            Button {
+                x: 10px;
+                y: 240px;
+                width: 107px;
+                height: 24px;
+                text: "Take Screenshot";
+                clicked => { root.take-screenshot(); }
+            }
+
+            Button {
+                x: 10px;
+                y: 270px;
+                width: 53px;
+                height: 24px;
+                text: "Max FPS";
+                enabled: !root.running;
+                clicked => { root.check-fps(); }
+            }
+
+            Label {
+                x: 65px;
+                y: 272px;
+                width: 26px;
+                height: 20px;
+                text: root.fps-value;
+            }
+
+            Label {
+                x: 92px;
+                y: 272px;
+                width: 21px;
+                height: 20px;
+                text: "FPS";
+            }
+
+            Preview {
+                x: 127px;
+                y: 67px;
+                width: 320px;
+                height: 240px;
+                source: root.live-image;
+                message: root.live-message;
+            }
+
+            Preview {
+                x: 456px;
+                y: 67px;
+                width: 320px;
+                height: 240px;
+                source: root.current-image;
+                message: root.current-image-message;
+            }
+
+            SimilarityViewer {
+                x: 127px;
+                y: 312px;
+                width: 321px;
+                height: 84px;
+                current-live: root.current-live;
+                current-highest: root.current-highest;
+                current-threshold: root.current-threshold;
+                reset-live: root.reset-live;
+                reset-highest: root.reset-highest;
+                reset-threshold: root.reset-threshold;
+            }
+
+            Label {
+                x: 458px;
+                y: 313px;
+                width: 81px;
+                height: 20px;
+                text: "Image Loop:";
+            }
+
+            Label {
+                x: 537px;
+                y: 313px;
+                width: 121px;
+                height: 20px;
+                text: root.image-loop;
+            }
+
+            Label {
+                x: 458px;
+                y: 344px;
+                width: 121px;
+                height: 20px;
+                text: "Start Image Status:";
+            }
+
+            Label {
+                x: 577px;
+                y: 344px;
+                width: 81px;
+                height: 20px;
+                text: root.start-image-status;
+            }
+
+            Button {
+                x: 457px;
+                y: 369px;
+                width: 131px;
+                height: 27px;
+                text: "Reload Start Image";
+                enabled: !root.running;
+                clicked => { root.reload-start-image(); }
+            }
+
+            Button {
+                x: 657px;
+                y: 310px;
+                width: 59px;
+                height: 27px;
+                text: "Undo";
+                enabled: root.can-undo;
+                clicked => { root.undo-split(); }
+            }
+
+            Button {
+                x: 719px;
+                y: 310px;
+                width: 59px;
+                height: 27px;
+                text: "Skip";
+                enabled: root.can-skip;
+                clicked => { root.skip-split(); }
+            }
+
+            Button {
+                x: 657px;
+                y: 339px;
+                width: 121px;
+                height: 27px;
+                text: "Reset";
+                enabled: root.can-reset;
+                clicked => { root.reset(); }
+            }
+
+            Button {
+                x: 657px;
+                y: 369px;
+                width: 121px;
+                height: 27px;
+                text: root.running ? "Running..." : "Start Auto Splitter";
+                enabled: root.can-start;
+                clicked => { root.start-auto-splitter(); }
+            }
+        }
+    }
+}

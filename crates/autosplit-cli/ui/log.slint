@@ -1,0 +1,45 @@
+// Everything autosplit logged since it started, which autosplit.log also has.
+
+import { Button, TextEdit } from "std-widgets.slint";
+
+export component LogWindow inherits Window {
+    title: "AutoSplit Log";
+    icon: @image-url("icon.png");
+    preferred-width: 640px;
+    preferred-height: 360px;
+    min-width: 320px;
+    min-height: 160px;
+    default-font-size: 12px;
+
+    in property <string> log;
+    in property <string> log-path;
+    callback open-log-file();
+
+    VerticalLayout {
+        padding: 6px;
+        spacing: 6px;
+
+        TextEdit {
+            read-only: true;
+            font-size: 12px;
+            text: root.log;
+            wrap: word-wrap;
+        }
+
+        HorizontalLayout {
+            spacing: 6px;
+
+            Text {
+                vertical-alignment: center;
+                overflow: elide;
+                text: root.log-path;
+            }
+
+            Button {
+                text: "Open Log File";
+                enabled: root.log-path != "";
+                clicked => { root.open-log-file(); }
+            }
+        }
+    }
+}

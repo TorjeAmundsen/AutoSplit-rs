@@ -16,26 +16,18 @@ pub fn decode_ansi(bytes: &[u8]) -> String {
     String::from_utf8_lossy(bytes).into_owned()
 }
 
-/// LiveSplit starts AutoSplit without hiding its console, so Windows opens an empty console
-/// window that closes AutoSplit when closed. Detaches from it when nothing else uses it, which
-/// leaves a console AutoSplit was started from alone.
+/// When a console program that LiveSplit started (an older build, or autosplit.com) runs
+/// AutoSplit, Windows opens an empty console window that closes AutoSplit when closed. Detaches
+/// from it when nothing else uses it, which leaves a console AutoSplit was started from alone.
 pub fn leave_own_console() {
     #[cfg(windows)]
-    if owns_console() {
-        let _ = unsafe { windows::Win32::System::Console::FreeConsole() };
-    }
-}
-
-/// Whether Windows opened a console just for this program, like when it's double-clicked:
-/// the window closes as soon as it exits.
-pub fn owns_console() -> bool {
-    #[cfg(windows)]
-    {
+    unsafe {
+        use windows::Win32::System::Console::{FreeConsole, GetConsoleProcessList};
         let mut processes = [0_u32; 2];
-        unsafe { windows::Win32::System::Console::GetConsoleProcessList(&mut processes) == 1 }
+        if GetConsoleProcessList(&mut processes) == 1 {
+            let _ = FreeConsole();
+        }
     }
-    #[cfg(not(windows))]
-    false
 }
 
 /// Makes waits precise to about a millisecond while frames are compared. Windows rounds waits
@@ -70,4 +62,49 @@ impl Drop for PreciseTimer {
     fn drop(&mut self) {
         self.set(false);
     }
+}
+
+/// On Windows, where `autosplit.exe` is a GUI program, writes to the console of the terminal it
+/// was started from: autosplit.com's, or the terminal's when started directly.
+pub fn attach_console() {
+    #[cfg(windows)]
+    unsafe {
+        use std::os::windows::io::IntoRawHandle;
+        use windows::Win32::Foundation::HANDLE;
+        use windows::Win32::System::Console::{
+            ATTACH_PARENT_PROCESS, AttachConsole, GetStdHandle, STD_ERROR_HANDLE, STD_HANDLE, STD_INPUT_HANDLE,
+            STD_OUTPUT_HANDLE, SetStdHandle,
+        };
+        if AttachConsole(ATTACH_PARENT_PROCESS).is_err() {
+            return;
+        }
+        // Handles the terminal didn't redirect go to the console
+        let handles: [(STD_HANDLE, &str, bool); 3] = [
+            (STD_INPUT_HANDLE, "CONIN$", false),
+            (STD_OUTPUT_HANDLE, "CONOUT$", true),
+            (STD_ERROR_HANDLE, "CONOUT$", true),
+        ];
+        for (which, device, write) in handles {
+            if GetStdHandle(which).is_ok_and(|handle| !handle.is_invalid() && !handle.0.is_null()) {
+                continue;
+            }
+            if let Ok(file) = std::fs::OpenOptions::new().read(!write).write(write).open(device) {
+                let _ = SetStdHandle(which, HANDLE(file.into_raw_handle()));
+            }
+        }
+    }
+}
+
+/// Shows an error in a message box on Windows, where a GUI program has no console to print it in.
+pub fn show_error(message: &str) {
+    #[cfg(windows)]
+    {
+        let _ = rfd::MessageDialog::new()
+            .set_title("AutoSplit")
+            .set_description(message)
+            .set_level(rfd::MessageLevel::Error)
+            .show();
+    }
+    #[cfg(not(windows))]
+    let _ = message;
 }

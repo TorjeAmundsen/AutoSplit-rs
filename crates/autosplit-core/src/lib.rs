@@ -1,6 +1,7 @@
 //! Platform independent core of AutoSplit: split image parsing, image comparison,
 //! profiles and the split state machine. Capture, hotkeys and UI live elsewhere.
 
+pub mod align;
 pub mod auto_controlled;
 pub mod commands;
 pub mod compare;

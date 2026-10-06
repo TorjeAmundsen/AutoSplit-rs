@@ -1,0 +1,49 @@
+// A message box for errors, like AutoSplit's, and for questions like saving changes.
+
+import { Button } from "std-widgets.slint";
+
+export component MessageWindow inherits Window {
+    title: "AutoSplit";
+    icon: @image-url("icon.png");
+    preferred-width: 380px;
+    min-width: 300px;
+    default-font-size: 12px;
+
+    in property <string> message;
+    // Button texts; an empty one isn't shown
+    in property <string> primary: "OK";
+    in property <string> secondary;
+    in property <string> tertiary;
+    callback answered(int);
+
+    VerticalLayout {
+        padding: 14px;
+        spacing: 14px;
+
+        Text {
+            text: root.message;
+            wrap: word-wrap;
+        }
+
+        HorizontalLayout {
+            alignment: end;
+            spacing: 8px;
+
+            if root.tertiary != "": Button {
+                text: root.tertiary;
+                clicked => { root.answered(2); }
+            }
+
+            if root.secondary != "": Button {
+                text: root.secondary;
+                clicked => { root.answered(1); }
+            }
+
+            Button {
+                text: root.primary;
+                primary: true;
+                clicked => { root.answered(0); }
+            }
+        }
+    }
+}

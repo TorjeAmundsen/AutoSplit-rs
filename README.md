@@ -12,32 +12,43 @@ In this README, "AutoSplit" is the original Python program, and `autosplit` is t
 ## Getting started
 
 1. Download the zip for your system from the releases (`windows-x64`, `windows-arm64`, `linux-x64`, `linux-arm64` or `macos-universal`) and unzip it.
-2. `autosplit` is a command-line program for now: double-clicking it only shows its help. Open PowerShell (Windows: in the folder, right-click > Open in Terminal) or a terminal (macOS, Linux) in the unzipped folder. In the commands below, type `.\autosplit` on Windows and `./autosplit` on macOS and Linux instead of `autosplit`. Put paths with spaces in "quotes"; dragging a file into the window pastes its path.
-3. macOS blocks the first start because the program isn't notarized. Run `xattr -d com.apple.quarantine autosplit`, or allow it in System Settings > Privacy & Security > Open Anyway.
-4. On Linux and macOS, set up the [permissions](#permissions).
-5. Run `autosplit devices` and note your capture device's name.
-6. Run `autosplit grab --device "<name>" frame.png` and check that `frame.png` shows the game.
-7. Run `autosplit check settings.toml` to check the split images. `settings.toml` is the profile you saved in AutoSplit (File > Save Profile As).
-8. Run `autosplit run settings.toml`. It prints what happens, with the current split image and its similarity on the last line. Press Ctrl+C to stop.
+2. macOS blocks the first start because the program isn't notarized. Run `xattr -d com.apple.quarantine autosplit`, or allow it in System Settings > Privacy & Security > Open Anyway.
+3. On Linux and macOS, set up the [permissions](#permissions).
+4. Start `autosplit` (`autosplit.exe` on Windows). It opens AutoSplit's window. Like AutoSplit, it loads the profile next to it when there's exactly one `.toml` file there. Otherwise use File > Load Profile, or set it up in File > Settings and save it with File > Save Profile As.
+5. In Settings, choose your capture device. Live Capture Region shows what it captures. Set the region with X, Y, Width and Height, or let Align Region find a split image in the capture.
+6. Choose the split image folder with Browse..., then press Start Auto Splitter.
+
+Only video capture devices (capture cards, OBS Virtual Camera, webcams) work for now. Screen and window capture come later.
+
+### From a terminal
+
+Everything also works without the window, see [CLI](#cli). In the commands below, type `.\autosplit` on Windows and `./autosplit` on macOS and Linux instead of `autosplit`. Put paths with spaces in "quotes".
+
+1. Run `autosplit devices` and note your capture device's name.
+2. Run `autosplit grab --device "<name>" frame.png` and check that `frame.png` shows the game.
+3. Run `autosplit check settings.toml` to check the split images. `settings.toml` is the profile you saved in AutoSplit (File > Save Profile As).
+4. Run `autosplit run settings.toml`. It prints what happens, with the current split image and its similarity on the last line. Press Ctrl+C to stop.
 
 Without a capture device, `run` keeps going, looks for the device every 2 seconds and shows `NO DEVICE`.
 
+The Windows zip has two programs: `autosplit.exe` opens the window without a console, and `autosplit.com` is for terminals. Typing `autosplit` in a terminal runs `autosplit.com`, which runs `autosplit.exe` inside the terminal so its output and Ctrl+C work there. A Windows program is either a window program or a console program; a window program started from a terminal returns to the prompt at once and prints its output over whatever you type next.
+
 ### Which timer setup to use
 
-- Windows with LiveSplit: add LiveSplit's AutoSplit Integration component, and in its settings choose `autosplit.exe` and your profile. LiveSplit then starts `autosplit` with `--auto-controlled`, like it does AutoSplit. Nothing is shown; if it doesn't split, read `autosplit.log` next to `autosplit.exe` (or in the temp folder when that folder is read-only).
+- Windows with LiveSplit: add LiveSplit's AutoSplit Integration component, and in its settings choose `autosplit.exe` and your profile. LiveSplit then starts `autosplit` with `--auto-controlled`, which opens the window like AutoSplit (`--minimized` starts it minimized). If it doesn't split, check Help > View Log, or `autosplit.log` next to `autosplit.exe` (or in the temp folder when that folder is read-only).
 - LiveSplit One, on any system: the [LiveSplit One](#livesplit-one) connection. Browsers only see key presses while focused, so hotkeys don't reach LiveSplit One in a browser.
 - Otherwise: hotkeys, like AutoSplit. `autosplit` presses the profile's hotkeys, which the timer listens for.
 
 ### LiveSplit One
 
-LiveSplit One (the web version or the desktop app) can be controlled without hotkeys. Add these lines near the top of the profile, above the `[capture_region]` line (lines after it belong to the capture region and are ignored):
+LiveSplit One (the web version or the desktop app) can be controlled without hotkeys. Choose LiveSplit One in Settings > Other and restart `autosplit`, or add these lines near the top of the profile, above the `[capture_region]` line (lines after it belong to the capture region and are ignored):
 
 ```toml
 timer_connection = "livesplit_one"
 livesplit_one_port = 16835  # optional, this is the default
 ```
 
-Then start `autosplit run`, and in LiveSplit One's menu choose "Connect to Server" and enter `ws://localhost:16835`.
+Then start `autosplit`, and in LiveSplit One's menu choose "Connect to Server" and enter `ws://localhost:16835`.
 
 - `autosplit` sends starts, splits, resets and pauses (images with the `{p}` flag). Resets save the attempt without asking, like LiveSplit does for AutoSplit.
 - Starting, splitting, skipping, undoing and resetting in LiveSplit One moves `autosplit` along too, like the LiveSplit integration does.
@@ -85,11 +96,11 @@ The four hotkeys aren't needed with `timer_connection = "livesplit_one"`. Relati
   - Sending key presses needs `/dev/uinput`: `echo 'KERNEL=="uinput", TAG+="uaccess"' | sudo tee /etc/udev/rules.d/50-uinput.rules`, then restart. If `/dev/uinput` doesn't exist, load it with `sudo modprobe uinput` (and `echo uinput | sudo tee /etc/modules-load.d/uinput.conf` to keep it after a restart). Under WSL, key presses can't be sent.
   - Capture devices need the `video` group, which desktop users usually have.
   - Without these, AutoSplit still runs and says what's missing. The LiveSplit One connection needs none of them.
-- macOS: allow your terminal app (Terminal, iTerm, ...) in System Settings > Privacy & Security, under Camera for capture devices, Accessibility for pressing hotkeys and Input Monitoring for listening to them. Then quit and reopen the terminal.
+- macOS: in System Settings > Privacy & Security, allow `autosplit` (or your terminal app, like Terminal or iTerm, when you start it from there) under Camera for capture devices, Accessibility for pressing hotkeys and Input Monitoring for listening to them. Then restart it.
 
 ## Status
 
-Milestone 2 is done: `autosplit run` splits from a video capture device (capture card, OBS Virtual Camera, webcam) with global hotkeys, LiveSplit's `--auto-controlled` integration works, and LiveSplit One can connect over WebSocket. There's no GUI and no screen or window capture yet.
+Milestone 3 is done: AutoSplit's window and settings, for video capture devices (capture card, OBS Virtual Camera, webcam). `autosplit` splits with global hotkeys, LiveSplit's `--auto-controlled` integration works, and LiveSplit One can connect over WebSocket. There's no screen or window capture yet.
 
 | Area | State |
 | --- | --- |
@@ -106,7 +117,8 @@ Milestone 2 is done: `autosplit run` splits from a video capture device (capture
 | LiveSplit One (WebSocket) | Done, new |
 | Screenshots | Done |
 | Screen and window capture | Later |
-| GUI (Slint), region and window selection | Milestone 3 |
+| Window (Slint): main window, settings, Align Region, Set Hotkey, Max FPS | Done, for capture devices |
+| Select Region and Select Window | Later, with screen and window capture |
 | LiveSplit integration component (Windows only) | Later |
 
 ## Compatibility
@@ -175,6 +187,14 @@ Settings and display:
 - Similarities and thresholds are shown with 3 decimals, truncated. AutoSplit shows 2, and its truncation sometimes comes out one step low (0.29 shows as 0.28).
 - Countdowns say "1.0 second" but "0.5 seconds". AutoSplit uses "second" for anything up to 1.
 
+Window:
+
+- AutoSplit's settings dialog has a fourth tab, Other: the timer connection, the LiveSplit One port and hardware acceleration.
+- Help > View Log shows what `autosplit` logged, which is also in `autosplit.log`. AutoSplit only shows errors, in dialogs. Those dialogs are here too.
+- About shows the version, and there's no update check.
+- Set Hotkey reads the key while the settings window has focus, not globally. Escape clears the hotkey.
+- The window draws with the GPU through wgpu, or on the CPU when there's no usable GPU or hardware acceleration is off (Settings > Other, applies after a restart). It's stored per computer in `app.toml`, in `%APPDATA%\AutoSplit` on Windows, `~/Library/Application Support/AutoSplit` on macOS and `~/.config/autosplit` on Linux, not in profiles. `AUTOSPLIT_RENDERER=software` or `gpu` overrides it for one start. The log's first line says which one is used.
+
 Image math:
 
 - pHash computes the DCT in f64 where OpenCV uses f32. A hash bit can differ when a coefficient is within float noise of the mean. None of the test inputs hit this.
@@ -213,7 +233,7 @@ So:
 
 ## Building
 
-Needs a recent stable Rust toolchain. Linux builds also need CMake, and NASM for x64, to build libjpeg-turbo.
+Needs Rust 1.92 or newer. Linux builds also need CMake, and NASM for x64, to build libjpeg-turbo. The window's libraries on Linux (X11 or Wayland, xkbcommon, fontconfig) are loaded when it opens, so building needs none of them.
 
 ```sh
 cargo build --release
@@ -278,11 +298,11 @@ autosplit bench [split images...] --capture 1920x1080
 - `crates/autosplit-core`: everything that doesn't depend on the OS. `runner.rs` is the split state machine. It never blocks: the host calls `tick` with the latest frame when `next_wakeup` is due, and acts on the effects it returns.
 - `crates/autosplit-capture`: video capture devices, one backend per OS, and the pixel format conversions.
 - `crates/autosplit-input`: global hotkeys (through livesplit-hotkey), sending key presses and AutoSplit's hotkey names.
-- `crates/autosplit-cli`: the `autosplit` command. `run.rs` drives the runner from capture (`device.rs`), hotkeys (`hotkeys.rs`), LiveSplit and LiveSplit One (`livesplit_one.rs`).
+- `crates/autosplit-cli`: the `autosplit` program. `session.rs` drives the runner from capture (`device.rs`), hotkeys (`hotkeys.rs`), LiveSplit and LiveSplit One (`livesplit_one.rs`). `run.rs` shows a session in the terminal, `gui/` in the window, laid out in `ui/*.slint`. `src/bin/autosplit-console.rs` becomes `autosplit.com` on Windows.
 - `tests/fixtures`: split images, captures and profiles. `real/` holds split images made with AutoMask.
 - `tests/golden`: expected values from AutoSplit and OpenCV.
 - `tools/golden/generate.py`: regenerates the fixtures and golden values. Instructions are at the top of the file. Only rerun it when you mean to change the baseline.
 
 ## License
 
-GPL-3.0-only, like AutoSplit. Parts of the image processing are ports of OpenCV, see `THIRD_PARTY_NOTICES.md`.
+GPL-3.0-only, like AutoSplit. Parts of the image processing are ports of OpenCV, the window uses Slint under its GPL-3.0 license, and the icon is AutoSplit's, see `THIRD_PARTY_NOTICES.md`.

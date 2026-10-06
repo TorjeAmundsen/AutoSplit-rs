@@ -1,0 +1,498 @@
+// AutoSplit's settings window (settings.ui), with an extra tab for what's new in this version.
+
+import { Button, LineEdit, CheckBox, ComboBox, TabWidget, Palette } from "std-widgets.slint";
+
+component Label inherits Text {
+    vertical-alignment: center;
+    overflow: elide;
+}
+
+export struct HotkeyRow {
+    name: string,
+    hotkey: string,
+}
+
+export component SettingsWindow inherits Window {
+    title: "Settings";
+    icon: @image-url("icon.png");
+    width: 380px;
+    height: 360px;
+    default-font-size: 12px;
+
+    // Capture Settings
+    in-out property <int> fps-limit: 60;
+    in-out property <bool> live-capture-region: true;
+    in property <[string]> capture-methods: ["Video Capture Device"];
+    in-out property <int> capture-method-index;
+    in property <[string]> capture-devices;
+    in-out property <int> capture-device-index: -1;
+    in property <string> capture-device-placeholder: "No device found.";
+    in-out property <string> screenshot-directory;
+    in-out property <bool> open-screenshot: true;
+    in-out property <bool> screenshot-on-start;
+    in-out property <bool> screenshot-on-split;
+    in-out property <bool> screenshot-on-reset;
+    in-out property <bool> screenshot-on-skip;
+    in-out property <bool> screenshot-on-undo;
+    in-out property <bool> screenshot-on-pause;
+    // Image Settings
+    in-out property <int> default-comparison-method;
+    in-out property <string> default-similarity-threshold: "0.90";
+    in-out property <string> default-delay-time: "0";
+    in-out property <string> default-pause-time: "10.00";
+    in-out property <bool> loop-splits;
+    in-out property <bool> start-also-resets;
+    in-out property <bool> enable-auto-reset: true;
+    // Hotkeys
+    in-out property <[HotkeyRow]> hotkeys;
+    in property <int> setting-hotkey: -1;
+    in property <bool> hotkeys-enabled: true;
+    // Other
+    in-out property <int> timer-connection;
+    in-out property <string> livesplit-one-port: "16835";
+    in-out property <bool> hardware-acceleration: true;
+    in property <bool> timer-connection-changed;
+    in property <bool> hardware-acceleration-changed;
+
+    // Called with the setting's name after any edit, to send the profile on
+    callback changed(string);
+    callback capture-devices-requested();
+    callback browse-screenshot-directory();
+    callback set-hotkey(int);
+    callback hotkey-edited(int, string);
+    callback open-readme();
+
+    // For screenshots of each tab
+    public function show-tab(index: int) {
+        tabs.current-index = index;
+    }
+
+    tabs := TabWidget {
+        x: 0px;
+        y: 0px;
+        width: 100%;
+        height: 100%;
+
+        Tab {
+            title: "Capture Settings";
+
+            Rectangle {
+                Label {
+                    x: 10px;
+                    y: 10px;
+                    width: 141px;
+                    height: 24px;
+                    text: "Comparison FPS Limit:";
+                }
+
+                LineEdit {
+                    x: 150px;
+                    y: 8px;
+                    width: 60px;
+                    height: 26px;
+                    input-type: number;
+                    text: root.fps-limit;
+                    edited(text) => {
+                        if (text.is-float() && text.to-float() >= 20 && text.to-float() <= 240) {
+                            root.fps-limit = text.to-float();
+                            root.changed("fps_limit");
+                        }
+                    }
+                }
+
+                CheckBox {
+                    x: 10px;
+                    y: 38px;
+                    width: 340px;
+                    height: 24px;
+                    text: "Live Capture Region";
+                    checked <=> root.live-capture-region;
+                    toggled => { root.changed("live_capture_region"); }
+                }
+
+                Label {
+                    x: 10px;
+                    y: 66px;
+                    width: 340px;
+                    height: 16px;
+                    text: "Capture method:";
+                }
+
+                ComboBox {
+                    x: 10px;
+                    y: 84px;
+                    width: 360px;
+                    height: 26px;
+                    model: root.capture-methods;
+                    current-index <=> root.capture-method-index;
+                    selected => { root.changed("capture_method"); }
+                }
+
+                Label {
+                    x: 10px;
+                    y: 114px;
+                    width: 340px;
+                    height: 16px;
+                    text: "Capture device:";
+                }
+
+                ComboBox {
+                    x: 10px;
+                    y: 132px;
+                    width: 360px;
+                    height: 26px;
+                    model: root.capture-devices.length > 0 ? root.capture-devices : [root.capture-device-placeholder];
+                    enabled: root.capture-devices.length > 0;
+                    current-index <=> root.capture-device-index;
+                    selected => { root.changed("capture_device"); }
+                }
+
+                Label {
+                    x: 10px;
+                    y: 164px;
+                    width: 151px;
+                    height: 16px;
+                    text: "Screenshots folder:";
+                }
+
+                Button {
+                    x: 290px;
+                    y: 160px;
+                    width: 80px;
+                    height: 24px;
+                    text: "Browse...";
+                    clicked => { root.browse-screenshot-directory(); }
+                }
+
+                LineEdit {
+                    x: 10px;
+                    y: 186px;
+                    width: 360px;
+                    height: 26px;
+                    text <=> root.screenshot-directory;
+                    placeholder-text: "(Defaults to Split Image Folder)";
+                    edited => { root.changed("screenshot_directory"); }
+                }
+
+                CheckBox {
+                    x: 10px;
+                    y: 214px;
+                    width: 340px;
+                    height: 24px;
+                    text: "Open screenshots on capture";
+                    checked <=> root.open-screenshot;
+                    toggled => { root.changed("open_screenshot"); }
+                }
+
+                CheckBox {
+                    x: 10px;
+                    y: 238px;
+                    width: 180px;
+                    height: 24px;
+                    text: "Screenshot on Start";
+                    checked <=> root.screenshot-on-start;
+                    toggled => { root.changed("screenshot_on"); }
+                }
+
+                CheckBox {
+                    x: 195px;
+                    y: 238px;
+                    width: 180px;
+                    height: 24px;
+                    text: "Screenshot on Undo";
+                    checked <=> root.screenshot-on-undo;
+                    toggled => { root.changed("screenshot_on"); }
+                }
+
+                CheckBox {
+                    x: 10px;
+                    y: 262px;
+                    width: 180px;
+                    height: 24px;
+                    text: "Screenshot on Reset";
+                    checked <=> root.screenshot-on-reset;
+                    toggled => { root.changed("screenshot_on"); }
+                }
+
+                CheckBox {
+                    x: 195px;
+                    y: 262px;
+                    width: 180px;
+                    height: 24px;
+                    text: "Screenshot on Skip";
+                    checked <=> root.screenshot-on-skip;
+                    toggled => { root.changed("screenshot_on"); }
+                }
+
+                CheckBox {
+                    x: 10px;
+                    y: 286px;
+                    width: 180px;
+                    height: 24px;
+                    text: "Screenshot on Split";
+                    checked <=> root.screenshot-on-split;
+                    toggled => { root.changed("screenshot_on"); }
+                }
+
+                CheckBox {
+                    x: 195px;
+                    y: 286px;
+                    width: 180px;
+                    height: 24px;
+                    text: "Screenshot on Pause";
+                    checked <=> root.screenshot-on-pause;
+                    toggled => { root.changed("screenshot_on"); }
+                }
+            }
+        }
+
+        Tab {
+            title: "Image Settings";
+
+            Rectangle {
+                Label {
+                    x: 10px;
+                    y: 10px;
+                    width: 185px;
+                    height: 26px;
+                    text: "Default Comparison Method:";
+                }
+
+                ComboBox {
+                    x: 200px;
+                    y: 10px;
+                    width: 170px;
+                    height: 26px;
+                    model: ["L2 Norm", "Histograms", "pHash"];
+                    current-index <=> root.default-comparison-method;
+                    selected => { root.changed("default_comparison_method"); }
+                }
+
+                Label {
+                    x: 10px;
+                    y: 40px;
+                    width: 185px;
+                    height: 26px;
+                    text: "Default Similarity Threshold:";
+                }
+
+                LineEdit {
+                    x: 200px;
+                    y: 40px;
+                    width: 60px;
+                    height: 26px;
+                    input-type: decimal;
+                    text <=> root.default-similarity-threshold;
+                    edited => { root.changed("default_similarity_threshold"); }
+                }
+
+                Label {
+                    x: 10px;
+                    y: 70px;
+                    width: 185px;
+                    height: 26px;
+                    text: "Default Delay Time (ms):";
+                }
+
+                LineEdit {
+                    x: 200px;
+                    y: 70px;
+                    width: 100px;
+                    height: 26px;
+                    input-type: number;
+                    text <=> root.default-delay-time;
+                    edited => { root.changed("default_delay_time"); }
+                }
+
+                Label {
+                    x: 10px;
+                    y: 100px;
+                    width: 185px;
+                    height: 26px;
+                    text: "Default Pause Time (sec):";
+                }
+
+                LineEdit {
+                    x: 200px;
+                    y: 100px;
+                    width: 100px;
+                    height: 26px;
+                    input-type: decimal;
+                    text <=> root.default-pause-time;
+                    edited => { root.changed("default_pause_time"); }
+                }
+
+                CheckBox {
+                    x: 10px;
+                    y: 130px;
+                    width: 360px;
+                    height: 24px;
+                    text: "Loop Last Split Image to First Split Image";
+                    checked <=> root.loop-splits;
+                    toggled => { root.changed("loop_splits"); }
+                }
+
+                CheckBox {
+                    x: 10px;
+                    y: 154px;
+                    width: 360px;
+                    height: 24px;
+                    text: "Start also Resets";
+                    checked <=> root.start-also-resets;
+                    toggled => { root.changed("start_also_resets"); }
+                }
+
+                CheckBox {
+                    x: 10px;
+                    y: 178px;
+                    width: 360px;
+                    height: 24px;
+                    text: "Enable auto reset image";
+                    checked <=> root.enable-auto-reset;
+                    toggled => { root.changed("enable_auto_reset"); }
+                }
+
+                Text {
+                    x: 10px;
+                    y: 208px;
+                    width: 360px;
+                    height: 61px;
+                    wrap: word-wrap;
+                    text: "Image settings and flags can be set per image through the image file name. These will override the default values. View the README for full details on all available custom image settings.";
+                }
+
+                Button {
+                    x: 150px;
+                    y: 274px;
+                    width: 80px;
+                    height: 28px;
+                    text: "README";
+                    clicked => { root.open-readme(); }
+                }
+            }
+        }
+
+        Tab {
+            title: "Hotkeys";
+
+            Rectangle {
+                for row[index] in root.hotkeys: Rectangle {
+                    x: 0px;
+                    y: 8px + index * 30px;
+                    width: 100%;
+                    height: 28px;
+
+                    Label {
+                        x: 10px;
+                        width: 84px;
+                        height: 100%;
+                        text: row.name;
+                        wrap: word-wrap;
+                        font-size: row.name.character-count > 14 ? 10px : 12px;
+                    }
+
+                    LineEdit {
+                        x: 95px;
+                        y: 1px;
+                        width: 160px;
+                        height: 26px;
+                        enabled: root.hotkeys-enabled;
+                        text: row.hotkey;
+                        edited(text) => { root.hotkey-edited(index, text); }
+                    }
+
+                    Button {
+                        x: 262px;
+                        y: 1px;
+                        width: 108px;
+                        height: 26px;
+                        enabled: root.hotkeys-enabled && (root.setting-hotkey == -1 || root.setting-hotkey == index);
+                        text: root.setting-hotkey == index ? "Press a key..." : "Set Hotkey";
+                        clicked => { root.set-hotkey(index); }
+                    }
+                }
+
+                if !root.hotkeys-enabled: Text {
+                    x: 10px;
+                    y: 224px;
+                    width: 360px;
+                    wrap: word-wrap;
+                    text: "LiveSplit or LiveSplit One controls the timer, so only the screenshot and auto reset hotkeys are used.";
+                }
+            }
+        }
+
+        Tab {
+            title: "Other";
+
+            Rectangle {
+                Label {
+                    x: 10px;
+                    y: 10px;
+                    width: 360px;
+                    height: 16px;
+                    text: "Tell the timer with:";
+                }
+
+                ComboBox {
+                    x: 10px;
+                    y: 28px;
+                    width: 360px;
+                    height: 26px;
+                    model: ["Hotkeys", "LiveSplit One"];
+                    current-index <=> root.timer-connection;
+                    selected => { root.changed("timer_connection"); }
+                }
+
+                Label {
+                    x: 10px;
+                    y: 62px;
+                    width: 160px;
+                    height: 26px;
+                    text: "LiveSplit One port:";
+                    opacity: root.timer-connection == 1 ? 1 : 0.5;
+                }
+
+                LineEdit {
+                    x: 200px;
+                    y: 62px;
+                    width: 100px;
+                    height: 26px;
+                    input-type: number;
+                    enabled: root.timer-connection == 1;
+                    text <=> root.livesplit-one-port;
+                    edited => { root.changed("livesplit_one_port"); }
+                }
+
+                Text {
+                    x: 10px;
+                    y: 94px;
+                    width: 360px;
+                    wrap: word-wrap;
+                    visible: root.timer-connection-changed;
+                    text: "Restart autosplit for the new timer connection.";
+                }
+
+                CheckBox {
+                    x: 10px;
+                    y: 140px;
+                    width: 360px;
+                    height: 24px;
+                    text: "Hardware acceleration";
+                    checked <=> root.hardware-acceleration;
+                    toggled => { root.changed("hardware_acceleration"); }
+                }
+
+                Text {
+                    x: 10px;
+                    y: 166px;
+                    width: 360px;
+                    wrap: word-wrap;
+                    text: root.hardware-acceleration-changed
+                        ? "Restart autosplit to apply."
+                        : "Draws the window with the GPU. Turn it off if the window shows wrong or not at all.";
+                }
+            }
+        }
+    }
+}

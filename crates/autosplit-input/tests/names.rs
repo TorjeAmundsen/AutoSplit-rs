@@ -58,3 +58,30 @@ fn listen_keys(text: &str, key_code: KeyCode, modifiers: Modifiers) -> bool {
     // Act, with the expected value checked by test_case
     listens(text, key_code, modifiers)
 }
+
+#[test_case(KeyCode::Numpad1, None, Modifiers::empty() => Some("num 1".to_owned()); "keypad digit")]
+#[test_case(KeyCode::Digit1, Some('1'), Modifiers::empty() => Some("1".to_owned()); "main row digit")]
+#[test_case(KeyCode::KeyP, Some('p'), Modifiers::CONTROL | Modifiers::SHIFT => Some("ctrl+shift+p".to_owned()); "combo in keyboard's order")]
+#[test_case(KeyCode::KeyA, Some('A'), Modifiers::empty() => Some("a".to_owned()); "letters are lowercase")]
+#[test_case(KeyCode::F12, None, Modifiers::ALT => Some("alt+f12".to_owned()); "function key")]
+#[test_case(KeyCode::NumpadAdd, None, Modifiers::empty() => Some("plus".to_owned()); "keypad plus")]
+#[test_case(KeyCode::Equal, Some('+'), Modifiers::empty() => Some("plus".to_owned()); "plus character")]
+#[test_case(KeyCode::NumpadEnter, None, Modifiers::empty() => Some("enter".to_owned()); "keypad enter")]
+#[test_case(KeyCode::PageUp, None, Modifiers::empty() => Some("page up".to_owned()); "named key")]
+#[test_case(KeyCode::ShiftLeft, None, Modifiers::SHIFT => None; "modifier alone")]
+fn names_pressed_keys(key: KeyCode, character: Option<char>, modifiers: Modifiers) -> Option<String> {
+    // Act, with the expected value checked by test_case
+    autosplit_input::hotkey_name(key, character, modifiers)
+}
+
+#[test_case("num 1"; "keypad digit")]
+#[test_case("ctrl+shift+p"; "combo")]
+#[test_case("page up"; "named key")]
+#[test_case("f12"; "function key")]
+fn recorded_names_parse_back(name: &str) {
+    // Act
+    let parsed = parse_hotkey(name, &UsLayout);
+
+    // Assert
+    assert!(parsed.is_ok());
+}

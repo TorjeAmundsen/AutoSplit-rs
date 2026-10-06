@@ -1,5 +1,5 @@
 #!/usr/bin/env pwsh
-# Builds release zips of the autosplit CLI.
+# Builds release zips of AutoSplit.
 #
 #   ./build.ps1                     pick a target from a menu
 #   ./build.ps1 windows-x64 ...     build these targets
@@ -79,7 +79,7 @@ function Invoke-Cargo($cargoArgs) {
     if ($LASTEXITCODE -ne 0) { Write-Error "cargo failed with exit code $LASTEXITCODE" }
 }
 
-# Builds one Rust target and returns the path of the binary.
+# Builds one Rust target and returns the folder with its binaries.
 function BuildTriple($triple) {
     rustup target add $triple | Out-Host
     $os = OsOf $triple
@@ -109,8 +109,7 @@ function BuildTriple($triple) {
         Invoke-Cargo (@("xwin", "build") + $profileArgs + @("--target", $triple))
     }
 
-    $binary = if ($os -eq "windows") { "autosplit.exe" } else { "autosplit" }
-    return "$targetDir/$triple/release/$binary"
+    return "$targetDir/$triple/release"
 }
 
 # Compress-Archive drops the executable bit, so Linux and macOS binaries are added with Unix
@@ -149,14 +148,23 @@ function Build($name) {
     if (Test-Path $output) { Remove-Item $output -Recurse -Force }
     New-Item -ItemType Directory -Path $output | Out-Null
 
-    $binaries = @($targets[$name] | ForEach-Object { BuildTriple $_ })
-    $binaryName = Split-Path $binaries[0] -Leaf
-    if ($binaries.Count -gt 1) {
-        lipo -create -output "$output/$binaryName" @binaries
-        if ($LASTEXITCODE -ne 0) { Write-Error "lipo failed with exit code $LASTEXITCODE" }
+    $folders = @($targets[$name] | ForEach-Object { BuildTriple $_ })
+    if ((OsOf $targets[$name][0]) -eq "windows") {
+        # autosplit.exe is a GUI program, so the command prompt doesn't wait for it. Typing
+        # autosplit runs autosplit.com first, which runs autosplit.exe as a console program.
+        $binaryName = "autosplit.exe"
+        Copy-Item "$($folders[0])/$binaryName" "$output/$binaryName"
+        Copy-Item "$($folders[0])/autosplit-console.exe" "$output/autosplit.com"
     }
     else {
-        Copy-Item $binaries[0] "$output/$binaryName"
+        $binaryName = "autosplit"
+        if ($folders.Count -gt 1) {
+            lipo -create -output "$output/$binaryName" @($folders | ForEach-Object { "$_/$binaryName" })
+            if ($LASTEXITCODE -ne 0) { Write-Error "lipo failed with exit code $LASTEXITCODE" }
+        }
+        else {
+            Copy-Item "$($folders[0])/$binaryName" "$output/$binaryName"
+        }
     }
     foreach ($file in @("README.md", "LICENSE", "THIRD_PARTY_NOTICES.md")) {
         Copy-Item "$PSScriptRoot/$file" $output

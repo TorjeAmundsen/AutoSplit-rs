@@ -1,12 +1,17 @@
-//! Headless AutoSplit: splits from a video capture device, and checks split image folders,
-//! compares images, replays recorded frames through the split state machine, and benchmarks
-//! comparisons.
+//! AutoSplit: without arguments (or started by LiveSplit) the window, otherwise commands that
+//! split from a capture device without a window, check split image folders, compare images,
+//! replay recorded frames through the split state machine, and benchmark comparisons.
+
+// On Windows, a GUI program, so opening the window shows no console. Terminals run autosplit.com
+// instead, which runs this one inside the terminal (src/bin/autosplit-console.rs).
+#![cfg_attr(windows, windows_subsystem = "windows")]
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, bail};
+use autosplit::gui::{self, Options};
 use autosplit::{device, hotkeys, platform, profile, run};
 use autosplit_core::commands::{Output, TimerLink, outputs_for};
 use autosplit_core::compare::{CompareScratch, ComparisonMethod};
@@ -16,18 +21,18 @@ use autosplit_core::runner::{Captured, Effect, Runner, RunnerSettings, Showing};
 use autosplit_core::split_folder::{FolderLoad, SplitSet, load_profile_folder, load_profile_folder_to_start};
 use autosplit_core::split_image::{ImageType, SplitContent, SplitImage};
 use autosplit_core::text::{decimal, decimal_or_dash};
-use clap::{CommandFactory, Parser, Subcommand};
+use clap::{Parser, Subcommand};
 
 /// Ticks at one timestamp after which `replay` gives up: the run is splitting in a loop.
 const MAX_TICKS_WITHOUT_TIME_PASSING: u32 = 10_000;
 
-/// AutoSplit without a window: splits from a capture card, webcam or OBS Virtual Camera.
+/// AutoSplit: splits from a capture card, webcam or OBS Virtual Camera. Without a command, opens
+/// the window.
 #[derive(Parser)]
 #[command(
     version,
     about,
     args_conflicts_with_subcommands = true,
-    arg_required_else_help = true,
     after_help = "Start with `autosplit devices`, then `autosplit check <profile.toml>`, then `autosplit run \
                   <profile.toml>`. README.md in the zip explains each step."
 )]
@@ -137,6 +142,11 @@ impl std::fmt::Display for Reported {
 impl std::error::Error for Reported {}
 
 fn main() -> ExitCode {
+    // Commands write to the terminal they were started from
+    let auto_controlled = std::env::args_os().any(|argument| argument == "--auto-controlled");
+    if std::env::args_os().len() > 1 && !auto_controlled {
+        platform::attach_console();
+    }
     match run_command() {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
@@ -151,16 +161,14 @@ fn main() -> ExitCode {
 fn run_command() -> Result<()> {
     let cli = Cli::parse();
     if cli.auto_controlled {
-        return run::auto_controlled();
+        // Without a window, LiveSplit can still be served
+        return gui::run(Options { auto_controlled: true, minimized: cli.minimized })
+            .or_else(|_| run::auto_controlled());
     }
     let Some(command) = cli.command else {
-        Cli::command().print_help()?;
-        // Double-clicked: the window would close before the help could be read
-        if platform::owns_console() {
-            println!("\nRun autosplit from PowerShell; see README.md. Press Enter to close.");
-            let _ = std::io::stdin().read_line(&mut String::new());
-        }
-        return Ok(());
+        return gui::run(Options { auto_controlled: false, minimized: false }).inspect_err(|error| {
+            platform::show_error(&format!("{error:#}"));
+        });
     };
     match command {
         CliCommand::Run { profile, split_dir } => run::run(&profile, split_dir),
