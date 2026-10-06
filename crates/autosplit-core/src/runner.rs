@@ -296,6 +296,16 @@ impl Runner {
         }
     }
 
+    /// Whether the timer reports its own splits, after the timer connection changed. Only
+    /// between runs: a run keeps how it started.
+    pub fn set_timer_synced(&mut self, timer_synced: bool) {
+        if self.is_running() || timer_synced == self.timer_synced {
+            return;
+        }
+        self.timer_synced = timer_synced;
+        self.status.buttons.start = !timer_synced;
+    }
+
     pub fn settings(&self) -> &RunnerSettings {
         &self.settings
     }

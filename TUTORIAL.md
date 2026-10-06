@@ -98,7 +98,7 @@ When LiveSplit or LiveSplit One controls the timer, only the screenshot and togg
 
 ### Other
 
-- Tell the timer with: hotkeys, or LiveSplit One. It's used after a restart.
+- Tell the timer with: hotkeys, or LiveSplit One. It changes right away, or once the current run ends.
 - LiveSplit One port: the port LiveSplit One connects to, 16835 by default. Change it if another program uses that port.
 
 ## Split image file names
@@ -177,11 +177,11 @@ Keys after `[capture_region]` belong to the capture region and are ignored, so p
 
 ## LiveSplit One
 
-LiveSplit One (the web version or the desktop app) can be controlled without hotkeys. Choose LiveSplit One in Settings > Other, save, and restart `autosplit`. Then in LiveSplit One's menu choose "Connect to Server" and enter `ws://localhost:16835` (or the port you set).
+LiveSplit One (the web version or the desktop app) can be controlled without hotkeys. Choose LiveSplit One in Settings > Other; `autosplit` starts listening for it right away. Then in LiveSplit One's menu choose "Connect to Server" and enter `ws://localhost:16835` (or the port you set).
 
 - `autosplit` sends starts, splits, resets and pauses (images with the `{p}` flag). Resets save the attempt without asking, like LiveSplit does for AutoSplit.
 - Starting, splitting, skipping, undoing and resetting in LiveSplit One moves `autosplit` along too.
-- Start `autosplit` first. LiveSplit One doesn't reconnect by itself: after restarting `autosplit`, choose Connect to Server again.
+- Start `autosplit` first. LiveSplit One doesn't reconnect by itself: after restarting `autosplit`, or changing the port or the connection, choose Connect to Server again.
 - LiveSplit One must run on the same computer. Only LiveSplit One can connect, not other web pages.
 - Only one LiveSplit One can be connected. A new connection replaces the older one.
 - If the browser refuses to connect (Safari has blocked this in the past), use Chrome, Edge or Firefox, or the LiveSplit One desktop app. Chrome and Edge may ask whether one.livesplit.org may access devices on your network: allow it.

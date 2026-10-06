@@ -64,7 +64,8 @@ export component SettingsWindow inherits Window {
     in property <string> hotkeys-note;
     in-out property <int> timer-connection;
     in-out property <float> livesplit-one-port: 16835;
-    in property <bool> timer-connection-changed;
+    // The new timer connection waits for the run to end
+    in property <bool> timer-connection-waiting;
     in property <bool> auto-controlled;
     // A message box is open, which AutoSplit's are modal
     in property <bool> blocked;
@@ -547,10 +548,10 @@ export component SettingsWindow inherits Window {
                     y: 94px;
                     width: 360px;
                     wrap: word-wrap;
-                    visible: root.timer-connection-changed || root.auto-controlled;
+                    visible: root.timer-connection-waiting || root.auto-controlled;
                     text: root.auto-controlled
                         ? "LiveSplit started autosplit, so it controls the timer."
-                        : "Restart autosplit for the new timer connection.";
+                        : "The new timer connection is used once the run ends.";
                 }
             }
         }

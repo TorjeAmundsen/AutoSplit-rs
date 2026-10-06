@@ -23,7 +23,7 @@ use std::time::Duration;
 use autosplit_capture::{DeviceInfo, list_devices};
 use autosplit_core::commands::{Command, TimerLink};
 use autosplit_core::hotkeys::HotkeyAction;
-use autosplit_core::profile::{TimerConnection, UserProfile};
+use autosplit_core::profile::UserProfile;
 use autosplit_input::{Modifiers, UsLayout, hotkey_name, parse_hotkey, same_hotkey};
 use slint::winit_030::winit::event::{ElementState, KeyEvent, WindowEvent};
 use slint::winit_030::winit::keyboard::{Key, NamedKey};
@@ -105,7 +105,6 @@ struct State {
     recording: Option<HotkeyAction>,
     /// How the session tells the timer, which stays the same until a restart.
     link: TimerLink,
-    started_with: TimerConnection,
     running: bool,
     capturing: bool,
     can_start: bool,
@@ -289,7 +288,6 @@ pub fn run(options: Options) -> Result<(), Error> {
         me: me.clone(),
         hotkeys: Rc::new(VecModel::default()),
         state: RefCell::new(State {
-            started_with: document.profile.timer_connection,
             document,
             devices: Devices::default(),
             recording: None,
@@ -695,13 +693,7 @@ impl Gui {
         let settings = &self.windows.settings;
         settings.set_fps_limit(profile.fps_limit as f32);
         settings.set_live_capture_region(profile.live_capture_region);
-        let shown = settings_form::Shown::new(
-            profile,
-            &state.devices.list,
-            state.devices.scanning,
-            state.link,
-            state.started_with,
-        );
+        let shown = settings_form::Shown::new(profile, &state.devices.list, state.devices.scanning, state.link);
         let strings = |items: Vec<String>| ModelRc::new(VecModel::from_iter(items.into_iter().map(SharedString::from)));
         settings.set_capture_methods(strings(shown.capture_methods));
         settings.set_capture_method_index(shown.capture_method_index);
@@ -742,7 +734,7 @@ impl Gui {
         settings.set_hotkeys_note(shown.hotkeys_note.into());
         settings.set_timer_connection(shown.timer_connection);
         settings.set_livesplit_one_port(f32::from(profile.livesplit_one_port));
-        settings.set_timer_connection_changed(shown.timer_connection_changed);
+        settings.set_timer_connection_waiting(shown.timer_connection_waiting);
     }
 
     /// A setting the settings window changed.
@@ -804,6 +796,10 @@ impl Gui {
             Notice::AutoResetToggled(on) => {
                 self.state.borrow_mut().document.profile.enable_auto_reset = on;
                 self.profile_edited();
+            }
+            Notice::TimerLinkChanged(link) => {
+                self.state.borrow_mut().link = link;
+                self.show_profile();
             }
             Notice::ProfileLoaded { path, profile } => {
                 self.state.borrow_mut().document = Document::new(*profile, Some(path));

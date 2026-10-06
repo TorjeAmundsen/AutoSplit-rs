@@ -72,6 +72,16 @@ impl Hotkeys {
         }
     }
 
+    /// Switches to another timer link: hotkeys are pressed for the timer, or only the
+    /// screenshot and auto reset ones are listened for when the timer reports its splits.
+    pub fn set_link(&mut self, link: TimerLink, profile: &UserProfile, console: &mut Console) {
+        self.link = link;
+        if !link.timer_synced() && self.sender.is_none() {
+            self.start_sending(console);
+        }
+        self.set_profile(profile, console);
+    }
+
     pub fn listening_failed(&self) -> bool {
         self.listening_failed
     }

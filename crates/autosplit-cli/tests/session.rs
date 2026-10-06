@@ -8,7 +8,7 @@ use autosplit::session::{Event, Notice, Session, Snapshot, UiCommand, View};
 use autosplit_core::commands::TimerLink;
 use autosplit_core::hotkeys::HotkeyAction;
 use autosplit_core::image::BgraImage;
-use autosplit_core::profile::UserProfile;
+use autosplit_core::profile::{TimerConnection, UserProfile};
 
 /// What the session showed and told the window.
 #[derive(Clone, Default)]
@@ -49,6 +49,7 @@ impl View for FakeView {
             Notice::Fps(fps) => format!("fps {fps:?}"),
             Notice::RegionAligned(_) => "region aligned".into(),
             Notice::ProfileLoaded { .. } => "profile loaded".into(),
+            Notice::TimerLinkChanged(link) => format!("timer link {link:?}"),
         };
         self.0.notices.lock().unwrap().push(text);
     }
@@ -135,4 +136,23 @@ fn starting_without_a_split_hotkey_leaves_the_folder_usable() {
 
     // Assert
     assert_eq!(seen.last_idle(), "can't start: the profile has no split hotkey");
+}
+
+#[test]
+fn timer_connection_switches_between_runs() {
+    // Arrange
+    let profile = UserProfile {
+        timer_connection: TimerConnection::LiveSplitOne,
+        // Any free port
+        livesplit_one_port: 0,
+        ..UserProfile::default()
+    };
+    let folder = std::env::temp_dir();
+    let set = Event::Ui(UiCommand::SetProfile { profile: Box::new(profile), folder, loaded: false });
+
+    // Act
+    let seen = run(UserProfile::default(), vec![set]);
+
+    // Assert
+    assert_eq!(seen.notices(), ["timer link LiveSplitOne"]);
 }

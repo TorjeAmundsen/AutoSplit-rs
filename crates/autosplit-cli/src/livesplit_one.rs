@@ -3,8 +3,8 @@
 //! served from this computer: any web page could otherwise drive AutoSplit.
 
 use std::io::ErrorKind;
-use std::net::{Ipv4Addr, Ipv6Addr, Shutdown, TcpListener, TcpStream};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::net::{Ipv4Addr, Ipv6Addr, Shutdown, SocketAddr, TcpListener, TcpStream};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, mpsc};
 use std::time::Duration;
 
@@ -49,23 +49,46 @@ impl Drop for Connection {
     }
 }
 
+/// The listening sockets. Dropping it stops listening and frees the port.
+pub struct Server {
+    stop: Arc<AtomicBool>,
+    addresses: Vec<SocketAddr>,
+}
+
+impl Drop for Server {
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::Relaxed);
+        // Wakes the threads waiting for a connection, so they see the stop and close the sockets
+        for address in &self.addresses {
+            let _ = TcpStream::connect_timeout(address, Duration::from_millis(200));
+        }
+    }
+}
+
 /// Listens on `localhost:port`, IPv4 and IPv6, since browsers try either for "localhost".
-pub fn listen(port: u16, events: impl Fn(ServerEvent) + Send + Sync + 'static) -> std::io::Result<()> {
+pub fn listen(port: u16, events: impl Fn(ServerEvent) + Send + Sync + 'static) -> std::io::Result<Server> {
     let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, port))?;
     let ipv6 = TcpListener::bind((Ipv6Addr::LOCALHOST, port)).ok();
     let events = Arc::new(events);
     let next_id = Arc::new(AtomicU64::new(1));
+    let stop = Arc::new(AtomicBool::new(false));
+    let mut addresses = Vec::new();
     for listener in std::iter::once(listener).chain(ipv6) {
-        let (events, next_id) = (events.clone(), next_id.clone());
+        addresses.extend(listener.local_addr());
+        let (events, next_id, stop) = (events.clone(), next_id.clone(), stop.clone());
         std::thread::spawn(move || {
-            for stream in listener.incoming().flatten() {
+            for stream in listener.incoming() {
+                if stop.load(Ordering::Relaxed) {
+                    return;
+                }
+                let Ok(stream) = stream else { continue };
                 let id = next_id.fetch_add(1, Ordering::Relaxed);
                 let events = events.clone();
                 std::thread::spawn(move || serve(id, stream, &*events));
             }
         });
     }
-    Ok(())
+    Ok(Server { stop, addresses })
 }
 
 fn serve(id: u64, stream: TcpStream, events: &(impl Fn(ServerEvent) + ?Sized)) {
@@ -124,11 +147,13 @@ pub struct Link {
     connection: Option<Connection>,
     echoes: EchoFilter,
     port: u16,
+    /// Dropped with the link, which closes the port and the connection.
+    _server: Server,
 }
 
 impl Link {
-    pub fn new(port: u16) -> Self {
-        Self { connection: None, echoes: EchoFilter::default(), port }
+    pub fn new(port: u16, server: Server) -> Self {
+        Self { connection: None, echoes: EchoFilter::default(), port, _server: server }
     }
 
     pub fn connected(&self) -> bool {

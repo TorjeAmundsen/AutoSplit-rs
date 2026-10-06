@@ -378,7 +378,7 @@ fn shown(capture_method: &str, devices: &[DeviceInfo], scanning: bool) -> Shown 
         capture_device_name: "OBS Virtual Camera".into(),
         ..UserProfile::default()
     };
-    Shown::new(&profile, devices, scanning, TimerLink::Hotkeys, TimerConnection::Hotkeys)
+    Shown::new(&profile, devices, scanning, TimerLink::Hotkeys)
 }
 
 #[test_case(VIDEO_CAPTURE_DEVICE, false, false => ""; "devices listed")]
@@ -415,7 +415,7 @@ fn selects_the_profiles_device() {
 #[test]
 fn hotkeys_note_when_livesplit_controls_the_timer() {
     // Act
-    let shown = Shown::new(&UserProfile::default(), &[], false, TimerLink::AutoControlled, TimerConnection::Hotkeys);
+    let shown = Shown::new(&UserProfile::default(), &[], false, TimerLink::AutoControlled);
 
     // Assert
     assert!(!shown.hotkeys_note.is_empty());
@@ -449,4 +449,15 @@ fn merging_updates_keeps_the_newest_picture(older: Picture, newer: Picture) -> O
 
     // Assert, with the expected value checked by test_case
     red(&merged.live)
+}
+
+#[test_case(TimerConnection::LiveSplitOne, TimerLink::Hotkeys => true; "switch waiting for the run")]
+#[test_case(TimerConnection::Hotkeys, TimerLink::Hotkeys => false; "same connection")]
+#[test_case(TimerConnection::LiveSplitOne, TimerLink::AutoControlled => false; "livesplit controls the timer")]
+fn timer_connection_waiting(connection: TimerConnection, link: TimerLink) -> bool {
+    // Arrange
+    let profile = UserProfile { timer_connection: connection, ..UserProfile::default() };
+
+    // Act, with the expected value checked by test_case
+    Shown::new(&profile, &[], false, link).timer_connection_waiting
 }

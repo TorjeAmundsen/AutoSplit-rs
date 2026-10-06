@@ -96,6 +96,8 @@ pub enum Notice {
     AutoResetToggled(bool),
     /// LiveSplit sent a profile, which the session loaded. It's as in its file.
     ProfileLoaded { path: PathBuf, profile: Box<UserProfile> },
+    /// The timer is told another way now, after the profile's timer connection changed.
+    TimerLinkChanged(TimerLink),
 }
 
 /// What a [`View`] shows of the session.
@@ -149,6 +151,10 @@ pub struct Session {
     /// With `--auto-controlled`, nothing is set up until LiveSplit sends a profile.
     profile_loaded: bool,
     link: TimerLink,
+    /// The link and LiveSplit One port set up, to tell when the profile asks for others.
+    connected_to: (TimerLink, Option<u16>),
+    /// The profile asked for another timer connection during a run.
+    link_after_run: bool,
     runner: Runner,
     console: Console,
     /// The window, or `None` for the terminal's status line. Taken out while it updates.
@@ -187,6 +193,8 @@ impl Session {
         let hotkey_events = events.clone();
         Self {
             runner: Runner::new(RunnerSettings::from_profile(&profile), link.timer_synced()),
+            connected_to: (link, (link == TimerLink::LiveSplitOne).then_some(profile.livesplit_one_port)),
+            link_after_run: false,
             profile,
             profile_loaded: true,
             link,
@@ -253,19 +261,56 @@ impl Session {
     /// Listens for LiveSplit One on `port`. Fails when the port is taken.
     fn listen_for_livesplit_one(&mut self, port: u16) -> anyhow::Result<()> {
         let events = self.events.clone();
-        livesplit_one::listen(port, move |event| {
+        let server = livesplit_one::listen(port, move |event| {
             let _ = events.send(Event::LiveSplitOne(event));
         })
         .map_err(|error| match error.kind() {
             std::io::ErrorKind::AddrInUse => anyhow::anyhow!(
                 "Port {port} is already in use, probably by another autosplit that's still running. Close it, or \
-                 change the LiveSplit One port (in Settings > Other, or livesplit_one_port in the profile), restart, \
-                 and use that port in LiveSplit One."
+                 change the LiveSplit One port (in Settings > Other, or livesplit_one_port in the profile), and use \
+                 that port in LiveSplit One."
             ),
             _ => anyhow::anyhow!("Couldn't listen for LiveSplit One on port {port}: {error}"),
         })?;
-        self.livesplit_one = Some(Link::new(port));
+        self.livesplit_one = Some(Link::new(port, server));
         Ok(())
+    }
+
+    /// Switches how the timer is told, to the profile's timer connection and LiveSplit One port.
+    /// A run keeps the one it started with, and switches when it ends. LiveSplit's link never
+    /// changes: LiveSplit started autosplit.
+    /// Returns whether it switched, which loads the split image folder again.
+    fn follow_timer_connection(&mut self) -> bool {
+        if self.link == TimerLink::AutoControlled {
+            return false;
+        }
+        let link = TimerLink::from(self.profile.timer_connection);
+        let port = self.profile.livesplit_one_port;
+        let wanted = (link, (link == TimerLink::LiveSplitOne).then_some(port));
+        if wanted == self.connected_to {
+            return false;
+        }
+        if self.runner.is_running() {
+            self.link_after_run = true;
+            return false;
+        }
+        self.link_after_run = false;
+        self.connected_to = wanted;
+        // Closes the port and LiveSplit One's connection
+        self.livesplit_one = None;
+        if link == TimerLink::LiveSplitOne
+            && let Err(error) = self.listen_for_livesplit_one(port)
+        {
+            self.dialog(format_args!("{error:#}"));
+        }
+        self.link = link;
+        self.hotkeys.set_link(link, &self.profile, &mut self.console);
+        self.runner.set_timer_synced(link.timer_synced());
+        self.log_timer();
+        self.notify(Notice::TimerLinkChanged(link));
+        self.logged_folder_messages.clear();
+        self.arm(false);
+        true
     }
 
     /// Logs how the timer is told, and sets up the profile.
@@ -636,7 +681,9 @@ impl Session {
                     Effect::RequestStart => self.start_run(),
                     Effect::Stopped => {
                         self.console.log("Run ended");
-                        self.arm(false);
+                        if !self.follow_timer_connection() {
+                            self.arm(false);
+                        }
                     }
                 }
             }
@@ -800,7 +847,8 @@ impl Session {
         if hotkeys_changed {
             self.hotkeys.set_profile(&self.profile, &mut self.console);
         }
-        if (folder_changed || loaded) && !self.runner.is_running() {
+        let switched = self.follow_timer_connection();
+        if (folder_changed || loaded) && !switched && !self.runner.is_running() {
             self.logged_folder_messages.clear();
             self.arm(false);
         }

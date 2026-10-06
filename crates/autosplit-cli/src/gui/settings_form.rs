@@ -116,20 +116,14 @@ pub struct Shown {
     pub device_index: i32,
     pub hotkeys_note: &'static str,
     pub timer_connection: i32,
-    /// The profile asks for another timer connection than the one autosplit started with.
-    pub timer_connection_changed: bool,
+    /// The profile asks for another timer connection than the one used, which waits for the
+    /// run to end.
+    pub timer_connection_waiting: bool,
 }
 
 impl Shown {
-    /// `scanning` while the devices are being listed. `link` is how the session tells the timer,
-    /// and `started_with` the profile's timer connection when autosplit started.
-    pub fn new(
-        profile: &UserProfile,
-        devices: &[DeviceInfo],
-        scanning: bool,
-        link: TimerLink,
-        started_with: TimerConnection,
-    ) -> Self {
+    /// `scanning` while the devices are being listed. `link` is how the session tells the timer.
+    pub fn new(profile: &UserProfile, devices: &[DeviceInfo], scanning: bool, link: TimerLink) -> Self {
         // AutoSplit's list items, with the profile's window capture method when it has one
         let mut capture_methods = vec!["- Video Capture Device (see below)".to_owned()];
         let other_method = !profile.capture_method.is_empty() && profile.capture_method != VIDEO_CAPTURE_DEVICE;
@@ -159,7 +153,8 @@ impl Shown {
                 "LiveSplit or LiveSplit One controls the timer, so only the screenshot and auto reset hotkeys are used."
             },
             timer_connection: i32::from(profile.timer_connection == TimerConnection::LiveSplitOne),
-            timer_connection_changed: profile.timer_connection != started_with,
+            timer_connection_waiting: link != TimerLink::AutoControlled
+                && TimerLink::from(profile.timer_connection) != link,
         }
     }
 }
