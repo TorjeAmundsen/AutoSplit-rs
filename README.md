@@ -116,6 +116,7 @@ Window:
 - Warnings about a loaded profile (keys in the wrong place) are shown in one message box.
 - The live preview stops while the window is minimized or covered, which saves the work of converting frames nobody sees.
 - The window is drawn on the CPU, which only redraws what changed: mostly the 320x240 preview.
+- Buttons and spin boxes are drawn like AutoSplit's (Qt's Fusion style). Text is grayscale antialiased, without ClearType's colored edges.
 
 Image math:
 
@@ -223,6 +224,7 @@ autosplit bench [split images...] --capture 1920x1080
 - `crates/autosplit-capture`: video capture devices, one backend per OS, and the pixel format conversions.
 - `crates/autosplit-input`: global hotkeys (through livesplit-hotkey), sending key presses and AutoSplit's hotkey names.
 - `crates/autosplit-cli`: the `autosplit` program. `session.rs` drives the runner from capture (`device.rs`), hotkeys (`hotkeys.rs`), LiveSplit (`livesplit.rs`) and LiveSplit One (`livesplit_one.rs`). `run.rs` runs a session in the terminal, `gui/` in the window, laid out in `ui/*.slint`; the window's logic that needs no window (`document.rs`, `messages.rs`, `settings_form.rs`) is tested in `tests/gui.rs`. `src/bin/autosplit-console.rs` becomes `autosplit.com` on Windows.
+- `vendor/i-slint-renderer-software`: Slint's CPU renderer with font hinting on and glyphs on whole pixels, for text as crisp as AutoSplit's. `vendor/README.md` says what changed and how to redo it when upgrading Slint.
 - `tests/fixtures`: split images, captures and profiles. `real/` holds split images made with AutoMask.
 - `tests/golden`: expected values from AutoSplit and OpenCV.
 - `tools/golden/generate.py`: regenerates the fixtures and golden values. Instructions are at the top of the file. Only rerun it when you mean to change the baseline.

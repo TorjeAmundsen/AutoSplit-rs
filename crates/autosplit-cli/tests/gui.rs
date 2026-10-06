@@ -193,13 +193,12 @@ fn devices() -> Vec<DeviceInfo> {
 #[test_case(SettingEdit::FpsLimit(19) => false; "fps below 20")]
 #[test_case(SettingEdit::FpsLimit(241) => false; "fps above 240")]
 #[test_case(SettingEdit::FpsLimit(144) => true; "fps in range")]
-#[test_case(SettingEdit::DefaultSimilarityThreshold("1.5".into()) => false; "threshold above 1")]
-#[test_case(SettingEdit::DefaultSimilarityThreshold("0.9x".into()) => false; "threshold not a number")]
-#[test_case(SettingEdit::DefaultSimilarityThreshold(" 0.95 ".into()) => true; "threshold")]
-#[test_case(SettingEdit::DefaultDelayTime("-1".into()) => false; "negative delay")]
-#[test_case(SettingEdit::DefaultPauseTime("inf".into()) => false; "endless pause")]
-#[test_case(SettingEdit::LiveSplitOnePort("0".into()) => false; "port 0")]
-#[test_case(SettingEdit::LiveSplitOnePort("16834".into()) => true; "port")]
+#[test_case(SettingEdit::DefaultSimilarityThreshold(1.5) => false; "threshold above 1")]
+#[test_case(SettingEdit::DefaultSimilarityThreshold(0.95) => true; "threshold")]
+#[test_case(SettingEdit::DefaultDelayTime(-1.0) => false; "negative delay")]
+#[test_case(SettingEdit::DefaultPauseTime(f64::INFINITY) => false; "endless pause")]
+#[test_case(SettingEdit::LiveSplitOnePort(0.0) => false; "port 0")]
+#[test_case(SettingEdit::LiveSplitOnePort(16834.0) => true; "port")]
 #[test_case(SettingEdit::CaptureDevice(-1) => false; "no device picked")]
 #[test_case(SettingEdit::CaptureDevice(5) => false; "device gone")]
 fn validates_settings(edit: SettingEdit) -> bool {
@@ -216,10 +215,22 @@ fn invalid_setting_leaves_the_profile() {
     let mut profile = UserProfile::default();
 
     // Act
-    apply(&mut profile, SettingEdit::DefaultSimilarityThreshold("2".into()), &devices());
+    apply(&mut profile, SettingEdit::DefaultSimilarityThreshold(2.0), &devices());
 
     // Assert
     assert_eq!(profile, UserProfile::default());
+}
+
+#[test]
+fn threshold_steps_keep_two_decimals() {
+    // Arrange
+    let mut profile = UserProfile::default();
+
+    // Act
+    apply(&mut profile, SettingEdit::DefaultSimilarityThreshold(0.9 + 0.01 + 0.01 + 0.01), &devices());
+
+    // Assert
+    assert_eq!(profile.default_similarity_threshold, 0.93);
 }
 
 #[test]

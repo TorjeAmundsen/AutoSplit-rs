@@ -1,73 +1,26 @@
 // AutoSplit's main window, at the positions of AutoSplit's design.ui.
 
-import { Button, LineEdit, Palette } from "std-widgets.slint";
+import { Palette } from "std-widgets.slint";
 import { SettingsWindow, HotkeyRow, Setting } from "settings.slint";
 import { AboutWindow } from "about.slint";
 import { LogWindow } from "log.slint";
 import { MessageWindow } from "message.slint";
-import { Label } from "common.slint";
+import { Button, Label, SpinBox, TextField, Theme } from "widgets.slint";
 
 export { SettingsWindow, HotkeyRow, Setting, AboutWindow, LogWindow, MessageWindow }
-
-// A spin box narrow enough for AutoSplit's 51 pixels: a number field and arrow keys.
-component NumberBox inherits Rectangle {
-    in-out property <int> value;
-    in property <int> minimum: 0;
-    in property <int> maximum;
-    callback edited();
-
-    // Typing replaces the binding to value, so changes from elsewhere are shown by hand
-    changed value => {
-        if (!edit.has-focus) {
-            edit.text = root.value;
-        }
-    }
-
-    edit := LineEdit {
-        width: 100%;
-        height: 100%;
-        input-type: number;
-        text: root.value;
-        edited(text) => {
-            if (text.is-float()) {
-                root.value = max(root.minimum, min(root.maximum, text.to-float()));
-                root.edited();
-            }
-        }
-        changed has-focus => {
-            if (!self.has-focus) {
-                self.text = root.value;
-            }
-        }
-        key-pressed(event) => {
-            if (event.text == Key.UpArrow) {
-                root.value = min(root.maximum, root.value + 1);
-                self.text = root.value;
-                root.edited();
-                return accept;
-            }
-            if (event.text == Key.DownArrow) {
-                root.value = max(root.minimum, root.value - 1);
-                self.text = root.value;
-                root.edited();
-                return accept;
-            }
-            reject
-        }
-    }
-}
 
 // A preview area: the image stretched to fill it like AutoSplit's, or a message.
 component Preview inherits Rectangle {
     in property <image> source;
     in property <string> message;
     border-width: 1px;
-    border-color: Palette.border;
-    background: Palette.alternate-background;
+    border-color: Theme.frame;
 
     Image {
-        width: 100%;
-        height: 100%;
+        x: 1px;
+        y: 1px;
+        width: parent.width - 2px;
+        height: parent.height - 2px;
         source: root.source;
         image-fit: fill;
         visible: root.message == "";
@@ -80,6 +33,7 @@ component Preview inherits Rectangle {
         wrap: word-wrap;
         horizontal-alignment: center;
         vertical-alignment: center;
+        color: Theme.text;
     }
 }
 
@@ -96,16 +50,16 @@ component SimilarityViewer inherits Rectangle {
     border-color: Palette.border;
     border-radius: 3px;
 
+    // The title on the frame, centered like AutoSplit's
     Rectangle {
-        x: 8px;
-        y: -7px;
+        x: (parent.width - self.width) / 2;
+        y: -8px;
         width: title.preferred-width + 6px;
-        height: 14px;
+        height: 16px;
         background: Palette.background;
 
-        title := Text {
+        title := Label {
             text: "Similarity Viewer";
-            font-size: 11px;
         }
     }
 
@@ -126,23 +80,24 @@ component SimilarityViewer inherits Rectangle {
     }
 
     for cell in [
-        { x: 133px, y: 22px, text: "Live" },
-        { x: 197px, y: 22px, text: "Highest" },
-        { x: 261px, y: 22px, text: "Threshold" },
-        { x: 10px, y: 42px, text: "Current Image" },
-        { x: 10px, y: 64px, text: "Reset Image" },
-        { x: 133px, y: 43px, text: root.current-live },
-        { x: 197px, y: 43px, text: root.current-highest },
-        { x: 261px, y: 43px, text: root.current-threshold },
-        { x: 133px, y: 64px, text: root.reset-live },
-        { x: 197px, y: 64px, text: root.reset-highest },
-        { x: 261px, y: 64px, text: root.reset-threshold },
+        { x: 133px, y: 22px, width: 57px, text: "Live", center: true },
+        { x: 197px, y: 22px, width: 57px, text: "Highest", center: true },
+        { x: 261px, y: 22px, width: 56px, text: "Threshold", center: true },
+        { x: 10px, y: 42px, width: 111px, text: "Current Image", center: false },
+        { x: 10px, y: 64px, width: 111px, text: "Reset Image", center: false },
+        { x: 133px, y: 43px, width: 57px, text: root.current-live, center: true },
+        { x: 197px, y: 43px, width: 57px, text: root.current-highest, center: true },
+        { x: 260px, y: 43px, width: 57px, text: root.current-threshold, center: true },
+        { x: 133px, y: 64px, width: 57px, text: root.reset-live, center: true },
+        { x: 197px, y: 64px, width: 57px, text: root.reset-highest, center: true },
+        { x: 260px, y: 64px, width: 57px, text: root.reset-threshold, center: true },
     ]: Label {
         x: cell.x;
         y: cell.y;
-        width: cell.x < 100px ? 111px : 60px;
+        width: cell.width;
         height: 16px;
         text: cell.text;
+        horizontal-alignment: cell.center ? center : left;
     }
 }
 
@@ -154,10 +109,10 @@ export component MainWindow inherits Window {
     in property <string> split-image-folder: "No Folder Selected";
     in property <bool> running;
     in property <string> device-name: "-";
-    in-out property <int> region-x;
-    in-out property <int> region-y;
-    in-out property <int> region-width;
-    in-out property <int> region-height;
+    in-out property <float> region-x;
+    in-out property <float> region-y;
+    in-out property <float> region-width;
+    in-out property <float> region-height;
     in property <image> live-image;
     in property <string> live-message;
     in property <string> current-image-file: "-";
@@ -182,7 +137,7 @@ export component MainWindow inherits Window {
     in property <bool> blocked;
 
     callback browse-folder();
-    callback region-edited(int, int, int, int);
+    callback region-edited(float, float, float, float);
     callback align-region();
     callback take-screenshot();
     callback check-fps();
@@ -255,20 +210,20 @@ export component MainWindow inherits Window {
                 text: "Split Image Folder:";
             }
 
-            LineEdit {
+            TextField {
                 x: 127px;
-                y: 4px;
+                y: 6px;
                 width: 561px;
-                height: 26px;
+                height: 22px;
                 read-only: true;
                 text: root.split-image-folder;
             }
 
             Button {
                 x: 696px;
-                y: 4px;
+                y: 5px;
                 width: 81px;
-                height: 26px;
+                height: 24px;
                 text: "Browse...";
                 enabled: !root.running;
                 clicked => { root.browse-folder(); }
@@ -364,6 +319,7 @@ export component MainWindow inherits Window {
                 width: 49px;
                 height: 20px;
                 text: "X";
+                horizontal-alignment: center;
             }
 
             Label {
@@ -372,9 +328,10 @@ export component MainWindow inherits Window {
                 width: 49px;
                 height: 20px;
                 text: "Y";
+                horizontal-alignment: center;
             }
 
-            NumberBox {
+            SpinBox {
                 x: 11px;
                 y: 165px;
                 width: 51px;
@@ -384,7 +341,7 @@ export component MainWindow inherits Window {
                 edited => { root.region-edited(root.region-x, root.region-y, root.region-width, root.region-height); }
             }
 
-            NumberBox {
+            SpinBox {
                 x: 66px;
                 y: 165px;
                 width: 51px;
@@ -400,6 +357,7 @@ export component MainWindow inherits Window {
                 width: 49px;
                 height: 20px;
                 text: "Width";
+                horizontal-alignment: center;
             }
 
             Label {
@@ -408,9 +366,10 @@ export component MainWindow inherits Window {
                 width: 49px;
                 height: 20px;
                 text: "Height";
+                horizontal-alignment: center;
             }
 
-            NumberBox {
+            SpinBox {
                 x: 11px;
                 y: 210px;
                 width: 51px;
@@ -421,7 +380,7 @@ export component MainWindow inherits Window {
                 edited => { root.region-edited(root.region-x, root.region-y, root.region-width, root.region-height); }
             }
 
-            NumberBox {
+            SpinBox {
                 x: 66px;
                 y: 210px;
                 width: 51px;
@@ -444,7 +403,7 @@ export component MainWindow inherits Window {
             Button {
                 x: 10px;
                 y: 270px;
-                width: 62px;
+                width: 53px;
                 height: 24px;
                 text: "Max FPS";
                 enabled: !root.running;
@@ -452,15 +411,15 @@ export component MainWindow inherits Window {
             }
 
             Label {
-                x: 74px;
+                x: 65px;
                 y: 272px;
-                width: 22px;
+                width: 26px;
                 height: 20px;
                 text: root.fps-value;
             }
 
             Label {
-                x: 97px;
+                x: 92px;
                 y: 272px;
                 width: 21px;
                 height: 20px;
@@ -509,7 +468,7 @@ export component MainWindow inherits Window {
             Label {
                 x: 537px;
                 y: 313px;
-                width: 100px;
+                width: 121px;
                 height: 20px;
                 text: root.image-loop;
             }
@@ -525,7 +484,7 @@ export component MainWindow inherits Window {
             Label {
                 x: 577px;
                 y: 344px;
-                width: 60px;
+                width: 81px;
                 height: 20px;
                 text: root.start-image-status;
             }
@@ -541,9 +500,9 @@ export component MainWindow inherits Window {
             }
 
             Button {
-                x: 640px;
+                x: 657px;
                 y: 310px;
-                width: 67px;
+                width: 59px;
                 height: 27px;
                 text: "Undo";
                 enabled: root.can-undo;
@@ -551,9 +510,9 @@ export component MainWindow inherits Window {
             }
 
             Button {
-                x: 711px;
+                x: 719px;
                 y: 310px;
-                width: 67px;
+                width: 59px;
                 height: 27px;
                 text: "Skip";
                 enabled: root.can-skip;
@@ -561,9 +520,9 @@ export component MainWindow inherits Window {
             }
 
             Button {
-                x: 640px;
+                x: 657px;
                 y: 339px;
-                width: 138px;
+                width: 121px;
                 height: 27px;
                 text: "Reset";
                 enabled: root.can-reset;
@@ -571,9 +530,9 @@ export component MainWindow inherits Window {
             }
 
             Button {
-                x: 640px;
+                x: 657px;
                 y: 369px;
-                width: 138px;
+                width: 121px;
                 height: 27px;
                 text: root.running ? "Running..." : "Start Auto Splitter";
                 enabled: root.can-start;

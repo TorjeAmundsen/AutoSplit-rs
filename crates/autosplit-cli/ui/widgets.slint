@@ -1,0 +1,285 @@
+// Widgets drawn like AutoSplit's, which uses Qt's Fusion style: compact gradient buttons and spin
+// boxes with arrows, so text fits at AutoSplit's sizes. Combo boxes and check boxes are Slint's.
+
+import { Palette } from "std-widgets.slint";
+
+export global Theme {
+    out property <bool> dark: Palette.color-scheme == ColorScheme.dark;
+    out property <color> outline: dark ? #151515 : #a5a5a5;
+    out property <color> button-top: dark ? #545454 : #f6f6f6;
+    out property <color> button-bottom: dark ? #474747 : #e4e4e4;
+    out property <color> button-highlight: dark ? #696969 : #ffffff;
+    out property <color> field: dark ? #2d2d2d : #ffffff;
+    out property <color> text: dark ? #ffffff : #1e1e1e;
+    out property <color> disabled-text: dark ? #8c8c8c : #a0a0a0;
+    out property <color> arrow: dark ? #bebebe : #4a4a4a;
+    out property <color> focus: dark ? #2a82da : #308cc6;
+    out property <color> frame: dark ? #ffffff : #a0a0a0;
+    out property <color> selection: dark ? #2a82da : #308cc6;
+}
+
+export component Label inherits Text {
+    vertical-alignment: center;
+    overflow: elide;
+    color: Theme.text;
+}
+
+// The face of a button or a spin box arrow: Fusion's gradient with a light top edge.
+component Face inherits Rectangle {
+    in property <bool> pressed;
+    in property <bool> hovered;
+    border-radius: 2px;
+    border-width: 1px;
+    border-color: Theme.outline;
+    background: pressed
+        ? @linear-gradient(180deg, Theme.button-bottom 0%, Theme.button-bottom 100%)
+        : @linear-gradient(180deg, hovered ? Theme.button-top.brighter(8%) : Theme.button-top 0%, Theme.button-bottom 100%);
+
+    Rectangle {
+        x: 1px;
+        y: 1px;
+        width: parent.width - 2px;
+        height: 1px;
+        background: Theme.button-highlight;
+        visible: !root.pressed;
+    }
+}
+
+export component Button inherits Rectangle {
+    in property <string> text;
+    in property <bool> enabled: true;
+    // The default button of a dialog, drawn with a focus color
+    in property <bool> primary;
+    callback clicked();
+    preferred-width: max(75px, label.preferred-width + 20px);
+    preferred-height: 24px;
+    // Layouts don't stretch it, like Qt's buttons
+    max-height: 24px;
+    min-height: 24px;
+    forward-focus: focus;
+    accessible-role: button;
+    accessible-label: root.text;
+
+    Face {
+        width: 100%;
+        height: 100%;
+        pressed: touch.pressed && root.enabled;
+        hovered: touch.has-hover && root.enabled;
+        border-color: root.primary || focus.has-focus ? Theme.focus : Theme.outline;
+    }
+
+    label := Text {
+        x: 2px;
+        width: parent.width - 4px;
+        height: 100%;
+        text: root.text;
+        color: root.enabled ? Theme.text : Theme.disabled-text;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+
+    touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: default;
+        clicked => {
+            root.clicked();
+        }
+    }
+
+    focus := FocusScope {
+        enabled: root.enabled;
+        key-pressed(event) => {
+            if (event.text == " " || event.text == "\n") {
+                root.clicked();
+                return accept;
+            }
+            reject
+        }
+    }
+}
+
+// The frame of a text field.
+component FieldFrame inherits Rectangle {
+    in property <bool> focused;
+    in property <bool> enabled: true;
+    border-radius: 2px;
+    border-width: 1px;
+    border-color: focused ? Theme.focus : Theme.outline;
+    background: Theme.field;
+    opacity: enabled ? 1 : 0.6;
+}
+
+// A one-line text field.
+export component TextField inherits Rectangle {
+    in-out property <string> text <=> input.text;
+    in property <bool> enabled: true;
+    in property <bool> read-only;
+    in property <string> placeholder-text;
+    out property <bool> has-focus: input.has-focus;
+    callback edited(string);
+    callback accepted(string);
+    forward-focus: input;
+
+    FieldFrame {
+        width: 100%;
+        height: 100%;
+        focused: input.has-focus;
+        enabled: root.enabled;
+    }
+
+    Rectangle {
+        x: 4px;
+        width: parent.width - 8px;
+        clip: true;
+
+        // A text that's too long shows its end, like Qt's read-only fields do
+        input := TextInput {
+            x: root.read-only && !self.has-focus ? min(0px, parent.width - self.preferred-width) : 0px;
+            width: max(parent.width, self.preferred-width);
+            height: parent.height;
+            vertical-alignment: center;
+            single-line: true;
+            read-only: root.read-only || !root.enabled;
+            enabled: root.enabled;
+            color: root.enabled ? Theme.text : Theme.disabled-text;
+            selection-background-color: Theme.selection;
+            edited => {
+                root.edited(self.text);
+            }
+            accepted => {
+                root.accepted(self.text);
+            }
+        }
+
+        Text {
+            width: 100%;
+            height: 100%;
+            vertical-alignment: center;
+            text: root.placeholder-text;
+            color: Theme.disabled-text;
+            visible: input.text == "" && !input.has-focus;
+            overflow: elide;
+        }
+    }
+}
+
+// A spin box: a number field with up and down arrows, like Qt's. The value is corrected into
+// the range when editing ends.
+export component SpinBox inherits Rectangle {
+    in-out property <float> value;
+    in property <float> minimum: 0;
+    in property <float> maximum: 100;
+    in property <float> step: 1;
+    in property <int> decimals: 0;
+    in property <bool> enabled: true;
+    callback edited(float);
+    forward-focus: input;
+
+    function shown(number: float) -> string {
+        return root.decimals == 0 ? round(number) : number.to-fixed(root.decimals);
+    }
+
+    function set(number: float) {
+        root.value = max(root.minimum, min(root.maximum, number));
+        input.text = root.shown(root.value);
+        root.edited(root.value);
+    }
+
+    // Typing replaces the binding to value, so changes from elsewhere are shown by hand
+    changed value => {
+        if (!input.has-focus) {
+            input.text = root.shown(root.value);
+        }
+    }
+
+    FieldFrame {
+        width: 100%;
+        height: 100%;
+        focused: input.has-focus;
+        enabled: root.enabled;
+    }
+
+    Rectangle {
+        x: 4px;
+        width: parent.width - 20px;
+        clip: true;
+
+        input := TextInput {
+            width: 100%;
+            height: 100%;
+            vertical-alignment: center;
+            single-line: true;
+            input-type: root.decimals == 0 ? InputType.number : InputType.decimal;
+            enabled: root.enabled;
+            read-only: !root.enabled;
+            color: root.enabled ? Theme.text : Theme.disabled-text;
+            selection-background-color: Theme.selection;
+            text: root.shown(root.value);
+            edited => {
+                if (self.text.is-float() && self.text.to-float() >= root.minimum && self.text.to-float() <= root.maximum) {
+                    root.value = self.text.to-float();
+                    root.edited(root.value);
+                }
+            }
+            accepted => {
+                if (self.text.is-float()) {
+                    root.set(self.text.to-float());
+                } else {
+                    self.text = root.shown(root.value);
+                }
+            }
+            changed has-focus => {
+                if (!self.has-focus) {
+                    if (self.text.is-float()) {
+                        root.set(self.text.to-float());
+                    } else {
+                        self.text = root.shown(root.value);
+                    }
+                }
+            }
+            key-pressed(event) => {
+                if (event.text == Key.UpArrow) {
+                    root.set(root.value + root.step);
+                    return accept;
+                }
+                if (event.text == Key.DownArrow) {
+                    root.set(root.value - root.step);
+                    return accept;
+                }
+                reject
+            }
+        }
+    }
+
+    for arrow[index] in [{ up: true }, { up: false }]: Rectangle {
+        x: parent.width - 16px;
+        y: index == 0 ? 0px : parent.height / 2;
+        width: 16px;
+        height: parent.height / 2;
+
+        Face {
+            width: 100%;
+            height: 100%;
+            pressed: arrow-touch.pressed && root.enabled;
+            hovered: arrow-touch.has-hover && root.enabled;
+        }
+
+        Path {
+            width: 7px;
+            height: 4px;
+            stroke: root.enabled ? Theme.arrow : Theme.disabled-text;
+            stroke-width: 1px;
+            viewbox-width: 7;
+            viewbox-height: 4;
+            commands: arrow.up ? "M 0 4 L 3.5 0.5 L 7 4" : "M 0 0 L 3.5 3.5 L 7 0";
+        }
+
+        arrow-touch := TouchArea {
+            enabled: root.enabled;
+            clicked => {
+                root.set(root.value + (arrow.up ? root.step : -root.step));
+            }
+        }
+    }
+}

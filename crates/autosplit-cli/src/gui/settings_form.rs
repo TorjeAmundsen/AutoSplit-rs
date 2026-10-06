@@ -25,15 +25,15 @@ pub enum SettingEdit {
         pause: bool,
     },
     DefaultComparisonMethod(i32),
-    DefaultSimilarityThreshold(String),
-    DefaultDelayTime(String),
-    DefaultPauseTime(String),
+    DefaultSimilarityThreshold(f64),
+    DefaultDelayTime(f64),
+    DefaultPauseTime(f64),
     LoopSplits(bool),
     StartAlsoResets(bool),
     EnableAutoReset(bool),
     /// 0 for hotkeys, 1 for LiveSplit One.
     TimerConnection(i32),
-    LiveSplitOnePort(String),
+    LiveSplitOnePort(f64),
 }
 
 impl SettingEdit {
@@ -45,8 +45,8 @@ impl SettingEdit {
 }
 
 /// Puts an edit into the profile. Returns `false` when the value isn't valid, like a
-/// threshold above 1, which leaves the profile as it was; AutoSplit's spin boxes don't allow
-/// those.
+/// threshold above 1, which leaves the profile as it was. The spin boxes don't allow those
+/// either, like AutoSplit's.
 pub fn apply(profile: &mut UserProfile, edit: SettingEdit, devices: &[DeviceInfo]) -> bool {
     match edit {
         SettingEdit::FpsLimit(fps) if (20..=240).contains(&fps) => profile.fps_limit = fps.into(),
@@ -75,18 +75,16 @@ pub fn apply(profile: &mut UserProfile, edit: SettingEdit, devices: &[DeviceInfo
             .collect();
         }
         SettingEdit::DefaultComparisonMethod(method) => profile.default_comparison_method = method.into(),
-        SettingEdit::DefaultSimilarityThreshold(text) => match text.trim().parse::<f64>() {
-            Ok(value) if (0.0..=1.0).contains(&value) => profile.default_similarity_threshold = value,
-            _ => return false,
-        },
-        SettingEdit::DefaultDelayTime(text) => match text.trim().parse::<i64>() {
-            Ok(value) if value >= 0 => profile.default_delay_time = value,
-            _ => return false,
-        },
-        SettingEdit::DefaultPauseTime(text) => match text.trim().parse::<f64>() {
-            Ok(value) if value >= 0.0 && value.is_finite() => profile.default_pause_time = value,
-            _ => return false,
-        },
+        SettingEdit::DefaultSimilarityThreshold(value) if (0.0..=1.0).contains(&value) => {
+            // The spin box's 2 decimals, without the float noise of its steps
+            profile.default_similarity_threshold = (value * 100.0).round() / 100.0;
+        }
+        SettingEdit::DefaultDelayTime(value) if value >= 0.0 && value.is_finite() => {
+            profile.default_delay_time = value.round() as i64;
+        }
+        SettingEdit::DefaultPauseTime(value) if value >= 0.0 && value.is_finite() => {
+            profile.default_pause_time = (value * 100.0).round() / 100.0;
+        }
         SettingEdit::LoopSplits(on) => profile.loop_splits = on,
         SettingEdit::StartAlsoResets(on) => profile.start_also_resets = on,
         SettingEdit::EnableAutoReset(on) => profile.enable_auto_reset = on,
@@ -94,11 +92,14 @@ pub fn apply(profile: &mut UserProfile, edit: SettingEdit, devices: &[DeviceInfo
             profile.timer_connection =
                 if index == 1 { TimerConnection::LiveSplitOne } else { TimerConnection::Hotkeys };
         }
-        SettingEdit::LiveSplitOnePort(text) => match text.trim().parse::<u16>() {
-            Ok(port) if port > 0 => profile.livesplit_one_port = port,
-            _ => return false,
-        },
-        SettingEdit::FpsLimit(_) => return false,
+        SettingEdit::LiveSplitOnePort(port) if (1.0..=65535.0).contains(&port) => {
+            profile.livesplit_one_port = port.round() as u16;
+        }
+        SettingEdit::FpsLimit(_)
+        | SettingEdit::DefaultSimilarityThreshold(_)
+        | SettingEdit::DefaultDelayTime(_)
+        | SettingEdit::DefaultPauseTime(_)
+        | SettingEdit::LiveSplitOnePort(_) => return false,
     }
     true
 }

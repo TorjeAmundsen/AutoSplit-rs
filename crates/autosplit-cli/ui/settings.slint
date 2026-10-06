@@ -1,7 +1,7 @@
 // AutoSplit's settings window (settings.ui), with an extra tab for the timer connection.
 
-import { Button, LineEdit, CheckBox, ComboBox, TabWidget, Palette } from "std-widgets.slint";
-import { Label } from "common.slint";
+import { CheckBox, ComboBox, TabWidget } from "std-widgets.slint";
+import { Button, Label, SpinBox, TextField } from "widgets.slint";
 
 export enum Setting {
     fps-limit,
@@ -34,7 +34,7 @@ export component SettingsWindow inherits Window {
     height: 360px;
     default-font-size: 12px;
 
-    in-out property <int> fps-limit: 60;
+    in-out property <float> fps-limit: 60;
     in-out property <bool> live-capture-region: true;
     in property <[string]> capture-methods: ["Video Capture Device"];
     in-out property <int> capture-method-index;
@@ -51,9 +51,9 @@ export component SettingsWindow inherits Window {
     in-out property <bool> screenshot-on-undo;
     in-out property <bool> screenshot-on-pause;
     in-out property <int> default-comparison-method;
-    in-out property <string> default-similarity-threshold: "0.90";
-    in-out property <string> default-delay-time: "0";
-    in-out property <string> default-pause-time: "10.00";
+    in-out property <float> default-similarity-threshold: 0.9;
+    in-out property <float> default-delay-time: 0;
+    in-out property <float> default-pause-time: 10;
     in-out property <bool> loop-splits;
     in-out property <bool> start-also-resets;
     in-out property <bool> enable-auto-reset: true;
@@ -63,15 +63,13 @@ export component SettingsWindow inherits Window {
     in property <bool> running;
     in property <string> hotkeys-note;
     in-out property <int> timer-connection;
-    in-out property <string> livesplit-one-port: "16835";
+    in-out property <float> livesplit-one-port: 16835;
     in property <bool> timer-connection-changed;
     in property <bool> auto-controlled;
     // A message box is open, which AutoSplit's are modal
     in property <bool> blocked;
 
     callback changed(Setting);
-    // A text field lost focus: shows the stored value again, if what was typed wasn't valid
-    callback field-left();
     callback capture-devices-requested();
     callback browse-screenshot-directory();
     callback set-hotkey(int);
@@ -79,13 +77,6 @@ export component SettingsWindow inherits Window {
     callback hotkey-typed(int, string) -> bool;
     callback open-readme();
     callback blocked-clicked();
-
-    // Typing replaces the FPS field's binding to fps-limit, so changes are shown by hand
-    changed fps-limit => {
-        if (!fps.has-focus) {
-            fps.text = root.fps-limit;
-        }
-    }
 
     // For screenshots of each tab
     public function show-tab(index: int) {
@@ -110,24 +101,15 @@ export component SettingsWindow inherits Window {
                     text: "Comparison FPS Limit:";
                 }
 
-                fps := LineEdit {
+                SpinBox {
                     x: 150px;
-                    y: 8px;
+                    y: 9px;
                     width: 60px;
-                    height: 26px;
-                    input-type: number;
-                    text: root.fps-limit;
-                    edited(text) => {
-                        if (text.is-float() && text.to-float() >= 20 && text.to-float() <= 240) {
-                            root.fps-limit = text.to-float();
-                            root.changed(Setting.fps-limit);
-                        }
-                    }
-                    changed has-focus => {
-                        if (!self.has-focus) {
-                            self.text = root.fps-limit;
-                        }
-                    }
+                    height: 22px;
+                    minimum: 20;
+                    maximum: 240;
+                    value <=> root.fps-limit;
+                    edited => { root.changed(Setting.fps-limit); }
                 }
 
                 CheckBox {
@@ -194,11 +176,11 @@ export component SettingsWindow inherits Window {
                     clicked => { root.browse-screenshot-directory(); }
                 }
 
-                LineEdit {
+                TextField {
                     x: 10px;
-                    y: 186px;
+                    y: 187px;
                     width: 360px;
-                    height: 26px;
+                    height: 24px;
                     read-only: true;
                     text: root.screenshot-directory;
                     placeholder-text: "(Defaults to Split Image Folder)";
@@ -306,19 +288,16 @@ export component SettingsWindow inherits Window {
                     text: "Default Similarity Threshold:";
                 }
 
-                LineEdit {
+                SpinBox {
                     x: 200px;
-                    y: 40px;
+                    y: 42px;
                     width: 60px;
-                    height: 26px;
-                    input-type: decimal;
-                    text <=> root.default-similarity-threshold;
+                    height: 22px;
+                    maximum: 1;
+                    step: 0.01;
+                    decimals: 2;
+                    value <=> root.default-similarity-threshold;
                     edited => { root.changed(Setting.default-similarity-threshold); }
-                    changed has-focus => {
-                        if (!self.has-focus) {
-                            root.field-left();
-                        }
-                    }
                 }
 
                 Label {
@@ -329,19 +308,14 @@ export component SettingsWindow inherits Window {
                     text: "Default Delay Time (ms):";
                 }
 
-                LineEdit {
+                SpinBox {
                     x: 200px;
-                    y: 70px;
+                    y: 72px;
                     width: 100px;
-                    height: 26px;
-                    input-type: number;
-                    text <=> root.default-delay-time;
+                    height: 22px;
+                    maximum: 999999999;
+                    value <=> root.default-delay-time;
                     edited => { root.changed(Setting.default-delay-time); }
-                    changed has-focus => {
-                        if (!self.has-focus) {
-                            root.field-left();
-                        }
-                    }
                 }
 
                 Label {
@@ -352,19 +326,15 @@ export component SettingsWindow inherits Window {
                     text: "Default Pause Time (sec):";
                 }
 
-                LineEdit {
+                SpinBox {
                     x: 200px;
-                    y: 100px;
+                    y: 102px;
                     width: 100px;
-                    height: 26px;
-                    input-type: decimal;
-                    text <=> root.default-pause-time;
+                    height: 22px;
+                    maximum: 999999999;
+                    decimals: 2;
+                    value <=> root.default-pause-time;
                     edited => { root.changed(Setting.default-pause-time); }
-                    changed has-focus => {
-                        if (!self.has-focus) {
-                            root.field-left();
-                        }
-                    }
                 }
 
                 CheckBox {
@@ -445,11 +415,11 @@ export component SettingsWindow inherits Window {
                         opacity: row.enabled ? 1 : 0.5;
                     }
 
-                    field := LineEdit {
+                    field := TextField {
                         x: 95px;
-                        y: 1px;
+                        y: 2px;
                         width: 160px;
-                        height: 26px;
+                        height: 24px;
                         enabled: row.enabled && !root.running;
                         text: row.hotkey;
                         accepted(text) => {
@@ -466,9 +436,9 @@ export component SettingsWindow inherits Window {
 
                     Button {
                         x: 262px;
-                        y: 1px;
+                        y: 2px;
                         width: 108px;
-                        height: 26px;
+                        height: 24px;
                         enabled: row.enabled && !root.running && (root.setting-hotkey == -1 || root.setting-hotkey == index);
                         text: root.setting-hotkey == index ? "Press a key..." : "Set Hotkey";
                         clicked => { root.set-hotkey(index); }
@@ -517,20 +487,16 @@ export component SettingsWindow inherits Window {
                     opacity: root.timer-connection == 1 && !root.auto-controlled ? 1 : 0.5;
                 }
 
-                LineEdit {
+                SpinBox {
                     x: 200px;
-                    y: 62px;
+                    y: 64px;
                     width: 100px;
-                    height: 26px;
-                    input-type: number;
+                    height: 22px;
+                    minimum: 1;
+                    maximum: 65535;
                     enabled: root.timer-connection == 1 && !root.auto-controlled;
-                    text <=> root.livesplit-one-port;
+                    value <=> root.livesplit-one-port;
                     edited => { root.changed(Setting.livesplit-one-port); }
-                    changed has-focus => {
-                        if (!self.has-focus) {
-                            root.field-left();
-                        }
-                    }
                 }
 
                 Text {

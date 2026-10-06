@@ -39,6 +39,7 @@ const NOW: Duration = Duration::from_secs(10);
 #[test_case(Status { reset_similarity: Some(ResetReading::Disabled), ..status() }, true => ["0.412", "0.951", "0.930", "disabled", "0.500", "0.960"]; "auto reset off")]
 #[test_case(Status { reset_similarity: Some(ResetReading::Paused), ..status() }, true => ["0.412", "0.951", "0.930", "paused", "0.500", "0.960"]; "reset paused")]
 #[test_case(Status { reset_similarity: Some(ResetReading::NotApplicable), ..status() }, true => ["0.412", "0.951", "0.930", "N/A", "N/A", "N/A"]; "no reset image")]
+#[test_case(Status { reset_similarity: None, ..status() }, true => ["0.412", "0.951", "0.930", "-", "-", "-"]; "before the run")]
 fn similarity_table(status: Status, capture: bool) -> [String; 6] {
     // Act, with the expected value checked by test_case
     window_texts(&status, NOW, "", capture).table

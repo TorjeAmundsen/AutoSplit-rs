@@ -368,7 +368,8 @@ impl Gui {
         on!(weak, main, on_region_edited, (x, y, width, height) gui => {
             let mut state = gui.state.borrow_mut();
             let region = &mut state.document.profile.capture_region;
-            (region.x, region.y, region.width, region.height) = (x.into(), y.into(), width.into(), height.into());
+            let whole = |value: f32| value.round() as i64;
+            (region.x, region.y, region.width, region.height) = (whole(x), whole(y), whole(width), whole(height));
             drop(state);
             gui.send_profile(false);
         });
@@ -406,7 +407,6 @@ impl Gui {
 
         let settings = &self.settings;
         on!(weak, settings, on_changed, (setting) gui => gui.setting_changed(setting));
-        on!(weak, settings, on_field_left, () gui => gui.show_profile());
         on!(weak, settings, on_capture_devices_requested, () gui => gui.refresh_devices());
         on!(weak, settings, on_browse_screenshot_directory, () gui => gui.browse_screenshot_directory());
         on!(weak, settings, on_set_hotkey, (index) gui => {
@@ -426,6 +426,12 @@ impl Gui {
         self.message.on_answered(move |button| {
             if let Some(gui) = answered.upgrade() {
                 gui.message_answered(Some(button as usize));
+            }
+        });
+        let dismissed = weak.clone();
+        self.message.on_dismissed(move || {
+            if let Some(gui) = dismissed.upgrade() {
+                gui.message_answered(None);
             }
         });
         let closed = weak.clone();
@@ -602,13 +608,13 @@ impl Gui {
             format!("{}/", profile.split_image_directory.trim_end_matches(['/', '\\'])).into()
         });
         let region = profile.capture_region;
-        main.set_region_x(region.x as i32);
-        main.set_region_y(region.y as i32);
-        main.set_region_width(region.width as i32);
-        main.set_region_height(region.height as i32);
+        main.set_region_x(region.x as f32);
+        main.set_region_y(region.y as f32);
+        main.set_region_width(region.width as f32);
+        main.set_region_height(region.height as f32);
 
         let settings = &self.settings;
-        settings.set_fps_limit(profile.fps_limit as i32);
+        settings.set_fps_limit(profile.fps_limit as f32);
         settings.set_live_capture_region(profile.live_capture_region);
         let mut methods = vec![SharedString::from("Video Capture Device")];
         let other_method = !profile.capture_method.is_empty() && profile.capture_method != VIDEO_CAPTURE_DEVICE;
@@ -646,9 +652,9 @@ impl Gui {
         settings.set_screenshot_on_undo(on(Command::Undo));
         settings.set_screenshot_on_pause(on(Command::Pause));
         settings.set_default_comparison_method(profile.default_comparison_method.clamp(0, 2) as i32);
-        settings.set_default_similarity_threshold(format!("{:.2}", profile.default_similarity_threshold).into());
-        settings.set_default_delay_time(profile.default_delay_time.to_string().into());
-        settings.set_default_pause_time(format!("{:.2}", profile.default_pause_time).into());
+        settings.set_default_similarity_threshold(profile.default_similarity_threshold as f32);
+        settings.set_default_delay_time(profile.default_delay_time as f32);
+        settings.set_default_pause_time(profile.default_pause_time as f32);
         settings.set_loop_splits(profile.loop_splits);
         settings.set_start_also_resets(profile.start_also_resets);
         settings.set_enable_auto_reset(profile.enable_auto_reset);
@@ -676,7 +682,7 @@ impl Gui {
             .into(),
         );
         settings.set_timer_connection(i32::from(profile.timer_connection == TimerConnection::LiveSplitOne));
-        settings.set_livesplit_one_port(profile.livesplit_one_port.to_string().into());
+        settings.set_livesplit_one_port(f32::from(profile.livesplit_one_port));
         settings.set_timer_connection_changed(profile.timer_connection != state.started_with);
     }
 
@@ -684,7 +690,7 @@ impl Gui {
     fn setting_changed(&self, setting: Setting) {
         let settings = &self.settings;
         let edit = match setting {
-            Setting::FpsLimit => SettingEdit::FpsLimit(settings.get_fps_limit()),
+            Setting::FpsLimit => SettingEdit::FpsLimit(settings.get_fps_limit().round() as i32),
             Setting::LiveCaptureRegion => SettingEdit::LiveCaptureRegion(settings.get_live_capture_region()),
             Setting::CaptureMethod => SettingEdit::CaptureMethod(settings.get_capture_method_index()),
             Setting::CaptureDevice => SettingEdit::CaptureDevice(settings.get_capture_device_index()),

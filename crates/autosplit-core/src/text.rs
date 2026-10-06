@@ -92,7 +92,9 @@ pub fn window_texts(status: &Status, now: Duration, idle: &str, capture: bool) -
     let current_live = decimal_or_dash(if capture { status.similarity } else { None });
     let reset = |live: String| [live, decimal_or_dash(status.reset_highest), decimal_or_dash(status.reset_threshold)];
     let [reset_live, reset_highest, reset_threshold] = match status.reset_similarity {
-        None | Some(ResetReading::NotApplicable) => ["N/A".into(), "N/A".into(), "N/A".into()],
+        // Like AutoSplit: dashes until the run starts, N/A during a run without a reset image
+        None => ["-".into(), "-".into(), "-".into()],
+        Some(ResetReading::NotApplicable) => ["N/A".into(), "N/A".into(), "N/A".into()],
         Some(ResetReading::Disabled) => reset("disabled".into()),
         Some(ResetReading::Paused) => reset("paused".into()),
         Some(ResetReading::Similarity(similarity)) => reset(if capture { decimal(similarity) } else { "-".into() }),
