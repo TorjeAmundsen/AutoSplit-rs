@@ -2,8 +2,10 @@ name: Validate
 
 on:
   pull_request:
-  push:
-    branches: [main]
+  # Off while the repo is private, to save Actions minutes
+  # push:
+  #   branches: [main]
+  workflow_dispatch:
   # Called by the release workflow, so releases are built and tested the same way
   workflow_call:
 

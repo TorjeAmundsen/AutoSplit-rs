@@ -36,7 +36,7 @@ The script installs the Rust targets and the cargo tools it needs. macOS builds 
 
 ## CI
 
-- `.github/workflows/validate.yml` runs on pull requests and pushes to `main`. It checks formatting and clippy and draws every window without a display. Then it runs the tests and a release build for every target, natively on Windows, Linux and macOS, x64 and ARM64. The x64 half of the macOS build is tested under Rosetta 2.
+- `.github/workflows/validate.yml` runs on pull requests, and by hand from the Actions tab. Pushes to `main` don't run it while the repo is private. It checks formatting and clippy and draws every window without a display. Then it runs the tests and a release build for every target, natively on Windows, Linux and macOS, x64 and ARM64. The x64 half of the macOS build is tested under Rosetta 2.
 - `.github/workflows/release.yml` runs on `v*` tags. It checks that the tag matches the version in `Cargo.toml`, runs the validate workflow, and creates a draft GitHub release with the zips. Tags with a `-` (like `v0.2.0-beta`) become prereleases. Linux release builds run on Ubuntu 22.04, so they work on 22.04 and newer.
 
 ## Layout
