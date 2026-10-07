@@ -67,6 +67,8 @@ export component SettingsWindow inherits Window {
     // The new timer connection waits for the run to end
     in property <bool> timer-connection-waiting;
     in property <bool> auto-controlled;
+    // Molok only runs on Linux
+    in property <bool> molok-listed;
     // A message box is open, which AutoSplit's are modal
     in property <bool> blocked;
 
@@ -507,7 +509,7 @@ export component SettingsWindow inherits Window {
                     y: 10px;
                     width: 360px;
                     height: 16px;
-                    text: "Tell the timer with:";
+                    text: "Timer:";
                 }
 
                 ComboBox {
@@ -516,7 +518,9 @@ export component SettingsWindow inherits Window {
                     width: 360px;
                     height: 26px;
                     enabled: !root.auto-controlled;
-                    model: ["Hotkeys", "LiveSplit One"];
+                    model: root.molok-listed
+                        ? ["Any timer (hotkeys)", "LiveSplit One (WebSocket)", "Molok (POSIX signals)"]
+                        : ["Any timer (hotkeys)", "LiveSplit One (WebSocket)"];
                     current-index <=> root.timer-connection;
                     selected => { root.changed(Setting.timer-connection); }
                 }

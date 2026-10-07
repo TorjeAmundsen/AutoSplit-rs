@@ -38,7 +38,7 @@ fn defaults() -> RunnerSettings {
 }
 
 const ALL_HOTKEYS_SET: ValidationContext =
-    ValidationContext { split_hotkey_set: true, reset_hotkey_set: true, pause_hotkey_set: true, timer_synced: false };
+    ValidationContext { split_hotkey_set: true, reset_hotkey_set: true, pause_hotkey_set: true, hotkeys_needed: true };
 
 /// Plays the host's part: reloads the folder on start and after a run, like AutoSplit does.
 struct Harness {

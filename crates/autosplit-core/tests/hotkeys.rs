@@ -12,6 +12,7 @@ use test_case::test_case;
 #[test_case(HotkeyAction::Reset, TimerLink::LiveSplitOne => false; "reset with livesplit one")]
 #[test_case(HotkeyAction::Screenshot, TimerLink::AutoControlled => true; "screenshot when auto controlled")]
 #[test_case(HotkeyAction::ToggleAutoResetImage, TimerLink::LiveSplitOne => true; "toggle auto reset with livesplit one")]
+#[cfg_attr(target_os = "linux", test_case(HotkeyAction::Reset, TimerLink::Molok => true; "reset with molok"))]
 fn listened(action: HotkeyAction, link: TimerLink) -> bool {
     // Act, with the expected value checked by test_case
     action.listened(link)

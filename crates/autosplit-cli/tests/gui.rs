@@ -320,6 +320,7 @@ fn screenshot_commands_are_in_autosplits_order() {
 }
 
 #[test_case(1 => TimerConnection::LiveSplitOne; "livesplit one")]
+#[cfg_attr(target_os = "linux", test_case(2 => TimerConnection::Molok; "molok"))]
 #[test_case(0 => TimerConnection::Hotkeys; "hotkeys")]
 fn timer_connection(index: i32) -> TimerConnection {
     // Arrange
@@ -447,6 +448,18 @@ fn selects_the_profiles_device() {
 
     // Assert
     assert_eq!(shown.device_index, 1);
+}
+
+#[test_case(TimerConnection::Hotkeys => 0; "hotkeys")]
+#[test_case(TimerConnection::LiveSplitOne => 1; "livesplit one")]
+#[cfg_attr(target_os = "linux", test_case(TimerConnection::Molok => 2; "molok"))]
+#[cfg_attr(not(target_os = "linux"), test_case(TimerConnection::Molok => 0; "molok shows hotkeys off linux"))]
+fn timer_connection_index(connection: TimerConnection) -> i32 {
+    // Arrange
+    let profile = UserProfile { timer_connection: connection, ..UserProfile::default() };
+
+    // Act, with the expected value checked by test_case
+    Shown::new(&profile, &[], false, TimerLink::from(connection)).timer_connection
 }
 
 #[test]

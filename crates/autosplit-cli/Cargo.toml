@@ -39,3 +39,5 @@ slint-build = "1.18.1"
 # builds and cross builds don't need its development files.
 [target.'cfg(target_os = "linux")'.dependencies]
 fontique = { version = "0.11.1", default-features = false, features = ["fontconfig-dlopen"] }
+# Signals Molok
+libc = "0.2.190"

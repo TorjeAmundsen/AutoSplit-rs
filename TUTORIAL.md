@@ -20,6 +20,7 @@ If it doesn't split, Help > View Log says why. The same log is in `autosplit.log
 
 - Windows with LiveSplit: add LiveSplit's AutoSplit Integration component, and in its settings choose `autosplit.exe` and your profile. LiveSplit starts `autosplit` and tells it when the timer starts, splits, skips, undoes and resets, like it does for AutoSplit. The window title says "(externally controlled)". If the component already runs AutoSplit, point it at `autosplit.exe` instead and keep your profile.
 - LiveSplit One, on any system: see [LiveSplit One](#livesplit-one). It needs no hotkeys and no permissions.
+- Molok, on Linux: see [Molok](#molok). It needs no hotkeys and no permissions.
 - Any other timer: hotkeys, like AutoSplit. `autosplit` presses the profile's hotkeys, and the timer listens for them as global hotkeys.
 
 ![LiveSplit's Layout Settings with the AutoSplit Integration component, autosplit.exe and a profile picked](docs/images/livesplit-integration.png)
@@ -127,7 +128,7 @@ These are the defaults for images whose file names don't set their own.
 - Default Delay Time: how long to wait after a match before splitting, in milliseconds.
 - Default Pause Time: how long to stop comparing after a split, in seconds. It stops two identical images in a row from splitting at once, and saves CPU.
 - Loop Last Split Image to First Split Image: after the last image splits, start over with the first one. Otherwise comparing stops.
-- Start also Resets: when the start image matches, reset the timer too. LiveSplit and LiveSplit One get a reset and then a start. With hotkeys, only the reset hotkey is pressed, like AutoSplit, so you still have to start the timer.
+- Start also Resets: when the start image matches, reset the timer too. LiveSplit, LiveSplit One and Molok get a reset and then a start. With hotkeys, only the reset hotkey is pressed, like AutoSplit, so you still have to start the timer.
 - Enable auto reset image: use the reset image. The toggle auto reset image hotkey turns it on and off, for example when a mistake in the run would show the reset image.
 
 ### Hotkeys
@@ -140,11 +141,11 @@ To set one, click Set Hotkey and press the key, with any modifiers. Escape clear
 
 Keypad keys are named `num 0` to `num 9`, `decimal`, `plus`, `-`, `*` and `/`, whether Num Lock is on or not. Set Hotkey names the key without what Shift types on it, so Shift+1 is `shift+1`.
 
-When LiveSplit or LiveSplit One controls the timer, only the screenshot and toggle auto reset image hotkeys are used.
+When LiveSplit or LiveSplit One controls the timer, only the screenshot and toggle auto reset image hotkeys are used. With Molok, `autosplit` doesn't press any hotkeys, but still listens for them, so set them to the keys you control Molok with if you want `autosplit` to follow along.
 
 ### Other
 
-- Tell the timer with: hotkeys or LiveSplit One. The change applies right away, or after the current run ends.
+- Timer: Any timer (hotkeys), LiveSplit One (WebSocket), or Molok (POSIX signals, listed on Linux only). The change applies right away, or after the current run ends.
 - LiveSplit One port: the port LiveSplit One connects to, 16835 by default. Change it if another program uses that port.
 
 ## Split image file names
@@ -206,7 +207,7 @@ capture_method = "VIDEO_CAPTURE_DEVICE"
 capture_device_name = "OBS Virtual Camera"  # as `autosplit devices` shows it
 split_image_directory = "/Users/me/Splits/OoT Any%"  # on Windows, use / or 'single quotes'
 default_similarity_threshold = 0.95
-timer_connection = "livesplit_one"  # optional, see LiveSplit One
+timer_connection = "livesplit_one"  # optional, see LiveSplit One and Molok
 
 [capture_region]  # in pixels of the device's frames; `autosplit grab` shows their size
 x = 0
@@ -215,7 +216,7 @@ width = 1920
 height = 1080
 ```
 
-Keys after `[capture_region]` belong to the capture region and are ignored, so put new ones above it. The four hotkeys aren't needed with `timer_connection = "livesplit_one"`. Relative folders are read from the profile's folder.
+Keys after `[capture_region]` belong to the capture region and are ignored, so put new ones above it. The four hotkeys aren't needed with `timer_connection = "livesplit_one"` or `"molok"`. Relative folders are read from the profile's folder.
 
 ### Using a profile from another computer
 
@@ -225,7 +226,7 @@ Keys after `[capture_region]` belong to the capture region and are ignored, so p
 
 ## LiveSplit One
 
-`autosplit` can control LiveSplit One, the web version or the desktop app, without hotkeys. Choose LiveSplit One in Settings > Other, and `autosplit` starts listening right away. Then choose "Connect to Server" in LiveSplit One's menu and enter `ws://localhost:16835`, or the port you set.
+`autosplit` can control LiveSplit One, the web version or the desktop app, without hotkeys. Choose LiveSplit One (WebSocket) in Settings > Other, and `autosplit` starts listening right away. Then choose "Connect to Server" in LiveSplit One's menu and enter `ws://localhost:16835`, or the port you set.
 
 ![LiveSplit One's Connect to Server dialog with ws://localhost:16835 entered](docs/images/livesplit-one-connect.png)
 
@@ -238,6 +239,23 @@ Keys after `[capture_region]` belong to the capture region and are ignored, so p
 
 AutoSplit ignores these settings, so the profile keeps working with it.
 
+## Molok
+
+Molok is a Linux timer controlled with POSIX signals. Choose Molok (POSIX signals) in Settings > Other, and `autosplit` sends signals to every running process named `molok`:
+
+| Command | Signal |
+| --- | --- |
+| Start and split | `SIGRTMIN+0` |
+| Skip split | `SIGRTMIN+1` |
+| Undo split | `SIGRTMIN+2` |
+| Reset | `SIGRTMIN+3` |
+| Pause (images with the `{p}` flag) | `SIGRTMIN+4` |
+
+- Molok doesn't report back. When you split, reset or undo in Molok yourself, `autosplit` only follows if you used the same keys as its hotkeys.
+- Start the run with the start image, Start Auto Splitter or the split hotkey. Start Auto Splitter doesn't start Molok.
+- Molok must run as your user, or `autosplit` isn't allowed to signal it. If Molok isn't running, the log says so.
+- With Start also Resets, the start signal goes 5 milliseconds after the reset. Molok would otherwise get both at once and handle the start first, since Linux delivers the lower signal number first.
+
 ## Permissions
 
 - Linux:
@@ -245,7 +263,7 @@ AutoSplit ignores these settings, so the profile keeps working with it.
   - Pressing hotkeys needs `/dev/uinput`: `echo 'KERNEL=="uinput", TAG+="uaccess"' | sudo tee /etc/udev/rules.d/50-uinput.rules`, then restart. If `/dev/uinput` doesn't exist, load it with `sudo modprobe uinput` (and `echo uinput | sudo tee /etc/modules-load.d/uinput.conf` to keep it after a restart). Under WSL, key presses can't be sent.
   - Capture devices need the `video` group, which desktop users usually have.
   - The window needs fontconfig and xkbcommon, which every desktop has.
-  - Without these, `autosplit` still runs and says what's missing. The LiveSplit One connection needs none of them.
+  - Without these, `autosplit` still runs and says what's missing. The LiveSplit One and Molok connections need none of them.
 - macOS: in System Settings > Privacy & Security, allow `autosplit` under Camera for capture devices, Accessibility for pressing hotkeys and Input Monitoring for listening to them, then restart it. When you start it from a terminal, allow the terminal app instead, like Terminal or iTerm.
 
 ## From a terminal

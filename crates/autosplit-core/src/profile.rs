@@ -63,6 +63,9 @@ pub enum TimerConnection {
     /// LiveSplit One connecting to AutoSplit's WebSocket server.
     #[serde(rename = "livesplit_one")]
     LiveSplitOne,
+    /// Sending POSIX signals to Molok. Only on Linux. Other systems keep it in the profile, but
+    /// use hotkeys.
+    Molok,
 }
 
 /// AutoSplit's `capture_method` value for video capture devices.

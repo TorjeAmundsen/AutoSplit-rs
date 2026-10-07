@@ -17,6 +17,7 @@
 | Video capture devices | Done: DirectShow on Windows (pixel-identical setup to AutoSplit's OpenCV), V4L2 on Linux, AVFoundation on macOS |
 | Global hotkeys and sending key presses | Done, with AutoSplit's hotkey names |
 | LiveSplit One (WebSocket) | Done, new |
+| Molok (POSIX signals, Linux) | Done, new |
 | Screenshots | Done |
 | Screen and window capture | Later |
 | Window (Slint): main window, settings, Align Region, Set Hotkey | Done, for capture devices |
@@ -89,7 +90,7 @@ Settings and display:
 
 Window:
 
-- The settings window has a fourth tab, Other, for the timer connection and the LiveSplit One port. It's disabled when LiveSplit started `autosplit`.
+- The settings window has a fourth tab, Other, for the timer connection (hotkeys, LiveSplit One or Molok) and the LiveSplit One port. It's disabled when LiveSplit started `autosplit`.
 - Help > View Log shows everything `autosplit` logged, which is also in `autosplit.log`. AutoSplit only shows errors, in message boxes, and those are here too.
 - Split image folder errors only get a message box when Start Auto Splitter, Reload Start Image or a run start loaded the folder. Otherwise they're logged, and the current image area says the folder can't be used. AutoSplit mostly does the same.
 - Help > View Help and the settings' Tutorial button open [TUTORIAL.md](TUTORIAL.md), not AutoSplit's tutorial.

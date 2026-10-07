@@ -243,7 +243,7 @@ fn check(profile_path: &Path, split_dir: Option<PathBuf>) -> Result<()> {
     for problem in &hotkey_problems {
         eprintln!("warning: {problem}");
     }
-    let (set, warnings) = folder_result(load_profile_folder(&profile, link.timer_synced()))?;
+    let (set, warnings) = folder_result(load_profile_folder(&profile, link.needs_hotkeys()))?;
     let defaults = profile.split_defaults();
     println!(
         "{:<44} {:<6} {:>9} {:>8} {:>8} {:>5} {:<10} {:<6} content",
@@ -384,16 +384,16 @@ fn replay(
 ) -> Result<()> {
     let profile = load_profile(profile_path, split_dir)?;
     let link = if auto_controlled { TimerLink::AutoControlled } else { TimerLink::from(profile.timer_connection) };
-    let synced = link.timer_synced();
+    let hotkeys_needed = link.needs_hotkeys();
     let paths = frame_paths(frames)?;
     let end = Duration::from_secs_f64(paths.len() as f64 / fps);
-    let reload = || reloaded(load_profile_folder(&profile, synced));
-    let reload_to_start = || reloaded(load_profile_folder_to_start(&profile, synced));
+    let reload = || reloaded(load_profile_folder(&profile, hotkeys_needed));
+    let reload_to_start = || reloaded(load_profile_folder_to_start(&profile, hotkeys_needed));
     let print =
         |now: Duration, frame: usize, text: &str| println!("{:>10.3}s frame {frame:>6}  {text}", now.as_secs_f64());
 
-    let mut runner = Runner::new(RunnerSettings::from_profile(&profile), synced);
-    let (initial, _) = folder_result(load_profile_folder(&profile, synced))?;
+    let mut runner = Runner::new(RunnerSettings::from_profile(&profile), link.timer_synced());
+    let (initial, _) = folder_result(load_profile_folder(&profile, hotkeys_needed))?;
     let has_start_image = initial.start.is_some();
     runner.arm(initial, Duration::ZERO);
     let mut runs = 0;
@@ -435,6 +435,8 @@ fn replay(
                             Output::PressHotkey(hotkey) => format!("press {hotkey:?}"),
                             Output::PrintLine(line) => format!("print {line:?}"),
                             Output::LiveSplitOne(message) => format!("send {message}"),
+                            #[cfg(target_os = "linux")]
+                            Output::Molok(offset) => format!("signal SIGRTMIN+{offset}"),
                         })
                         .collect();
                     let details = Compared::details(compared.as_ref(), command, runner.status().similarity);

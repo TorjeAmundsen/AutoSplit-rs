@@ -56,8 +56,25 @@ fn livesplit_one_outputs(command: Command, profile: UserProfile) -> Vec<Output> 
     outputs_for(command, &profile, TimerLink::LiveSplitOne)
 }
 
+#[cfg(target_os = "linux")]
+#[test_case(Command::Split, profile() => vec![Output::Molok(0)]; "split sends SIGRTMIN")]
+#[test_case(Command::Start, profile() => vec![Output::Molok(0)]; "start sends SIGRTMIN")]
+#[test_case(Command::Start, UserProfile { start_also_resets: true, ..profile() } => vec![Output::Molok(3), Output::Molok(0)]; "start sends reset first when start also resets")]
+#[test_case(Command::Skip, profile() => vec![Output::Molok(1)]; "skip sends SIGRTMIN+1")]
+#[test_case(Command::Undo, profile() => vec![Output::Molok(2)]; "undo sends SIGRTMIN+2")]
+#[test_case(Command::Reset, profile() => vec![Output::Molok(3)]; "reset sends SIGRTMIN+3")]
+#[test_case(Command::Pause, profile() => vec![Output::Molok(4)]; "pause sends SIGRTMIN+4")]
+#[test_case(Command::Split, UserProfile { split_hotkey: String::new(), ..profile() } => vec![Output::Molok(0)]; "needs no hotkey")]
+#[test_case(Command::Reset, UserProfile { screenshot_on: vec![Command::Reset], ..profile() } => vec![Output::Screenshot, Output::Molok(3)]; "screenshot on takes a screenshot before signaling")]
+fn molok_outputs(command: Command, profile: UserProfile) -> Vec<Output> {
+    // Act, with the expected value checked by test_case
+    outputs_for(command, &profile, TimerLink::Molok)
+}
+
 #[test_case(TimerConnection::Hotkeys => TimerLink::Hotkeys; "hotkeys")]
 #[test_case(TimerConnection::LiveSplitOne => TimerLink::LiveSplitOne; "livesplit one")]
+#[cfg_attr(target_os = "linux", test_case(TimerConnection::Molok => TimerLink::Molok; "molok"))]
+#[cfg_attr(not(target_os = "linux"), test_case(TimerConnection::Molok => TimerLink::Hotkeys; "molok uses hotkeys off linux"))]
 fn timer_link_from_profile(connection: TimerConnection) -> TimerLink {
     // Act, with the expected value checked by test_case
     TimerLink::from(connection)

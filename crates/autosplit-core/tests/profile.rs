@@ -186,6 +186,19 @@ fn livesplit_one_is_written_as_snake_case() {
     assert!(saved.contains("timer_connection = \"livesplit_one\""));
 }
 
+#[test]
+fn molok_loads_back() {
+    // Arrange
+    let profile = UserProfile { timer_connection: TimerConnection::Molok, ..configured() };
+
+    // Act
+    let saved = profile.to_toml();
+
+    // Assert
+    assert!(saved.contains("timer_connection = \"molok\""));
+    assert_eq!(UserProfile::parse(&saved).unwrap(), profile);
+}
+
 #[test_case(Region { x: 1, y: 1, width: 2, height: 1 } => Rect { left: 1, top: 1, right: 3, bottom: 2 }; "inside the frame")]
 #[test_case(Region { x: 2, y: 1, width: 100, height: 100 } => Rect { left: 2, top: 1, right: 4, bottom: 3 }; "end is clamped to the frame")]
 #[test_case(Region { x: 10, y: 10, width: 5, height: 5 } => Rect { left: 3, top: 2, right: 4, bottom: 3 }; "start past the frame is moved to the last pixel")]

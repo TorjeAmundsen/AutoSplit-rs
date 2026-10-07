@@ -1,10 +1,12 @@
 //! Timer commands and how they are sent, matching AutoSplit's `hotkeys.send_command`, plus
-//! LiveSplit One.
+//! LiveSplit One and Molok.
 
 use serde::{Deserialize, Serialize};
 
 use crate::hotkeys::HotkeyAction;
 use crate::livesplit_one;
+#[cfg(target_os = "linux")]
+use crate::molok;
 use crate::profile::{TimerConnection, UserProfile};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -79,6 +81,9 @@ pub enum Output {
     PrintLine(&'static str),
     /// Send this message to LiveSplit One.
     LiveSplitOne(&'static str),
+    /// Send Molok the signal `SIGRTMIN` plus this.
+    #[cfg(target_os = "linux")]
+    Molok(i32),
 }
 
 /// Where commands go.
@@ -88,6 +93,8 @@ pub enum TimerLink {
     /// Started by LiveSplit's AutoSplit Integration component with `--auto-controlled`.
     AutoControlled,
     LiveSplitOne,
+    #[cfg(target_os = "linux")]
+    Molok,
 }
 
 impl From<TimerConnection> for TimerLink {
@@ -95,6 +102,11 @@ impl From<TimerConnection> for TimerLink {
         match connection {
             TimerConnection::Hotkeys => Self::Hotkeys,
             TimerConnection::LiveSplitOne => Self::LiveSplitOne,
+            #[cfg(target_os = "linux")]
+            TimerConnection::Molok => Self::Molok,
+            // Molok only runs on Linux, so a profile from there uses hotkeys elsewhere
+            #[cfg(not(target_os = "linux"))]
+            TimerConnection::Molok => Self::Hotkeys,
         }
     }
 }
@@ -103,7 +115,13 @@ impl TimerLink {
     /// The timer tells AutoSplit about its splits, skips, undos and resets, so AutoSplit follows
     /// it instead of needing hotkeys.
     pub fn timer_synced(self) -> bool {
-        self != Self::Hotkeys
+        matches!(self, Self::AutoControlled | Self::LiveSplitOne)
+    }
+
+    /// The timer only gets commands through the profile's hotkeys, so the ones a split image
+    /// folder uses must be set.
+    pub fn needs_hotkeys(self) -> bool {
+        self == Self::Hotkeys
     }
 }
 
@@ -127,6 +145,8 @@ pub fn outputs_for(command: Command, profile: &UserProfile, link: TimerLink) -> 
         TimerLink::LiveSplitOne => {
             outputs.extend(sent.iter().map(|&command| Output::LiveSplitOne(livesplit_one::message_for(command))))
         }
+        #[cfg(target_os = "linux")]
+        TimerLink::Molok => outputs.extend(sent.iter().map(|&command| Output::Molok(molok::signal_for(command)))),
         TimerLink::Hotkeys => {
             // Only the reset hotkey for "start also resets": the first matching case in AutoSplit
             let hotkey = HotkeyAction::from(sent[0]).hotkey(profile);

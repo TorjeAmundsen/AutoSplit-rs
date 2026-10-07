@@ -31,7 +31,7 @@ pub enum SettingEdit {
     LoopSplits(bool),
     StartAlsoResets(bool),
     EnableAutoReset(bool),
-    /// 0 for hotkeys, 1 for LiveSplit One.
+    /// 0 for hotkeys, 1 for LiveSplit One, 2 for Molok (only listed on Linux).
     TimerConnection(i32),
     LiveSplitOnePort(f64),
 }
@@ -89,8 +89,12 @@ pub fn apply(profile: &mut UserProfile, edit: SettingEdit, devices: &[DeviceInfo
         SettingEdit::StartAlsoResets(on) => profile.start_also_resets = on,
         SettingEdit::EnableAutoReset(on) => profile.enable_auto_reset = on,
         SettingEdit::TimerConnection(index) => {
-            profile.timer_connection =
-                if index == 1 { TimerConnection::LiveSplitOne } else { TimerConnection::Hotkeys };
+            profile.timer_connection = match index {
+                1 => TimerConnection::LiveSplitOne,
+                #[cfg(target_os = "linux")]
+                2 => TimerConnection::Molok,
+                _ => TimerConnection::Hotkeys,
+            };
         }
         SettingEdit::LiveSplitOnePort(port) if (1.0..=65535.0).contains(&port) => {
             profile.livesplit_one_port = port.round() as u16;
@@ -156,12 +160,25 @@ impl Shown {
             device_placeholder,
             device_names: devices.iter().map(|device| format!("* {}", device.name)).collect(),
             device_index: selected.map_or(-1, |index| index as i32),
-            hotkeys_note: if link == TimerLink::Hotkeys {
-                ""
-            } else {
-                "LiveSplit or LiveSplit One controls the timer, so only the screenshot and auto reset hotkeys are used."
+            hotkeys_note: match link {
+                TimerLink::Hotkeys => "",
+                #[cfg(target_os = "linux")]
+                TimerLink::Molok => {
+                    "Molok gets signals, so these hotkeys only tell autosplit what you did to the timer."
+                }
+                TimerLink::AutoControlled | TimerLink::LiveSplitOne => {
+                    "LiveSplit or LiveSplit One controls the timer, so only the screenshot and auto reset hotkeys are used."
+                }
             },
-            timer_connection: i32::from(profile.timer_connection == TimerConnection::LiveSplitOne),
+            timer_connection: match profile.timer_connection {
+                TimerConnection::Hotkeys => 0,
+                TimerConnection::LiveSplitOne => 1,
+                #[cfg(target_os = "linux")]
+                TimerConnection::Molok => 2,
+                // Not listed, and used as hotkeys
+                #[cfg(not(target_os = "linux"))]
+                TimerConnection::Molok => 0,
+            },
             timer_connection_waiting: link != TimerLink::AutoControlled
                 && TimerLink::from(profile.timer_connection) != link,
         }

@@ -21,17 +21,18 @@ pub struct ValidationContext {
     pub split_hotkey_set: bool,
     pub reset_hotkey_set: bool,
     pub pause_hotkey_set: bool,
-    /// The timer (LiveSplit or LiveSplit One) reports back to AutoSplit, so no hotkeys are needed.
-    pub timer_synced: bool,
+    /// The timer only gets commands through hotkeys. LiveSplit, LiveSplit One and Molok don't need
+    /// them.
+    pub hotkeys_needed: bool,
 }
 
 impl ValidationContext {
-    pub fn from_profile(profile: &UserProfile, timer_synced: bool) -> Self {
+    pub fn from_profile(profile: &UserProfile, hotkeys_needed: bool) -> Self {
         Self {
             split_hotkey_set: !profile.split_hotkey.is_empty(),
             reset_hotkey_set: !profile.reset_hotkey.is_empty(),
             pause_hotkey_set: !profile.pause_hotkey.is_empty(),
-            timer_synced,
+            hotkeys_needed,
         }
     }
 }
@@ -70,24 +71,24 @@ pub struct FolderLoad {
 }
 
 /// Loads the profile's folder, e.g. to look for the start image.
-pub fn load_profile_folder(profile: &UserProfile, timer_synced: bool) -> FolderLoad {
+pub fn load_profile_folder(profile: &UserProfile, hotkeys_needed: bool) -> FolderLoad {
     load_split_folder(
         Path::new(&profile.split_image_directory),
-        &ValidationContext::from_profile(profile, timer_synced),
+        &ValidationContext::from_profile(profile, hotkeys_needed),
     )
 }
 
-/// Loads the profile's folder to start a run, which also needs a split hotkey unless the timer
-/// is synced (the start of AutoSplit's `__auto_splitter`).
-pub fn load_profile_folder_to_start(profile: &UserProfile, timer_synced: bool) -> FolderLoad {
-    if profile.split_hotkey.is_empty() && !timer_synced {
+/// Loads the profile's folder to start a run, which also needs a split hotkey when the timer
+/// only gets hotkeys (the start of AutoSplit's `__auto_splitter`).
+pub fn load_profile_folder_to_start(profile: &UserProfile, hotkeys_needed: bool) -> FolderLoad {
+    if profile.split_hotkey.is_empty() && hotkeys_needed {
         return FolderLoad {
             result: Err(ValidationError::NoSplitHotkey),
             load_errors: Vec::new(),
             warnings: Vec::new(),
         };
     }
-    load_profile_folder(profile, timer_synced)
+    load_profile_folder(profile, hotkeys_needed)
 }
 
 /// `validate_before_parsing` (minus the capture region check) and `parse_and_validate_images`.
@@ -124,17 +125,17 @@ fn validate(set: SplitSet, context: &ValidationContext) -> Result<SplitSet, Vali
     if let Some(error) = set.start.iter().chain(&set.reset).find_map(SplitImage::load_error) {
         return Err(ValidationError::InvalidImage(error.clone()));
     }
-    if set.start.is_some() && !context.split_hotkey_set && !context.timer_synced {
+    if set.start.is_some() && !context.split_hotkey_set && context.hotkeys_needed {
         return Err(ValidationError::StartWithoutSplitHotkey);
     }
-    if set.reset.is_some() && !context.reset_hotkey_set && !context.timer_synced {
+    if set.reset.is_some() && !context.reset_hotkey_set && context.hotkeys_needed {
         return Err(ValidationError::ResetWithoutResetHotkey);
     }
     for image in &set.splits {
         if let Some(error) = image.load_error() {
             return Err(ValidationError::InvalidImage(error.clone()));
         }
-        if !context.pause_hotkey_set && image.is_pause() && !context.timer_synced {
+        if !context.pause_hotkey_set && image.is_pause() && context.hotkeys_needed {
             return Err(ValidationError::PauseWithoutPauseHotkey(image.filename.clone()));
         }
         match image.image_type {

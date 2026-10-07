@@ -1,6 +1,7 @@
 //! A splitting session: captures from the profile's video capture device and splits, driven by
-//! hotkeys, LiveSplit (stdin and stdout) or LiveSplit One (WebSocket). The command line shows it
-//! with a status line, the window through a [`View`], which drives it with [`UiCommand`]s.
+//! hotkeys, LiveSplit (stdin and stdout), LiveSplit One (WebSocket) or Molok (signals). The command
+//! line shows it with a status line, the window through a [`View`], which drives it with
+//! [`UiCommand`]s.
 
 use std::collections::HashSet;
 use std::io::Write;
@@ -26,6 +27,8 @@ use crate::console::Console;
 use crate::device::{self, Device, Opened};
 use crate::hotkeys::Hotkeys;
 use crate::livesplit_one::{self, Link, ServerEvent};
+#[cfg(target_os = "linux")]
+use crate::molok;
 use crate::platform::PreciseTimer;
 use crate::{livesplit, profile, screenshot};
 
@@ -37,6 +40,10 @@ const FOLDER_RETRY_INTERVAL: Duration = Duration::from_secs(2);
 const PRECISE_LEAD: Duration = Duration::from_millis(32);
 /// How often the terminal's status line is redrawn.
 const STATUS_INTERVAL: Duration = Duration::from_millis(100);
+/// The wait between two signals to Molok, for "start also resets". Pending real-time signals
+/// are delivered lowest first, so a start sent right after a reset could arrive before it.
+#[cfg(target_os = "linux")]
+const MOLOK_GAP: Duration = Duration::from_millis(5);
 
 pub enum Event {
     Hotkey(HotkeyAction),
@@ -214,8 +221,8 @@ impl Session {
         self.notify(Notice::Dialog(message));
     }
 
-    /// Connects to how the timer is told: LiveSplit's stdin and stdout, LiveSplit One, or
-    /// pressing hotkeys.
+    /// Connects to how the timer is told: LiveSplit's stdin and stdout, LiveSplit One, Molok's
+    /// signals, or pressing hotkeys.
     pub fn connect_timer(&mut self) -> anyhow::Result<()> {
         match self.link {
             TimerLink::AutoControlled => {
@@ -224,6 +231,9 @@ impl Session {
                 livesplit::connect(&self.events)
             }
             TimerLink::LiveSplitOne => self.listen_for_livesplit_one(self.profile.livesplit_one_port),
+            // Signals need no setup
+            #[cfg(target_os = "linux")]
+            TimerLink::Molok => Ok(()),
             TimerLink::Hotkeys => {
                 self.hotkeys.start_sending(&mut self.console);
                 Ok(())
@@ -310,6 +320,8 @@ impl Session {
                 let hotkeys = if hotkeys.is_empty() { "none set".into() } else { hotkeys.join(", ") };
                 format!("Timer: hotkeys ({hotkeys})")
             }
+            #[cfg(target_os = "linux")]
+            (None, TimerLink::Molok) => "Timer: Molok (POSIX signals)".into(),
             (None, _) => "Timer: LiveSplit".into(),
         };
         self.console.log(message);
@@ -607,6 +619,8 @@ impl Session {
         let outputs = outputs_for(command, &self.profile, self.link);
         let details = Compared::details(self.compared.as_ref(), command, self.runner.status().similarity);
         let name = command.name();
+        #[cfg(target_os = "linux")]
+        let mut signaled = false;
         for output in outputs {
             match output {
                 Output::Screenshot => self.screenshot(),
@@ -624,6 +638,17 @@ impl Session {
                 Output::LiveSplitOne(message) => {
                     if let Some(link) = &mut self.livesplit_one {
                         link.send(command, message, &details, &mut self.console);
+                    }
+                }
+                #[cfg(target_os = "linux")]
+                Output::Molok(offset) => {
+                    if signaled {
+                        std::thread::sleep(MOLOK_GAP);
+                    }
+                    signaled = true;
+                    match molok::signal(offset) {
+                        Ok(()) => self.console.log(format_args!("{name}{details}: signaled Molok SIGRTMIN+{offset}")),
+                        Err(error) => self.console.error(format_args!("{name}{details}: {error}")),
                     }
                 }
             }
@@ -657,7 +682,7 @@ impl Session {
     /// Loads the split image folder and looks for its start image. `asked` when a button asked,
     /// which shows errors in message boxes.
     fn arm(&mut self, asked: bool) {
-        let load = load_profile_folder(&self.profile, self.link.timer_synced());
+        let load = load_profile_folder(&self.profile, self.link.needs_hotkeys());
         self.images_loaded += 1;
         let images = self.folder(load, asked);
         // Only arming decides whether the folder is retried, since only it watches the folder
@@ -695,7 +720,7 @@ impl Session {
 
     fn start_run(&mut self) {
         let run_start = self.elapsed();
-        let load = load_profile_folder_to_start(&self.profile, self.link.timer_synced());
+        let load = load_profile_folder_to_start(&self.profile, self.link.needs_hotkeys());
         // Not a problem with the folder, which stays watched as it was
         if let Err(error @ ValidationError::NoSplitHotkey) = &load.result {
             return self.dialog(error);
@@ -714,6 +739,10 @@ impl Session {
         let retry = match (self.link, self.windowed) {
             (TimerLink::Hotkeys, true) => "Fix it, then press Start Auto Splitter or the split hotkey.",
             (TimerLink::Hotkeys, false) => "Fix it, then press the split hotkey to try again.",
+            #[cfg(target_os = "linux")]
+            (TimerLink::Molok, true) => "Fix it, then press Start Auto Splitter or the split hotkey.",
+            #[cfg(target_os = "linux")]
+            (TimerLink::Molok, false) => "Fix it, then press the split hotkey to try again.",
             _ => "Fix it, then reset the timer and start it again.",
         };
         self.dialog(format_args!("The run couldn't start: {reason} {retry}"));
@@ -827,6 +856,14 @@ impl Session {
                 format!("can't start: hotkeys don't work ({see_log})")
             }
             TimerLink::Hotkeys => format!("ready: press {} to start", self.profile.split_hotkey),
+            #[cfg(target_os = "linux")]
+            TimerLink::Molok if !self.profile.split_hotkey.is_empty() => {
+                format!("ready: press {} to start", self.profile.split_hotkey)
+            }
+            #[cfg(target_os = "linux")]
+            TimerLink::Molok if self.windowed => "ready: press Start Auto Splitter to start".into(),
+            #[cfg(target_os = "linux")]
+            TimerLink::Molok => "can't start: the profile has no split hotkey or start image".into(),
             TimerLink::AutoControlled => "ready: start the timer in LiveSplit".into(),
             TimerLink::LiveSplitOne => match link {
                 Some(link) if !link.connected() => format!("connect LiveSplit One: {}", link.address()),

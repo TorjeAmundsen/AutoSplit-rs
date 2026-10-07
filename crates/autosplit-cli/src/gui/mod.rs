@@ -319,6 +319,7 @@ pub fn run(options: Options) -> Result<(), Error> {
     );
     windows.settings.set_hotkeys(ModelRc::from(gui.hotkeys.clone()));
     windows.settings.set_auto_controlled(options.auto_controlled);
+    windows.settings.set_molok_listed(cfg!(target_os = "linux"));
     windows.about.set_version(env!("CARGO_PKG_VERSION").into());
     windows.log.set_log_path(log_path.as_ref().map(|path| path.display().to_string()).unwrap_or_default().into());
     gui.show_profile();
