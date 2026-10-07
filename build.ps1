@@ -101,7 +101,16 @@ function BuildTriple($triple) {
     elseif ($os -eq "linux") {
         RequireZig
         RequireCargoTool "zigbuild"
-        Invoke-Cargo (@("zigbuild") + $profileArgs + @("--target", "$triple.$glibcVersion"))
+        # Zig's linker says it ignores the -O1 that rustc passes, which rustc shows as a warning
+        $rustflags = "CARGO_TARGET_$($triple.ToUpper() -replace '-', '_')_RUSTFLAGS"
+        $previous = [Environment]::GetEnvironmentVariable($rustflags)
+        [Environment]::SetEnvironmentVariable($rustflags, "-A linker-messages")
+        try {
+            Invoke-Cargo (@("zigbuild") + $profileArgs + @("--target", "$triple.$glibcVersion"))
+        }
+        finally {
+            [Environment]::SetEnvironmentVariable($rustflags, $previous)
+        }
     }
     elseif ($os -eq "windows") {
         Require "clang" "cargo-xwin links with LLVM (clang and lld)."
