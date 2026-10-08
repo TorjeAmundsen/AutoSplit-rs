@@ -137,11 +137,11 @@ pub struct Shown {
 impl Shown {
     /// `scanning` while the devices are being listed. `link` is how the session tells the timer.
     pub fn new(profile: &UserProfile, devices: &[DeviceInfo], scanning: bool, link: TimerLink) -> Self {
-        // AutoSplit's list items, with the profile's window capture method when it has one
-        let mut capture_methods = vec!["- Video Capture Device (see below)".to_owned()];
+        // The capture methods, with the profile's window capture method when it has one
+        let mut capture_methods = vec!["Video Capture Device (see below)".to_owned()];
         let other_method = !profile.capture_method.is_empty() && profile.capture_method != VIDEO_CAPTURE_DEVICE;
         if other_method {
-            capture_methods.push(format!("- {} (not supported yet)", capture_method_name(&profile.capture_method)));
+            capture_methods.push(format!("{} (not supported yet)", capture_method_name(&profile.capture_method)));
         }
         let device_placeholder = if other_method {
             "Select \"Video Capture Device\" above"
@@ -158,7 +158,7 @@ impl Shown {
             capture_methods,
             capture_method_index: i32::from(other_method),
             device_placeholder,
-            device_names: devices.iter().map(|device| format!("* {}", device.name)).collect(),
+            device_names: devices.iter().map(|device| device.name.clone()).collect(),
             device_index: selected.map_or(-1, |index| index as i32),
             hotkeys_note: match link {
                 TimerLink::Hotkeys => "",

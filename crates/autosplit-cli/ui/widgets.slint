@@ -1,7 +1,7 @@
 // Widgets drawn like AutoSplit's, which uses Qt's Fusion style: compact gradient buttons and spin
-// boxes with arrows, so text fits at AutoSplit's sizes. Combo boxes and check boxes are Slint's.
+// boxes and combo boxes with arrows, so text fits at AutoSplit's sizes. Check boxes are Slint's.
 
-import { Palette } from "std-widgets.slint";
+import { ListView, Palette } from "std-widgets.slint";
 
 export global Theme {
     out property <bool> dark: Palette.color-scheme == ColorScheme.dark;
@@ -18,6 +18,10 @@ export global Theme {
     out property <color> selection: dark ? #2a82da : #308cc6;
     out property <color> link: dark ? #5aa0ff : #2a6fd6;
     out property <color> tooltip: dark ? #2d2d2d : #ffffdc;
+    out property <color> item-hover: dark ? #3d3d3d : #e5e5e5;
+    out property <color> tab: dark ? Palette.background.darker(20%) : Palette.background.darker(10%);
+    // The light line inside the current tab and along the top of its page
+    out property <color> tab-highlight: dark ? Palette.background.brighter(80%) : #ffffff;
 }
 
 // Whether the window is the active one. Losing focus to another window isn't finishing an edit,
@@ -50,8 +54,9 @@ export component Label inherits Text {
 }
 
 // The face of a button or a spin box arrow: Fusion's gradient with a light top edge.
-// A 1px outline with Qt Fusion's 2px rounded corners: the corner pixel is left out and a faint
-// pixel inside it rounds the corner. Slint's own rounded border blends the fill into the corner
+// A 1px outline with Qt Fusion's 2px rounded corners: the corner pixel is left out and a
+// pixel inside it rounds the corner. A half-strength pixel there looked like a gap on light
+// backgrounds, so it is drawn in full. Slint's own rounded border blends the fill into the corner
 // pixel, which shows as a brighter dot.
 component Outline inherits Rectangle {
     in property <color> line: Theme.outline;
@@ -80,7 +85,6 @@ component Outline inherits Rectangle {
         width: 1px;
         height: 1px;
         background: root.line;
-        opacity: 0.5;
     }
 }
 
@@ -171,6 +175,229 @@ export component Button inherits Rectangle {
             }
             reject
         }
+    }
+}
+
+// A drop-down list drawn like Fusion's: a button face with the current item and an arrow, and a
+// plain list below it. Up and Down pick the next item without opening it, like Qt.
+export component ComboBox inherits Rectangle {
+    in property <[string]> model;
+    in-out property <int> current-index;
+    in property <bool> enabled: true;
+    callback selected(string);
+    preferred-height: 24px;
+    forward-focus: focus;
+    accessible-role: combobox;
+    accessible-value: root.model[root.current-index];
+
+    function select(index: int) {
+        if (index >= 0 && index < root.model.length && index != root.current-index) {
+            root.current-index = index;
+            root.selected(root.model[index]);
+        }
+    }
+
+    Face {
+        width: 100%;
+        height: 100%;
+        pressed: touch.pressed && root.enabled;
+        hovered: touch.has-hover && root.enabled;
+        outline-color: focus.has-focus ? Theme.focus : Theme.outline;
+    }
+
+    Text {
+        x: 6px;
+        width: parent.width - 26px;
+        height: 100%;
+        text: root.model[root.current-index];
+        color: root.enabled ? Theme.text : Theme.disabled-text;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+
+    Path {
+        x: parent.width - 15px;
+        width: 7px;
+        height: 4px;
+        stroke: root.enabled ? Theme.arrow : Theme.disabled-text;
+        stroke-width: 1px;
+        viewbox-width: 7;
+        viewbox-height: 4;
+        commands: "M 0 0 L 3.5 3.5 L 7 0";
+    }
+
+    touch := TouchArea {
+        enabled: root.enabled;
+        clicked => {
+            focus.focus();
+            popup.show();
+        }
+    }
+
+    // Zero width, so a click reaches the touch area instead of taking the focus first
+    focus := FocusScope {
+        x: 0;
+        width: 0px;
+        enabled: root.enabled;
+        focus-on-click: false;
+        key-pressed(event) => {
+            if (event.text == Key.UpArrow) {
+                root.select(root.current-index - 1);
+                return accept;
+            }
+            if (event.text == Key.DownArrow) {
+                root.select(root.current-index + 1);
+                return accept;
+            }
+            if (event.text == " " || event.text == "\n") {
+                popup.show();
+                return accept;
+            }
+            reject
+        }
+    }
+
+    // Shows up to 10 items and scrolls the rest, like Qt
+    popup := PopupWindow {
+        x: 0;
+        y: root.height;
+        width: root.width;
+        height: min(root.model.length, 10) * 22px + 2px;
+
+        Rectangle {
+            background: Theme.field;
+            border-width: 1px;
+            border-color: Theme.outline;
+
+            ListView {
+                x: 1px;
+                y: 1px;
+                width: parent.width - 2px;
+                height: parent.height - 2px;
+
+                for item[index] in root.model: Rectangle {
+                    height: 22px;
+                    background: item-touch.has-hover ? Theme.item-hover : transparent;
+
+                    Text {
+                        x: 5px;
+                        width: parent.width - 10px;
+                        text: item;
+                        color: Theme.text;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+
+                    item-touch := TouchArea {
+                        clicked => {
+                            root.select(index);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Tabs above an outlined page, drawn like AutoSplit's Fusion ones: the other tabs are flat, a
+// shade darker than the page, and sit lower. The current one is raised, edged with a light line
+// and open into the page. The pages are the children, each shown while it's the current one.
+export component TabFrame inherits Rectangle {
+    in property <[string]> titles;
+    in-out property <int> current-index;
+    property <length> bar-height: 25px;
+
+    Outline {
+        y: root.bar-height - 1px;
+        height: parent.height - self.y;
+    }
+
+    Rectangle {
+        x: 1px;
+        y: root.bar-height;
+        width: parent.width - 2px;
+        height: 1px;
+        background: Theme.tab-highlight;
+    }
+
+    HorizontalLayout {
+        x: 2px;
+        y: 0px;
+        height: root.bar-height;
+        alignment: start;
+        // Neighbors share their outline
+        spacing: -1px;
+
+        for title[index] in root.titles: tab := Rectangle {
+            property <bool> current: index == root.current-index;
+            width: label.preferred-width + 24px;
+
+            Rectangle {
+                // The current tab reaches over the page's outline and highlight
+                y: tab.current ? 0px : 2px;
+                height: parent.height - self.y + (tab.current ? 1px : -1px);
+
+                Rectangle {
+                    x: 1px;
+                    y: 1px;
+                    width: parent.width - 2px;
+                    height: parent.height - 1px;
+                    background: tab.current ? Palette.background : Theme.tab;
+                }
+
+                for edge in [
+                    { x: 2px, y: 0px, w: parent.width - 4px, h: 1px },
+                    { x: 0px, y: 2px, w: 1px, h: parent.height - 2px },
+                    { x: parent.width - 1px, y: 2px, w: 1px, h: parent.height - 2px },
+                    { x: 1px, y: 1px, w: 1px, h: 1px },
+                    { x: parent.width - 2px, y: 1px, w: 1px, h: 1px },
+                ]: Rectangle {
+                    x: edge.x;
+                    y: edge.y;
+                    width: edge.w;
+                    height: edge.h;
+                    background: Theme.outline;
+                }
+
+                for edge in [
+                    { x: 2px, y: 1px, w: parent.width - 4px, h: 1px },
+                    { x: 1px, y: 2px, w: 1px, h: parent.height - 2px },
+                    { x: parent.width - 2px, y: 2px, w: 1px, h: parent.height - 2px },
+                ]: Rectangle {
+                    x: edge.x;
+                    y: edge.y;
+                    width: edge.w;
+                    height: edge.h;
+                    background: Theme.tab-highlight;
+                    visible: tab.current;
+                }
+            }
+
+            label := Text {
+                y: tab.current ? 0px : 1px;
+                width: parent.width;
+                height: parent.height;
+                text: title;
+                color: Theme.text;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+
+            TouchArea {
+                clicked => {
+                    root.current-index = index;
+                }
+            }
+        }
+    }
+
+    Rectangle {
+        x: 1px;
+        y: root.bar-height;
+        width: parent.width - 2px;
+        height: parent.height - self.y - 1px;
+
+        @children
     }
 }
 

@@ -188,6 +188,7 @@ struct Windows {
 /// Draws on the CPU, which only redraws what changed: the preview and a few labels.
 fn open_windows() -> anyhow::Result<Windows> {
     slint::BackendSelector::new().backend_name("winit".into()).renderer_name("software".into()).select()?;
+    platform::allow_dark_menus();
     Ok(Windows {
         main: MainWindow::new()?,
         settings: SettingsWindow::new()?,

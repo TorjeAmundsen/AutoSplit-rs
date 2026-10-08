@@ -431,8 +431,8 @@ fn device_placeholder(capture_method: &str, scanning: bool, no_devices: bool) ->
     shown(capture_method, &devices, scanning).device_placeholder
 }
 
-#[test_case(VIDEO_CAPTURE_DEVICE => (vec!["- Video Capture Device (see below)".to_owned()], 0); "video capture device")]
-#[test_case("BITBLT" => (vec!["- Video Capture Device (see below)".to_owned(), "- BitBlt (not supported yet)".to_owned()], 1); "window capture method")]
+#[test_case(VIDEO_CAPTURE_DEVICE => (vec!["Video Capture Device (see below)".to_owned()], 0); "video capture device")]
+#[test_case("BITBLT" => (vec!["Video Capture Device (see below)".to_owned(), "BitBlt (not supported yet)".to_owned()], 1); "window capture method")]
 fn capture_methods(capture_method: &str) -> (Vec<String>, i32) {
     // Act
     let shown = shown(capture_method, &devices(), false);

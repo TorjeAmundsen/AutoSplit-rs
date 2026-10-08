@@ -157,6 +157,33 @@ pub fn open(target: impl AsRef<std::ffi::OsStr>) -> std::io::Result<()> {
     Ok(())
 }
 
+/// Lets the menus that open from the menu bar follow the system's dark mode on Windows. The bar
+/// itself already does, but a menu is light unless the program allows dark mode for itself,
+/// which Windows only offers through uxtheme.dll's unnamed `SetPreferredAppMode`.
+pub fn allow_dark_menus() {
+    #[cfg(windows)]
+    unsafe {
+        use windows::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryW};
+        use windows::core::{PCSTR, w};
+        // Windows 10 1903 and later. In 1809 it was AllowDarkModeForApp(true), which 1 also means.
+        const SET_PREFERRED_APP_MODE: usize = 135;
+        const FLUSH_MENU_THEMES: usize = 136;
+        const ALLOW_DARK: i32 = 1;
+        let Ok(uxtheme) = LoadLibraryW(w!("uxtheme.dll")) else {
+            return;
+        };
+        if let Some(set_preferred_app_mode) = GetProcAddress(uxtheme, PCSTR(SET_PREFERRED_APP_MODE as *const u8)) {
+            let set_preferred_app_mode: unsafe extern "system" fn(i32) -> i32 =
+                std::mem::transmute(set_preferred_app_mode);
+            set_preferred_app_mode(ALLOW_DARK);
+        }
+        if let Some(flush_menu_themes) = GetProcAddress(uxtheme, PCSTR(FLUSH_MENU_THEMES as *const u8)) {
+            let flush_menu_themes: unsafe extern "system" fn() = std::mem::transmute(flush_menu_themes);
+            flush_menu_themes();
+        }
+    }
+}
+
 /// Keeps Windows from slowing the session down while the window is minimized or covered, which
 /// it does to windowed programs but not to console ones: Windows 11 drops the precise timer
 /// [`PreciseTimer`] asks for, and power throttling can move comparisons to slower cores.

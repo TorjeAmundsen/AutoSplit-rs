@@ -1,7 +1,7 @@
 // AutoSplit's settings window (settings.ui), with an extra tab for the timer connection.
 
-import { CheckBox, ComboBox, TabWidget } from "std-widgets.slint";
-import { Button, Label, SpinBox, TextField, Theme, Tip, WindowFocus } from "widgets.slint";
+import { CheckBox } from "std-widgets.slint";
+import { Button, ComboBox, Label, SpinBox, TabFrame, TextField, Theme, Tip, WindowFocus } from "widgets.slint";
 
 export enum Setting {
     fps-limit,
@@ -86,477 +86,468 @@ export component SettingsWindow inherits Window {
         tabs.current-index = index;
     }
 
-    tabs := TabWidget {
-        x: 0px;
-        y: 0px;
+    tabs := TabFrame {
         width: 100%;
         height: 100%;
+        titles: ["Capture Settings", "Image Settings", "Hotkeys", "Other"];
 
-        Tab {
-            title: "Capture Settings";
+        Rectangle {
+            visible: tabs.current-index == 0;
 
-            Rectangle {
-                Label {
-                    x: 10px;
-                    y: 10px;
-                    width: 141px;
-                    height: 24px;
-                    text: "Comparison FPS Limit:";
+            Label {
+                x: 10px;
+                y: 10px;
+                width: 141px;
+                height: 24px;
+                text: "Comparison FPS Limit:";
 
-                    Tooltip {
-                        Tip {
-                            text: "This value will limit the amount of frames per second that AutoSplit will run comparisons";
-                        }
+                Tooltip {
+                    Tip {
+                        text: "This value will limit the amount of frames per second that AutoSplit will run comparisons";
                     }
                 }
+            }
 
-                SpinBox {
-                    x: 150px;
-                    y: 9px;
-                    width: 60px;
-                    height: 22px;
-                    minimum: 20;
-                    maximum: 240;
-                    value <=> root.fps-limit;
-                    edited => { root.changed(Setting.fps-limit); }
-                }
+            SpinBox {
+                x: 150px;
+                y: 9px;
+                width: 60px;
+                height: 22px;
+                minimum: 20;
+                maximum: 240;
+                value <=> root.fps-limit;
+                edited => { root.changed(Setting.fps-limit); }
+            }
 
-                CheckBox {
-                    x: 10px;
-                    y: 38px;
-                    width: 340px;
-                    height: 24px;
-                    text: "Live Capture Region";
-                    checked <=> root.live-capture-region;
-                    toggled => { root.changed(Setting.live-capture-region); }
-                }
+            CheckBox {
+                x: 10px;
+                y: 38px;
+                width: 340px;
+                height: 24px;
+                text: "Live Capture Region";
+                checked <=> root.live-capture-region;
+                toggled => { root.changed(Setting.live-capture-region); }
+            }
 
-                Label {
-                    x: 10px;
-                    y: 66px;
-                    width: 340px;
-                    height: 16px;
-                    text: "Capture method:";
-                }
+            Label {
+                x: 10px;
+                y: 66px;
+                width: 340px;
+                height: 16px;
+                text: "Capture method:";
+            }
 
-                ComboBox {
-                    x: 10px;
-                    y: 84px;
-                    width: 360px;
-                    height: 26px;
-                    model: root.capture-methods;
-                    current-index <=> root.capture-method-index;
-                    selected => { root.changed(Setting.capture-method); }
+            ComboBox {
+                x: 10px;
+                y: 84px;
+                width: 360px;
+                height: 26px;
+                model: root.capture-methods;
+                current-index <=> root.capture-method-index;
+                selected => { root.changed(Setting.capture-method); }
 
-                    Tooltip {
-                        Tip {
-                            text: "Video Capture Device :\nUses a Video Capture Device, like a webcam, virtual cam, or capture card.\nYou can select one from the Capture Device dropdown below.\nSee this guide on using the OBS Virtual Camera.\nhttps://obsproject.com/kb/virtual-camera-guide";
-                        }
+                Tooltip {
+                    Tip {
+                        text: "Video Capture Device :\nUses a Video Capture Device, like a webcam, virtual cam, or capture card.\nYou can select one from the Capture Device dropdown below.\nSee this guide on using the OBS Virtual Camera.\nhttps://obsproject.com/kb/virtual-camera-guide";
                     }
                 }
+            }
 
-                Label {
-                    x: 10px;
-                    y: 114px;
-                    width: 340px;
-                    height: 16px;
-                    text: "Capture device:";
-                }
+            Label {
+                x: 10px;
+                y: 114px;
+                width: 340px;
+                height: 16px;
+                text: "Capture device:";
+            }
 
-                ComboBox {
-                    x: 10px;
-                    y: 132px;
-                    width: 360px;
-                    height: 26px;
-                    model: root.capture-device-placeholder == "" ? root.capture-devices : [root.capture-device-placeholder];
-                    enabled: root.capture-device-placeholder == "";
-                    current-index <=> root.capture-device-index;
-                    selected => { root.changed(Setting.capture-device); }
-                }
+            ComboBox {
+                x: 10px;
+                y: 132px;
+                width: 360px;
+                height: 26px;
+                model: root.capture-device-placeholder == "" ? root.capture-devices : [root.capture-device-placeholder];
+                enabled: root.capture-device-placeholder == "";
+                current-index <=> root.capture-device-index;
+                selected => { root.changed(Setting.capture-device); }
+            }
 
-                Label {
-                    x: 10px;
-                    y: 164px;
-                    width: 151px;
-                    height: 16px;
-                    text: "Screenshots folder:";
-                }
+            Label {
+                x: 10px;
+                y: 164px;
+                width: 151px;
+                height: 16px;
+                text: "Screenshots folder:";
+            }
 
-                Button {
-                    x: 290px;
-                    y: 160px;
-                    width: 80px;
-                    height: 24px;
-                    text: "Browse...";
-                    clicked => { root.browse-screenshot-directory(); }
-                }
+            Button {
+                x: 290px;
+                y: 160px;
+                width: 80px;
+                height: 24px;
+                text: "Browse...";
+                clicked => { root.browse-screenshot-directory(); }
+            }
 
-                TextField {
-                    x: 10px;
-                    y: 187px;
-                    width: 360px;
-                    height: 24px;
-                    read-only: true;
-                    text: root.screenshot-directory;
-                    placeholder-text: "(Defaults to Split Image Folder)";
-                }
+            TextField {
+                x: 10px;
+                y: 187px;
+                width: 360px;
+                height: 24px;
+                read-only: true;
+                text: root.screenshot-directory;
+                placeholder-text: "(Defaults to Split Image Folder)";
+            }
 
-                CheckBox {
-                    x: 10px;
-                    y: 214px;
-                    width: 340px;
-                    height: 24px;
-                    text: "Open screenshots on capture";
-                    checked <=> root.open-screenshot;
-                    toggled => { root.changed(Setting.open-screenshot); }
-                }
+            CheckBox {
+                x: 10px;
+                y: 214px;
+                width: 340px;
+                height: 24px;
+                text: "Open screenshots on capture";
+                checked <=> root.open-screenshot;
+                toggled => { root.changed(Setting.open-screenshot); }
+            }
 
-                CheckBox {
-                    x: 10px;
-                    y: 238px;
-                    width: 180px;
-                    height: 24px;
-                    text: "Screenshot on Start";
-                    checked <=> root.screenshot-on-start;
-                    toggled => { root.changed(Setting.screenshot-on); }
-                }
+            CheckBox {
+                x: 10px;
+                y: 238px;
+                width: 180px;
+                height: 24px;
+                text: "Screenshot on Start";
+                checked <=> root.screenshot-on-start;
+                toggled => { root.changed(Setting.screenshot-on); }
+            }
 
-                CheckBox {
-                    x: 195px;
-                    y: 238px;
-                    width: 180px;
-                    height: 24px;
-                    text: "Screenshot on Undo";
-                    checked <=> root.screenshot-on-undo;
-                    toggled => { root.changed(Setting.screenshot-on); }
-                }
+            CheckBox {
+                x: 195px;
+                y: 238px;
+                width: 180px;
+                height: 24px;
+                text: "Screenshot on Undo";
+                checked <=> root.screenshot-on-undo;
+                toggled => { root.changed(Setting.screenshot-on); }
+            }
 
-                CheckBox {
-                    x: 10px;
-                    y: 262px;
-                    width: 180px;
-                    height: 24px;
-                    text: "Screenshot on Reset";
-                    checked <=> root.screenshot-on-reset;
-                    toggled => { root.changed(Setting.screenshot-on); }
-                }
+            CheckBox {
+                x: 10px;
+                y: 262px;
+                width: 180px;
+                height: 24px;
+                text: "Screenshot on Reset";
+                checked <=> root.screenshot-on-reset;
+                toggled => { root.changed(Setting.screenshot-on); }
+            }
 
-                CheckBox {
-                    x: 195px;
-                    y: 262px;
-                    width: 180px;
-                    height: 24px;
-                    text: "Screenshot on Skip";
-                    checked <=> root.screenshot-on-skip;
-                    toggled => { root.changed(Setting.screenshot-on); }
-                }
+            CheckBox {
+                x: 195px;
+                y: 262px;
+                width: 180px;
+                height: 24px;
+                text: "Screenshot on Skip";
+                checked <=> root.screenshot-on-skip;
+                toggled => { root.changed(Setting.screenshot-on); }
+            }
 
-                CheckBox {
-                    x: 10px;
-                    y: 286px;
-                    width: 180px;
-                    height: 24px;
-                    text: "Screenshot on Split";
-                    checked <=> root.screenshot-on-split;
-                    toggled => { root.changed(Setting.screenshot-on); }
-                }
+            CheckBox {
+                x: 10px;
+                y: 286px;
+                width: 180px;
+                height: 24px;
+                text: "Screenshot on Split";
+                checked <=> root.screenshot-on-split;
+                toggled => { root.changed(Setting.screenshot-on); }
+            }
 
-                CheckBox {
-                    x: 195px;
-                    y: 286px;
-                    width: 180px;
-                    height: 24px;
-                    text: "Screenshot on Pause";
-                    checked <=> root.screenshot-on-pause;
-                    toggled => { root.changed(Setting.screenshot-on); }
-                }
+            CheckBox {
+                x: 195px;
+                y: 286px;
+                width: 180px;
+                height: 24px;
+                text: "Screenshot on Pause";
+                checked <=> root.screenshot-on-pause;
+                toggled => { root.changed(Setting.screenshot-on); }
             }
         }
 
-        Tab {
-            title: "Image Settings";
+        Rectangle {
+            visible: tabs.current-index == 1;
 
-            Rectangle {
-                Label {
-                    x: 10px;
-                    y: 10px;
-                    width: 185px;
-                    height: 26px;
-                    text: "Default Comparison Method:";
+            Label {
+                x: 10px;
+                y: 10px;
+                width: 185px;
+                height: 26px;
+                text: "Default Comparison Method:";
+            }
+
+            ComboBox {
+                x: 200px;
+                y: 10px;
+                width: 170px;
+                height: 26px;
+                model: ["L2 Norm", "Histograms", "pHash"];
+                current-index <=> root.default-comparison-method;
+                selected => { root.changed(Setting.default-comparison-method); }
+
+                Tooltip {
+                    Tip {
+                        text: "L2 Norm:\nThis method should be fine to use for most cases.\nIt finds the difference between each pixel, squares it, sums it over the entire image and takes the square root.\nThis is very fast but is a problem if your image is high frequency.\nAny translational movement or rotation can cause similarity to be very different.\n\nHistograms:\nAn explanation on Histograms comparison can be found here\nhttps://mpatacchiola.github.io/blog/2016/11/12/the-simplest-classifier-histogram-intersection.html\nThis is a great method to use if you are using several masked images.\n> This algorithm is particular reliable when the colour is a strong predictor of the object identity.\n> The histogram intersection [...] is robust to occluding objects in the foreground.\n\nPerceptual Hash:\nAn explanation on pHash comparison can be found here\nhttp://www.hackerfactor.com/blog/index.php?/archives/432-Looks-Like-It.html\nIt is highly recommended to NOT use pHash if you use masked images, or it'll be very inaccurate.";
+                    }
+                }
+            }
+
+            Label {
+                x: 10px;
+                y: 40px;
+                width: 185px;
+                height: 26px;
+                text: "Default Similarity Threshold:";
+            }
+
+            SpinBox {
+                x: 200px;
+                y: 42px;
+                width: 60px;
+                height: 22px;
+                maximum: 1;
+                step: 0.01;
+                decimals: 2;
+                value <=> root.default-similarity-threshold;
+                edited => { root.changed(Setting.default-similarity-threshold); }
+
+                Tooltip {
+                    Tip {
+                        text: "Threshold that the live similarity will need to go above to consider the image a match.";
+                    }
+                }
+            }
+
+            Label {
+                x: 10px;
+                y: 70px;
+                width: 185px;
+                height: 26px;
+                text: "Default Delay Time (ms):";
+            }
+
+            SpinBox {
+                x: 200px;
+                y: 72px;
+                width: 100px;
+                height: 22px;
+                maximum: 999999999;
+                value <=> root.default-delay-time;
+                edited => { root.changed(Setting.default-delay-time); }
+
+                Tooltip {
+                    Tip {
+                        text: "After an image is matched, this is the amount of time in milliseconds that will be delayed before splitting.";
+                    }
+                }
+            }
+
+            Label {
+                x: 10px;
+                y: 100px;
+                width: 185px;
+                height: 26px;
+                text: "Default Pause Time (sec):";
+            }
+
+            SpinBox {
+                x: 200px;
+                y: 102px;
+                width: 100px;
+                height: 22px;
+                maximum: 999999999;
+                decimals: 2;
+                value <=> root.default-pause-time;
+                edited => { root.changed(Setting.default-pause-time); }
+
+                Tooltip {
+                    Tip {
+                        text: "The amount of time in seconds that comparison will be paused before moving to the next image.";
+                    }
+                }
+            }
+
+            CheckBox {
+                x: 10px;
+                y: 130px;
+                width: 360px;
+                height: 24px;
+                text: "Loop Last Split Image to First Split Image";
+                checked <=> root.loop-splits;
+                toggled => { root.changed(Setting.loop-splits); }
+            }
+
+            CheckBox {
+                x: 10px;
+                y: 154px;
+                width: 360px;
+                height: 24px;
+                text: "Start also Resets";
+                checked <=> root.start-also-resets;
+                toggled => { root.changed(Setting.start-also-resets); }
+            }
+
+            CheckBox {
+                x: 10px;
+                y: 178px;
+                width: 360px;
+                height: 24px;
+                text: "Enable auto reset image";
+                checked <=> root.enable-auto-reset;
+                toggled => { root.changed(Setting.enable-auto-reset); }
+            }
+
+            Text {
+                color: Theme.text;
+                x: 10px;
+                y: 208px;
+                width: 360px;
+                height: 61px;
+                wrap: word-wrap;
+                text: "Image settings and flags can be set per image through the image file name. These will override the default values. View the tutorial for full details on all available custom image settings.";
+            }
+
+            Button {
+                x: 150px;
+                y: 274px;
+                width: 80px;
+                height: 28px;
+                text: "Tutorial";
+                clicked => { root.open-readme(); }
+            }
+        }
+
+        Rectangle {
+            visible: tabs.current-index == 2;
+
+            for row[index] in root.hotkeys: Rectangle {
+                x: 0px;
+                y: 8px + index * 30px;
+                width: 100%;
+                height: 28px;
+                property <string> hotkey: row.hotkey;
+
+                // A name that isn't a hotkey shows the hotkey again
+                function commit(text: string) {
+                    if (!root.hotkey-typed(index, text)) {
+                        field.text = row.hotkey;
+                    }
                 }
 
-                ComboBox {
-                    x: 200px;
-                    y: 10px;
-                    width: 170px;
-                    height: 26px;
-                    model: ["L2 Norm", "Histograms", "pHash"];
-                    current-index <=> root.default-comparison-method;
-                    selected => { root.changed(Setting.default-comparison-method); }
-
-                    Tooltip {
-                        Tip {
-                            text: "L2 Norm:\nThis method should be fine to use for most cases.\nIt finds the difference between each pixel, squares it, sums it over the entire image and takes the square root.\nThis is very fast but is a problem if your image is high frequency.\nAny translational movement or rotation can cause similarity to be very different.\n\nHistograms:\nAn explanation on Histograms comparison can be found here\nhttps://mpatacchiola.github.io/blog/2016/11/12/the-simplest-classifier-histogram-intersection.html\nThis is a great method to use if you are using several masked images.\n> This algorithm is particular reliable when the colour is a strong predictor of the object identity.\n> The histogram intersection [...] is robust to occluding objects in the foreground.\n\nPerceptual Hash:\nAn explanation on pHash comparison can be found here\nhttp://www.hackerfactor.com/blog/index.php?/archives/432-Looks-Like-It.html\nIt is highly recommended to NOT use pHash if you use masked images, or it'll be very inaccurate.";
-                        }
+                // Typing replaces the binding to the row, so later changes are shown by hand
+                changed hotkey => {
+                    if (!field.has-focus) {
+                        field.text = self.hotkey;
                     }
                 }
 
                 Label {
                     x: 10px;
-                    y: 40px;
-                    width: 185px;
-                    height: 26px;
-                    text: "Default Similarity Threshold:";
-                }
-
-                SpinBox {
-                    x: 200px;
-                    y: 42px;
-                    width: 60px;
-                    height: 22px;
-                    maximum: 1;
-                    step: 0.01;
-                    decimals: 2;
-                    value <=> root.default-similarity-threshold;
-                    edited => { root.changed(Setting.default-similarity-threshold); }
-
-                    Tooltip {
-                        Tip {
-                            text: "Threshold that the live similarity will need to go above to consider the image a match.";
-                        }
-                    }
-                }
-
-                Label {
-                    x: 10px;
-                    y: 70px;
-                    width: 185px;
-                    height: 26px;
-                    text: "Default Delay Time (ms):";
-                }
-
-                SpinBox {
-                    x: 200px;
-                    y: 72px;
-                    width: 100px;
-                    height: 22px;
-                    maximum: 999999999;
-                    value <=> root.default-delay-time;
-                    edited => { root.changed(Setting.default-delay-time); }
-
-                    Tooltip {
-                        Tip {
-                            text: "After an image is matched, this is the amount of time in milliseconds that will be delayed before splitting.";
-                        }
-                    }
-                }
-
-                Label {
-                    x: 10px;
-                    y: 100px;
-                    width: 185px;
-                    height: 26px;
-                    text: "Default Pause Time (sec):";
-                }
-
-                SpinBox {
-                    x: 200px;
-                    y: 102px;
-                    width: 100px;
-                    height: 22px;
-                    maximum: 999999999;
-                    decimals: 2;
-                    value <=> root.default-pause-time;
-                    edited => { root.changed(Setting.default-pause-time); }
-
-                    Tooltip {
-                        Tip {
-                            text: "The amount of time in seconds that comparison will be paused before moving to the next image.";
-                        }
-                    }
-                }
-
-                CheckBox {
-                    x: 10px;
-                    y: 130px;
-                    width: 360px;
-                    height: 24px;
-                    text: "Loop Last Split Image to First Split Image";
-                    checked <=> root.loop-splits;
-                    toggled => { root.changed(Setting.loop-splits); }
-                }
-
-                CheckBox {
-                    x: 10px;
-                    y: 154px;
-                    width: 360px;
-                    height: 24px;
-                    text: "Start also Resets";
-                    checked <=> root.start-also-resets;
-                    toggled => { root.changed(Setting.start-also-resets); }
-                }
-
-                CheckBox {
-                    x: 10px;
-                    y: 178px;
-                    width: 360px;
-                    height: 24px;
-                    text: "Enable auto reset image";
-                    checked <=> root.enable-auto-reset;
-                    toggled => { root.changed(Setting.enable-auto-reset); }
-                }
-
-                Text {
-                    color: Theme.text;
-                    x: 10px;
-                    y: 208px;
-                    width: 360px;
-                    height: 61px;
+                    width: 84px;
+                    height: 100%;
+                    text: row.name;
                     wrap: word-wrap;
-                    text: "Image settings and flags can be set per image through the image file name. These will override the default values. View the tutorial for full details on all available custom image settings.";
+                    opacity: row.enabled ? 1 : 0.5;
                 }
 
-                Button {
-                    x: 150px;
-                    y: 274px;
-                    width: 80px;
-                    height: 28px;
-                    text: "Tutorial";
-                    clicked => { root.open-readme(); }
-                }
-            }
-        }
-
-        Tab {
-            title: "Hotkeys";
-
-            Rectangle {
-                for row[index] in root.hotkeys: Rectangle {
-                    x: 0px;
-                    y: 8px + index * 30px;
-                    width: 100%;
-                    height: 28px;
-                    property <string> hotkey: row.hotkey;
-
-                    // A name that isn't a hotkey shows the hotkey again
-                    function commit(text: string) {
-                        if (!root.hotkey-typed(index, text)) {
-                            field.text = row.hotkey;
-                        }
-                    }
-
-                    // Typing replaces the binding to the row, so later changes are shown by hand
-                    changed hotkey => {
-                        if (!field.has-focus) {
-                            field.text = self.hotkey;
-                        }
-                    }
-
-                    Label {
-                        x: 10px;
-                        width: 84px;
-                        height: 100%;
-                        text: row.name;
-                        wrap: word-wrap;
-                        opacity: row.enabled ? 1 : 0.5;
-                    }
-
-                    field := TextField {
-                        x: 95px;
-                        y: 2px;
-                        width: 160px;
-                        height: 24px;
-                        enabled: row.enabled && !root.running;
-                        text: row.hotkey;
-                        accepted(text) => {
-                            parent.commit(text);
-                        }
-                        changed has-focus => {
-                            if (!self.has-focus && WindowFocus.active && self.text != row.hotkey) {
-                                parent.commit(self.text);
-                            }
-                        }
-                    }
-
-                    Button {
-                        x: 262px;
-                        y: 2px;
-                        width: 108px;
-                        height: 24px;
-                        enabled: row.enabled && !root.running && (root.setting-hotkey == -1 || root.setting-hotkey == index);
-                        text: root.setting-hotkey == index ? "Press a key..." : "Set Hotkey";
-                        clicked => { root.set-hotkey(index); }
-                    }
-                }
-
-                if root.hotkeys-note != "": Text {
-                    color: Theme.text;
-                    x: 10px;
-                    y: 224px;
-                    width: 360px;
-                    wrap: word-wrap;
-                    text: root.hotkeys-note;
-                }
-            }
-        }
-
-        Tab {
-            title: "Other";
-
-            Rectangle {
-                Label {
-                    x: 10px;
-                    y: 10px;
-                    width: 360px;
-                    height: 16px;
-                    text: "Timer:";
-                }
-
-                ComboBox {
-                    x: 10px;
-                    y: 28px;
-                    width: 360px;
-                    height: 26px;
-                    enabled: !root.auto-controlled;
-                    model: root.molok-listed
-                        ? ["Any timer (hotkeys)", "LiveSplit One (WebSocket)", "Molok (POSIX signals)"]
-                        : ["Any timer (hotkeys)", "LiveSplit One (WebSocket)"];
-                    current-index <=> root.timer-connection;
-                    selected => { root.changed(Setting.timer-connection); }
-                }
-
-                Label {
-                    x: 10px;
-                    y: 62px;
+                field := TextField {
+                    x: 95px;
+                    y: 2px;
                     width: 160px;
-                    height: 26px;
-                    text: "LiveSplit One port:";
-                    opacity: root.timer-connection == 1 && !root.auto-controlled ? 1 : 0.5;
+                    height: 24px;
+                    enabled: row.enabled && !root.running;
+                    text: row.hotkey;
+                    accepted(text) => {
+                        parent.commit(text);
+                    }
+                    changed has-focus => {
+                        if (!self.has-focus && WindowFocus.active && self.text != row.hotkey) {
+                            parent.commit(self.text);
+                        }
+                    }
                 }
 
-                SpinBox {
-                    x: 200px;
-                    y: 64px;
-                    width: 100px;
-                    height: 22px;
-                    minimum: 1;
-                    maximum: 65535;
-                    enabled: root.timer-connection == 1 && !root.auto-controlled;
-                    value <=> root.livesplit-one-port;
-                    edited => { root.changed(Setting.livesplit-one-port); }
+                Button {
+                    x: 262px;
+                    y: 2px;
+                    width: 108px;
+                    height: 24px;
+                    enabled: row.enabled && !root.running && (root.setting-hotkey == -1 || root.setting-hotkey == index);
+                    text: root.setting-hotkey == index ? "Press a key..." : "Set Hotkey";
+                    clicked => { root.set-hotkey(index); }
                 }
+            }
 
-                Text {
-                    color: Theme.text;
-                    x: 10px;
-                    y: 94px;
-                    width: 360px;
-                    wrap: word-wrap;
-                    visible: root.timer-connection-waiting || root.auto-controlled;
-                    text: root.auto-controlled
-                        ? "LiveSplit started autosplit, so it controls the timer."
-                        : "The new timer connection is used once the run ends.";
-                }
+            if root.hotkeys-note != "": Text {
+                color: Theme.text;
+                x: 10px;
+                y: 224px;
+                width: 360px;
+                wrap: word-wrap;
+                text: root.hotkeys-note;
+            }
+        }
+
+        Rectangle {
+            visible: tabs.current-index == 3;
+
+            Label {
+                x: 10px;
+                y: 10px;
+                width: 360px;
+                height: 16px;
+                text: "Timer:";
+            }
+
+            ComboBox {
+                x: 10px;
+                y: 28px;
+                width: 360px;
+                height: 26px;
+                enabled: !root.auto-controlled;
+                model: root.molok-listed
+                    ? ["Any timer (hotkeys)", "LiveSplit One (WebSocket)", "Molok (POSIX signals)"]
+                    : ["Any timer (hotkeys)", "LiveSplit One (WebSocket)"];
+                current-index <=> root.timer-connection;
+                selected => { root.changed(Setting.timer-connection); }
+            }
+
+            Label {
+                x: 10px;
+                y: 62px;
+                width: 160px;
+                height: 26px;
+                text: "LiveSplit One port:";
+                opacity: root.timer-connection == 1 && !root.auto-controlled ? 1 : 0.5;
+            }
+
+            SpinBox {
+                x: 200px;
+                y: 64px;
+                width: 100px;
+                height: 22px;
+                minimum: 1;
+                maximum: 65535;
+                enabled: root.timer-connection == 1 && !root.auto-controlled;
+                value <=> root.livesplit-one-port;
+                edited => { root.changed(Setting.livesplit-one-port); }
+            }
+
+            Text {
+                color: Theme.text;
+                x: 10px;
+                y: 94px;
+                width: 360px;
+                wrap: word-wrap;
+                visible: root.timer-connection-waiting || root.auto-controlled;
+                text: root.auto-controlled
+                    ? "LiveSplit started autosplit, so it controls the timer."
+                    : "The new timer connection is used once the run ends.";
             }
         }
     }
