@@ -29,6 +29,8 @@ pub enum SettingEdit {
     DefaultDelayTime(f64),
     DefaultPauseTime(f64),
     LoopSplits(bool),
+    GroupSplitImages(bool),
+    SplitImageGrid(bool),
     StartAlsoResets(bool),
     EnableAutoReset(bool),
     /// 0 for hotkeys, 1 for LiveSplit One, 2 for Molok (only listed on Linux).
@@ -86,6 +88,8 @@ pub fn apply(profile: &mut UserProfile, edit: SettingEdit, devices: &[DeviceInfo
             profile.default_pause_time = (value * 100.0).round() / 100.0;
         }
         SettingEdit::LoopSplits(on) => profile.loop_splits = on,
+        SettingEdit::GroupSplitImages(on) => profile.group_split_images = on,
+        SettingEdit::SplitImageGrid(on) => profile.split_image_grid = on,
         SettingEdit::StartAlsoResets(on) => profile.start_also_resets = on,
         SettingEdit::EnableAutoReset(on) => profile.enable_auto_reset = on,
         SettingEdit::TimerConnection(index) => {

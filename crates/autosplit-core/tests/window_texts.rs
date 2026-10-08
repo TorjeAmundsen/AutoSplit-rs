@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use autosplit_core::runner::{Buttons, ImageRef, ResetReading, Showing, StartStatus, Status};
+use autosplit_core::runner::{Buttons, ImageReading, ImageRef, ResetReading, Showing, StartStatus, Status};
 use autosplit_core::text::window_texts;
 use test_case::test_case;
 
@@ -21,6 +21,7 @@ fn status() -> Status {
         reset_threshold: Some(0.96),
         split_position: Some((3, 12)),
         below: false,
+        group: Vec::new(),
         buttons: Buttons {
             start: false,
             reset: true,
@@ -64,6 +65,8 @@ fn image_loop(status: Status) -> String {
 
 #[test_case(status() => "05_bottle.png"; "image")]
 #[test_case(Status { current_filename: None, ..status() } => "-"; "none")]
+#[test_case(grouped() => "Comparing against 2 images"; "several images")]
+#[test_case(Status { current_filename: None, ..grouped() } => "-"; "several images during a split delay")]
 fn current_file(status: Status) -> String {
     // Act, with the expected value checked by test_case
     window_texts(&status, NOW, "", true).current_file
@@ -77,4 +80,17 @@ fn current_file(status: Status) -> String {
 fn start_status(start_status: StartStatus) -> String {
     // Act, with the expected value checked by test_case
     window_texts(&Status { start_status, ..status() }, NOW, "", true).start_status
+}
+
+fn grouped() -> Status {
+    let reading = |similarity, highest, threshold| ImageReading { similarity, highest, threshold };
+    Status { group: vec![reading(Some(0.4123), Some(0.5), 0.93), reading(Some(0.2), Some(0.8), 0.9)], ..status() }
+}
+
+#[test_case(grouped(), true => [["0.412", "0.500", "0.930"], ["0.200", "0.800", "0.900"], ["-", "-", "-"], ["-", "-", "-"]]; "two images")]
+#[test_case(grouped(), false => [["-", "0.500", "0.930"], ["-", "0.800", "0.900"], ["-", "-", "-"], ["-", "-", "-"]]; "without a capture")]
+#[test_case(status(), true => [["0.412", "0.951", "0.930"], ["-", "-", "-"], ["-", "-", "-"], ["-", "-", "-"]]; "start image")]
+fn group_rows(status: Status, capture: bool) -> [[String; 3]; 4] {
+    // Act, with the expected value checked by test_case
+    window_texts(&status, NOW, "", capture).group_rows
 }

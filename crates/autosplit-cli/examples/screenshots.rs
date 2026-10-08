@@ -5,7 +5,7 @@ use std::rc::Rc;
 
 use autosplit::gui::HOTKEY_ROWS;
 use autosplit::gui::messages::Buttons;
-use autosplit::gui::ui::{AboutWindow, HotkeyRow, LogWindow, MainWindow, MessageWindow, SettingsWindow};
+use autosplit::gui::ui::{AboutWindow, HotkeyRow, LogWindow, MainWindow, MessageWindow, SettingsWindow, SimilarityRow};
 use slint::platform::software_renderer::{MinimalSoftwareWindow, RepaintBufferType, Rgb565Pixel};
 use slint::platform::{Platform, WindowAdapter};
 use slint::{ComponentHandle, PhysicalSize};
@@ -50,6 +50,30 @@ fn main() {
     main.set_window_title("AutoSplit v0.1.0".into());
     main.show().unwrap();
     save(&window, PhysicalSize::new(786, 450), &folder.join("main.png"));
+    let row = |live: &str, highest: &str, threshold: &str| SimilarityRow {
+        live: live.into(),
+        highest: highest.into(),
+        threshold: threshold.into(),
+    };
+    let rows =
+        vec![row("0.412", "0.951", "0.930"), row("0.200", "0.800", "0.900"), row("-", "-", "-"), row("-", "-", "-")];
+    main.set_group_rows(std::rc::Rc::new(slint::VecModel::from(rows)).into());
+    main.set_group_split_images(true);
+    save(&window, PhysicalSize::new(786, 516), &folder.join("main-grouped.png"));
+    let solid = |rgb: [u8; 3]| {
+        let pixels = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(
+            &[rgb[0], rgb[1], rgb[2], 255].repeat(4),
+            2,
+            2,
+        );
+        slint::Image::from_rgba8(pixels)
+    };
+    let tiles = vec![solid([200, 60, 60]), solid([60, 160, 60]), solid([60, 90, 200]), slint::Image::default()];
+    main.set_current_tiles(std::rc::Rc::new(slint::VecModel::from(tiles)).into());
+    main.set_current_grid(true);
+    main.set_current_image_file("Comparing against 3 images".into());
+    main.set_current_image_message("".into());
+    save(&window, PhysicalSize::new(786, 516), &folder.join("main-grid.png"));
     main.hide().unwrap();
 
     let settings = SettingsWindow::new().unwrap();
@@ -62,7 +86,7 @@ fn main() {
     settings.show().unwrap();
     for tab in 0..4 {
         settings.invoke_show_tab(tab);
-        save(&window, PhysicalSize::new(380, 360), &folder.join(format!("settings{tab}.png")));
+        save(&window, PhysicalSize::new(380, 384), &folder.join(format!("settings{tab}.png")));
     }
     settings.hide().unwrap();
 

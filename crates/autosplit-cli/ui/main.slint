@@ -37,12 +37,20 @@ component Preview inherits Rectangle {
     }
 }
 
+export struct SimilarityRow {
+    live: string,
+    highest: string,
+    threshold: string,
+}
+
 // AutoSplit's "Similarity Viewer" box: live, highest and threshold of the current and reset
-// images, with its grid lines.
+// images, with its grid lines. Grouped split images get a current image row each.
 component SimilarityViewer inherits Rectangle {
     in property <string> current-live;
     in property <string> current-highest;
     in property <string> current-threshold;
+    in property <bool> grouped;
+    in property <[SimilarityRow]> group-rows;
     in property <string> reset-live;
     in property <string> reset-highest;
     in property <string> reset-threshold;
@@ -68,10 +76,38 @@ component SimilarityViewer inherits Rectangle {
         }
     }
 
-    for line in [{ y: 39px }, { y: 61px }]: Rectangle {
-        x: 0px;
-        y: line.y;
-        width: 100%;
+    property <[SimilarityRow]> rows: root.grouped ? root.group-rows : [
+        { live: root.current-live, highest: root.current-highest, threshold: root.current-threshold },
+    ];
+    property <length> reset-y: 39px + root.rows.length * 22px;
+
+    for row[index] in root.rows: Rectangle {
+        y: 39px + index * 22px;
+        height: 22px;
+
+        Rectangle {
+            y: 0px;
+            height: 1px;
+            background: Palette.border;
+        }
+
+        for cell in [
+            { x: 10px, y: 3px, width: 111px, text: root.grouped ? "Current Image (\{index + 1})" : "Current Image", center: false },
+            { x: 133px, y: 4px, width: 57px, text: row.live, center: true },
+            { x: 197px, y: 4px, width: 57px, text: row.highest, center: true },
+            { x: 260px, y: 4px, width: 57px, text: row.threshold, center: true },
+        ]: Label {
+            x: cell.x;
+            y: cell.y;
+            width: cell.width;
+            height: 16px;
+            text: cell.text;
+            horizontal-alignment: cell.center ? center : left;
+        }
+    }
+
+    Rectangle {
+        y: root.reset-y;
         height: 1px;
         background: Palette.border;
     }
@@ -88,14 +124,10 @@ component SimilarityViewer inherits Rectangle {
         { x: 133px, y: 22px, width: 57px, text: "Live", center: true },
         { x: 197px, y: 22px, width: 57px, text: "Highest", center: true },
         { x: 261px, y: 22px, width: 56px, text: "Threshold", center: true },
-        { x: 10px, y: 42px, width: 111px, text: "Current Image", center: false },
-        { x: 10px, y: 64px, width: 111px, text: "Reset Image", center: false },
-        { x: 133px, y: 43px, width: 57px, text: root.current-live, center: true },
-        { x: 197px, y: 43px, width: 57px, text: root.current-highest, center: true },
-        { x: 260px, y: 43px, width: 57px, text: root.current-threshold, center: true },
-        { x: 133px, y: 64px, width: 57px, text: root.reset-live, center: true },
-        { x: 197px, y: 64px, width: 57px, text: root.reset-highest, center: true },
-        { x: 260px, y: 64px, width: 57px, text: root.reset-threshold, center: true },
+        { x: 10px, y: root.reset-y + 3px, width: 111px, text: "Reset Image", center: false },
+        { x: 133px, y: root.reset-y + 3px, width: 57px, text: root.reset-live, center: true },
+        { x: 197px, y: root.reset-y + 3px, width: 57px, text: root.reset-highest, center: true },
+        { x: 260px, y: root.reset-y + 3px, width: 57px, text: root.reset-threshold, center: true },
     ]: Label {
         x: cell.x;
         y: cell.y;
@@ -123,9 +155,15 @@ export component MainWindow inherits Window {
     in property <string> current-image-file: "-";
     in property <image> current-image;
     in property <string> current-image-message;
+    // The split's images in a 2x2 grid instead of the current image. Empty tiles say None.
+    in property <bool> current-grid;
+    in property <[image]> current-tiles;
     in property <string> current-live: "-";
     in property <string> current-highest: "-";
     in property <string> current-threshold: "-";
+    // Split images with the same number are compared for one split: a row for each
+    in property <bool> group-split-images;
+    in property <[SimilarityRow]> group-rows;
     in property <string> reset-live: "-";
     in property <string> reset-highest: "-";
     in property <string> reset-threshold: "-";
@@ -208,11 +246,14 @@ export component MainWindow inherits Window {
         }
     }
 
-    // AutoSplit's 786x404 window below its menu bar. The layout sizes the window to fit it.
+    // AutoSplit's 786x404 window below its menu bar, taller for the similarity viewer's extra
+    // rows. The layout sizes the window to fit it.
+    property <length> extra-rows-height: root.group-split-images ? (root.group-rows.length - 1) * 22px : 0px;
+
     VerticalLayout {
         Rectangle {
             width: 786px;
-            height: 404px;
+            height: 404px + root.extra-rows-height;
 
             Label {
                 x: 10px;
@@ -444,18 +485,31 @@ export component MainWindow inherits Window {
                 y: 67px;
                 width: 320px;
                 height: 240px;
+                visible: !root.current-grid;
                 source: root.current-image;
                 message: root.current-image-message;
+            }
+
+            for tile[index] in root.current-tiles: Preview {
+                x: 456px + mod(index, 2) * 160px;
+                y: 67px + floor(index / 2) * 120px;
+                width: 160px;
+                height: 120px;
+                visible: root.current-grid;
+                source: tile;
+                message: tile.width == 0 ? "None" : "";
             }
 
             SimilarityViewer {
                 x: 127px;
                 y: 312px;
                 width: 321px;
-                height: 84px;
+                height: 84px + root.extra-rows-height;
                 current-live: root.current-live;
                 current-highest: root.current-highest;
                 current-threshold: root.current-threshold;
+                grouped: root.group-split-images;
+                group-rows: root.group-rows;
                 reset-live: root.reset-live;
                 reset-highest: root.reset-highest;
                 reset-threshold: root.reset-threshold;

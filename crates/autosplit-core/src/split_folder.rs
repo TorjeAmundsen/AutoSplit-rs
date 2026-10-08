@@ -1,8 +1,9 @@
 //! Reading and validating a split image folder, matching AutoSplit's `split_parser.py`.
 
+use std::ops::Range;
 use std::path::{Path, PathBuf};
 
-use crate::filename::{RESET_KEYWORD, START_KEYWORD};
+use crate::filename::{RESET_KEYWORD, START_KEYWORD, number_prefix};
 use crate::profile::UserProfile;
 use crate::split_image::{ImageType, LoadError, LoadWarning, SplitImage};
 
@@ -11,9 +12,15 @@ use crate::split_image::{ImageType, LoadError, LoadWarning, SplitImage};
 pub struct SplitSet {
     pub start: Option<SplitImage>,
     pub reset: Option<SplitImage>,
-    /// In file name order.
+    /// In file name order, or by number then name when grouped.
     pub splits: Vec<SplitImage>,
+    /// Ranges of `splits` compared for the same split. One image each, unless the profile
+    /// groups split images by number.
+    pub groups: Vec<Range<usize>>,
 }
+
+/// How many split images can be compared for the same split.
+pub const MAX_GROUP_SIZE: usize = 4;
 
 /// What validation needs to know besides the images.
 #[derive(Clone, Copy, Debug, Default)]
@@ -24,6 +31,8 @@ pub struct ValidationContext {
     /// The timer only gets commands through hotkeys. LiveSplit, LiveSplit One and Molok don't need
     /// them.
     pub hotkeys_needed: bool,
+    /// Split images that start with the same number are compared for the same split.
+    pub group_split_images: bool,
 }
 
 impl ValidationContext {
@@ -33,6 +42,7 @@ impl ValidationContext {
             reset_hotkey_set: !profile.reset_hotkey.is_empty(),
             pause_hotkey_set: !profile.pause_hotkey.is_empty(),
             hotkeys_needed,
+            group_split_images: profile.group_split_images,
         }
     }
 }
@@ -58,6 +68,16 @@ pub enum ValidationError {
     PauseWithoutPauseHotkey(String),
     #[error("There can only be one image with the keyword '{0}'.")]
     MultipleKeywordImages(&'static str),
+    #[error("'{0}' doesn't start with a number. Grouping split images by number needs one on every split image.")]
+    NoNumberPrefix(String),
+    #[error(
+        "More than {MAX_GROUP_SIZE} split images start with the number {0}. Up to {MAX_GROUP_SIZE} can be compared for the same split."
+    )]
+    GroupTooLarge(String),
+    #[error(
+        "The split images that start with the number {0} have different loop counts. Images compared for the same split need the same @loops@."
+    )]
+    GroupLoopsDiffer(String),
 }
 
 /// The outcome of loading a folder. Load errors are reported even when the folder is valid,
@@ -114,11 +134,11 @@ pub fn load_split_folder(directory: &Path, context: &ValidationContext) -> Folde
         |image_type| images.iter().position(|image| image.image_type == image_type).map(|index| images.remove(index));
     let start = take_first(ImageType::Start);
     let reset = take_first(ImageType::Reset);
-    let set = SplitSet { start, reset, splits: images };
+    let set = SplitSet { start, reset, splits: images, groups: Vec::new() };
     FolderLoad { result: validate(set, context), load_errors, warnings }
 }
 
-fn validate(set: SplitSet, context: &ValidationContext) -> Result<SplitSet, ValidationError> {
+fn validate(mut set: SplitSet, context: &ValidationContext) -> Result<SplitSet, ValidationError> {
     if set.splits.is_empty() {
         return Err(ValidationError::NoSplitImage);
     }
@@ -144,7 +164,42 @@ fn validate(set: SplitSet, context: &ValidationContext) -> Result<SplitSet, Vali
             ImageType::Split => {}
         }
     }
+    set.groups = group_splits(&mut set.splits, context.group_split_images)?;
     Ok(set)
+}
+
+/// The ranges of `splits` compared for the same split. Grouping by number sorts `splits` by
+/// number, then name: "1_a.png" and "01_b.png" are both 1.
+fn group_splits(splits: &mut [SplitImage], by_number: bool) -> Result<Vec<Range<usize>>, ValidationError> {
+    if !by_number {
+        return Ok((0..splits.len()).map(|index| index..index + 1).collect());
+    }
+    if let Some(image) = splits.iter().find(|image| number_prefix(&image.filename).is_none()) {
+        return Err(ValidationError::NoNumberPrefix(image.filename.clone()));
+    }
+    fn digits(image: &SplitImage) -> &str {
+        number_prefix(&image.filename).unwrap_or_default()
+    }
+    fn number(image: &SplitImage) -> (usize, &str) {
+        let significant = digits(image).trim_start_matches('0');
+        (significant.len(), significant)
+    }
+    // Stable, so images with the same number stay in name order
+    splits.sort_by(|a, b| number(a).cmp(&number(b)));
+
+    let mut groups = Vec::new();
+    for group in splits.chunk_by(|a, b| number(a) == number(b)) {
+        let first = &group[0];
+        if group.len() > MAX_GROUP_SIZE {
+            return Err(ValidationError::GroupTooLarge(digits(first).to_owned()));
+        }
+        if group.iter().any(|image| image.loops != first.loops) {
+            return Err(ValidationError::GroupLoopsDiffer(digits(first).to_owned()));
+        }
+        let start = groups.last().map_or(0, |previous: &Range<usize>| previous.end);
+        groups.push(start..start + group.len());
+    }
+    Ok(groups)
 }
 
 /// Files in the folder, sorted by name. Hidden files, system files and folders are skipped.

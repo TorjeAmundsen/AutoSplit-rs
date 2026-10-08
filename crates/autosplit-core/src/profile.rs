@@ -123,6 +123,14 @@ pub struct UserProfile {
     /// Not in AutoSplit. Only written when changed.
     #[serde(skip_serializing_if = "is_default_livesplit_one_port")]
     pub livesplit_one_port: u16,
+    /// Not in AutoSplit. Split images that start with the same number are compared for the same
+    /// split. Only written when changed.
+    #[serde(skip_serializing_if = "is_default")]
+    pub group_split_images: bool,
+    /// Not in AutoSplit. The images of a grouped split are shown in a 2x2 grid. Only written
+    /// when changed.
+    #[serde(skip_serializing_if = "is_default")]
+    pub split_image_grid: bool,
     /// Keys this version doesn't know, kept so saving doesn't drop them.
     #[serde(flatten)]
     pub unknown: toml::Table,
@@ -160,6 +168,8 @@ impl Default for UserProfile {
             capture_region: Region { x: 0, y: 0, width: 0, height: 0 },
             timer_connection: TimerConnection::Hotkeys,
             livesplit_one_port: DEFAULT_LIVESPLIT_ONE_PORT,
+            group_split_images: false,
+            split_image_grid: false,
             unknown: toml::Table::new(),
         }
     }

@@ -153,7 +153,9 @@ fn missing_profile_file_is_reported_as_invalid_settings() {
 
 #[test_case("timer_connection"; "timer connection")]
 #[test_case("livesplit_one_port"; "livesplit one port")]
-fn timer_connection_keys_are_left_out_when_unchanged(key: &str) {
+#[test_case("group_split_images"; "group split images")]
+#[test_case("split_image_grid"; "split image grid")]
+fn keys_not_in_autosplit_are_left_out_when_unchanged(key: &str) {
     // Act
     let saved = configured().to_toml();
 

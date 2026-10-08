@@ -1,6 +1,7 @@
 //! Shows the session in the main window. Runs on the session's thread and hands what changed to
 //! the window's thread.
 
+use std::ops::Range;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -9,7 +10,8 @@ use autosplit_core::image::BgraView;
 use autosplit_core::imgproc::stretch_to_rgba;
 use autosplit_core::profile::UserProfile;
 use autosplit_core::runner::{ImageRef, Showing};
-use autosplit_core::split_image::SplitContent;
+use autosplit_core::split_folder::MAX_GROUP_SIZE;
+use autosplit_core::split_image::{SplitContent, SplitImage};
 use autosplit_core::text::{WindowTexts, window_texts};
 use slint::{Rgba8Pixel, SharedPixelBuffer};
 
@@ -55,6 +57,8 @@ pub struct Texts {
     pub buttons: [bool; 6],
     /// Whether there's a capture, for Align Region.
     pub capturing: bool,
+    /// The current image area shows the split's images in a 2x2 grid.
+    pub grid: bool,
 }
 
 /// What changed since the window last showed the session.
@@ -62,6 +66,8 @@ pub struct Update {
     pub texts: Option<Texts>,
     pub live: Picture,
     pub current: Picture,
+    /// The grid's tiles, cleared when there's no image for them.
+    pub tiles: [Picture; MAX_GROUP_SIZE],
 }
 
 impl Update {
@@ -72,6 +78,10 @@ impl Update {
             texts: self.texts.or(older.texts),
             live: self.live.after(older.live),
             current: self.current.after(older.current),
+            tiles: {
+                let mut older = older.tiles.into_iter();
+                self.tiles.map(|tile| tile.after(older.next().unwrap_or(Picture::Keep)))
+            },
         }
     }
 }
@@ -90,8 +100,9 @@ pub struct GuiView {
     texts: Option<Texts>,
     /// The frame shown in the live preview.
     shown_frame: Option<u64>,
-    /// The image shown as the current image, and which loading of the images it's from.
-    shown_image: Option<(ImageRef, u64)>,
+    /// The image shown as the current image, which loading of the images it's from, and
+    /// whether it's shown in the grid.
+    shown_image: Option<(ImageRef, u64, bool)>,
     /// Whether the device sent frames at the last update.
     receiving: bool,
 }
@@ -137,23 +148,33 @@ impl GuiView {
         (String::new(), Picture::Show(preview(view)))
     }
 
-    fn current_image(&mut self, snapshot: &Snapshot) -> Picture {
+    /// The current image, or the grid's tiles when `grid` has the images of the split.
+    fn current_image(
+        &mut self,
+        snapshot: &Snapshot,
+        grid: Option<Range<usize>>,
+    ) -> (Picture, [Picture; MAX_GROUP_SIZE]) {
         let shown = match snapshot.status.showing {
-            Showing::Image(image) => Some((image, snapshot.images_loaded)),
+            Showing::Image(image) => Some((image, snapshot.images_loaded, grid.is_some())),
             _ => None,
         };
         if shown == self.shown_image {
-            return Picture::Keep;
+            return (Picture::Keep, [const { Picture::Keep }; MAX_GROUP_SIZE]);
         }
         self.shown_image = shown;
-        let image = shown.and_then(|(image, _)| match image {
+        let picture = |image: Option<&SplitImage>| match image.map(|image| &image.content) {
+            Some(SplitContent::Image { pixels, .. }) => Picture::Show(rgba(pixels.view())),
+            _ => Picture::Clear,
+        };
+        if let Some(group) = grid {
+            let images = &snapshot.images.splits[group];
+            return (Picture::Clear, std::array::from_fn(|slot| picture(images.get(slot))));
+        }
+        let image = shown.and_then(|(image, ..)| match image {
             ImageRef::Start => snapshot.images.start.as_ref(),
             ImageRef::Split(index) => snapshot.images.splits.get(index),
         });
-        match image.map(|image| &image.content) {
-            Some(SplitContent::Image { pixels, .. }) => Picture::Show(rgba(pixels.view())),
-            _ => Picture::Clear,
-        }
+        (picture(image), [const { Picture::Clear }; MAX_GROUP_SIZE])
     }
 }
 
@@ -197,9 +218,17 @@ impl View for GuiView {
         self.receiving = snapshot.receiving;
         let (live_message, live) =
             if self.visible() { self.live_preview(&snapshot) } else { (String::new(), Picture::Keep) };
-        let current = self.current_image(&snapshot);
         let status = snapshot.status;
         let profile = snapshot.profile;
+        // The images of the split being compared, when there are several to show in the grid
+        let grid = match status.showing {
+            Showing::Image(ImageRef::Split(first)) if profile.split_image_grid => {
+                snapshot.images.groups.iter().find(|group| group.start == first && group.len() > 1).cloned()
+            }
+            _ => None,
+        };
+        let shows_grid = grid.is_some();
+        let (current, tiles) = self.current_image(&snapshot, grid);
         let buttons = status.buttons;
         let texts = Texts {
             running: status.running,
@@ -215,15 +244,17 @@ impl View for GuiView {
                 buttons.previous_image,
             ],
             capturing: snapshot.receiving,
+            grid: shows_grid,
         };
         let changed = self.texts.as_ref() != Some(&texts);
-        if !changed && matches!((&live, &current), (Picture::Keep, Picture::Keep)) {
+        let pictures_kept = [&live, &current].into_iter().chain(&tiles).all(|picture| matches!(picture, Picture::Keep));
+        if !changed && pictures_kept {
             return;
         }
         if changed {
             self.texts = Some(texts.clone());
         }
-        let update = Update { texts: changed.then_some(texts), live, current };
+        let update = Update { texts: changed.then_some(texts), live, current, tiles };
         let mut pending = self.pending.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         match pending.take() {
             Some(older) => *pending = Some(update.after(older)),
