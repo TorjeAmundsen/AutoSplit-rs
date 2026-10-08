@@ -9,12 +9,14 @@ use autosplit_core::commands::TimerLink;
 use autosplit_core::hotkeys::HotkeyAction;
 use autosplit_core::image::BgraImage;
 use autosplit_core::profile::{TimerConnection, UserProfile};
+use autosplit_core::text::window_texts;
 
 /// What the session showed and told the window.
 #[derive(Clone, Default)]
 struct Seen {
     idle: Arc<Mutex<Vec<String>>>,
     notices: Arc<Mutex<Vec<String>>>,
+    current_files: Arc<Mutex<Vec<String>>>,
 }
 
 impl Seen {
@@ -24,6 +26,10 @@ impl Seen {
 
     fn notices(&self) -> Vec<String> {
         self.notices.lock().unwrap().clone()
+    }
+
+    fn last_current_file(&self) -> String {
+        self.current_files.lock().unwrap().last().cloned().unwrap_or_default()
     }
 }
 
@@ -39,6 +45,8 @@ impl View for FakeView {
     }
 
     fn update(&mut self, snapshot: Snapshot<'_>) {
+        let texts = window_texts(snapshot.status, snapshot.now, &snapshot.idle, snapshot.receiving);
+        self.0.current_files.lock().unwrap().push(texts.current_file);
         self.0.idle.lock().unwrap().push(snapshot.idle);
     }
 
@@ -83,6 +91,33 @@ fn split_folder() -> tempfile::TempDir {
     let image = BgraImage::from_raw(8, 8, [10, 20, 30, 255].repeat(64));
     std::fs::write(folder.path().join("001_split.png"), image.encode_png().unwrap()).unwrap();
     folder
+}
+
+/// A folder with a start image named `start` and one split image.
+fn start_folder(start: &str) -> tempfile::TempDir {
+    let folder = split_folder();
+    let image = BgraImage::from_raw(8, 8, [40, 50, 60, 255].repeat(64));
+    std::fs::write(folder.path().join(start), image.encode_png().unwrap()).unwrap();
+    folder
+}
+
+#[test]
+fn reload_start_image_shows_the_new_folders_start_image() {
+    // Arrange
+    let (first, second) =
+        (start_folder("start_auto_splitter_first.png"), start_folder("start_auto_splitter_second.png"));
+    let profile = |folder: &tempfile::TempDir| UserProfile {
+        split_hotkey: "num 1".into(),
+        split_image_directory: folder.path().to_string_lossy().into_owned(),
+        ..UserProfile::default()
+    };
+    let switch = UiCommand::SetProfile { profile: Box::new(profile(&second)), folder: ".".into(), loaded: false };
+
+    // Act
+    let seen = run(profile(&first), vec![Event::Ui(switch), Event::Ui(UiCommand::ReloadStartImage)]);
+
+    // Assert
+    assert_eq!(seen.last_current_file(), "start_auto_splitter_second.png");
 }
 
 #[test]

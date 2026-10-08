@@ -130,6 +130,8 @@ These are the defaults for images whose file names don't set their own.
 - Loop Last Split Image to First Split Image: after the last image splits, start over with the first one. Otherwise comparing stops.
 - Start also Resets: when the start image matches, reset the timer too. LiveSplit, LiveSplit One and Molok get a reset and then a start. With hotkeys, only the reset hotkey is pressed, like AutoSplit, so you still have to start the timer.
 - Enable auto reset image: use the reset image. The toggle auto reset image hotkey turns it on and off, for example when a mistake in the run would show the reset image.
+- Compare images with the same number for one split: split images that start with the same number count as one split, and any of them can match it. See [Several images for one split](#several-images-for-one-split). AutoSplit doesn't have this setting.
+- Show a split's images in a 2x2 grid: with the setting above on, a split with several images shows all of them in the current image area, and `None` in the tiles without an image.
 
 ### Hotkeys
 
@@ -176,6 +178,17 @@ Examples:
 
 Values need their closing character, so `(0.9` sets nothing.
 
+### Several images for one split
+
+Some splits can look different from run to run, like a boss that dies in one of two rooms. With Compare images with the same number for one split turned on, `autosplit` compares up to 4 images for the same split, and the first one that matches splits:
+
+- `01_boss_left.png` and `01_boss_right_(0.85).png`: split 1 matches either room.
+- `02_door.png`: split 2.
+
+Every split image needs a number at the start of its name, or the folder won't load. Leading zeros don't matter, so `1_a.png` and `01_b.png` are the same split. Splits run in number order, and the images of a split in name order. Start and reset images need no number.
+
+Each image keeps its own threshold, comparison method and `{b}` flag. The image that matched decides the rest: its delay, pause time and `{d}` or `{p}` flag. The images of a split need the same loop count. Above the current image, the file name becomes "Comparing against 2 images" (or 3, or 4). The current image area shows the split's first image, or all of them in a 2x2 grid with Show a split's images in a 2x2 grid turned on. The Similarity Viewer gets a row for each image, Current Image (1) to (4), with its own live, highest and threshold values.
+
 ### Start image
 
 One image can have `start_auto_splitter` in its name, as a whole word. Before the run, `autosplit` looks for it and starts the timer when it matches. Its pause time is the wait before comparing the first split image, and its delay is the wait before starting the timer. After you change it, Reload Start Image loads it again.
@@ -208,6 +221,8 @@ capture_device_name = "OBS Virtual Camera"  # as `autosplit devices` shows it
 split_image_directory = "/Users/me/Splits/OoT Any%"  # on Windows, use / or 'single quotes'
 default_similarity_threshold = 0.95
 timer_connection = "livesplit_one"  # optional, see LiveSplit One and Molok
+group_split_images = true  # optional, see Several images for one split
+split_image_grid = true  # optional, shows those images in a 2x2 grid
 
 [capture_region]  # in pixels of the device's frames; `autosplit grab` shows their size
 x = 0

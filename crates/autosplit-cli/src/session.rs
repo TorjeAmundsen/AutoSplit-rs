@@ -775,7 +775,8 @@ impl Session {
             != (&self.profile.capture_method, &self.profile.capture_device_name, self.profile.capture_device_id);
         let hotkeys_changed =
             HotkeyAction::ALL.iter().any(|action| action.hotkey(&profile) != action.hotkey(&self.profile));
-        let folder_changed = profile.split_image_directory != self.profile.split_image_directory;
+        let folder_changed = profile.split_image_directory != self.profile.split_image_directory
+            || profile.group_split_images != self.profile.group_split_images;
         let first = !self.profile_loaded;
         self.profile = profile;
         self.runner.set_settings(RunnerSettings::from_profile(&self.profile));

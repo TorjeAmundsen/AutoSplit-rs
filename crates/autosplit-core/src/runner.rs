@@ -10,7 +10,7 @@ use crate::commands::Command;
 use crate::compare::CompareScratch;
 use crate::image::BgraView;
 use crate::profile::UserProfile;
-use crate::split_folder::SplitSet;
+use crate::split_folder::{MAX_GROUP_SIZE, SplitSet};
 use crate::split_image::{SplitDefaults, SplitImage};
 
 /// Profile values the runner reads.
@@ -90,6 +90,14 @@ pub enum ResetReading {
     Similarity(f64),
 }
 
+/// One image of the split being compared.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ImageReading {
+    pub similarity: Option<f64>,
+    pub highest: Option<f64>,
+    pub threshold: f64,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Buttons {
     pub start: bool,
@@ -117,6 +125,9 @@ pub struct Status {
     /// The current image has the below flag, `{b}`: it splits once the similarity drops back
     /// below the threshold.
     pub below: bool,
+    /// Each image of the split being compared, in the order they're compared. Empty for the
+    /// start image.
+    pub group: Vec<ImageReading>,
     pub reset_similarity: Option<ResetReading>,
     pub reset_highest: Option<f64>,
     pub reset_threshold: Option<f64>,
@@ -136,6 +147,7 @@ impl Status {
             loop_position: None,
             split_position: None,
             below: false,
+            group: Vec::new(),
             reset_similarity: None,
             reset_highest: None,
             reset_threshold: None,
@@ -184,7 +196,8 @@ pub struct Runner {
     /// or LiveSplit One). Fixed for the runner's lifetime, like AutoSplit's command line flag.
     timer_synced: bool,
     images: SplitSet,
-    /// `split_images_and_loop_number`: each split image repeated by its loop count.
+    /// `split_images_and_loop_number`: each group of [`SplitSet::groups`] repeated by its loop
+    /// count.
     plan: Vec<(usize, i64)>,
     /// Consecutive plan entries up to and including the next non-dummy split.
     groups: Vec<Vec<usize>>,
@@ -195,7 +208,10 @@ pub struct Runner {
     state: State,
     highest: f64,
     reset_highest: f64,
-    below_armed: bool,
+    /// Per image of the group being compared, or `[0]` for the start image.
+    below_armed: [bool; MAX_GROUP_SIZE],
+    /// The split image that matched, which decides what the split does.
+    matched: usize,
     run_start: Duration,
     scratch: CompareScratch,
     cache: ComparisonCache,
@@ -287,7 +303,8 @@ impl Runner {
             state: State::Idle,
             highest: 0.0,
             reset_highest: 0.0,
-            below_armed: false,
+            below_armed: [false; MAX_GROUP_SIZE],
+            matched: 0,
             run_start: Duration::ZERO,
             scratch: CompareScratch::default(),
             cache: ComparisonCache::default(),
@@ -398,7 +415,7 @@ impl Runner {
         self.index = 0;
         self.highest = 0.0;
         self.reset_highest = 0.0;
-        self.below_armed = false;
+        self.below_armed = [false; MAX_GROUP_SIZE];
         self.state = if self.images.start.is_some() {
             self.status.start_status = StartStatus::Ready;
             self.show_image(ImageRef::Start);
@@ -440,7 +457,7 @@ impl Runner {
         }
         self.status.running = true;
         self.index = 0;
-        self.below_armed = false;
+        self.below_armed = [false; MAX_GROUP_SIZE];
         let start_pause =
             self.images.start.as_ref().map_or(0.0, |start| start.pause_time_secs(&self.settings.defaults));
         if start_pause > 0.0 {
@@ -453,34 +470,35 @@ impl Runner {
     }
 
     fn build_plan(&mut self) {
-        self.plan = self
-            .images
-            .splits
-            .iter()
-            .enumerate()
-            .flat_map(|(index, image)| (1..=image.loops).map(move |loop_number| (index, loop_number)))
+        // Images in a group have the same loop count
+        self.plan = (self.images.groups.iter().enumerate())
+            .flat_map(|(group, range)| {
+                (1..=self.images.splits[range.start].loops).map(move |loop_number| (group, loop_number))
+            })
             .collect();
         self.groups = vec![Vec::new()];
         self.group_of.clear();
         for i in 0..self.plan.len() {
             self.groups.last_mut().unwrap().push(i);
             self.group_of.push(self.groups.len() - 1);
-            if !self.plan_image(i).is_dummy() && i < self.plan.len() - 1 {
+            // A group only counts as a dummy for skip and undo when every image in it is one
+            if !self.plan_images(i).iter().all(SplitImage::is_dummy) && i < self.plan.len() - 1 {
                 self.groups.push(Vec::new());
             }
         }
     }
 
-    fn plan_image(&self, plan_index: usize) -> &SplitImage {
-        &self.images.splits[self.plan[plan_index].0]
+    /// The images compared for a plan entry.
+    fn plan_images(&self, plan_index: usize) -> &[SplitImage] {
+        &self.images.splits[self.images.groups[self.plan[plan_index].0].clone()]
     }
 
     fn out_of_range(&self) -> bool {
         self.index >= self.plan.len()
     }
 
-    fn current(&self) -> &SplitImage {
-        self.plan_image(self.index)
+    fn matched(&self) -> &SplitImage {
+        &self.images.splits[self.matched]
     }
 
     fn image(&self, image: ImageRef) -> &SplitImage {
@@ -498,24 +516,36 @@ impl Runner {
         self.status.showing = Showing::Image(image_ref);
         self.status.current_filename = Some(filename);
         self.status.threshold = Some(threshold);
+        self.status.group = match image_ref {
+            ImageRef::Start => Vec::new(),
+            ImageRef::Split(_) => {
+                let group = self.images.groups[self.plan[self.index].0].clone();
+                let reading = |image: &SplitImage| ImageReading {
+                    similarity: None,
+                    highest: None,
+                    threshold: image.similarity_threshold(&defaults),
+                };
+                self.images.splits[group].iter().map(reading).collect()
+            }
+        };
         (self.status.loop_position, self.status.split_position) = match image_ref {
             ImageRef::Start => (None, None),
-            ImageRef::Split(_) => {
-                let (split, loop_number) = self.plan[self.index];
+            ImageRef::Split(split) => {
+                let loop_number = self.plan[self.index].1;
                 (Some((loop_number, self.images.splits[split].loops)), Some((self.index + 1, self.plan.len())))
             }
         };
     }
 
-    /// Shows the current split image and resets its highest similarity. Returns false past the
-    /// last split.
+    /// Shows the current split image, the first of its group, and resets its highest
+    /// similarity. Returns false past the last split.
     fn update_split_image(&mut self) -> bool {
         self.highest = 0.0;
-        self.below_armed = false;
+        self.below_armed = [false; MAX_GROUP_SIZE];
         if self.out_of_range() {
             return false;
         }
-        self.show_image(ImageRef::Split(self.plan[self.index].0));
+        self.show_image(ImageRef::Split(self.images.groups[self.plan[self.index].0].start));
         true
     }
 
@@ -685,18 +715,18 @@ impl Runner {
         self.status.highest = Some(self.highest);
 
         let difference = similarity - threshold;
-        if below && !self.below_armed && difference >= 0.0 {
-            self.below_armed = true;
+        if below && !self.below_armed[0] && difference >= 0.0 {
+            self.below_armed[0] = true;
             self.state = State::WaitingForStart { epoch, next_tick };
             return;
         }
         let triggered =
-            (below && self.below_armed && difference < 0.0 && capture.is_some()) || (!below && difference >= 0.0);
+            (below && self.below_armed[0] && difference < 0.0 && capture.is_some()) || (!below && difference >= 0.0);
         if !triggered {
             self.state = State::WaitingForStart { epoch, next_tick };
             return;
         }
-        self.below_armed = false;
+        self.below_armed = [false; MAX_GROUP_SIZE];
         if dummy {
             self.status.start_status = StartStatus::Started;
             self.state = State::Idle;
@@ -729,40 +759,57 @@ impl Runner {
         self.state = State::Comparing { epoch: now, next_tick: now };
     }
 
-    /// One comparison of the current split image.
+    /// One comparison of the current split image, or of each image in its group. The first one
+    /// that matches splits. The status shows the best similarity in the group.
     fn compare_split_image(&mut self, epoch: Duration, now: Duration, capture: Option<BgraView>) {
         if self.check_reset(now, capture) {
             return;
         }
         let defaults = self.settings.defaults;
-        let split = self.plan[self.index].0;
-        let image = &self.images.splits[split];
-        let similarity = self.cache.get_or_compare(Compared::Split(split), || {
-            image.compare(capture, image.comparison_method(&defaults), &mut self.scratch)
-        });
-        let threshold = image.similarity_threshold(&defaults);
-        let below = image.is_below();
+        let group = self.images.groups[self.plan[self.index].0].clone();
+        let mut best = 0.0_f64;
+        let mut matched = None;
+        for (slot, split) in group.enumerate() {
+            let image = &self.images.splits[split];
+            let similarity = self.cache.get_or_compare(Compared::Split(split), || {
+                image.compare(capture, image.comparison_method(&defaults), &mut self.scratch)
+            });
+            best = best.max(similarity);
+            if let Some(reading) = self.status.group.get_mut(slot) {
+                reading.similarity = Some(similarity);
+                reading.highest = Some(reading.highest.map_or(similarity, |highest| highest.max(similarity)));
+            }
+            if matched.is_some() {
+                continue;
+            }
+            let armed = &mut self.below_armed[slot];
+            if similarity >= image.similarity_threshold(&defaults) {
+                if image.is_below() {
+                    *armed = true;
+                } else {
+                    matched = Some(split);
+                }
+            } else if image.is_below() && *armed && capture.is_some() {
+                matched = Some(split);
+            }
+        }
         let next_tick = next_grid_tick(epoch, now, interval(self.settings.defaults.fps_limit));
 
-        self.highest = self.highest.max(similarity);
-        self.status.similarity = Some(similarity);
+        self.highest = self.highest.max(best);
+        self.status.similarity = Some(best);
         self.status.highest = Some(self.highest);
 
-        if similarity >= threshold {
-            if !below {
-                return self.split_found(now);
-            }
-            self.below_armed = true;
-        } else if below && self.below_armed && capture.is_some() {
-            self.below_armed = false;
+        if let Some(split) = matched {
+            self.matched = split;
             return self.split_found(now);
         }
         self.state = State::Comparing { epoch, next_tick };
     }
 
+    /// Acts on the image that matched: its own flags, delay and pause time apply.
     fn split_found(&mut self, now: Duration) {
         let defaults = self.settings.defaults;
-        let image = self.current();
+        let image = self.matched();
         if image.is_dummy() {
             return self.advance(now);
         }
@@ -778,13 +825,13 @@ impl Runner {
     }
 
     fn send_split(&mut self) {
-        let command = if self.current().is_pause() { Command::Pause } else { Command::Split };
+        let command = if self.matched().is_pause() { Command::Pause } else { Command::Split };
         self.effects.push(Effect::Send(command));
     }
 
     /// Move past the image that just split, then pause for its pause time.
     fn advance(&mut self, now: Duration) {
-        let pause = self.current().pause_time_secs(&self.settings.defaults);
+        let pause = self.matched().pause_time_secs(&self.settings.defaults);
         if self.settings.loop_splits && self.index == self.plan.len() - 1 {
             self.index = 0;
         } else {

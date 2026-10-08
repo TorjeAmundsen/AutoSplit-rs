@@ -24,6 +24,7 @@ use autosplit_capture::{DeviceInfo, list_devices};
 use autosplit_core::commands::{Command, TimerLink};
 use autosplit_core::hotkeys::HotkeyAction;
 use autosplit_core::profile::UserProfile;
+use autosplit_core::split_folder::MAX_GROUP_SIZE;
 use autosplit_input::{Modifiers, UsLayout, hotkey_name, parse_hotkey, same_hotkey};
 use slint::winit_030::winit::event::{ElementState, KeyEvent, WindowEvent};
 use slint::winit_030::winit::keyboard::{Key, NamedKey};
@@ -36,7 +37,9 @@ use self::log::LogLines;
 use self::messages::{Answer, Message, MessageQueue};
 use self::recorder::{key_character, modifiers_held, pressed_key};
 use self::settings_form::SettingEdit;
-use self::ui::{AboutWindow, HotkeyRow, LogWindow, MainWindow, MessageWindow, Setting, SettingsWindow, WindowFocus};
+use self::ui::{
+    AboutWindow, HotkeyRow, LogWindow, MainWindow, MessageWindow, Setting, SettingsWindow, SimilarityRow, WindowFocus,
+};
 use self::view::{GuiView, Picture, Update};
 use crate::console::Console;
 use crate::session::{Event, Notice, Session, UiCommand};
@@ -117,6 +120,10 @@ struct Gui {
     /// For timers and callbacks to reach the GUI without keeping it alive.
     me: Weak<Gui>,
     hotkeys: Rc<VecModel<HotkeyRow>>,
+    /// The similarity viewer's rows for grouped split images.
+    group_rows: Rc<VecModel<SimilarityRow>>,
+    /// The current image grid's tiles.
+    current_tiles: Rc<VecModel<slint::Image>>,
     state: RefCell<State>,
     events: mpsc::Sender<Event>,
     /// Whether the main window can be seen, for the live preview.
@@ -288,6 +295,8 @@ pub fn run(options: Options) -> Result<(), Error> {
         windows,
         me: me.clone(),
         hotkeys: Rc::new(VecModel::default()),
+        group_rows: Rc::new(VecModel::from(vec![SimilarityRow::default(); MAX_GROUP_SIZE])),
+        current_tiles: Rc::new(VecModel::from(vec![slint::Image::default(); MAX_GROUP_SIZE])),
         state: RefCell::new(State {
             document,
             devices: Devices::default(),
@@ -319,6 +328,8 @@ pub fn run(options: Options) -> Result<(), Error> {
         .into(),
     );
     windows.settings.set_hotkeys(ModelRc::from(gui.hotkeys.clone()));
+    windows.main.set_group_rows(ModelRc::from(gui.group_rows.clone()));
+    windows.main.set_current_tiles(ModelRc::from(gui.current_tiles.clone()));
     windows.settings.set_auto_controlled(options.auto_controlled);
     windows.settings.set_molok_listed(cfg!(target_os = "linux"));
     windows.about.set_version(env!("CARGO_PKG_VERSION").into());
@@ -694,6 +705,7 @@ impl Gui {
         main.set_region_y(region.y as f32);
         main.set_region_width(region.width as f32);
         main.set_region_height(region.height as f32);
+        main.set_group_split_images(profile.group_split_images);
 
         let settings = &self.windows.settings;
         settings.set_fps_limit(profile.fps_limit as f32);
@@ -719,6 +731,8 @@ impl Gui {
         settings.set_default_delay_time(profile.default_delay_time as f32);
         settings.set_default_pause_time(profile.default_pause_time as f32);
         settings.set_loop_splits(profile.loop_splits);
+        settings.set_group_split_images(profile.group_split_images);
+        settings.set_split_image_grid(profile.split_image_grid);
         settings.set_start_also_resets(profile.start_also_resets);
         settings.set_enable_auto_reset(profile.enable_auto_reset);
         for (index, &(action, name)) in HOTKEY_ROWS.iter().enumerate() {
@@ -768,6 +782,8 @@ impl Gui {
             Setting::DefaultDelayTime => SettingEdit::DefaultDelayTime(settings.get_default_delay_time().into()),
             Setting::DefaultPauseTime => SettingEdit::DefaultPauseTime(settings.get_default_pause_time().into()),
             Setting::LoopSplits => SettingEdit::LoopSplits(settings.get_loop_splits()),
+            Setting::GroupSplitImages => SettingEdit::GroupSplitImages(settings.get_group_split_images()),
+            Setting::SplitImageGrid => SettingEdit::SplitImageGrid(settings.get_split_image_grid()),
             Setting::StartAlsoResets => SettingEdit::StartAlsoResets(settings.get_start_also_resets()),
             Setting::EnableAutoReset => SettingEdit::EnableAutoReset(settings.get_enable_auto_reset()),
             Setting::TimerConnection => SettingEdit::TimerConnection(settings.get_timer_connection()),
@@ -821,6 +837,7 @@ impl Gui {
             let window = texts.window;
             main.set_current_image_file(window.current_file.into());
             main.set_current_image_message(window.current_message.into());
+            main.set_current_grid(texts.grid);
             let [current_live, current_highest, current_threshold, reset_live, reset_highest, reset_threshold] =
                 window.table;
             main.set_current_live(current_live.into());
@@ -829,6 +846,12 @@ impl Gui {
             main.set_reset_live(reset_live.into());
             main.set_reset_highest(reset_highest.into());
             main.set_reset_threshold(reset_threshold.into());
+            for (index, [live, highest, threshold]) in window.group_rows.into_iter().enumerate() {
+                let row = SimilarityRow { live: live.into(), highest: highest.into(), threshold: threshold.into() };
+                if self.group_rows.row_data(index).as_ref() != Some(&row) {
+                    self.group_rows.set_row_data(index, row);
+                }
+            }
             main.set_image_loop(window.image_loop.into());
             main.set_start_image_status(window.start_status.into());
             let [start, reset, skip, undo, next, previous] = texts.buttons;
@@ -854,6 +877,11 @@ impl Gui {
         }
         if let Some(current) = image(update.current) {
             main.set_current_image(current);
+        }
+        for (index, tile) in update.tiles.into_iter().enumerate() {
+            if let Some(tile) = image(tile) {
+                self.current_tiles.set_row_data(index, tile);
+            }
         }
     }
 

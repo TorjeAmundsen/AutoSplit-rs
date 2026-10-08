@@ -4,6 +4,7 @@ use std::time::Duration;
 
 use crate::commands::Command;
 use crate::runner::{ImageRef, ResetReading, Showing, StartStatus, Status};
+use crate::split_folder::MAX_GROUP_SIZE;
 
 /// Truncates to 3 decimals, so a similarity just under a threshold never shows as reaching it.
 ///
@@ -68,13 +69,18 @@ pub fn status_line(status: &Status, now: Duration, idle: &str, capture: bool) ->
 /// The texts of AutoSplit's main window for a run's status.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct WindowTexts {
-    /// The current image's file name, `-` when none is shown.
+    /// The current image's file name, `-` when none is shown. A split with several images
+    /// says how many instead.
     pub current_file: String,
     /// Shown instead of the current image: a countdown, or `idle`.
     pub current_message: String,
     /// The similarity viewer: live, highest and threshold, for the current image then the
     /// reset image.
     pub table: [String; 6],
+    /// The similarity viewer's current image rows when split images are grouped: live,
+    /// highest and threshold of each image in the group. The first row is the start image
+    /// while it's shown.
+    pub group_rows: [[String; 3]; MAX_GROUP_SIZE],
     pub image_loop: String,
     pub start_status: String,
 }
@@ -90,7 +96,14 @@ pub fn window_texts(status: &Status, now: Duration, idle: &str, capture: bool) -
         Showing::Image(_) => String::new(),
         Showing::Nothing => idle.to_owned(),
     };
-    let current_live = decimal_or_dash(if capture { status.similarity } else { None });
+    let live = |similarity: Option<f64>| decimal_or_dash(if capture { similarity } else { None });
+    let current = [live(status.similarity), decimal_or_dash(status.highest), decimal_or_dash(status.threshold)];
+    let group_rows = std::array::from_fn(|slot| match status.group.get(slot) {
+        Some(reading) => [live(reading.similarity), decimal_or_dash(reading.highest), decimal(reading.threshold)],
+        None if slot == 0 && status.group.is_empty() => current.clone(),
+        None => ["-".into(), "-".into(), "-".into()],
+    });
+    let [current_live, current_highest, current_threshold] = current;
     let reset = |live: String| [live, decimal_or_dash(status.reset_highest), decimal_or_dash(status.reset_threshold)];
     let [reset_live, reset_highest, reset_threshold] = match status.reset_similarity {
         // Like AutoSplit: dashes until the run starts, N/A during a run without a reset image
@@ -101,16 +114,14 @@ pub fn window_texts(status: &Status, now: Duration, idle: &str, capture: bool) -
         Some(ResetReading::Similarity(similarity)) => reset(if capture { decimal(similarity) } else { "-".into() }),
     };
     WindowTexts {
-        current_file: status.current_filename.clone().unwrap_or_else(|| "-".into()),
+        current_file: match &status.current_filename {
+            Some(_) if status.group.len() > 1 => format!("Comparing against {} images", status.group.len()),
+            Some(filename) => filename.clone(),
+            None => "-".into(),
+        },
         current_message,
-        table: [
-            current_live,
-            decimal_or_dash(status.highest),
-            decimal_or_dash(status.threshold),
-            reset_live,
-            reset_highest,
-            reset_threshold,
-        ],
+        table: [current_live, current_highest, current_threshold, reset_live, reset_highest, reset_threshold],
+        group_rows,
         image_loop: status.loop_position.map_or("N/A".into(), |(at, of)| format!("{at}/{of}")),
         start_status: match status.start_status {
             StartStatus::NotFound => "not found",

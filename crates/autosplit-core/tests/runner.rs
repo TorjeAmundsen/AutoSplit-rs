@@ -37,8 +37,13 @@ fn defaults() -> RunnerSettings {
     }
 }
 
-const ALL_HOTKEYS_SET: ValidationContext =
-    ValidationContext { split_hotkey_set: true, reset_hotkey_set: true, pause_hotkey_set: true, hotkeys_needed: true };
+const ALL_HOTKEYS_SET: ValidationContext = ValidationContext {
+    split_hotkey_set: true,
+    reset_hotkey_set: true,
+    pause_hotkey_set: true,
+    hotkeys_needed: true,
+    group_split_images: false,
+};
 
 /// Plays the host's part: reloads the folder on start and after a run, like AutoSplit does.
 struct Harness {
@@ -50,11 +55,21 @@ struct Harness {
     next_sequence: u64,
     /// Gives every tick a new frame number, which turns the cache off.
     new_frame_every_tick: bool,
+    context: ValidationContext,
 }
 
 impl Harness {
     fn new(files: &[(&str, Bgr)], settings: RunnerSettings) -> Self {
         Self::with_link(files, settings, false)
+    }
+
+    /// Split images with the same number are compared for the same split.
+    fn grouped(files: &[(&str, Bgr)], settings: RunnerSettings) -> Self {
+        let mut harness = Self::new(files, settings);
+        harness.context.group_split_images = true;
+        let images = harness.load();
+        harness.runner.arm(images, Duration::ZERO);
+        harness
     }
 
     /// Driven by LiveSplit or LiveSplit One, which report the timer's splits.
@@ -75,6 +90,7 @@ impl Harness {
             effects: Vec::new(),
             next_sequence: 0,
             new_frame_every_tick: false,
+            context: ALL_HOTKEYS_SET,
         };
         let images = harness.load();
         harness.runner.arm(images, Duration::ZERO);
@@ -82,7 +98,7 @@ impl Harness {
     }
 
     fn load(&self) -> SplitSet {
-        load_split_folder(self.directory.path(), &ALL_HOTKEYS_SET).result.expect("valid folder")
+        load_split_folder(self.directory.path(), &self.context).result.expect("valid folder")
     }
 
     /// The split hotkey or start button.
@@ -922,4 +938,106 @@ fn cached_comparisons_split_at_the_same_times(files: &[(&str, Bgr)], feeds: &[Fe
 
     // Assert
     assert_eq!((cached.is_empty(), cached), (false, uncached));
+}
+
+#[test]
+fn any_image_of_a_group_splits() {
+    // Arrange
+    let mut harness = Harness::grouped(&[("1_a.png", RED), ("1_b.png", BLUE), ("2.png", GREEN)], defaults());
+    harness.start();
+
+    // Act
+    harness.feed(Some(BLUE), SECOND);
+
+    // Assert
+    assert_eq!((harness.sent(), harness.current_filename()), (vec![Command::Split], Some("2.png")));
+}
+
+#[test]
+fn a_group_is_one_split_position() {
+    // Arrange
+    let mut harness = Harness::grouped(&[("1_a.png", RED), ("1_b.png", BLUE), ("2.png", GREEN)], defaults());
+
+    // Act
+    harness.start();
+
+    // Assert
+    let status = harness.runner.status();
+    assert_eq!((status.split_position, status.current_filename.as_deref()), (Some((1, 2)), Some("1_a.png")));
+}
+
+#[test_case(RED => vec![(ms(500), Command::Split)]; "image with a delay")]
+#[test_case(BLUE => vec![(Duration::ZERO, Command::Split)]; "image without a delay")]
+fn the_matched_image_decides_the_delay(frame: Bgr) -> Vec<(Duration, Command)> {
+    // Arrange
+    let mut harness = Harness::grouped(&[("1_a_#500#.png", RED), ("1_b.png", BLUE), ("2.png", GREEN)], defaults());
+    harness.start();
+
+    // Act
+    harness.feed(Some(frame), SECOND);
+
+    // Assert
+    harness.sent_at()
+}
+
+#[test_case(RED => (vec![], Some("2.png".into())); "dummy image")]
+#[test_case(BLUE => (vec![Command::Split], Some("2.png".into())); "split image")]
+fn the_matched_image_decides_the_dummy_flag(frame: Bgr) -> (Vec<Command>, Option<String>) {
+    // Arrange
+    let mut harness = Harness::grouped(&[("1_a_{d}.png", RED), ("1_b.png", BLUE), ("2.png", GREEN)], defaults());
+    harness.start();
+
+    // Act
+    harness.feed(Some(frame), ms(10));
+
+    // Assert
+    (harness.sent(), harness.current_filename().map(str::to_owned))
+}
+
+#[test]
+fn below_flag_is_tracked_per_image_of_a_group() {
+    // Arrange
+    let mut harness = Harness::grouped(&[("1_a_{b}.png", RED), ("1_b.png", BLUE), ("2.png", GREEN)], defaults());
+    harness.start();
+
+    // Act
+    harness.feed(Some(RED), ms(100));
+    let while_matching = harness.sent();
+    harness.feed(Some(BLACK), ms(100));
+
+    // Assert
+    assert_eq!((while_matching, harness.sent()), (vec![], vec![Command::Split]));
+}
+
+#[test]
+fn skip_split_moves_past_the_whole_group() {
+    // Arrange
+    let mut harness = Harness::grouped(&[("1_a.png", RED), ("1_b.png", BLUE), ("2.png", GREEN)], defaults());
+    harness.start();
+
+    // Act
+    harness.skip(false);
+
+    // Assert
+    assert_eq!((harness.sent(), harness.current_filename()), (vec![Command::Skip], Some("2.png")));
+}
+
+#[test]
+fn each_image_of_a_group_has_its_own_reading() {
+    // Arrange
+    let mut harness = Harness::grouped(&[("1_a_{b}.png", RED), ("1_b_(0.9).png", BLUE), ("2.png", GREEN)], defaults());
+    harness.start();
+
+    // Act
+    harness.feed(Some(RED), ms(100));
+
+    // Assert
+    let readings: Vec<_> = harness
+        .runner
+        .status()
+        .group
+        .iter()
+        .map(|reading| (reading.similarity == Some(1.0), reading.highest == Some(1.0), reading.threshold))
+        .collect();
+    assert_eq!(readings, [(true, true, 0.95), (false, false, 0.9)]);
 }

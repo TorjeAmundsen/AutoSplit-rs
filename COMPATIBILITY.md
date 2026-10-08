@@ -18,6 +18,7 @@
 | Global hotkeys and sending key presses | Done, with AutoSplit's hotkey names |
 | LiveSplit One (WebSocket) | Done, new |
 | Molok (POSIX signals, Linux) | Done, new |
+| Up to 4 split images compared for one split, grouped by number | Done, new, off by default |
 | Screenshots | Done |
 | Screen and window capture | Later |
 | Window (Slint): main window, settings, Align Region, Set Hotkey | Done, for capture devices |

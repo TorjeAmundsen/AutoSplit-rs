@@ -26,6 +26,13 @@ pub fn has_keyword(filename: &str, keyword: &str) -> bool {
     })
 }
 
+/// The digits `filename` starts with, like "01" in "01_boss.png". Split images with the same
+/// number are compared for the same split when the profile groups them.
+pub fn number_prefix(filename: &str) -> Option<&str> {
+    let digits = filename.len() - filename.trim_start_matches(|c: char| c.is_ascii_digit()).len();
+    (digits > 0).then(|| &filename[..digits])
+}
+
 /// The text between the first `open` and the next `close`.
 fn raw_value(filename: &str, open: char, close: char) -> Option<&str> {
     let (_, after) = filename.split_once(open)?;

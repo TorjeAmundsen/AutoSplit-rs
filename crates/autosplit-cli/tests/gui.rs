@@ -491,14 +491,37 @@ fn red(picture: &Picture) -> Option<u8> {
 #[test_case(Picture::Keep, Picture::Keep => None; "nothing to show")]
 fn merging_updates_keeps_the_newest_picture(older: Picture, newer: Picture) -> Option<u8> {
     // Arrange
-    let older = Update { texts: None, live: older, current: Picture::Keep };
-    let newer = Update { texts: None, live: newer, current: Picture::Keep };
+    let older = Update { texts: None, live: older, current: Picture::Keep, tiles: [const { Picture::Keep }; 4] };
+    let newer = Update { texts: None, live: newer, current: Picture::Keep, tiles: [const { Picture::Keep }; 4] };
 
     // Act
     let merged = newer.after(older);
 
     // Assert, with the expected value checked by test_case
     red(&merged.live)
+}
+
+#[test]
+fn merging_updates_keeps_the_newest_tiles() {
+    // Arrange
+    let older = Update {
+        texts: None,
+        live: Picture::Keep,
+        current: Picture::Keep,
+        tiles: [pixels(1), pixels(2), pixels(3), Picture::Keep],
+    };
+    let newer = Update {
+        texts: None,
+        live: Picture::Keep,
+        current: Picture::Keep,
+        tiles: [Picture::Keep, pixels(4), Picture::Clear, Picture::Keep],
+    };
+
+    // Act
+    let merged = newer.after(older);
+
+    // Assert
+    assert_eq!(merged.tiles.each_ref().map(red), [Some(1), Some(4), Some(0), None]);
 }
 
 #[test_case(TimerConnection::LiveSplitOne, TimerLink::Hotkeys => true; "switch waiting for the run")]

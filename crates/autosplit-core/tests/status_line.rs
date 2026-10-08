@@ -21,6 +21,7 @@ fn status() -> Status {
         reset_threshold: None,
         split_position: Some((3, 12)),
         below: false,
+        group: Vec::new(),
         buttons: Buttons {
             start: false,
             reset: true,

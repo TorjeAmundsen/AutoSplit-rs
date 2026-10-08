@@ -12,15 +12,22 @@ use autosplit_core::split_image::{LoadError, LoadWarning};
 use tempfile::TempDir;
 use test_case::test_case;
 
-const ALL_HOTKEYS: ValidationContext =
-    ValidationContext { split_hotkey_set: true, reset_hotkey_set: true, pause_hotkey_set: true, hotkeys_needed: true };
+const ALL_HOTKEYS: ValidationContext = ValidationContext {
+    split_hotkey_set: true,
+    reset_hotkey_set: true,
+    pause_hotkey_set: true,
+    hotkeys_needed: true,
+    group_split_images: false,
+};
 const NO_HOTKEYS: ValidationContext = ValidationContext {
     split_hotkey_set: false,
     reset_hotkey_set: false,
     pause_hotkey_set: false,
     hotkeys_needed: true,
+    group_split_images: false,
 };
 const WITHOUT_HOTKEYS: ValidationContext = ValidationContext { hotkeys_needed: false, ..NO_HOTKEYS };
+const GROUPED: ValidationContext = ValidationContext { group_split_images: true, ..ALL_HOTKEYS };
 
 fn folder(names: &[&str]) -> TempDir {
     let directory = tempfile::tempdir().unwrap();
@@ -54,6 +61,12 @@ fn validation_error(names: &[&str], context: ValidationContext) -> Option<Valida
 #[test_case(&["xstart_auto_splitter.png", "1.png"], NO_HOTKEYS => None; "start keyword must be its own word")]
 #[test_case(&["start_auto_splitter.png", "reset.png", "1_{p}.png"], WITHOUT_HOTKEYS => None; "a timer told without hotkeys needs none")]
 #[test_case(&["1.png", ".hidden.bmp"], ALL_HOTKEYS => None; "hidden files are ignored")]
+#[test_case(&["1_a.png", "1_b.png", "1_c.png", "1_d.png", "2.png"], GROUPED => None; "four images for one split")]
+#[test_case(&["1_a.png", "1_b.png", "01_c.png", "1_d.png", "1_e.png"], GROUPED => Some(ValidationError::GroupTooLarge("01".into())); "five images for one split")]
+#[test_case(&["1.png", "boss.png"], GROUPED => Some(ValidationError::NoNumberPrefix("boss.png".into())); "grouped image without a number")]
+#[test_case(&["1.png", "boss.png"], ALL_HOTKEYS => None; "ungrouped images need no number")]
+#[test_case(&["1_a.png", "1_b_@2@.png"], GROUPED => Some(ValidationError::GroupLoopsDiffer("1".into())); "different loop counts in a group")]
+#[test_case(&["start_auto_splitter.png", "reset.png", "1.png"], GROUPED => None; "start and reset images need no number")]
 fn folder_validation(names: &[&str], context: ValidationContext) -> Option<ValidationError> {
     // Arrange, Act
     validation_error(names, context)
@@ -91,6 +104,31 @@ fn split_images_are_in_file_name_order() {
     // Assert
     let names: Vec<&str> = set.splits.iter().map(|image| image.filename.as_str()).collect();
     assert_eq!(names, ["10.png", "2.png", "c.png", "a_(0.9).png", "b.png"]);
+}
+
+#[test]
+fn grouped_split_images_are_in_number_then_name_order() {
+    // Arrange
+    let directory = folder(&["10_a.png", "2_b.png", "02_c.png", "1.png", "reset.png"]);
+
+    // Act
+    let set = load_split_folder(directory.path(), &GROUPED).result.unwrap();
+
+    // Assert
+    let names: Vec<&str> = set.splits.iter().map(|image| image.filename.as_str()).collect();
+    assert_eq!((names, set.groups), (vec!["1.png", "02_c.png", "2_b.png", "10_a.png"], vec![0..1, 1..3, 3..4]));
+}
+
+#[test]
+fn ungrouped_split_images_are_one_per_split() {
+    // Arrange
+    let directory = folder(&["1_a.png", "1_b.png"]);
+
+    // Act
+    let set = load_split_folder(directory.path(), &ALL_HOTKEYS).result.unwrap();
+
+    // Assert
+    assert_eq!(set.groups, [0..1, 1..2]);
 }
 
 #[test]
