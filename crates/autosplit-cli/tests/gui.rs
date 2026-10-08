@@ -1,5 +1,5 @@
 //! The window's logic that doesn't need a window: the profile document, message boxes, the
-//! settings fields, key names and the log.
+//! settings fields, key names, the log and where windows open.
 
 use std::cell::Cell;
 use std::path::{Path, PathBuf};
@@ -8,6 +8,7 @@ use std::rc::Rc;
 use autosplit::gui::document::{Document, folder_text, profile_on_open};
 use autosplit::gui::log::{LOG_LINES, LogLines};
 use autosplit::gui::messages::{Answer, Buttons, Message, MessageQueue};
+use autosplit::gui::placement::{Area, centered_over};
 use autosplit::gui::recorder::key_code;
 use autosplit::gui::settings_form::{SettingEdit, Shown, apply, pick_first_device};
 use autosplit::gui::view::{Picture, Pixels, Update};
@@ -533,4 +534,19 @@ fn timer_connection_waiting(connection: TimerConnection, link: TimerLink) -> boo
 
     // Act, with the expected value checked by test_case
     Shown::new(&profile, &[], false, link).timer_connection_waiting
+}
+
+const SECOND_SCREEN: Area = Area { x: 1920, y: 0, width: 2560, height: 1440 };
+
+#[test_case(Area { x: 2500, y: 400, width: 600, height: 500 }, None => (2600, 450); "centered over the main window")]
+#[test_case(Area { x: 2500, y: 400, width: 600, height: 500 }, Some(SECOND_SCREEN) => (2600, 450); "on the main window's screen")]
+#[test_case(Area { x: 1920, y: 0, width: 200, height: 100 }, Some(SECOND_SCREEN) => (1920, 0); "kept inside the top left")]
+#[test_case(Area { x: 4280, y: 1240, width: 200, height: 200 }, Some(SECOND_SCREEN) => (4080, 1040); "kept inside the bottom right")]
+fn opens_over_the_main_window(main: Area, screen: Option<Area>) -> (i32, i32) {
+    centered_over(main, 400, 400, screen)
+}
+
+#[test]
+fn window_bigger_than_the_screen_keeps_its_corner_on_it() {
+    assert_eq!(centered_over(SECOND_SCREEN, 3000, 2000, Some(SECOND_SCREEN)), (1920, 0));
 }

@@ -5,6 +5,7 @@
 pub mod document;
 pub mod log;
 pub mod messages;
+pub mod placement;
 pub mod recorder;
 pub mod settings_form;
 pub mod view;
@@ -35,6 +36,7 @@ use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
 use self::document::{Document, folder_text, profile_on_open};
 use self::log::LogLines;
 use self::messages::{Answer, Message, MessageQueue};
+use self::placement::{Area, centered_over};
 use self::recorder::{key_character, modifiers_held, pressed_key};
 use self::settings_form::SettingEdit;
 use self::ui::{
@@ -656,12 +658,39 @@ impl Gui {
     }
 
     fn show_window(&self, window: &slint::Window) {
+        if !window.is_visible() {
+            self.place_over_main(window);
+        }
         if let Err(error) = window.show() {
             self.add_log_line(format!("error: Couldn't show a window: {error}"));
         }
         // Wayland only maps a window once it draws, and the windows got their first redraw
         // while hidden at startup, so the first show would wait for some other redraw
         window.request_redraw();
+    }
+
+    /// Opens `window` over the main window, so it doesn't show up on another screen.
+    fn place_over_main(&self, window: &slint::Window) {
+        let main = self.windows.main.window();
+        let Some((minimized, screen)) = main.with_winit_window(|main| {
+            let screen = main.current_monitor().map(|monitor| {
+                let (position, size) = (monitor.position(), monitor.size());
+                Area { x: position.x, y: position.y, width: size.width, height: size.height }
+            });
+            (main.is_minimized().unwrap_or(false), screen)
+        }) else {
+            return;
+        };
+        // A minimized window sits far off screen on Windows
+        if minimized {
+            return;
+        }
+        let (position, size) = (main.position(), main.size());
+        let main_area = Area { x: position.x, y: position.y, width: size.width, height: size.height };
+        // A hidden window's size can be at another screen's scale, so it goes by the main window's
+        let size = window.size().to_logical(window.scale_factor()).to_physical(main.scale_factor());
+        let (x, y) = centered_over(main_area, size.width, size.height, screen);
+        window.set_position(slint::PhysicalPosition::new(x, y));
     }
 
     /// Lists capture devices in the background, since some take a while to answer.
