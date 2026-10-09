@@ -34,8 +34,6 @@ use crate::{livesplit, profile, screenshot};
 
 /// The longest the loop sleeps, so a failed capture device is noticed.
 const MAX_SLEEP: Duration = Duration::from_millis(250);
-/// How often a split image folder with errors is checked again.
-const FOLDER_RETRY_INTERVAL: Duration = Duration::from_secs(2);
 /// How long before a wakeup Windows' timer is made precise, when it isn't already for comparing.
 const PRECISE_LEAD: Duration = Duration::from_millis(32);
 /// How often the terminal's status line is redrawn.
@@ -68,7 +66,7 @@ pub enum UiCommand {
     NextImage,
     PreviousImage,
     Screenshot,
-    ReloadStartImage,
+    ReloadSplitImages,
     /// The profile as edited in the GUI. Relative folders are read from `folder`. `loaded`
     /// when it was just loaded from a file, which looks for the start image again, like
     /// AutoSplit.
@@ -153,7 +151,6 @@ pub struct Session {
     logged_folder_messages: HashSet<String>,
     /// Why the folder can't be used, if it can't.
     folder_error: Option<String>,
-    next_folder_retry: Instant,
     compared: Option<Compared>,
     timer: PreciseTimer,
     next_view: Instant,
@@ -192,7 +189,6 @@ impl Session {
             livesplit_one: None,
             logged_folder_messages: HashSet::new(),
             folder_error: None,
-            next_folder_retry: now,
             compared: None,
             timer: PreciseTimer::default(),
             next_view: now,
@@ -362,7 +358,6 @@ impl Session {
             let now = Instant::now();
             self.update_device(now);
             self.hotkeys.check_health(now, &mut self.console);
-            self.retry_folder(now);
             if self.runner.next_wakeup().is_some_and(|due| self.elapsed() >= due) {
                 self.tick();
             }
@@ -375,9 +370,6 @@ impl Session {
             }
             for next in [self.device.next_open(), self.hotkeys.next_health_check()].into_iter().flatten() {
                 wake = wake.min(next);
-            }
-            if self.folder_error.is_some() {
-                wake = wake.min(self.next_folder_retry);
             }
             // Waits are only precise to Windows' 15.6 ms tick unless asked for, which costs
             // power, so precision is asked for while comparing and just before other wakeups
@@ -480,7 +472,7 @@ impl Session {
             UiCommand::NextImage => self.runner.skip(now, true),
             UiCommand::PreviousImage => self.runner.undo(now, true),
             UiCommand::Screenshot => self.screenshot(),
-            UiCommand::ReloadStartImage => {
+            UiCommand::ReloadSplitImages => {
                 if !self.runner.is_running() {
                     self.logged_folder_messages.clear();
                     self.arm(true);
@@ -660,8 +652,11 @@ impl Session {
     /// AutoSplit. Otherwise each message is only logged once, since the folder is loaded again
     /// and again.
     fn folder(&mut self, load: FolderLoad, dialogs: bool) -> Result<SplitSet, String> {
-        let errors =
-            load.load_errors.iter().map(ToString::to_string).chain(load.result.as_ref().err().map(ToString::to_string));
+        let errors = load
+            .ignored_files_message()
+            .into_iter()
+            .chain(load.load_errors.iter().map(ToString::to_string))
+            .chain(load.result.as_ref().err().map(ToString::to_string));
         for error in errors.collect::<Vec<_>>() {
             if dialogs {
                 self.logged_folder_messages.insert(format!("error: {error}"));
@@ -685,7 +680,6 @@ impl Session {
         let load = load_profile_folder(&self.profile, self.link.needs_hotkeys());
         self.images_loaded += 1;
         let images = self.folder(load, asked);
-        // Only arming decides whether the folder is retried, since only it watches the folder
         self.folder_error = images.as_ref().err().cloned();
         match images {
             Ok(images) => {
@@ -693,10 +687,6 @@ impl Session {
                 let now = self.elapsed();
                 if self.runner.arm(images, now) && has_start {
                     self.console.log("Looking for the start image");
-                } else if asked && !has_start {
-                    self.dialog(
-                        "Your Split Image Folder does not contain an image with the keyword 'start_auto_splitter'.",
-                    );
                 }
             }
             Err(_) => {
@@ -705,28 +695,17 @@ impl Session {
         }
     }
 
-    /// Checks a folder with errors again, so fixing it doesn't need a restart.
-    fn retry_folder(&mut self, now: Instant) {
-        if self.folder_error.is_none() || now < self.next_folder_retry || self.runner.is_running() {
-            return;
-        }
-        self.next_folder_retry = now + FOLDER_RETRY_INTERVAL;
-        self.arm(false);
-        if self.folder_error.is_none() {
-            self.console.log("The split image folder is OK now");
-            self.logged_folder_messages.clear();
-        }
-    }
-
     fn start_run(&mut self) {
         let run_start = self.elapsed();
         let load = load_profile_folder_to_start(&self.profile, self.link.needs_hotkeys());
-        // Not a problem with the folder, which stays watched as it was
+        // Not a problem with the folder, whose state stays as it was
         if let Err(error @ ValidationError::NoSplitHotkey) = &load.result {
             return self.dialog(error);
         }
         self.images_loaded += 1;
-        let reason = match self.folder(load, false) {
+        let images = self.folder(load, false);
+        self.folder_error = images.as_ref().err().cloned();
+        let reason = match images {
             Ok(images) => {
                 let now = self.elapsed();
                 if self.runner.start(images, now, run_start) {
@@ -849,6 +828,9 @@ impl Session {
         let see_log = if self.windowed { "see Help > View Log" } else { "see above" };
         match self.link {
             TimerLink::AutoControlled if !self.profile_loaded => "waiting for LiveSplit to send a profile".into(),
+            _ if self.folder_error.is_some() && self.windowed => {
+                format!("can't start: fix the split images, then press Reload Split Images ({see_log})")
+            }
             _ if self.folder_error.is_some() => format!("can't start: fix the split images ({see_log})"),
             TimerLink::Hotkeys if self.profile.split_hotkey.is_empty() => {
                 "can't start: the profile has no split hotkey".into()

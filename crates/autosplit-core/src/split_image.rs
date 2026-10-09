@@ -240,6 +240,6 @@ fn prepare_for_comparison(image: &BgraImage) -> (BgraImage, Option<Mask>) {
 }
 
 /// The file name, which is enough to find a file in the split image folder.
-fn file_name(path: &Path) -> String {
+pub(crate) fn file_name(path: &Path) -> String {
     path.file_name().map_or_else(|| path.display().to_string(), |name| name.to_string_lossy().into_owned())
 }

@@ -104,7 +104,7 @@ The second row is the same for the reset image. Image Loop shows which loop of a
 - Start Auto Splitter starts comparing the split images. It doesn't start the timer, so start that yourself or use the split hotkey, which the timer hears too. With a start image, `autosplit` looks for it as soon as the folder loads, and Start Auto Splitter skips it.
 - Reset stops comparing, without resetting the timer.
 - Undo and Skip move to the previous or next split and press the undo and skip hotkeys, so the timer moves too.
-- Reload Start Image loads the split image folder again and looks for the start image.
+- Reload Split Images loads the split image folder again and looks for the start image. Changes to the folder are only picked up by this button, a run start, or changing the folder or profile.
 
 ## Settings
 
@@ -191,7 +191,7 @@ Each image keeps its own threshold, comparison method and `{b}` flag. The image 
 
 ### Start image
 
-One image can have `start_auto_splitter` in its name, as a whole word. Before the run, `autosplit` looks for it and starts the timer when it matches. Its pause time is the wait before comparing the first split image, and its delay is the wait before starting the timer. After you change it, Reload Start Image loads it again.
+One image can have `start_auto_splitter` in its name, as a whole word. Before the run, `autosplit` looks for it and starts the timer when it matches. Its pause time is the wait before comparing the first split image, and its delay is the wait before starting the timer. After you change it, Reload Split Images loads it again.
 
 ### Reset image
 

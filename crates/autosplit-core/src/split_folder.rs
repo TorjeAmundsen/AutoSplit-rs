@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use crate::filename::{RESET_KEYWORD, START_KEYWORD, number_prefix};
 use crate::profile::UserProfile;
-use crate::split_image::{ImageType, LoadError, LoadWarning, SplitImage};
+use crate::split_image::{self, ImageType, LoadError, LoadWarning, SplitImage};
 
 /// The images of a valid split image folder.
 #[derive(Clone, Debug, Default)]
@@ -86,8 +86,27 @@ pub enum ValidationError {
 pub struct FolderLoad {
     pub result: Result<SplitSet, ValidationError>,
     pub load_errors: Vec<LoadError>,
+    /// Files that aren't PNG split images. They're left out of the folder.
+    pub ignored_files: Vec<PathBuf>,
     /// Filename values that are ignored. They don't stop the folder from being used.
     pub warnings: Vec<LoadWarning>,
+}
+
+impl FolderLoad {
+    fn failed(error: ValidationError) -> Self {
+        Self { result: Err(error), load_errors: Vec::new(), ignored_files: Vec::new(), warnings: Vec::new() }
+    }
+
+    /// One message listing every ignored file, if there are any.
+    pub fn ignored_files_message(&self) -> Option<String> {
+        if self.ignored_files.is_empty() {
+            return None;
+        }
+        let names: Vec<String> = self.ignored_files.iter().map(|path| split_image::file_name(path)).collect();
+        Some(format!("These files aren't PNG split images and will be ignored:
+{}", names.join("
+")))
+    }
 }
 
 /// Loads the profile's folder, e.g. to look for the start image.
@@ -102,26 +121,25 @@ pub fn load_profile_folder(profile: &UserProfile, hotkeys_needed: bool) -> Folde
 /// only gets hotkeys (the start of AutoSplit's `__auto_splitter`).
 pub fn load_profile_folder_to_start(profile: &UserProfile, hotkeys_needed: bool) -> FolderLoad {
     if profile.split_hotkey.is_empty() && hotkeys_needed {
-        return FolderLoad {
-            result: Err(ValidationError::NoSplitHotkey),
-            load_errors: Vec::new(),
-            warnings: Vec::new(),
-        };
+        return FolderLoad::failed(ValidationError::NoSplitHotkey);
     }
     load_profile_folder(profile, hotkeys_needed)
 }
 
 /// `validate_before_parsing` (minus the capture region check) and `parse_and_validate_images`.
 pub fn load_split_folder(directory: &Path, context: &ValidationContext) -> FolderLoad {
-    let fail = |error| FolderLoad { result: Err(error), load_errors: Vec::new(), warnings: Vec::new() };
     if directory.as_os_str().is_empty() {
-        return fail(ValidationError::NoSplitImageDirectory);
+        return FolderLoad::failed(ValidationError::NoSplitImageDirectory);
     }
     let Some(paths) = user_files(directory) else {
-        return fail(ValidationError::InvalidDirectory(directory.to_owned()));
+        return FolderLoad::failed(ValidationError::InvalidDirectory(directory.to_owned()));
     };
 
-    let mut images: Vec<SplitImage> = paths.iter().map(|path| SplitImage::load(path)).collect();
+    let (ignored, mut images): (Vec<SplitImage>, Vec<SplitImage>) =
+        paths.iter().map(|path| SplitImage::load(path)).partition(|image| {
+            matches!(image.load_error(), Some(LoadError::NotPng(_) | LoadError::OcrUnsupported(_)))
+        });
+    let ignored_files = ignored.into_iter().map(|image| image.path).collect();
     let load_errors = images.iter().filter_map(|image| image.load_error().cloned()).collect();
     let warnings = images
         .iter()
@@ -135,7 +153,7 @@ pub fn load_split_folder(directory: &Path, context: &ValidationContext) -> Folde
     let start = take_first(ImageType::Start);
     let reset = take_first(ImageType::Reset);
     let set = SplitSet { start, reset, splits: images, groups: Vec::new() };
-    FolderLoad { result: validate(set, context), load_errors, warnings }
+    FolderLoad { result: validate(set, context), load_errors, ignored_files, warnings }
 }
 
 fn validate(mut set: SplitSet, context: &ValidationContext) -> Result<SplitSet, ValidationError> {

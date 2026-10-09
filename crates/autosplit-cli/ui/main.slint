@@ -188,7 +188,7 @@ export component MainWindow inherits Window {
     callback undo-split();
     callback next-image();
     callback previous-image();
-    callback reload-start-image();
+    callback reload-split-images();
     callback open-settings();
     callback save-profile();
     callback save-profile-as();
@@ -552,9 +552,9 @@ export component MainWindow inherits Window {
                 y: 369px;
                 width: 131px;
                 height: 27px;
-                text: "Reload Start Image";
+                text: "Reload Split Images";
                 enabled: !root.running;
-                clicked => { root.reload-start-image(); }
+                clicked => { root.reload-split-images(); }
             }
 
             Button {

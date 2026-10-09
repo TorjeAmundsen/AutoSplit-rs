@@ -93,7 +93,8 @@ Window:
 
 - The settings window has a fourth tab, Other, for the timer connection (hotkeys, LiveSplit One or Molok) and the LiveSplit One port. It's disabled when LiveSplit started `autosplit`.
 - Help > View Log shows everything `autosplit` logged, which is also in `autosplit.log`. AutoSplit only shows errors, in message boxes, and those are here too.
-- Split image folder errors only get a message box when Start Auto Splitter, Reload Start Image or a run start loaded the folder. Otherwise they're logged, and the current image area says the folder can't be used. AutoSplit mostly does the same.
+- Split image folder errors only get a message box when Start Auto Splitter, Reload Split Images or a run start loaded the folder. Otherwise they're logged, and the current image area says the folder can't be used. AutoSplit mostly does the same.
+- AutoSplit's Reload Start Image button is called Reload Split Images, since it loads and checks the whole folder. It doesn't show a message box when the folder has no start image.
 - Help > View Help and the settings' Tutorial button open [TUTORIAL.md](TUTORIAL.md), not AutoSplit's tutorial.
 - Hotkey fields can be typed in, like `ctrl+shift+f5`, with the same check AutoSplit does when setting one. AutoSplit's fields are read-only.
 - Set Hotkey reads the key while the settings window has focus, not globally. Escape clears the hotkey, and clicking Set Hotkey again cancels.

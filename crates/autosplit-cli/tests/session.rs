@@ -102,7 +102,7 @@ fn start_folder(start: &str) -> tempfile::TempDir {
 }
 
 #[test]
-fn reload_start_image_shows_the_new_folders_start_image() {
+fn reload_split_images_shows_the_new_folders_start_image() {
     // Arrange
     let (first, second) =
         (start_folder("start_auto_splitter_first.png"), start_folder("start_auto_splitter_second.png"));
@@ -114,7 +114,7 @@ fn reload_start_image_shows_the_new_folders_start_image() {
     let switch = UiCommand::SetProfile { profile: Box::new(profile(&second)), folder: ".".into(), loaded: false };
 
     // Act
-    let seen = run(profile(&first), vec![Event::Ui(switch), Event::Ui(UiCommand::ReloadStartImage)]);
+    let seen = run(profile(&first), vec![Event::Ui(switch), Event::Ui(UiCommand::ReloadSplitImages)]);
 
     // Assert
     assert_eq!(seen.last_current_file(), "start_auto_splitter_second.png");
@@ -129,7 +129,7 @@ fn window_texts_point_to_the_log_window() {
     let seen = run(profile, Vec::new());
 
     // Assert
-    assert_eq!(seen.last_idle(), "can't start: fix the split images (see Help > View Log)");
+    assert_eq!(seen.last_idle(), "can't start: fix the split images, then press Reload Split Images (see Help > View Log)");
 }
 
 #[test]

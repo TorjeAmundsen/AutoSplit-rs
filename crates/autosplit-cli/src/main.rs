@@ -206,11 +206,12 @@ fn folder_result(load: FolderLoad) -> Result<(SplitSet, usize)> {
     for error in &errors {
         eprintln!("error: {error}");
     }
-    for warning in &load.warnings {
+    let ignored = load.ignored_files_message();
+    for warning in load.warnings.iter().map(ToString::to_string).chain(ignored.clone()) {
         eprintln!("warning: {warning}");
     }
     match load.result {
-        Ok(set) => Ok((set, load.warnings.len())),
+        Ok(set) => Ok((set, load.warnings.len() + usize::from(ignored.is_some()))),
         Err(error) => {
             let error = error.to_string();
             if !errors.contains(&error) {

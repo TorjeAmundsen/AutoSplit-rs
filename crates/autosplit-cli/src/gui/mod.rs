@@ -450,7 +450,7 @@ impl Gui {
         on!(weak, main, on_undo_split, () gui => gui.send(UiCommand::UndoSplit));
         on!(weak, main, on_next_image, () gui => gui.send(UiCommand::NextImage));
         on!(weak, main, on_previous_image, () gui => gui.send(UiCommand::PreviousImage));
-        on!(weak, main, on_reload_start_image, () gui => gui.send(UiCommand::ReloadStartImage));
+        on!(weak, main, on_reload_split_images, () gui => gui.send(UiCommand::ReloadSplitImages));
         on!(weak, main, on_open_settings, () gui => gui.open_settings());
         on!(weak, main, on_save_profile, () gui => gui.save_profile(false, None));
         on!(weak, main, on_save_profile_as, () gui => gui.save_profile(true, None));

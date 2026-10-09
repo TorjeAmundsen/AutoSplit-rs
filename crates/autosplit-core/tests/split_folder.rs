@@ -8,7 +8,7 @@ use autosplit_core::profile::UserProfile;
 use autosplit_core::split_folder::{
     ValidationContext, ValidationError, load_profile_folder_to_start, load_split_folder,
 };
-use autosplit_core::split_image::{LoadError, LoadWarning};
+use autosplit_core::split_image::LoadWarning;
 use tempfile::TempDir;
 use test_case::test_case;
 
@@ -50,14 +50,13 @@ fn validation_error(names: &[&str], context: ValidationContext) -> Option<Valida
 #[test_case(&["1_{p}.png"], NO_HOTKEYS => Some(ValidationError::PauseWithoutPauseHotkey("1_{p}.png".into())); "pause flag without pause hotkey")]
 #[test_case(&["1.png", "reset.png", "reset_2.png"], ALL_HOTKEYS => Some(ValidationError::MultipleKeywordImages("reset")); "two reset images")]
 #[test_case(&["1.png", "start_auto_splitter.png", "start_auto_splitter_2.png"], ALL_HOTKEYS => Some(ValidationError::MultipleKeywordImages("start_auto_splitter")); "two start images")]
-#[test_case(&["1.png", "2.bmp"], ALL_HOTKEYS => matches Some(ValidationError::InvalidImage(LoadError::NotPng(_))); "non png file")]
-#[test_case(&["1.png", "2.txt"], ALL_HOTKEYS => matches Some(ValidationError::InvalidImage(LoadError::OcrUnsupported(_))); "ocr split file")]
-#[test_case(&["1.png", "notes_txt"], ALL_HOTKEYS => matches Some(ValidationError::InvalidImage(LoadError::NotPng(_))); "txt without a dot isn't an ocr file")]
-#[test_case(&["1.png", "notes"], ALL_HOTKEYS => matches Some(ValidationError::InvalidImage(LoadError::NotPng(_))); "file without extension")]
-#[test_case(&["2_{p}.bmp", "3_{p}.png"], NO_HOTKEYS => matches Some(ValidationError::InvalidImage(_)); "invalid image reported before missing hotkeys of later images")]
+#[test_case(&["1.png", "2.bmp"], ALL_HOTKEYS => None; "non png file is ignored")]
+#[test_case(&["1.png", "2.txt"], ALL_HOTKEYS => None; "ocr split file is ignored")]
+#[test_case(&["2.bmp"], ALL_HOTKEYS => Some(ValidationError::NoSplitImage); "only ignored files")]
+#[test_case(&["2_{p}.bmp", "3_{p}.png"], NO_HOTKEYS => Some(ValidationError::PauseWithoutPauseHotkey("3_{p}.png".into())); "ignored files aren't validated")]
 #[test_case(&["preset_menu.png", "1.png"], NO_HOTKEYS => None; "preset isn't the reset keyword")]
-#[test_case(&["reset.bmp", "1.png"], ALL_HOTKEYS => matches Some(ValidationError::InvalidImage(LoadError::NotPng(_))); "unusable reset image")]
-#[test_case(&["start_auto_splitter.bmp", "1.png"], ALL_HOTKEYS => matches Some(ValidationError::InvalidImage(LoadError::NotPng(_))); "unusable start image")]
+#[test_case(&["reset.bmp", "1.png"], NO_HOTKEYS => None; "non png reset image is ignored")]
+#[test_case(&["start_auto_splitter.bmp", "1.png"], NO_HOTKEYS => None; "non png start image is ignored")]
 #[test_case(&["xstart_auto_splitter.png", "1.png"], NO_HOTKEYS => None; "start keyword must be its own word")]
 #[test_case(&["start_auto_splitter.png", "reset.png", "1_{p}.png"], WITHOUT_HOTKEYS => None; "a timer told without hotkeys needs none")]
 #[test_case(&["1.png", ".hidden.bmp"], ALL_HOTKEYS => None; "hidden files are ignored")]
@@ -132,27 +131,45 @@ fn ungrouped_split_images_are_one_per_split() {
 }
 
 #[test]
-fn non_png_file_reports_a_load_error() {
+fn non_png_files_are_left_out_and_listed() {
     // Arrange
-    let directory = folder(&["1.png", "2.jpg"]);
+    let directory = folder(&["1.png", "2.jpg", "3.png", "notes", "ocr.txt"]);
 
     // Act
-    let load_errors = load_split_folder(directory.path(), &ALL_HOTKEYS).load_errors;
+    let load = load_split_folder(directory.path(), &ALL_HOTKEYS);
 
     // Assert
-    assert_eq!(load_errors, [LoadError::NotPng(directory.path().join("2.jpg"))]);
+    let names: Vec<&str> = load.result.as_ref().unwrap().splits.iter().map(|image| image.filename.as_str()).collect();
+    assert_eq!(names, ["1.png", "3.png"]);
+    assert!(load.load_errors.is_empty());
+    let ignored = ["2.jpg", "notes", "ocr.txt"].map(|name| directory.path().join(name));
+    assert_eq!(load.ignored_files, ignored);
 }
 
 #[test]
-fn ocr_split_file_reports_that_ocr_is_unsupported() {
+fn ignored_files_are_listed_in_one_message() {
     // Arrange
-    let directory = folder(&["1.png", "2.txt"]);
+    let directory = folder(&["1.png", "2.jpg", "notes"]);
 
     // Act
-    let load_errors = load_split_folder(directory.path(), &ALL_HOTKEYS).load_errors;
+    let message = load_split_folder(directory.path(), &ALL_HOTKEYS).ignored_files_message();
 
     // Assert
-    assert_eq!(load_errors, [LoadError::OcrUnsupported(directory.path().join("2.txt"))]);
+    assert_eq!(message.as_deref(), Some("These files aren't PNG split images and will be ignored:
+2.jpg
+notes"));
+}
+
+#[test]
+fn no_message_without_ignored_files() {
+    // Arrange
+    let directory = folder(&["1.png"]);
+
+    // Act
+    let message = load_split_folder(directory.path(), &ALL_HOTKEYS).ignored_files_message();
+
+    // Assert
+    assert_eq!(message, None);
 }
 
 #[test_case(true => Some(ValidationError::NoSplitHotkey); "needs a split hotkey")]
