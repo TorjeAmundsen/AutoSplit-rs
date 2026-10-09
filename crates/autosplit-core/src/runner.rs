@@ -846,6 +846,7 @@ impl Runner {
 
     fn enter_pause(&mut self, now: Duration, pause: f64) {
         let until = now.saturating_add(secs(pause));
+        self.status.current_filename = None;
         self.status.showing = Showing::Pause { until };
         self.state = State::Paused { until, index_at_start: self.index, next_tick: now };
     }

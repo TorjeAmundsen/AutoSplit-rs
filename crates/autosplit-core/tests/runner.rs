@@ -474,6 +474,31 @@ fn start_image_pause_delays_the_first_split_image() {
 }
 
 #[test]
+fn start_image_pause_shows_no_file_name() {
+    // Arrange
+    let mut harness = Harness::new(&[("start_auto_splitter_[2].png", GREEN), ("1.png", RED)], defaults());
+
+    // Act
+    harness.feed(Some(GREEN), ms(100));
+
+    // Assert
+    assert_eq!((harness.runner.is_running(), harness.current_filename()), (true, None));
+}
+
+#[test]
+fn pause_after_a_split_shows_no_file_name() {
+    // Arrange
+    let mut harness = Harness::new(&[("1_[2].png", RED), ("2.png", BLUE)], defaults());
+    harness.start();
+
+    // Act
+    harness.feed(Some(RED), ms(100));
+
+    // Assert
+    assert_eq!((harness.sent(), harness.current_filename()), (vec![Command::Split], None));
+}
+
+#[test]
 fn dummy_start_image_starts_without_sending() {
     // Arrange
     let mut harness = Harness::new(&[("start_auto_splitter_{d}.png", GREEN), ("1.png", RED)], defaults());
