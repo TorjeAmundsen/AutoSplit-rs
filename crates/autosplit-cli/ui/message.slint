@@ -6,6 +6,7 @@ import { Button, Theme } from "widgets.slint";
 export component MessageWindow inherits Window {
     in property <string> window-title: "AutoSplit";
     title: root.window-title;
+    icon: @image-url("../assets/icon.png");
     preferred-width: 380px;
     min-width: 300px;
     default-font-size: 12px;

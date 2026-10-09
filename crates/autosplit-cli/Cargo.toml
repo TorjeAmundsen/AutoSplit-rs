@@ -33,6 +33,7 @@ tempfile = "3.27.0"
 test-case = "3.3.1"
 
 [build-dependencies]
+embed-resource = "3.0.12"
 slint-build = "1.18.1"
 
 # Slint finds fonts with fontconfig on Linux. Loaded when the program runs instead of linked, so
