@@ -8,19 +8,19 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::mpsc::{self, RecvTimeoutError};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use autosplit_capture::Frame;
-use autosplit_core::align::align_region;
 use autosplit_core::auto_controlled::parse_control_line;
 use autosplit_core::commands::{Command, ControlRequest, Output, TimerLink, TimerReport, outputs_for};
 use autosplit_core::hotkeys::HotkeyAction;
 use autosplit_core::image::BgraImage;
-use autosplit_core::profile::{Region, UserProfile, capture_method_name};
+use autosplit_core::profile::{UserProfile, capture_method_name};
 use autosplit_core::runner::{Captured, Effect, Runner, RunnerSettings, Status};
 use autosplit_core::split_folder::{
     FolderLoad, SplitSet, ValidationError, load_profile_folder, load_profile_folder_to_start,
 };
+use autosplit_core::tester::Tester;
 use autosplit_core::text::{Compared, status_line};
 
 use crate::console::Console;
@@ -38,6 +38,8 @@ const MAX_SLEEP: Duration = Duration::from_millis(250);
 const PRECISE_LEAD: Duration = Duration::from_millis(32);
 /// How often the terminal's status line is redrawn.
 const STATUS_INTERVAL: Duration = Duration::from_millis(100);
+/// How often the Live Tester's file is checked for changes, to load it again.
+const TESTER_FILE_INTERVAL: Duration = Duration::from_millis(500);
 /// The wait between two signals to Molok, for "start also resets". Pending real-time signals
 /// are delivered lowest first, so a start sent right after a reset could arrive before it.
 #[cfg(target_os = "linux")]
@@ -75,8 +77,22 @@ pub enum UiCommand {
         folder: PathBuf,
         loaded: bool,
     },
-    /// Move the capture region onto where this image is in the capture.
-    AlignRegion(PathBuf),
+    /// The Live Tester compares this image with the capture, or loads it again. `request`
+    /// numbers the window's requests, which the view tells it back.
+    OpenTester {
+        path: PathBuf,
+        request: u64,
+    },
+    /// The Live Tester forgets its highest similarity and kept frames, and waits for a match
+    /// again.
+    RearmTester,
+    /// The Live Tester was closed.
+    CloseTester,
+    /// Make Split Images opened or closed. While it's open, the capture runs for its preview, and
+    /// the screenshot hotkey grabs a split image instead of saving a screenshot.
+    SetMakerOpen(bool),
+    /// Make Split Images wants the capture region for a split image.
+    Grab,
 }
 
 /// What the session tells the window, besides what [`View::update`] shows.
@@ -84,12 +100,12 @@ pub enum Notice {
     /// An error that needs the runner to do something, which AutoSplit shows in a message box.
     /// It's already logged.
     Dialog(String),
-    /// Align Region moved the capture region.
-    RegionAligned(Region),
     /// The toggle auto reset image hotkey was pressed.
     AutoResetToggled(bool),
     /// LiveSplit sent a profile, which the session loaded. It's as in its file.
     ProfileLoaded { path: PathBuf, profile: Box<UserProfile> },
+    /// The capture region for Make Split Images, or why there's none.
+    Grabbed(Result<BgraImage, String>),
     /// The timer is told another way now, after the profile's timer connection changed.
     TimerLinkChanged(TimerLink),
 }
@@ -111,6 +127,12 @@ pub struct Snapshot<'a> {
     pub images: &'a SplitSet,
     /// Changes whenever the images are loaded again.
     pub images_loaded: u64,
+    /// The Live Tester, while it's open with an image.
+    pub tester: Option<&'a Tester>,
+    /// Changes whenever the Live Tester loads an image, also when its file changed.
+    pub tester_loaded: u64,
+    /// The window's last [`UiCommand::OpenTester`] request.
+    pub tester_request: u64,
 }
 
 /// Shows a session in a window.
@@ -152,6 +174,13 @@ pub struct Session {
     /// Why the folder can't be used, if it can't.
     folder_error: Option<String>,
     compared: Option<Compared>,
+    tester: Option<Tester>,
+    tester_loaded: u64,
+    tester_request: u64,
+    maker_open: bool,
+    /// The Live Tester's file and when it was changed, to load it again when it changes.
+    tester_file: Option<(PathBuf, Option<SystemTime>)>,
+    next_tester_file_check: Instant,
     timer: PreciseTimer,
     next_view: Instant,
     quit: bool,
@@ -190,6 +219,12 @@ impl Session {
             logged_folder_messages: HashSet::new(),
             folder_error: None,
             compared: None,
+            tester: None,
+            tester_loaded: 0,
+            tester_request: 0,
+            maker_open: false,
+            tester_file: None,
+            next_tester_file_check: now,
             timer: PreciseTimer::default(),
             next_view: now,
             quit: false,
@@ -361,6 +396,8 @@ impl Session {
             if self.runner.next_wakeup().is_some_and(|due| self.elapsed() >= due) {
                 self.tick();
             }
+            self.tick_tester();
+            self.check_tester_file(now);
             self.update_view(now);
 
             let now = Instant::now();
@@ -373,7 +410,11 @@ impl Session {
             }
             // Waits are only precise to Windows' 15.6 ms tick unless asked for, which costs
             // power, so precision is asked for while comparing and just before other wakeups
-            let mut precise = self.runner.needs_frames(self.elapsed());
+            let mut precise =
+                self.runner.needs_frames(self.elapsed()) || (self.tester.is_some() && self.device.receiving());
+            if let Some(due) = self.tester.as_ref().map(|tester| self.started + tester.next_wakeup()) {
+                wake = wake.min(due);
+            }
             if let Some(due) = self.runner.next_wakeup().map(|due| self.started + due) {
                 if precise || due <= now + PRECISE_LEAD {
                     precise = true;
@@ -405,6 +446,43 @@ impl Session {
         self.handle_effects();
     }
 
+    /// Compares the Live Tester's image, when it's due.
+    fn tick_tester(&mut self) {
+        let now = self.elapsed();
+        let Some(tester) = self.tester.as_mut().filter(|tester| now >= tester.next_wakeup()) else { return };
+        let frame = self.device.latest();
+        let capture = frame.as_ref().and_then(|frame| {
+            let view = frame.region_view(&self.profile.capture_region)?;
+            Some(Captured { view, sequence: frame.sequence() })
+        });
+        tester.tick(now, capture);
+    }
+
+    /// Loads the Live Tester's image again when its file changed, like after AutoMask saved it
+    /// again. A file that can't be loaded, maybe because it's still being written, keeps the
+    /// image that was loaded, and is tried again when it changes again.
+    fn check_tester_file(&mut self, now: Instant) {
+        if now < self.next_tester_file_check {
+            return;
+        }
+        self.next_tester_file_check = now + TESTER_FILE_INTERVAL;
+        let Some((path, modified)) = &mut self.tester_file else { return };
+        let changed = std::fs::metadata(&*path).and_then(|metadata| metadata.modified()).ok();
+        if changed == *modified {
+            return;
+        }
+        *modified = changed;
+        let path = path.clone();
+        match Tester::open(&path, self.profile.split_defaults(), self.elapsed()) {
+            Ok(tester) => {
+                self.console.log(format_args!("Live Tester: {} changed, loaded it again", path.display()));
+                self.tester = Some(tester);
+                self.tester_loaded += 1;
+            }
+            Err(error) => self.console.error(format_args!("Live Tester: {error}")),
+        }
+    }
+
     fn update_device(&mut self, now: Instant) {
         if !self.profile_loaded {
             return;
@@ -414,6 +492,8 @@ impl Session {
             return;
         }
         let wanted = self.runner.needs_frames(self.elapsed())
+            || self.tester.is_some()
+            || self.maker_open
             || self.view.as_ref().is_some_and(|view| view.wants_frames(&self.profile));
         let (name, index) = (&self.profile.capture_device_name, self.profile.capture_device_id);
         let events = &self.events;
@@ -486,49 +566,50 @@ impl Session {
                 } else {
                     // Still waiting for LiveSplit's profile, which sets everything up
                     self.profile = profile;
-                    self.runner.set_settings(RunnerSettings::from_profile(&self.profile));
+                    self.settings_changed();
                 }
             }
-            UiCommand::AlignRegion(path) => self.align_region(&path),
+            UiCommand::OpenTester { path, request } => {
+                self.tester_request = request;
+                self.open_tester(path);
+                // Shown right away, instead of after the view's interval for no tester
+                self.next_view = Instant::now();
+            }
+            UiCommand::RearmTester => {
+                if let Some(tester) = &mut self.tester {
+                    tester.rearm();
+                }
+            }
+            UiCommand::CloseTester => (self.tester, self.tester_file) = (None, None),
+            UiCommand::SetMakerOpen(open) => self.maker_open = open,
+            UiCommand::Grab => self.grab(),
         }
         self.handle_effects();
     }
 
-    /// AutoSplit's Align Region: finds the image in the current capture region, and makes the
-    /// region the part it matched.
-    fn align_region(&mut self, path: &Path) {
-        let template = match BgraImage::open_png(path) {
-            Ok(template) => template,
-            Err(error) => return self.dialog(format_args!("Couldn't read {} as a PNG image: {error}", path.display())),
-        };
-        let frame = self.device.latest();
-        let found = frame.as_ref().and_then(|frame| {
-            let capture = frame.region_view(&self.profile.capture_region)?;
-            let (width, height) = frame.frame_size();
-            Some((self.profile.capture_region.rect(width, height), align_region(capture, template.view())))
-        });
-        let Some((rect, aligned)) = found else {
-            return self.dialog("There's no capture to align the region in.");
-        };
-        drop(frame);
-        let Some(aligned) = aligned else {
-            return self.dialog("No area in capture region matched reference image. Alignment failed.");
-        };
-        // From where the region really starts in the frame, which a region partly outside it doesn't
-        let region = &mut self.profile.capture_region;
-        region.x = (rect.left + aligned.x) as i64;
-        region.y = (rect.top + aligned.y) as i64;
-        region.width = aligned.width as i64;
-        region.height = aligned.height as i64;
-        self.console.log(format_args!(
-            "Aligned the capture region to {} (x {}, y {}, {}x{})",
-            path.display(),
-            region.x,
-            region.y,
-            region.width,
-            region.height
-        ));
-        self.notify(Notice::RegionAligned(self.profile.capture_region));
+    /// Loads the Live Tester's image, with the profile's defaults for what its name leaves out.
+    fn open_tester(&mut self, path: PathBuf) {
+        let modified = std::fs::metadata(&path).and_then(|metadata| metadata.modified()).ok();
+        match Tester::open(&path, self.profile.split_defaults(), self.elapsed()) {
+            Ok(tester) => {
+                self.console.log(format_args!("Live Tester: testing {}", path.display()));
+                self.tester = Some(tester);
+                self.tester_loaded += 1;
+                self.tester_file = Some((path, modified));
+            }
+            Err(error) => {
+                (self.tester, self.tester_file) = (None, None);
+                self.dialog(error);
+            }
+        }
+    }
+
+    /// The profile's settings changed: the runner's, and the Live Tester's defaults.
+    fn settings_changed(&mut self) {
+        self.runner.set_settings(RunnerSettings::from_profile(&self.profile));
+        if let Some(tester) = &mut self.tester {
+            tester.set_defaults(self.profile.split_defaults());
+        }
     }
 
     /// Something the timer reported, from LiveSplit's stdin or a LiveSplit One event.
@@ -574,6 +655,7 @@ impl Session {
             HotkeyAction::SkipSplit => self.runner.skip(now, true),
             HotkeyAction::UndoSplit => self.runner.undo(now, true),
             HotkeyAction::Pause => {}
+            HotkeyAction::Screenshot if self.maker_open => self.grab(),
             HotkeyAction::Screenshot => self.screenshot(),
             HotkeyAction::ToggleAutoResetImage => {
                 self.profile.enable_auto_reset = !self.profile.enable_auto_reset;
@@ -758,7 +840,7 @@ impl Session {
             || profile.group_split_images != self.profile.group_split_images;
         let first = !self.profile_loaded;
         self.profile = profile;
-        self.runner.set_settings(RunnerSettings::from_profile(&self.profile));
+        self.settings_changed();
         if device_changed || first {
             self.device.reset();
         }
@@ -774,6 +856,19 @@ impl Session {
             self.logged_folder_messages.clear();
             self.arm(false);
         }
+    }
+
+    /// Hands Make Split Images the capture region.
+    fn grab(&mut self) {
+        let frame = self.device.latest().filter(|_| self.device.receiving());
+        let image = match frame {
+            None => Err("There's no capture to grab. Check the capture device in the settings.".into()),
+            Some(frame) => match frame.region_view(&self.profile.capture_region) {
+                Some(view) if !view.is_empty() => Ok(view.to_image()),
+                _ => Err("The capture region is empty or outside the capture.".into()),
+            },
+        };
+        self.notify(Notice::Grabbed(image));
     }
 
     fn screenshot(&mut self) {
@@ -807,7 +902,8 @@ impl Session {
             let line = self.status_line();
             return self.console.status(&line);
         };
-        let frame = view.wants_frames(&self.profile).then(|| self.device.latest()).flatten();
+        let wants_frames = view.wants_frames(&self.profile) || self.tester.is_some();
+        let frame = wants_frames.then(|| self.device.latest()).flatten();
         view.update(Snapshot {
             status: self.runner.status(),
             profile: &self.profile,
@@ -818,6 +914,9 @@ impl Session {
             frame,
             images: self.runner.images(),
             images_loaded: self.images_loaded,
+            tester: self.tester.as_ref(),
+            tester_loaded: self.tester_loaded,
+            tester_request: self.tester_request,
         });
         self.view = Some(view);
     }

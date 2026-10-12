@@ -4,6 +4,7 @@
 
 pub mod document;
 pub mod log;
+pub mod maker_plan;
 pub mod messages;
 pub mod placement;
 pub mod recorder;
@@ -25,7 +26,7 @@ use autosplit_capture::{DeviceInfo, list_devices};
 use autosplit_core::commands::{Command, TimerLink};
 use autosplit_core::hotkeys::HotkeyAction;
 use autosplit_core::profile::UserProfile;
-use autosplit_core::split_folder::MAX_GROUP_SIZE;
+use autosplit_core::split_folder::{MAX_GROUP_SIZE, user_files};
 use autosplit_input::{Modifiers, UsLayout, hotkey_name, parse_hotkey, same_hotkey};
 use slint::winit_030::winit::event::{ElementState, KeyEvent, WindowEvent};
 use slint::winit_030::winit::keyboard::{Key, NamedKey};
@@ -36,13 +37,14 @@ use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
 use self::document::{Document, folder_text, profile_on_open};
 use self::log::LogLines;
 use self::messages::{Answer, Message, MessageQueue};
-use self::placement::{Area, centered_over};
+use self::placement::{Area, beside, centered_over};
 use self::recorder::{key_character, modifiers_held, pressed_key};
 use self::settings_form::SettingEdit;
 use self::ui::{
-    AboutWindow, HotkeyRow, LogWindow, MainWindow, MessageWindow, Setting, SettingsWindow, SimilarityRow, WindowFocus,
+    AboutWindow, HotkeyRow, InfoCell, InstructionsWindow, LogWindow, MainWindow, MakerRow, MakerWindow, MessageWindow,
+    NamePart, Setting, SettingsWindow, SimilarityRow, TesterWindow, WindowFocus,
 };
-use self::view::{GuiView, Picture, Update};
+use self::view::{GuiView, KeptFrames, Picture, Update};
 use crate::console::Console;
 use crate::session::{Event, Notice, Session, UiCommand};
 use crate::{livesplit, platform, profile};
@@ -84,6 +86,8 @@ pub const HOTKEY_ROWS: [(HotkeyAction, &str); 7] = [
 const TUTORIAL_URL: &str = "https://github.com/TorjeAmundsen/AutoSplit-rs/blob/main/TUTORIAL.md";
 const IMAGE_SETTINGS_URL: &str =
     "https://github.com/TorjeAmundsen/AutoSplit-rs/blob/main/TUTORIAL.md#split-image-file-names";
+/// What the Live Tester says before it has an image.
+const TESTER_INTRO: &str = "Open a split image to compare it with the capture region, like a run would.";
 /// What to do once the profile is saved.
 type AfterSave = Box<dyn FnOnce(&Rc<Gui>)>;
 
@@ -91,6 +95,9 @@ type AfterSave = Box<dyn FnOnce(&Rc<Gui>)>;
 const VISIBILITY_INTERVAL: Duration = Duration::from_millis(500);
 /// AutoSplit's largest capture region position.
 const MAX_POSITION: i64 = 999_999_999;
+/// How long messages from opening wait for the main window's focus, which a minimized one never
+/// gets.
+const FIRST_MESSAGES_FALLBACK: Duration = Duration::from_secs(2);
 /// How long log lines are gathered before the log window shows them.
 const LOG_DELAY: Duration = Duration::from_millis(100);
 
@@ -111,10 +118,35 @@ struct State {
     /// How the session tells the timer, which stays the same until a restart.
     link: TimerLink,
     running: bool,
-    capturing: bool,
     can_start: bool,
     log: LogLines,
     messages: MessageQueue,
+    /// The Live Tester's image.
+    tester_path: Option<PathBuf>,
+    /// Numbers the Live Tester's loads, so updates for an older one are ignored.
+    tester_request: u64,
+    /// The frames the Live Tester kept, with their captions, and which one it shows.
+    kept: Vec<(slint::Image, SharedString)>,
+    kept_index: usize,
+    /// The tool windows that are open, the newest last, which the main window can't be used
+    /// beside.
+    tools: Vec<Tool>,
+}
+
+/// The windows the main window can't be used beside.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Tool {
+    Tester,
+    Maker,
+}
+
+impl Tool {
+    fn title(self) -> &'static str {
+        match self {
+            Self::Tester => "Live Tester",
+            Self::Maker => "Make Split Images",
+        }
+    }
 }
 
 struct Gui {
@@ -126,15 +158,34 @@ struct Gui {
     group_rows: Rc<VecModel<SimilarityRow>>,
     /// The current image grid's tiles.
     current_tiles: Rc<VecModel<slint::Image>>,
+    /// The Live Tester's information about its image.
+    tester_info: Rc<VecModel<InfoCell>>,
+    maker: RefCell<maker::Maker>,
+    /// Make Split Images' splits.
+    maker_rows: Rc<VecModel<MakerRow>>,
+    /// Kept while savestates are on it: X11 serves the clipboard from the program that set it.
+    clipboard: RefCell<Option<arboard::Clipboard>>,
+    /// Folders the savestates were copied to for the clipboard, deleted on closing.
+    savestate_folders: RefCell<Vec<PathBuf>>,
     state: RefCell<State>,
     events: mpsc::Sender<Event>,
     /// Whether the main window can be seen, for the live preview.
     visible: Arc<AtomicBool>,
     occluded: Cell<bool>,
     zero_size: Cell<bool>,
+    /// The same for the Live Tester's window.
+    tester_visible: Arc<AtomicBool>,
+    tester_occluded: Cell<bool>,
+    tester_zero_size: Cell<bool>,
+    /// Whether Make Split Images can be seen: open and not minimized.
+    maker_visible: Arc<AtomicBool>,
     visibility_check: slint::Timer,
     log_flush: slint::Timer,
     log_dirty: Cell<bool>,
+    /// Messages from opening, shown once the main window is open in front, so they can open over
+    /// it and in front of it.
+    first_messages: RefCell<Vec<Message>>,
+    first_messages_fallback: slint::Timer,
 }
 
 thread_local! {
@@ -148,6 +199,24 @@ fn with_gui(action: impl FnOnce(&Rc<Gui>) + Send + 'static) {
             action(&gui);
         }
     });
+}
+
+/// A split image's file name in parts, for the windows to color by what each part does.
+pub fn file_name_parts(name: &str) -> ModelRc<NamePart> {
+    let part = |part: autosplit_core::filename::NamePart| NamePart {
+        text: part.text.into(),
+        kind: format!("{:?}", part.kind).into(),
+        meaning: part.meaning.into(),
+        ignored: part.ignored,
+    };
+    let parts: Vec<NamePart> = autosplit_core::filename::name_parts(name).into_iter().map(part).collect();
+    ModelRc::new(VecModel::from(parts))
+}
+
+/// The PNG images in `folder`, in the split image folder's order.
+fn png_images(folder: &Path) -> Vec<PathBuf> {
+    let is_png = |path: &PathBuf| path.extension().is_some_and(|extension| extension.eq_ignore_ascii_case("png"));
+    user_files(folder).unwrap_or_default().into_iter().filter(is_png).collect()
 }
 
 /// The folder next to the executable, where AutoSplit looks for a profile on open.
@@ -192,6 +261,9 @@ struct Windows {
     about: AboutWindow,
     log: LogWindow,
     message: MessageWindow,
+    tester: TesterWindow,
+    maker: MakerWindow,
+    instructions: InstructionsWindow,
 }
 
 /// Draws on the CPU, which only redraws what changed: the preview and a few labels.
@@ -204,6 +276,9 @@ fn open_windows() -> anyhow::Result<Windows> {
         about: AboutWindow::new()?,
         log: LogWindow::new()?,
         message: MessageWindow::new()?,
+        tester: TesterWindow::new()?,
+        maker: MakerWindow::new()?,
+        instructions: InstructionsWindow::new()?,
     })
 }
 
@@ -237,7 +312,7 @@ impl SessionThread {
         profile: UserProfile,
         link: TimerLink,
         console: Console,
-        visible: Arc<AtomicBool>,
+        [visible, tester_visible, maker_visible]: [Arc<AtomicBool>; 3],
         events: mpsc::Sender<Event>,
         receiver: mpsc::Receiver<Event>,
     ) -> std::io::Result<Self> {
@@ -252,7 +327,8 @@ impl SessionThread {
                         }
                     });
                 });
-                let view = GuiView::new(visible, deliver, |notice| with_gui(move |gui| gui.notice(notice)));
+                let notices = |notice| with_gui(move |gui| gui.notice(notice));
+                let view = GuiView::new(visible, tester_visible, maker_visible, deliver, notices);
                 let mut session = Session::new(profile, link, console, Some(Box::new(view)), session_events);
                 if let Err(error) = session.connect_timer() {
                     let message = match link {
@@ -293,30 +369,47 @@ pub fn run(options: Options) -> Result<(), Error> {
         if options.auto_controlled { TimerLink::AutoControlled } else { document.profile.timer_connection.into() };
 
     let visible = Arc::new(AtomicBool::new(!options.minimized));
+    let tester_visible = Arc::new(AtomicBool::new(false));
+    let maker_visible = Arc::new(AtomicBool::new(false));
     let gui = Rc::new_cyclic(|me| Gui {
         windows,
         me: me.clone(),
         hotkeys: Rc::new(VecModel::default()),
         group_rows: Rc::new(VecModel::from(vec![SimilarityRow::default(); MAX_GROUP_SIZE])),
         current_tiles: Rc::new(VecModel::from(vec![slint::Image::default(); MAX_GROUP_SIZE])),
+        tester_info: Rc::new(VecModel::default()),
+        maker: RefCell::default(),
+        maker_rows: Rc::new(VecModel::default()),
+        clipboard: RefCell::new(None),
+        savestate_folders: RefCell::new(Vec::new()),
         state: RefCell::new(State {
             document,
             devices: Devices::default(),
             recording: None,
             link,
             running: false,
-            capturing: false,
             can_start: true,
             log: LogLines::default(),
             messages: MessageQueue::default(),
+            tester_path: None,
+            tester_request: 0,
+            kept: Vec::new(),
+            kept_index: 0,
+            tools: Vec::new(),
         }),
         events: events.clone(),
         visible: visible.clone(),
         occluded: Cell::new(false),
         zero_size: Cell::new(false),
+        tester_visible: tester_visible.clone(),
+        maker_visible: maker_visible.clone(),
+        tester_occluded: Cell::new(false),
+        tester_zero_size: Cell::new(false),
         visibility_check: slint::Timer::default(),
         log_flush: slint::Timer::default(),
         log_dirty: Cell::new(false),
+        first_messages: RefCell::new(Vec::new()),
+        first_messages_fallback: slint::Timer::default(),
     });
     GUI.with(|cell| *cell.borrow_mut() = Some(gui.clone()));
     gui.connect();
@@ -332,6 +425,7 @@ pub fn run(options: Options) -> Result<(), Error> {
     windows.settings.set_hotkeys(ModelRc::from(gui.hotkeys.clone()));
     windows.main.set_group_rows(ModelRc::from(gui.group_rows.clone()));
     windows.main.set_current_tiles(ModelRc::from(gui.current_tiles.clone()));
+    windows.tester.set_info(ModelRc::from(gui.tester_info.clone()));
     windows.settings.set_auto_controlled(options.auto_controlled);
     windows.settings.set_molok_listed(cfg!(target_os = "linux"));
     windows.about.set_version(env!("CARGO_PKG_VERSION").into());
@@ -349,24 +443,44 @@ pub fn run(options: Options) -> Result<(), Error> {
         profile.resolve_directories(&state.document.folder(&exe_folder()));
         profile
     };
-    let session = SessionThread::spawn(profile, link, console, visible, events, receiver)
+    let visibility = [visible, tester_visible, maker_visible];
+    let session = SessionThread::spawn(profile, link, console, visibility, events, receiver)
         .map_err(|error| Error::Failed(error.into()))?;
 
-    for message in first_messages {
-        gui.show_message(message);
-    }
+    *gui.first_messages.borrow_mut() = first_messages;
+    // Shown when the main window gets focus, or after a while when it opens minimized
+    let weak = Rc::downgrade(&gui);
+    gui.first_messages_fallback.start(slint::TimerMode::SingleShot, FIRST_MESSAGES_FALLBACK, move || {
+        if let Some(gui) = weak.upgrade() {
+            gui.show_first_messages();
+        }
+    });
     slint::run_event_loop_until_quit().map_err(|error| Error::Failed(error.into()))?;
     // Hidden first, since stopping the session can take a moment
     gui.hide_all();
+    for folder in gui.savestate_folders.take() {
+        let _ = std::fs::remove_dir_all(folder);
+    }
     let result = session.finish();
     GUI.with(|cell| cell.borrow_mut().take());
     result.map_err(|error| Error::Failed(anyhow::anyhow!("autosplit stopped because of an error: {error}")))
 }
 
 /// The windows' callbacks that act on the GUI. Message boxes are modal like AutoSplit's, so
-/// these do nothing while one is open; `always` ones still run. An `else` value is what the
-/// callback returns.
+/// these do nothing while one is open; `always` ones still run. `main` ones also do nothing while
+/// the Live Tester is open. An `else` value is what the callback returns.
 macro_rules! on {
+    (main $weak:expr, $window:expr, $callback:ident, ($($argument:ident),*) $gui:ident => $body:expr) => {{
+        let weak = $weak.clone();
+        $window.$callback(move |$($argument),*| {
+            if let Some($gui) = weak.upgrade() {
+                if $gui.main_blocked() {
+                    return $gui.focus_blocking();
+                }
+                $body;
+            }
+        });
+    }};
     ($weak:expr, $window:expr, $callback:ident, ($($argument:ident),*) $gui:ident => $body:expr) => {{
         let weak = $weak.clone();
         $window.$callback(move |$($argument),*| {
@@ -397,6 +511,10 @@ macro_rules! on {
     }};
 }
 
+mod maker;
+
+pub use maker::transparency_grid;
+
 impl Gui {
     fn send(&self, command: UiCommand) {
         let _ = self.events.send(Event::Ui(command));
@@ -422,18 +540,75 @@ impl Gui {
         self.state.borrow().messages.is_showing()
     }
 
+    /// The main window is blocked by a message box, and while a tool window is open.
+    fn main_blocked(&self) -> bool {
+        self.blocked() || !self.state.borrow().tools.is_empty()
+    }
+
+    /// Brings what blocks the main window to the front: a message box, or the newest tool window.
+    fn focus_blocking(&self) {
+        if self.blocked() {
+            return self.focus_message();
+        }
+        if let Some(&tool) = self.state.borrow().tools.last() {
+            self.tool_window(tool).with_winit_window(|window| window.focus_window());
+        }
+    }
+
+    fn tool_window(&self, tool: Tool) -> &slint::Window {
+        match tool {
+            Tool::Tester => self.windows.tester.window(),
+            Tool::Maker => self.windows.maker.window(),
+        }
+    }
+
+    /// A tool window opened, which the main window can't be used beside.
+    fn tool_opened(&self, tool: Tool) {
+        let mut state = self.state.borrow_mut();
+        state.tools.retain(|open| *open != tool);
+        state.tools.push(tool);
+        drop(state);
+        self.show_tool();
+    }
+
+    /// A tool window closes. Called before it's hidden.
+    fn tool_closed(&self, tool: Tool) {
+        self.state.borrow_mut().tools.retain(|open| *open != tool);
+        if tool == Tool::Tester {
+            self.tester_closed();
+        }
+        self.show_tool();
+    }
+
+    /// The main window says which tool window is open, if one is.
+    fn show_tool(&self) {
+        let title = self.state.borrow().tools.last().map_or("", |tool| tool.title());
+        self.windows.main.set_tool(title.into());
+    }
+
+    /// The main window's Close button for the newest tool window.
+    fn close_tool(&self) {
+        let Some(tool) = self.state.borrow().tools.last().copied() else { return };
+        match tool {
+            Tool::Tester => self.close_tester(),
+            Tool::Maker => self.close_maker(),
+        }
+    }
+
     fn connect(self: &Rc<Self>) {
         self.connect_main();
         self.connect_settings();
         self.connect_small_windows();
+        self.connect_tester();
+        self.connect_maker();
         self.connect_window_events();
     }
 
     fn connect_main(&self) {
         let weak = self.me.clone();
         let main = &self.windows.main;
-        on!(weak, main, on_browse_folder, () gui => gui.browse_folder());
-        on!(weak, main, on_region_edited, (x, y, width, height) gui => {
+        on!(main weak, main, on_browse_folder, () gui => gui.browse_folder());
+        on!(main weak, main, on_region_edited, (x, y, width, height) gui => {
             let mut state = gui.state.borrow_mut();
             let region = &mut state.document.profile.capture_region;
             // Spin boxes hold f32, which rounds large whole numbers; AutoSplit's limit stays the limit
@@ -442,23 +617,25 @@ impl Gui {
             drop(state);
             gui.send_profile(false);
         });
-        on!(weak, main, on_align_region, () gui => gui.align_region());
-        on!(weak, main, on_take_screenshot, () gui => gui.send(UiCommand::Screenshot));
-        on!(weak, main, on_start_auto_splitter, () gui => gui.send(UiCommand::StartAutoSplitter));
-        on!(weak, main, on_reset, () gui => gui.send(UiCommand::Reset));
-        on!(weak, main, on_skip_split, () gui => gui.send(UiCommand::SkipSplit));
-        on!(weak, main, on_undo_split, () gui => gui.send(UiCommand::UndoSplit));
-        on!(weak, main, on_next_image, () gui => gui.send(UiCommand::NextImage));
-        on!(weak, main, on_previous_image, () gui => gui.send(UiCommand::PreviousImage));
-        on!(weak, main, on_reload_split_images, () gui => gui.send(UiCommand::ReloadSplitImages));
-        on!(weak, main, on_open_settings, () gui => gui.open_settings());
-        on!(weak, main, on_save_profile, () gui => gui.save_profile(false, None));
-        on!(weak, main, on_save_profile_as, () gui => gui.save_profile(true, None));
-        on!(weak, main, on_load_profile, () gui => gui.load_profile());
-        on!(weak, main, on_view_help, () gui => gui.open(TUTORIAL_URL));
-        on!(weak, main, on_view_log, () gui => gui.show_log());
-        on!(weak, main, on_about, () gui => gui.show_window(gui.windows.about.window()));
-        on!(always weak, main, on_blocked_clicked, () gui => gui.focus_message());
+        on!(main weak, main, on_take_screenshot, () gui => gui.send(UiCommand::Screenshot));
+        on!(main weak, main, on_start_auto_splitter, () gui => gui.send(UiCommand::StartAutoSplitter));
+        on!(main weak, main, on_reset, () gui => gui.send(UiCommand::Reset));
+        on!(main weak, main, on_skip_split, () gui => gui.send(UiCommand::SkipSplit));
+        on!(main weak, main, on_undo_split, () gui => gui.send(UiCommand::UndoSplit));
+        on!(main weak, main, on_next_image, () gui => gui.send(UiCommand::NextImage));
+        on!(main weak, main, on_previous_image, () gui => gui.send(UiCommand::PreviousImage));
+        on!(main weak, main, on_reload_split_images, () gui => gui.send(UiCommand::ReloadSplitImages));
+        on!(main weak, main, on_open_settings, () gui => gui.open_settings());
+        on!(main weak, main, on_open_tester, () gui => gui.open_tester());
+        on!(main weak, main, on_open_maker, () gui => gui.open_maker());
+        on!(main weak, main, on_save_profile, () gui => gui.save_profile(false, None));
+        on!(main weak, main, on_save_profile_as, () gui => gui.save_profile(true, None));
+        on!(main weak, main, on_load_profile, () gui => gui.load_profile());
+        on!(main weak, main, on_view_help, () gui => gui.open(TUTORIAL_URL));
+        on!(main weak, main, on_view_log, () gui => gui.show_log());
+        on!(main weak, main, on_about, () gui => gui.show_window(gui.windows.about.window()));
+        on!(always weak, main, on_blocked_clicked, () gui => gui.focus_blocking());
+        on!(weak, main, on_close_tool, () gui => gui.close_tool());
         on!(always weak, main.window(), on_close_requested, () gui => {
             gui.close_requested();
         } else slint::CloseRequestResponse::KeepWindowShown);
@@ -508,6 +685,22 @@ impl Gui {
         } else slint::CloseRequestResponse::KeepWindowShown);
     }
 
+    fn connect_tester(&self) {
+        let weak = self.me.clone();
+        let tester = &self.windows.tester;
+        on!(weak, tester, on_open_image, () gui => gui.pick_tester_image());
+        on!(weak, tester, on_previous_image, () gui => gui.step_tester_image(-1));
+        on!(weak, tester, on_next_image, () gui => gui.step_tester_image(1));
+        on!(weak, tester, on_reload_image, () gui => gui.load_tester_image());
+        on!(weak, tester, on_rearm, () gui => gui.send(UiCommand::RearmTester));
+        on!(weak, tester, on_previous_kept, () gui => gui.show_kept(-1));
+        on!(weak, tester, on_next_kept, () gui => gui.show_kept(1));
+        on!(always weak, tester, on_blocked_clicked, () gui => gui.focus_message());
+        on!(always weak, tester.window(), on_close_requested, () gui => {
+            gui.tool_closed(Tool::Tester);
+        } else slint::CloseRequestResponse::HideWindow);
+    }
+
     /// Key presses for Set Hotkey and AutoSplit's shortcuts, whether the windows are active, and
     /// whether the live preview can be seen.
     fn connect_window_events(&self) {
@@ -544,7 +737,12 @@ impl Gui {
         self.windows.main.window().on_winit_window_event(move |_, event| {
             let Some(gui) = weak.upgrade() else { return EventResult::Propagate };
             match event {
-                WindowEvent::Focused(focused) => gui.windows.main.global::<WindowFocus>().set_active(*focused),
+                WindowEvent::Focused(focused) => {
+                    gui.windows.main.global::<WindowFocus>().set_active(*focused);
+                    if *focused {
+                        gui.show_first_messages();
+                    }
+                }
                 WindowEvent::Occluded(occluded) => {
                     gui.occluded.set(*occluded);
                     gui.update_visibility();
@@ -558,10 +756,27 @@ impl Gui {
             }
             EventResult::Propagate
         });
+
+        let weak = self.me.clone();
+        self.windows.tester.window().on_winit_window_event(move |_, event| {
+            let Some(gui) = weak.upgrade() else { return EventResult::Propagate };
+            match event {
+                WindowEvent::Occluded(occluded) => {
+                    gui.tester_occluded.set(*occluded);
+                    gui.update_visibility();
+                }
+                WindowEvent::Resized(size) => {
+                    gui.tester_zero_size.set(size.width == 0 || size.height == 0);
+                    gui.update_visibility();
+                }
+                _ => {}
+            }
+            EventResult::Propagate
+        });
     }
 
-    /// Checks now and then whether the main window can be seen, since not every system tells
-    /// when it's minimized (X11) or covered (Windows).
+    /// Checks now and then whether the main window and the Live Tester can be seen, since not
+    /// every system tells when they're minimized (X11) or covered (Windows).
     fn watch_visibility(&self) {
         let weak = self.me.clone();
         self.visibility_check.start(slint::TimerMode::Repeated, VISIBILITY_INTERVAL, move || {
@@ -572,10 +787,17 @@ impl Gui {
     }
 
     fn update_visibility(&self) {
-        let minimized =
-            self.windows.main.window().with_winit_window(|window| window.is_minimized()).flatten().unwrap_or(false);
-        let visible = !minimized && !self.zero_size.get() && !self.occluded.get();
-        self.visible.store(visible, Ordering::Relaxed);
+        let minimized = |window: &slint::Window| {
+            window.with_winit_window(|window| window.is_minimized()).flatten().unwrap_or(false)
+        };
+        let main = self.windows.main.window();
+        self.visible.store(!minimized(main) && !self.zero_size.get() && !self.occluded.get(), Ordering::Relaxed);
+        let tester = self.windows.tester.window();
+        let tester_visible =
+            tester.is_visible() && !minimized(tester) && !self.tester_zero_size.get() && !self.tester_occluded.get();
+        self.tester_visible.store(tester_visible, Ordering::Relaxed);
+        let maker = self.windows.maker.window();
+        self.maker_visible.store(maker.is_visible() && !minimized(maker), Ordering::Relaxed);
     }
 
     fn hide_all(&self) {
@@ -586,6 +808,9 @@ impl Gui {
             windows.about.window(),
             windows.log.window(),
             windows.message.window(),
+            windows.tester.window(),
+            windows.maker.window(),
+            windows.instructions.window(),
         ] {
             let _ = window.hide();
         }
@@ -600,6 +825,8 @@ impl Gui {
         let shift = held.contains(Modifiers::SHIFT);
         match (control, shift, key_character(event).map(|c| c.to_ascii_lowercase()), &event.logical_key) {
             (true, _, Some(','), _) => self.open_settings(),
+            (true, _, Some('t'), _) => self.open_tester(),
+            (true, _, Some('m'), _) => self.open_maker(),
             (true, true, Some('s'), _) => self.save_profile(true, None),
             (true, false, Some('s'), _) => self.save_profile(false, None),
             (true, _, Some('o'), _) => self.load_profile(),
@@ -657,9 +884,198 @@ impl Gui {
         self.show_window(self.windows.settings.window());
     }
 
+    /// Opens the Live Tester beside the main window, with the image it had when it was closed,
+    /// or asks for one.
+    fn open_tester(self: &Rc<Self>) {
+        let window = self.windows.tester.window();
+        if window.is_visible() {
+            return self.show_window(window);
+        }
+        self.place_by_main(window, beside);
+        self.show_window(window);
+        self.tool_opened(Tool::Tester);
+        self.update_visibility();
+        if let Some(image) = self.split_folder_image() {
+            self.state.borrow_mut().tester_path = Some(image);
+        }
+        if self.state.borrow().tester_path.is_some() {
+            self.load_tester_image();
+        } else {
+            self.pick_tester_image();
+        }
+    }
+
+    /// The first image of the profile's split image folder, unless the Live Tester's image is
+    /// from that folder already. `None` without a split image folder or images in it.
+    fn split_folder_image(&self) -> Option<PathBuf> {
+        let state = self.state.borrow();
+        let directory = &state.document.profile.split_image_directory;
+        if directory.is_empty() {
+            return None;
+        }
+        let folder = state.document.folder(&exe_folder()).join(directory);
+        let current = state.tester_path.as_ref().and_then(|path| path.parent()).map(Path::to_owned);
+        drop(state);
+        // Compared as the system sees them, since the profile's folder can be written another way
+        let same = |a: &Path, b: &Path| {
+            std::fs::canonicalize(a).ok().is_some_and(|a| std::fs::canonicalize(b).ok() == Some(a))
+        };
+        if current.is_some_and(|current| same(&current, &folder)) {
+            return None;
+        }
+        png_images(&folder).into_iter().next()
+    }
+
+    /// The profile's split image folder changed: an open Live Tester switches to its first image.
+    fn tester_follows_split_folder(&self) {
+        if !self.windows.tester.window().is_visible() {
+            return;
+        }
+        if let Some(image) = self.split_folder_image() {
+            self.state.borrow_mut().tester_path = Some(image);
+            self.load_tester_image();
+        }
+    }
+
+    /// The main window's Close button.
+    fn close_tester(&self) {
+        self.tool_closed(Tool::Tester);
+        let _ = self.windows.tester.hide();
+    }
+
+    /// The Live Tester closes: it stops comparing. See [`Gui::tool_closed`].
+    fn tester_closed(&self) {
+        self.send(UiCommand::CloseTester);
+        self.tester_visible.store(false, Ordering::Relaxed);
+        // The session's update saying it has no image is for the image that was closed, which
+        // the window keeps until it opens again
+        self.state.borrow_mut().tester_request += 1;
+    }
+
+    /// Asks for the Live Tester's image, in its folder or the split image folder.
+    fn pick_tester_image(self: &Rc<Self>) {
+        let state = self.state.borrow();
+        let folder = match &state.tester_path {
+            Some(path) => path.parent().map_or_else(exe_folder, Path::to_owned),
+            None => state.document.folder(&exe_folder()).join(&state.document.profile.split_image_directory),
+        };
+        drop(state);
+        let dialog = self
+            .file_dialog_over("Select Split Image", self.windows.tester.window())
+            .set_directory(folder)
+            .add_filter("PNG image", &["png"])
+            .pick_file();
+        self.when_picked(dialog, |gui, path| {
+            // Closed while the dialog was open
+            if !gui.windows.tester.window().is_visible() {
+                return;
+            }
+            gui.state.borrow_mut().tester_path = Some(path);
+            gui.load_tester_image();
+        });
+    }
+
+    /// The PNG images in the Live Tester's image's folder, in the split image folder's order.
+    fn tester_folder_images(&self) -> Vec<PathBuf> {
+        let folder = self.state.borrow().tester_path.as_ref().and_then(|path| path.parent()).map(Path::to_owned);
+        folder.map(|folder| png_images(&folder)).unwrap_or_default()
+    }
+
+    /// Opens the image `step` images from the Live Tester's in its folder.
+    fn step_tester_image(&self, step: isize) {
+        let images = self.tester_folder_images();
+        let current = self.state.borrow().tester_path.clone();
+        let Some(index) = images.iter().position(|image| Some(image) == current.as_ref()) else { return };
+        if let Some(image) = index.checked_add_signed(step).and_then(|index| images.get(index)) {
+            self.state.borrow_mut().tester_path = Some(image.clone());
+            self.load_tester_image();
+        }
+    }
+
+    /// Has the session load the Live Tester's image. The window keeps showing the last image and
+    /// the capture until the new one is loaded, so going through a folder doesn't flash.
+    fn load_tester_image(&self) {
+        let mut state = self.state.borrow_mut();
+        let Some(path) = state.tester_path.clone() else { return };
+        state.tester_request += 1;
+        let request = state.tester_request;
+        drop(state);
+        let images = self.tester_folder_images();
+        let index = images.iter().position(|image| *image == path);
+        let tester = &self.windows.tester;
+        self.show_tester_file(&path.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default());
+        tester.set_path(path.display().to_string().into());
+        tester.set_can_reload(true);
+        tester.set_can_previous_image(index.is_some_and(|index| index > 0));
+        tester.set_can_next_image(index.is_some_and(|index| index + 1 < images.len()));
+        self.send(UiCommand::OpenTester { path, request });
+    }
+
+    /// Shows the Live Tester's file name, each part colored by what it does.
+    fn show_tester_file(&self, name: &str) {
+        let tester = &self.windows.tester;
+        tester.set_file(name.into());
+        tester.set_file_parts(file_name_parts(name));
+    }
+
+    /// Shows no image in the Live Tester, with `message` saying why.
+    fn clear_tester(&self, message: &str) {
+        let tester = &self.windows.tester;
+        tester.set_has_image(false);
+        tester.set_message(message.into());
+        self.tester_info.clear();
+        tester.set_ignored(SharedString::new());
+        tester.set_status(SharedString::new());
+        tester.set_live("-".into());
+        tester.set_highest("-".into());
+        tester.set_threshold("-".into());
+        tester.set_reached(false);
+        tester.set_highest_reached(false);
+        tester.set_live_value(-1.0);
+        tester.set_highest_value(-1.0);
+        tester.set_live_image(slint::Image::default());
+        tester.set_live_message("Open a split image to start comparing.".into());
+        tester.set_split_image(slint::Image::default());
+        self.take_kept(KeptFrames { cleared: true, added: Vec::new() });
+    }
+
+    /// Frames the Live Tester kept. Shows the newest.
+    fn take_kept(&self, kept: KeptFrames) {
+        if !kept.cleared && kept.added.is_empty() {
+            return;
+        }
+        let mut state = self.state.borrow_mut();
+        if kept.cleared {
+            state.kept.clear();
+        }
+        let added = kept.added.into_iter().map(|(pixels, caption)| {
+            (pixels.map(slint::Image::from_rgba8).unwrap_or_default(), SharedString::from(caption))
+        });
+        state.kept.extend(added);
+        state.kept_index = state.kept.len().saturating_sub(1);
+        drop(state);
+        self.show_kept(0);
+    }
+
+    /// Shows the kept frame `step` frames from the one shown.
+    fn show_kept(&self, step: isize) {
+        let mut state = self.state.borrow_mut();
+        let count = state.kept.len();
+        state.kept_index = state.kept_index.saturating_add_signed(step).min(count.saturating_sub(1));
+        let index = state.kept_index;
+        let (image, caption) = state.kept.get(index).cloned().unwrap_or_default();
+        drop(state);
+        let tester = &self.windows.tester;
+        tester.set_kept_image(image);
+        tester.set_kept_caption(caption);
+        tester.set_kept_position(if count > 1 { format!("{}/{count}", index + 1).into() } else { SharedString::new() });
+        tester.set_can_previous_kept(index > 0);
+        tester.set_can_next_kept(index + 1 < count);
+    }
+
     fn show_window(&self, window: &slint::Window) {
         if !window.is_visible() {
-            self.place_over_main(window);
+            self.place_by_main(window, centered_over);
         }
         if let Err(error) = window.show() {
             self.add_log_line(format!("error: Couldn't show a window: {error}"));
@@ -669,8 +1085,9 @@ impl Gui {
         window.request_redraw();
     }
 
-    /// Opens `window` over the main window, so it doesn't show up on another screen.
-    fn place_over_main(&self, window: &slint::Window) {
+    /// Puts `window` where `place` says, by the main window, so it doesn't show up on another
+    /// screen.
+    fn place_by_main(&self, window: &slint::Window, place: fn(Area, u32, u32, Option<Area>) -> (i32, i32)) {
         let main = self.windows.main.window();
         let Some((minimized, screen)) = main.with_winit_window(|main| {
             let screen = main.current_monitor().map(|monitor| {
@@ -689,7 +1106,7 @@ impl Gui {
         let main_area = Area { x: position.x, y: position.y, width: size.width, height: size.height };
         // A hidden window's size can be at another screen's scale, so it goes by the main window's
         let size = window.size().to_logical(window.scale_factor()).to_physical(main.scale_factor());
-        let (x, y) = centered_over(main_area, size.width, size.height, screen);
+        let (x, y) = place(main_area, size.width, size.height, screen);
         window.set_position(slint::PhysicalPosition::new(x, y));
     }
 
@@ -835,11 +1252,6 @@ impl Gui {
     fn notice(&self, notice: Notice) {
         match notice {
             Notice::Dialog(message) => self.show_message(Message::error(message)),
-            Notice::RegionAligned(region) => {
-                self.state.borrow_mut().document.profile.capture_region = region;
-                // Sent back, so it isn't lost to an edit the session got in the meantime
-                self.profile_edited();
-            }
             Notice::AutoResetToggled(on) => {
                 self.state.borrow_mut().document.profile.enable_auto_reset = on;
                 self.profile_edited();
@@ -848,9 +1260,15 @@ impl Gui {
                 self.state.borrow_mut().link = link;
                 self.show_profile();
             }
+            Notice::Grabbed(image) => {
+                if let Some(gui) = self.me.upgrade() {
+                    gui.grabbed(image);
+                }
+            }
             Notice::ProfileLoaded { path, profile } => {
                 self.state.borrow_mut().document = Document::new(*profile, Some(path));
                 self.profile_edited();
+                self.tester_follows_split_folder();
             }
         }
     }
@@ -891,7 +1309,6 @@ impl Gui {
             main.set_can_previous(previous);
             let mut state = self.state.borrow_mut();
             state.running = texts.running;
-            state.capturing = texts.capturing;
             state.can_start = start;
             drop(state);
             self.show_buttons();
@@ -912,6 +1329,56 @@ impl Gui {
                 self.current_tiles.set_row_data(index, tile);
             }
         }
+        let maker = &self.windows.maker;
+        if let Picture::Show(pixels) = &update.maker_live {
+            self.maker_live_frame(pixels);
+        }
+        if let Some(live) = image(update.maker_live) {
+            maker.set_live_image(live);
+        }
+        if let Some(message) = update.maker_message {
+            self.maker_live_message(&message);
+            maker.set_live_message(message.into());
+        }
+        // The Live Tester's part is for an image the window has asked to replace
+        if update.tester_request != self.state.borrow().tester_request {
+            return;
+        }
+        let tester = &self.windows.tester;
+        if update.tester_gone {
+            let tried = self.state.borrow().tester_path.is_some();
+            self.clear_tester(if tried { "Couldn't load the image. Fix it, then press Reload." } else { TESTER_INTRO });
+        }
+        if let Some(texts) = update.tester {
+            tester.set_has_image(true);
+            self.show_tester_file(&texts.file);
+            tester.set_path(texts.path.into());
+            let cell = |cell: autosplit_core::text::InfoCell| InfoCell {
+                name: cell.name.into(),
+                value: cell.value.into(),
+                note: cell.note.into(),
+            };
+            self.tester_info.set_vec(texts.info.into_iter().map(cell).collect::<Vec<_>>());
+            tester.set_ignored(texts.ignored.into());
+            tester.set_status(texts.status.into());
+            tester.set_live(texts.live.into());
+            tester.set_highest(texts.highest.into());
+            tester.set_threshold(texts.threshold.into());
+            tester.set_reached(texts.reached);
+            tester.set_highest_reached(texts.highest_reached);
+            let (live, highest, threshold) = texts.meter;
+            tester.set_live_value(live);
+            tester.set_highest_value(highest);
+            tester.set_threshold_value(threshold);
+            tester.set_live_message(texts.live_message.into());
+        }
+        if let Some(live) = image(update.tester_live) {
+            tester.set_live_image(live);
+        }
+        if let Some(split) = image(update.tester_image) {
+            tester.set_split_image(split);
+        }
+        self.take_kept(update.kept);
     }
 
     /// Start Auto Splitter, which AutoSplit disables while Set Hotkey waits for a key.
@@ -935,6 +1402,7 @@ impl Gui {
         self.when_picked(dialog, |gui, folder| {
             gui.state.borrow_mut().document.profile.split_image_directory = folder_text(&folder);
             gui.profile_edited();
+            gui.tester_follows_split_folder();
         });
     }
 
@@ -956,26 +1424,14 @@ impl Gui {
         });
     }
 
-    fn align_region(self: &Rc<Self>) {
-        let state = self.state.borrow();
-        // Like AutoSplit, before asking for the image
-        if !state.capturing {
-            drop(state);
-            return self.show_message(Message::error("There's no capture to align the region in."));
-        }
-        let folder = state.document.folder(&exe_folder()).join(&state.document.profile.split_image_directory);
-        drop(state);
-        let dialog = self
-            .file_dialog("Select Reference Image")
-            .set_directory(folder)
-            .add_filter("PNG image", &["png"])
-            .pick_file();
-        self.when_picked(dialog, |gui, path| gui.send(UiCommand::AlignRegion(path)));
-    }
-
     /// A file dialog in front of the main window.
     fn file_dialog(&self, title: &str) -> rfd::AsyncFileDialog {
-        rfd::AsyncFileDialog::new().set_title(title).set_parent(&self.windows.main.window().window_handle())
+        self.file_dialog_over(title, self.windows.main.window())
+    }
+
+    /// A file dialog in front of `window`.
+    fn file_dialog_over(&self, title: &str, window: &slint::Window) -> rfd::AsyncFileDialog {
+        rfd::AsyncFileDialog::new().set_title(title).set_parent(&window.window_handle())
     }
 
     /// Waits for a file dialog without blocking the window, then does `then` with the path.
@@ -1049,6 +1505,7 @@ impl Gui {
             gui.state.borrow_mut().document = Document::new(profile, Some(path));
             gui.send_profile(true);
             gui.show_profile();
+            gui.tester_follows_split_folder();
         });
     }
 
@@ -1110,6 +1567,16 @@ impl Gui {
         self.show_window(self.windows.log.window());
     }
 
+    /// The messages from opening. Before the main window is open, a message can't be placed
+    /// over it, kept on top or focused, and the main window opens in front of it.
+    fn show_first_messages(&self) {
+        self.first_messages_fallback.stop();
+        let messages = std::mem::take(&mut *self.first_messages.borrow_mut());
+        for message in messages {
+            self.show_message(message);
+        }
+    }
+
     fn show_message(&self, message: Message) {
         let shown = self.state.borrow_mut().messages.push(message);
         if let Some(shown) = shown {
@@ -1126,6 +1593,8 @@ impl Gui {
         self.windows.message.set_tertiary(tertiary.into());
         self.windows.main.set_blocked(true);
         self.windows.settings.set_blocked(true);
+        self.windows.tester.set_blocked(true);
+        self.windows.maker.set_blocked(true);
         self.show_window(self.windows.message.window());
         self.windows.message.window().with_winit_window(|window| window.set_window_level(WindowLevel::AlwaysOnTop));
         self.windows.message.invoke_focus_keys();
@@ -1145,6 +1614,8 @@ impl Gui {
             None => {
                 self.windows.main.set_blocked(false);
                 self.windows.settings.set_blocked(false);
+                self.windows.tester.set_blocked(false);
+                self.windows.maker.set_blocked(false);
             }
         }
         if let Some((answered, answer)) = answered {

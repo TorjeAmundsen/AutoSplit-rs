@@ -17,6 +17,14 @@ export global Theme {
     out property <color> frame: dark ? #ffffff : #a0a0a0;
     out property <color> selection: dark ? #2a82da : #308cc6;
     out property <color> link: dark ? #5aa0ff : #2a6fd6;
+    // A similarity that reaches its threshold
+    out property <color> reached: dark ? #6cd688 : #1e8c3a;
+    // A similarity that hasn't reached its threshold yet, in the Live Tester's meter
+    out property <color> meter: dark ? #3d9bff : #1f6fe0;
+    // The highest similarity's mark in the Live Tester's meter
+    out property <color> highest: dark ? #ffb84d : #d97706;
+    // Something that's ignored, like a value in a split image's name
+    out property <color> warning: dark ? #e0a040 : #a65f00;
     out property <color> tooltip: dark ? #2d2d2d : #ffffdc;
     out property <color> item-hover: dark ? #3d3d3d : #e5e5e5;
     out property <color> tab: dark ? Palette.background.darker(20%) : Palette.background.darker(10%);
@@ -51,6 +59,50 @@ export component Label inherits Text {
     vertical-alignment: center;
     overflow: elide;
     color: Theme.text;
+}
+
+// A preview area: the image stretched to fill it like AutoSplit's, or a message. The outline is
+// drawn just outside, so the image gets the whole size.
+export component Preview inherits Rectangle {
+    in property <image> source;
+    in property <string> message;
+    // Shown behind the image, like a transparency grid
+    in property <image> backdrop;
+
+    Image {
+        width: 100%;
+        height: 100%;
+        source: root.backdrop;
+        image-fit: fill;
+        visible: root.message == "";
+    }
+
+    Image {
+        width: 100%;
+        height: 100%;
+        source: root.source;
+        image-fit: fill;
+        visible: root.message == "";
+    }
+
+    Rectangle {
+        x: -1px;
+        y: -1px;
+        width: parent.width + 2px;
+        height: parent.height + 2px;
+        border-width: 1px;
+        border-color: Theme.frame;
+    }
+
+    Text {
+        width: 100%;
+        height: 100%;
+        text: root.message;
+        wrap: word-wrap;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        color: Theme.text;
+    }
 }
 
 // The face of a button or a spin box arrow: Fusion's gradient with a light top edge.
@@ -641,6 +693,80 @@ export component SpinBox inherits Rectangle {
                 } else if (event.kind == PointerEventKind.up || event.kind == PointerEventKind.cancel) {
                     root.holding = 0;
                 }
+            }
+        }
+    }
+}
+
+// A part of a split image's file name, as the split image loader reads it. `kind` is what it does:
+// Text, Number, Keyword, Threshold, Pause, Delay, Loops, Method, Flags or Extension.
+export struct NamePart {
+    text: string,
+    kind: string,
+    meaning: string,
+    ignored: bool,
+}
+
+// The colors of the file name's parts, so each kind of value stands out.
+global NameColors {
+    public pure function of(part: NamePart) -> color {
+        if part.ignored {
+            return Theme.warning;
+        }
+        if part.kind == "Number" || part.kind == "Extension" {
+            return Theme.disabled-text;
+        }
+        if part.kind == "Keyword" {
+            return Theme.dark ? #f1948a : #b03a2e;
+        }
+        if part.kind == "Threshold" {
+            return Theme.reached;
+        }
+        if part.kind == "Pause" {
+            return Theme.meter;
+        }
+        if part.kind == "Delay" {
+            return Theme.dark ? #4dd0e1 : #00838f;
+        }
+        if part.kind == "Loops" {
+            return Theme.dark ? #9fa8da : #283593;
+        }
+        if part.kind == "Method" {
+            return Theme.dark ? #f48fb1 : #c2185b;
+        }
+        if part.kind == "Flags" {
+            return Theme.dark ? #c39bd3 : #8e44ad;
+        }
+        return Theme.text;
+    }
+}
+
+// A split image's file name, each part colored by what it does, with what it does on hover.
+// Without parts, `file` is shown plainly.
+export component FileName inherits HorizontalLayout {
+    in property <[NamePart]> parts;
+    in property <string> file;
+    // Shown on hover over the plain parts
+    in property <string> path;
+    alignment: start;
+
+    if root.parts.length == 0: Label {
+        text: root.file;
+    }
+
+    for part in root.parts: Rectangle {
+        width: text.preferred-width;
+
+        text := Text {
+            vertical-alignment: center;
+            text: part.text;
+            font-weight: part.kind == "Text" ? 400 : 600;
+            color: NameColors.of(part);
+        }
+
+        Tooltip {
+            Tip {
+                text: part.meaning != "" ? part.meaning : root.path;
             }
         }
     }

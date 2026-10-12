@@ -221,7 +221,7 @@ fn group_splits(splits: &mut [SplitImage], by_number: bool) -> Result<Vec<Range<
 }
 
 /// Files in the folder, sorted by name. Hidden files, system files and folders are skipped.
-fn user_files(directory: &Path) -> Option<Vec<PathBuf>> {
+pub fn user_files(directory: &Path) -> Option<Vec<PathBuf>> {
     let mut paths: Vec<PathBuf> = std::fs::read_dir(directory)
         .ok()?
         .filter_map(|entry| Some(entry.ok()?.path()))

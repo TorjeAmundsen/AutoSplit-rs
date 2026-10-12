@@ -128,9 +128,12 @@ function Zip($directory, $zip, $executable) {
     $stream = [System.IO.File]::Open($zip, [System.IO.FileMode]::Create)
     $archive = [System.IO.Compression.ZipArchive]::new($stream, [System.IO.Compression.ZipArchiveMode]::Create)
     try {
-        foreach ($file in Get-ChildItem $directory -File) {
-            $entry = $archive.CreateEntry($file.Name, [System.IO.Compression.CompressionLevel]::Optimal)
-            $mode = if ($file.Name -eq $executable) { 0x81ED } else { 0x81A4 }
+        $root = (Resolve-Path $directory).Path
+        foreach ($file in Get-ChildItem $directory -File -Recurse) {
+            # Entries in folders, like presets/, by their path with forward slashes
+            $name = $file.FullName.Substring($root.Length).TrimStart('\', '/').Replace('\', '/')
+            $entry = $archive.CreateEntry($name, [System.IO.Compression.CompressionLevel]::Optimal)
+            $mode = if ($name -eq $executable) { 0x81ED } else { 0x81A4 }
             $entry.ExternalAttributes = $mode -shl 16
             $writer = $entry.Open()
             try {
@@ -178,6 +181,10 @@ function Build($name) {
     # The licenses have to ship with the binaries
     foreach ($file in @("LICENSE", "THIRD_PARTY_NOTICES.txt")) {
         Copy-Item "$PSScriptRoot/$file" $output
+    }
+    # The split image presets and the splits library, which are read from next to the binary
+    foreach ($folder in @("presets", "splits")) {
+        Copy-Item "$PSScriptRoot/$folder" $output -Recurse
     }
 
     $zip = "$PSScriptRoot/build/AutoSplit-v$version-$name.zip"

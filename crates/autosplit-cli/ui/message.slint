@@ -7,8 +7,10 @@ export component MessageWindow inherits Window {
     in property <string> window-title: "AutoSplit";
     title: root.window-title;
     icon: @image-url("../assets/icon.png");
-    preferred-width: 380px;
-    min-width: 300px;
+    // A fixed size, its height from the message once it's wrapped at this width, so the
+    // buttons keep their margin and the box can't be resized
+    width: 380px;
+    height: layout.preferred-height;
     default-font-size: 12px;
 
     in property <string> message;
@@ -41,7 +43,7 @@ export component MessageWindow inherits Window {
         }
     }
 
-    VerticalLayout {
+    layout := VerticalLayout {
         padding: 14px;
         spacing: 14px;
 

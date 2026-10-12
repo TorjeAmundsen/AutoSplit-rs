@@ -1,0 +1,60 @@
+// How to use a preset's savestates: one card for each split whose savestate has instructions.
+
+import { ScrollView } from "std-widgets.slint";
+import { Label, Theme } from "widgets.slint";
+
+export struct InstructionCard {
+    heading: string,
+    savestate: string,
+    text: string,
+}
+
+export component InstructionsWindow inherits Window {
+    in property <string> window-title: "Savestate Instructions";
+    title: root.window-title;
+    icon: @image-url("../assets/icon.png");
+    preferred-width: 520px;
+    preferred-height: 420px;
+    min-width: 320px;
+    min-height: 200px;
+    default-font-size: 12px;
+
+    in property <[InstructionCard]> cards;
+
+    ScrollView {
+        VerticalLayout {
+            padding: 8px;
+            spacing: 8px;
+            alignment: start;
+
+            for card in root.cards: Rectangle {
+                border-width: 1px;
+                border-radius: 3px;
+                border-color: Theme.outline;
+                background: Theme.field;
+
+                VerticalLayout {
+                    padding: 8px;
+                    spacing: 4px;
+
+                    Label {
+                        text: card.heading;
+                        font-weight: 600;
+                    }
+
+                    Label {
+                        text: card.savestate;
+                        font-size: 10px;
+                        color: Theme.disabled-text;
+                    }
+
+                    Text {
+                        text: card.text;
+                        wrap: word-wrap;
+                        color: Theme.text;
+                    }
+                }
+            }
+        }
+    }
+}

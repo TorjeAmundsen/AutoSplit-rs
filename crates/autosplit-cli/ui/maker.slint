@@ -1,0 +1,272 @@
+// Make Split Images: a preset's masks applied to screenshots, saved as split images named the way
+// AutoSplit reads them, into the split image folder.
+
+import { CheckBox, ScrollView } from "std-widgets.slint";
+import { Button, ComboBox, FileName, Label, NamePart, Preview, Theme, Tip } from "widgets.slint";
+
+// A split of the preset, with the file name it gets and where its screenshot comes from.
+export struct MakerRow {
+    parts: [NamePart],
+    file: string,
+    // The screenshot's file name, or empty
+    source: string,
+    // The split image is written
+    saved: bool,
+}
+
+export component MakerWindow inherits Window {
+    title: "Make Split Images";
+    icon: @image-url("../assets/icon.png");
+    default-font-size: 12px;
+
+    in property <[string]> presets;
+    in-out property <int> preset-index;
+    in property <[MakerRow]> rows;
+    in-out property <int> selected: 0;
+    in property <string> output-folder;
+    in property <image> live-image;
+    in property <string> live-message: "Waiting for capture device...";
+    in property <bool> can-grab;
+    in property <image> preview-image;
+    in property <string> preview-message: "No screenshot for this split yet.";
+    in property <string> preview-caption;
+    // Behind the split image, so its transparent parts show
+    in property <image> grid-image;
+    in-out property <bool> show-grid: true;
+    property <image> no-image;
+    in property <string> status;
+    in property <bool> can-save-selected;
+    in property <bool> can-save-all;
+    in property <bool> can-test;
+    in property <bool> has-savestates;
+    in property <bool> has-instructions;
+    // A message box is open, which AutoSplit's are modal
+    in property <bool> blocked;
+
+    callback preset-chosen(int);
+    callback split-chosen(int);
+    callback grab();
+    callback use-screenshots();
+    callback save-selected();
+    callback save-all();
+    callback test();
+    callback copy-savestates();
+    callback show-instructions();
+    callback blocked-clicked();
+
+    VerticalLayout {
+        padding: 8px;
+        spacing: 6px;
+
+        HorizontalLayout {
+            spacing: 6px;
+
+            Label {
+                text: "Preset:";
+            }
+
+            ComboBox {
+                width: 360px;
+                height: 24px;
+                model: root.presets;
+                current-index <=> root.preset-index;
+                selected => { root.preset-chosen(root.preset-index); }
+            }
+
+            Label {
+                horizontal-alignment: right;
+                text: "Saves to: " + root.output-folder;
+            }
+        }
+
+        HorizontalLayout {
+            spacing: 8px;
+
+            // The splits, and what to do with them below
+            VerticalLayout {
+                width: 480px;
+                spacing: 6px;
+
+                Rectangle {
+                    vertical-stretch: 1;
+                    border-width: 1px;
+                    border-color: Theme.frame;
+
+                    ScrollView {
+                        x: 1px;
+                        y: 1px;
+                        width: parent.width - 2px;
+                        height: parent.height - 2px;
+                        content-height: root.rows.length * 22px;
+
+                        for row[index] in root.rows: Rectangle {
+                            y: index * 22px;
+                            height: 22px;
+                            width: parent.width;
+                            background: index == root.selected ? Theme.selection.with-alpha(0.25) : transparent;
+
+                            TouchArea {
+                                clicked => {
+                                    root.selected = index;
+                                    root.split-chosen(index);
+                                }
+                            }
+
+                            HorizontalLayout {
+                                padding-left: 6px;
+                                padding-right: 6px;
+                                spacing: 8px;
+
+                                FileName {
+                                    parts: row.parts;
+                                    file: row.file;
+                                }
+
+                                Label {
+                                    horizontal-alignment: right;
+                                    color: Theme.disabled-text;
+                                    text: row.source == "" ? "nothing yet" : row.source;
+                                }
+
+                                Label {
+                                    width: 40px;
+                                    color: Theme.reached;
+                                    text: row.saved ? "saved" : "";
+                                }
+                            }
+                        }
+                    }
+                }
+
+                HorizontalLayout {
+                    spacing: 6px;
+                    alignment: start;
+
+                    Button {
+                        width: 80px;
+                        height: 24px;
+                        text: "Grab";
+                        primary: true;
+                        enabled: root.can-grab;
+                        clicked => { root.grab(); }
+
+                        Tooltip {
+                            Tip {
+                                text: "Make the selected split's image from the capture now, and go to the next split. The screenshot hotkey does the same while this window is open.";
+                            }
+                        }
+                    }
+
+                    Button {
+                        width: 120px;
+                        height: 24px;
+                        text: "Use Screenshots...";
+                        clicked => { root.use-screenshots(); }
+                    }
+
+                    Button {
+                        width: 100px;
+                        height: 24px;
+                        text: "Save Selected";
+                        enabled: root.can-save-selected;
+                        clicked => { root.save-selected(); }
+                    }
+
+                    Button {
+                        width: 80px;
+                        height: 24px;
+                        text: "Save All";
+                        enabled: root.can-save-all;
+                        clicked => { root.save-all(); }
+                    }
+
+                    Button {
+                        width: 60px;
+                        height: 24px;
+                        text: "Test";
+                        enabled: root.can-test;
+                        clicked => { root.test(); }
+                    }
+                }
+
+                HorizontalLayout {
+                    spacing: 6px;
+                    alignment: start;
+
+                    Button {
+                        width: 110px;
+                        height: 24px;
+                        text: "Copy Savestates";
+                        enabled: root.has-savestates;
+                        clicked => { root.copy-savestates(); }
+
+                        Tooltip {
+                            Tip {
+                                text: "Put the preset's savestates on the clipboard, numbered like the split images, to paste into the emulator's folder";
+                            }
+                        }
+                    }
+
+                    Button {
+                        width: 90px;
+                        height: 24px;
+                        text: "Instructions";
+                        enabled: root.has-instructions;
+                        clicked => { root.show-instructions(); }
+                    }
+                }
+
+                Label {
+                    height: 18px;
+                    text: root.status;
+                }
+            }
+
+            // The capture, and the selected split's split image made of it
+            VerticalLayout {
+                spacing: 4px;
+
+                Label {
+                    height: 18px;
+                    horizontal-alignment: center;
+                    text: "Capture Region";
+                }
+
+                Preview {
+                    width: 320px;
+                    height: 240px;
+                    source: root.live-image;
+                    message: root.live-message;
+                }
+
+                Label {
+                    height: 18px;
+                    horizontal-alignment: center;
+                    text: root.preview-caption;
+                }
+
+                Preview {
+                    width: 320px;
+                    height: 240px;
+                    source: root.preview-image;
+                    message: root.preview-message;
+                    backdrop: root.show-grid ? root.grid-image : root.no-image;
+
+                    TouchArea {
+                        clicked => { root.show-grid = !root.show-grid; }
+                    }
+                }
+
+                CheckBox {
+                    height: 24px;
+                    text: "Transparency grid";
+                    checked <=> root.show-grid;
+                }
+            }
+        }
+    }
+
+    if root.blocked: TouchArea {
+        clicked => { root.blocked-clicked(); }
+    }
+}

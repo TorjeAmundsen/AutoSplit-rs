@@ -183,6 +183,8 @@ pub enum ProfileError {
     Unreadable { reason: String },
     #[error("The settings file isn't valid: {reason}")]
     Invalid { reason: String },
+    #[error("This is a split image preset, not a settings file.")]
+    SplitImagePreset,
 }
 
 /// AutoSplit's names for its capture methods, for the window capture ones a profile can have.
@@ -207,6 +209,10 @@ impl UserProfile {
     }
 
     pub fn parse(text: &str) -> Result<Self, ProfileError> {
+        // Any TOML reads as a profile with defaults for what it doesn't have, presets too
+        if text.parse::<toml::Table>().is_ok_and(|table| table.contains_key("split")) {
+            return Err(ProfileError::SplitImagePreset);
+        }
         toml::from_str(text).map_err(|error| ProfileError::Invalid { reason: plain_toml_error(&error) })
     }
 

@@ -271,8 +271,9 @@ impl ComparisonCache {
     }
 }
 
-/// At least 1ns, so absurd FPS limits can't make the runner wake up without time passing.
-fn interval(fps_limit: i64) -> Duration {
+/// At least 1ns, so absurd FPS limits can't make the runner or the Live Tester wake up without
+/// time passing.
+pub(crate) fn interval(fps_limit: i64) -> Duration {
     Duration::from_secs_f64(1.0 / fps_limit.max(1) as f64).max(Duration::from_nanos(1))
 }
 
@@ -284,7 +285,7 @@ fn secs(seconds: f64) -> Duration {
 /// comparisons at a steady rate however long each one takes.
 ///
 /// Integer nanoseconds, because float rounding can land back on `now` and never advance.
-fn next_grid_tick(epoch: Duration, now: Duration, interval: Duration) -> Duration {
+pub(crate) fn next_grid_tick(epoch: Duration, now: Duration, interval: Duration) -> Duration {
     let step = interval.as_nanos().max(1);
     let steps = now.saturating_sub(epoch).as_nanos() / step + 1;
     epoch.saturating_add(Duration::from_nanos((steps * step).min(u64::MAX as u128) as u64))

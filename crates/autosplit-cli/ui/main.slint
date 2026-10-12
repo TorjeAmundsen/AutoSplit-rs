@@ -5,37 +5,12 @@ import { SettingsWindow, HotkeyRow, Setting } from "settings.slint";
 import { AboutWindow } from "about.slint";
 import { LogWindow } from "log.slint";
 import { MessageWindow } from "message.slint";
-import { Button, Label, SpinBox, TextField, Theme, Tip, WindowFocus } from "widgets.slint";
+import { InfoCell, TesterWindow } from "tester.slint";
+import { MakerRow, MakerWindow } from "maker.slint";
+import { InstructionCard, InstructionsWindow } from "instructions.slint";
+import { Button, Label, NamePart, Preview, SpinBox, TextField, Theme, Tip, WindowFocus } from "widgets.slint";
 
-export { SettingsWindow, HotkeyRow, Setting, AboutWindow, LogWindow, MessageWindow, WindowFocus }
-
-// A preview area: the image stretched to fill it like AutoSplit's, or a message.
-component Preview inherits Rectangle {
-    in property <image> source;
-    in property <string> message;
-    border-width: 1px;
-    border-color: Theme.frame;
-
-    Image {
-        x: 1px;
-        y: 1px;
-        width: parent.width - 2px;
-        height: parent.height - 2px;
-        source: root.source;
-        image-fit: fill;
-        visible: root.message == "";
-    }
-
-    Text {
-        width: 100%;
-        height: 100%;
-        text: root.message;
-        wrap: word-wrap;
-        horizontal-alignment: center;
-        vertical-alignment: center;
-        color: Theme.text;
-    }
-}
+export { SettingsWindow, HotkeyRow, Setting, AboutWindow, LogWindow, MessageWindow, InfoCell, NamePart, TesterWindow, MakerRow, MakerWindow, InstructionCard, InstructionsWindow, WindowFocus }
 
 export struct SimilarityRow {
     live: string,
@@ -178,10 +153,11 @@ export component MainWindow inherits Window {
     in property <bool> can-previous;
     // A message box is open, which AutoSplit's are modal
     in property <bool> blocked;
+    // The tool window that's open, which this window can't be used beside, or empty
+    in property <string> tool;
 
     callback browse-folder();
     callback region-edited(float, float, float, float);
-    callback align-region();
     callback take-screenshot();
     callback start-auto-splitter();
     callback reset();
@@ -191,6 +167,7 @@ export component MainWindow inherits Window {
     callback previous-image();
     callback reload-split-images();
     callback open-settings();
+    callback open-tester();
     callback save-profile();
     callback save-profile-as();
     callback load-profile();
@@ -198,6 +175,8 @@ export component MainWindow inherits Window {
     callback view-log();
     callback about();
     callback blocked-clicked();
+    callback open-maker();
+    callback close-tool();
 
     function region-changed() {
         root.region-edited(root.region-x, root.region-y, root.region-width, root.region-height);
@@ -210,6 +189,16 @@ export component MainWindow inherits Window {
                 title: "Settings";
                 shortcut: @keys(Control + ",");
                 activated => { root.open-settings(); }
+            }
+            MenuItem {
+                title: "Live Tester";
+                shortcut: @keys(Control + T);
+                activated => { root.open-tester(); }
+            }
+            MenuItem {
+                title: "Make Split Images";
+                shortcut: @keys(Control + M);
+                activated => { root.open-maker(); }
             }
             MenuSeparator { }
             MenuItem {
@@ -368,21 +357,6 @@ export component MainWindow inherits Window {
                 height: 24px;
                 text: "Select Window";
                 enabled: false;
-            }
-
-            Button {
-                x: 10px;
-                y: 119px;
-                width: 107px;
-                height: 24px;
-                text: "Align Region";
-                clicked => { root.align-region(); }
-
-                Tooltip {
-                    Tip {
-                        text: "Align the capture region using a reference image";
-                    }
-                }
             }
 
             Label {
@@ -600,7 +574,43 @@ export component MainWindow inherits Window {
         }
     }
 
-    if root.blocked: TouchArea {
+    if root.blocked || root.tool != "": TouchArea {
         clicked => { root.blocked-clicked(); }
+    }
+
+    // Dimmed while a tool window is open, so it's clear why nothing here responds
+    if root.tool != "": Rectangle {
+        background: Palette.background.with-alpha(0.8);
+
+        VerticalLayout {
+            alignment: center;
+            spacing: 8px;
+
+            Text {
+                horizontal-alignment: center;
+                text: root.tool + " is open";
+                font-size: 16px;
+                font-weight: 600;
+                color: Theme.text;
+            }
+
+            Text {
+                horizontal-alignment: center;
+                text: "Close it to use this window.";
+                color: Theme.text;
+            }
+
+            HorizontalLayout {
+                alignment: center;
+
+                Button {
+                    width: 160px;
+                    height: 27px;
+                    text: "Close " + root.tool;
+                    enabled: !root.blocked;
+                    clicked => { root.close-tool(); }
+                }
+            }
+        }
     }
 }

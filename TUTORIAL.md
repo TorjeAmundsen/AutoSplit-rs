@@ -77,13 +77,11 @@ The Virtual Camera sends a picture the size of OBS's canvas, with your source in
 
 The folder with your split images, picked with Browse.... They're used in file name order, so number them `001_SplitName.png`, `002_SplitName.png` and so on. Only PNG images work. The file name also sets how each image is used, see [Split image file names](#split-image-file-names).
 
-Take Screenshot saves the capture region as the next free `NNN_SplitImage.png` in the screenshot folder (Settings > Capture Settings), or in the split image folder when none is set. It's the most accurate way to make split images, since it saves exactly what gets compared. [AutoMask](https://github.com/TorjeAmundsen/AutoSplit-AutoMask) turns those screenshots into masked, named split images when your category has a preset.
+Take Screenshot saves the capture region as the next free `NNN_SplitImage.png` in the screenshot folder (Settings > Capture Settings), or in the split image folder when none is set. It's the most accurate way to make split images, since it saves exactly what gets compared. [AutoMask](https://github.com/TorjeAmundsen/AutoSplit-AutoMask) turns those screenshots into masked, named split images when your category has a preset. Check them with the [Live Tester](#live-tester).
 
 ### Capture region
 
 The part of the capture device's picture that split images are compared with, usually the whole game screen. X and Y are where it starts, in pixels of the device's frames, and Width and Height its size. The arrow keys change the number in a box by 1.
-
-Align Region asks for a split image, or any reference image cut from the capture. It looks for that image in the current capture region at sizes from 20% to 300%, and moves the region to where it matched. The image has to be inside the region already.
 
 Select Region and Select Window are for screen and window capture, which don't exist yet.
 
@@ -105,6 +103,24 @@ The second row is the same for the reset image. Image Loop shows which loop of a
 - Reset stops comparing, without resetting the timer.
 - Undo and Skip move to the previous or next split and press the undo and skip hotkeys, so the timer moves too.
 - Reload Split Images loads the split image folder again and looks for the start image. Changes to the folder are only picked up by this button, a run start, or changing the folder or profile.
+
+### Live Tester
+
+File > Live Tester (Ctrl+T) compares one split image with the capture region without starting a run, to check a new image before you rely on it. It opens beside the main window, which can't be used while the tester is open: close the tester to change the capture region or the settings. It opens the first image of the split image folder, and switches to the new folder's first image when you change the folder or load another profile. Without a split image folder, it asks for an image. Open Image... picks another one, from any folder, and `<` and `>` next to it open the previous and next PNG in the same folder, in file name order. The image loads again by itself when its file changes, for example when AutoMask saves it again. Reload does the same by hand.
+
+The image is read like in the split image folder: its file name sets the threshold, comparison method, delay and flags, and the loaded profile's defaults fill in the rest, also right after you change them. The file name next to the buttons is colored by what each part does, the way the split image folder reads it: threshold, pause, delay, loops, comparison method, flags and the start or reset keyword. Hover over a part to see what it does. Values that are ignored are orange, and listed below the boxes. The boxes under the buttons say what the image does and how it's compared, and mark the values that come from the profile. The tester takes one image at a time, so the images of a [grouped split](#several-images-for-one-split) are tested one by one.
+
+Live, Highest and Threshold work like in the similarity viewer. The bar under Live fills up to the similarity. Its green end is where the similarity reaches the threshold, marked with a black line, and Live turns green while it's there. That's often a single frame, so an orange mark on the bar shows the highest similarity, and Highest keeps a green dot once it has reached the threshold, until you press Start Over. The line next to them says what the tester waits for.
+
+The right side keeps the frames that would have made the image act, decided like a run decides:
+
+- A plain image keeps the first frame that reaches the threshold.
+- With a delay, it also keeps the frame when the delay is over, which is when the split happens. The delay runs out even when the capture is lost.
+- With `{b}`, it keeps the frame that reached the threshold and the frame that dropped back below it, plus the frame after the delay if there is one.
+- A dummy image (`{d}`) acts right away, without its delay, like in a run.
+- A reset image keeps the frame that reached the threshold. Delays and `{b}` don't apply to reset images.
+
+`<` and `>` above the frames go through them. After that, nothing more is kept until you press Start Over, which also clears Highest. The tester uses the capture device, capture region and FPS limit from the main window and the settings, and works during a run too.
 
 ## Settings
 

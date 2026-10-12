@@ -41,7 +41,7 @@ The script installs the Rust targets and the cargo tools it needs. macOS builds 
 
 ## Layout
 
-- `crates/autosplit-core`: everything that doesn't depend on the OS. `runner.rs` is the split state machine. It never blocks: the host calls `tick` with the latest frame when `next_wakeup` is due, and acts on the effects it returns.
+- `crates/autosplit-core`: everything that doesn't depend on the OS. `runner.rs` is the split state machine. It never blocks: the host calls `tick` with the latest frame when `next_wakeup` is due, and acts on the effects it returns. `tester.rs` is the Live Tester, which decides like the runner for one image, outside of a run.
 - `crates/autosplit-capture`: video capture devices, one backend per OS, and the pixel format conversions.
 - `crates/autosplit-input`: global hotkeys (through livesplit-hotkey), sending key presses and AutoSplit's hotkey names.
 - `crates/autosplit-cli`: the `autosplit` program. `session.rs` drives the runner from capture (`device.rs`), hotkeys (`hotkeys.rs`), LiveSplit (`livesplit.rs`), LiveSplit One (`livesplit_one.rs`) and Molok (`molok.rs`). `run.rs` runs a session in the terminal and `gui/` in the window, laid out in `ui/*.slint`. `tests/gui.rs` tests the window logic that doesn't need a window (`document.rs`, `messages.rs`, `settings_form.rs`). `src/bin/autosplit-console.rs` becomes `autosplit.com` on Windows.

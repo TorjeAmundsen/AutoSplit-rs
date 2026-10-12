@@ -1,0 +1,465 @@
+// The Live Tester: one split image compared with the capture region outside of a run, with the
+// frames that would have made it act.
+
+import { Button, FileName, Label, NamePart, Preview, Theme, Tip } from "widgets.slint";
+
+// How far the live similarity is from the threshold: a bar filled up to the similarity, a tick at
+// the highest, and a mark at the threshold where the green part starts.
+component Meter inherits Rectangle {
+    in property <float> value;
+    in property <float> highest: -1;
+    in property <float> threshold;
+    in property <bool> met;
+    in property <bool> highest-met;
+    height: 8px;
+    border-radius: 4px;
+    background: Theme.outline.with-alpha(0.5);
+
+    // Where the similarity reaches the threshold
+    Rectangle {
+        x: parent.width * clamp(root.threshold, 0, 1);
+        width: parent.width - self.x;
+        border-radius: 4px;
+        background: Theme.reached.with-alpha(0.25);
+    }
+
+    Rectangle {
+        x: 0;
+        width: parent.width * clamp(root.value, 0, 1);
+        visible: root.value >= 0;
+        // A straight end, so it's clear exactly where the similarity is, until it fills the bar
+        border-top-left-radius: 4px;
+        border-bottom-left-radius: 4px;
+        border-top-right-radius: root.value >= 1 ? 4px : 0;
+        border-bottom-right-radius: root.value >= 1 ? 4px : 0;
+        background: root.met ? Theme.reached : Theme.meter;
+    }
+
+    // The highest similarity, in a color of its own
+    Rectangle {
+        x: parent.width * clamp(root.highest, 0, 1) - 2px;
+        y: -2px;
+        width: 4px;
+        height: parent.height + 4px;
+        visible: root.highest >= 0;
+        border-radius: 1px;
+        border-width: 1px;
+        border-color: Theme.field;
+        background: Theme.highest;
+    }
+
+    Rectangle {
+        x: parent.width * clamp(root.threshold, 0, 1) - 2px;
+        y: -3px;
+        width: 4px;
+        height: parent.height + 6px;
+        border-radius: 1px;
+        border-width: 1px;
+        border-color: Theme.field;
+        background: Theme.text;
+    }
+}
+
+// The live similarity in a box: the number large, the highest and the threshold small in the
+// top right corner, and a meter along the bottom. `met` turns it green.
+component LiveReading inherits Rectangle {
+    in property <string> live;
+    in property <string> highest;
+    in property <string> threshold;
+    in property <float> live-value;
+    in property <float> highest-value;
+    in property <float> threshold-value;
+    in property <bool> met;
+    // The highest similarity reached the threshold
+    in property <bool> highest-met;
+    height: 62px;
+    border-width: 1px;
+    border-radius: 3px;
+    border-color: root.met ? Theme.reached : Theme.outline;
+    background: root.met ? Theme.reached.with-alpha(0.15) : Theme.field;
+
+    Text {
+        x: 8px;
+        y: 4px;
+        text: root.met ? "LIVE, REACHED" : "LIVE";
+        font-size: 10px;
+        color: root.met ? Theme.reached : Theme.disabled-text;
+    }
+
+    Text {
+        x: 8px;
+        y: 15px;
+        text: root.live;
+        font-size: 22px;
+        font-weight: 600;
+        color: root.met ? Theme.reached : Theme.text;
+    }
+
+    HorizontalLayout {
+        x: 8px;
+        y: 4px;
+        width: parent.width - 16px;
+        height: 14px;
+        spacing: 12px;
+        alignment: end;
+
+        for info in [
+            { name: "HIGHEST", value: root.highest, met: root.highest-met },
+            { name: "THRESHOLD", value: root.threshold, met: false },
+        ]: HorizontalLayout {
+            spacing: 4px;
+
+            // A dot before a value that reached the threshold
+            if info.met: VerticalLayout {
+                alignment: center;
+
+                Rectangle {
+                    width: 6px;
+                    height: 6px;
+                    border-radius: 3px;
+                    background: Theme.reached;
+                }
+            }
+
+            Text {
+                text: info.name;
+                font-size: 10px;
+                vertical-alignment: center;
+                color: info.met ? Theme.reached : Theme.disabled-text;
+            }
+
+            Text {
+                text: info.value;
+                font-size: 12px;
+                font-weight: 600;
+                vertical-alignment: center;
+                color: info.met ? Theme.reached : Theme.text;
+            }
+        }
+    }
+
+    Meter {
+        x: 8px;
+        y: parent.height - 15px;
+        width: parent.width - 16px;
+        value: root.live-value;
+        highest: root.highest-value;
+        threshold: root.threshold-value;
+        met: root.met;
+        highest-met: root.highest-met;
+    }
+}
+
+// A value of the Live Tester's image, and where it comes from when that's the profile.
+export struct InfoCell {
+    name: string,
+    value: string,
+    note: string,
+}
+
+// An `InfoCell` in a box: its name small above the value, and the note small below.
+component Info inherits Rectangle {
+    in property <InfoCell> cell;
+    min-width: 0;
+    border-width: 1px;
+    border-radius: 3px;
+    border-color: Theme.outline;
+    background: Theme.field;
+
+    Text {
+        x: 8px;
+        y: 4px;
+        text: root.cell.name;
+        font-size: 10px;
+        color: Theme.disabled-text;
+    }
+
+    Label {
+        x: 8px;
+        y: 16px;
+        width: parent.width - 16px;
+        height: 16px;
+        text: root.cell.value;
+        font-weight: 600;
+    }
+
+    Label {
+        x: 8px;
+        y: 31px;
+        width: parent.width - 16px;
+        height: 13px;
+        text: root.cell.note;
+        font-size: 10px;
+        color: Theme.disabled-text;
+    }
+
+    Tooltip {
+        Tip {
+            text: root.cell.note == "" ? root.cell.value : root.cell.value + " (" + root.cell.note + ")";
+        }
+    }
+}
+
+export component TesterWindow inherits Window {
+    title: "Live Tester";
+    icon: @image-url("../assets/icon.png");
+    default-font-size: 12px;
+
+    in property <bool> has-image;
+    in property <bool> can-reload;
+    in property <bool> can-previous-image;
+    in property <bool> can-next-image;
+    in property <string> file: "No image open";
+    // The file name in parts, colored by what each part does. Empty shows `file` plainly.
+    in property <[NamePart]> file-parts;
+    in property <string> path;
+    // Why there's no image's information to show
+    in property <string> message: "Open a split image to compare it with the capture region, like a run would.";
+    in property <[InfoCell]> info;
+    // Values in the image's name that are ignored
+    in property <string> ignored;
+    in property <string> status;
+    in property <image> live-image;
+    in property <string> live-message: "Open a split image to start comparing.";
+    in property <image> split-image;
+    in property <image> kept-image;
+    in property <string> kept-caption;
+    in property <string> kept-position;
+    in property <bool> can-previous-kept;
+    in property <bool> can-next-kept;
+    in property <string> live: "-";
+    in property <string> highest: "-";
+    in property <string> threshold: "-";
+    in property <bool> reached;
+    // The live similarity and the threshold for the meter, the similarity negative without one
+    in property <float> live-value: -1;
+    in property <float> highest-value: -1;
+    // The highest similarity reached the threshold, which stays until Start Over
+    in property <bool> highest-reached;
+    in property <float> threshold-value;
+    // A message box is open, which AutoSplit's are modal
+    in property <bool> blocked;
+
+    callback open-image();
+    callback previous-image();
+    callback next-image();
+    callback reload-image();
+    callback rearm();
+    callback previous-kept();
+    callback next-kept();
+    callback blocked-clicked();
+
+    VerticalLayout {
+        padding: 8px;
+        spacing: 6px;
+
+        HorizontalLayout {
+            spacing: 6px;
+
+            Button {
+                width: 100px;
+                height: 24px;
+                text: "Open Image...";
+                clicked => { root.open-image(); }
+            }
+
+            Button {
+                width: 27px;
+                height: 24px;
+                text: "<";
+                enabled: root.can-previous-image;
+                clicked => { root.previous-image(); }
+
+                Tooltip {
+                    Tip {
+                        text: "The previous image in the folder";
+                    }
+                }
+            }
+
+            Button {
+                width: 27px;
+                height: 24px;
+                text: ">";
+                enabled: root.can-next-image;
+                clicked => { root.next-image(); }
+
+                Tooltip {
+                    Tip {
+                        text: "The next image in the folder";
+                    }
+                }
+            }
+
+            Button {
+                width: 70px;
+                height: 24px;
+                text: "Reload";
+                enabled: root.can-reload;
+                clicked => { root.reload-image(); }
+
+                Tooltip {
+                    Tip {
+                        text: "Load the image again. It also loads again by itself when the file changes.";
+                    }
+                }
+            }
+
+            FileName {
+                parts: root.file-parts;
+                file: root.file;
+                path: root.path;
+            }
+        }
+
+        // The image's information, or why there's none
+        HorizontalLayout {
+            height: 48px;
+            spacing: 6px;
+
+            if !root.has-image: Text {
+                color: Theme.text;
+                vertical-alignment: center;
+                text: root.message;
+            }
+
+            for cell in root.info: Info {
+                horizontal-stretch: cell.name == "ACTS" ? 2 : 1;
+                cell: cell;
+            }
+        }
+
+        if root.ignored != "": Label {
+            height: 16px;
+            color: Theme.warning;
+            text: root.ignored;
+
+            Tooltip {
+                Tip {
+                    text: root.ignored;
+                }
+            }
+        }
+
+        HorizontalLayout {
+            spacing: 8px;
+
+            VerticalLayout {
+                spacing: 4px;
+
+                Label {
+                    height: 18px;
+                    text: "Capture Region";
+                    horizontal-alignment: center;
+                }
+
+                Preview {
+                    width: 320px;
+                    height: 240px;
+                    source: root.live-image;
+                    message: root.live-message;
+                }
+            }
+
+            VerticalLayout {
+                spacing: 4px;
+
+                Label {
+                    height: 18px;
+                    text: "Split Image";
+                    horizontal-alignment: center;
+                }
+
+                Preview {
+                    width: 320px;
+                    height: 240px;
+                    source: root.split-image;
+                    message: root.has-image ? "" : "No image open";
+                }
+            }
+
+            VerticalLayout {
+                spacing: 4px;
+
+                HorizontalLayout {
+                    height: 18px;
+                    spacing: 4px;
+
+                    Button {
+                        width: 27px;
+                        text: "<";
+                        enabled: root.can-previous-kept;
+                        clicked => { root.previous-kept(); }
+                    }
+
+                    Label {
+                        text: root.kept-caption;
+                        horizontal-alignment: center;
+                    }
+
+                    Label {
+                        text: root.kept-position;
+                    }
+
+                    Button {
+                        width: 27px;
+                        text: ">";
+                        enabled: root.can-next-kept;
+                        clicked => { root.next-kept(); }
+                    }
+                }
+
+                Preview {
+                    width: 320px;
+                    height: 240px;
+                    source: root.kept-image;
+                    message: root.kept-caption == "" ? "The frames that would trigger the image show here."
+                        : root.kept-image.width == 0 ? "There was no capture at this frame." : "";
+                }
+            }
+        }
+
+        HorizontalLayout {
+            spacing: 8px;
+            alignment: start;
+
+            LiveReading {
+                width: 320px;
+                live: root.live;
+                highest: root.highest;
+                threshold: root.threshold;
+                live-value: root.live-value;
+                highest-value: root.highest-value;
+                threshold-value: root.threshold-value;
+                met: root.reached;
+                highest-met: root.highest-reached;
+            }
+
+            VerticalLayout {
+                alignment: center;
+
+                Button {
+                    width: 80px;
+                    height: 24px;
+                    text: "Start Over";
+                    enabled: root.has-image;
+                    clicked => { root.rearm(); }
+
+                    Tooltip {
+                        Tip {
+                            text: "Clear the highest similarity and the kept frames, and wait for a match again";
+                        }
+                    }
+                }
+            }
+
+            Label {
+                text: root.status;
+            }
+        }
+    }
+
+    if root.blocked: TouchArea {
+        clicked => { root.blocked-clicked(); }
+    }
+}

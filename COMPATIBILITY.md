@@ -20,8 +20,10 @@
 | Molok (POSIX signals, Linux) | Done, new |
 | Up to 4 split images compared for one split, grouped by number | Done, new, off by default |
 | Screenshots | Done |
+| Live Tester (one split image against the capture, outside of a run) | Done, new. Replaces AutoMask's tester |
 | Screen and window capture | Later |
-| Window (Slint): main window, settings, Align Region, Set Hotkey | Done, for capture devices |
+| Window (Slint): main window, settings, Set Hotkey, Live Tester | Done, for capture devices |
+| Align Region | Removed: split images are made for one capture setup, so the region is set once with its boxes |
 | Select Region and Select Window | Later, with screen and window capture |
 
 ## Tests

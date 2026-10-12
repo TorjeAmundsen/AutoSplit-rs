@@ -9,6 +9,8 @@ rust-version.workspace = true
 
 [dependencies]
 anyhow = "1.0.104"
+# Puts savestate files on the clipboard
+arboard = { version = "3.6.1", default-features = false }
 autosplit-capture = { version = "0.1.0", path = "../autosplit-capture" }
 autosplit-core = { version = "0.1.0", path = "../autosplit-core" }
 autosplit-input = { version = "0.1.0", path = "../autosplit-input" }
@@ -42,3 +44,5 @@ slint-build = "1.18.1"
 fontique = { version = "0.11.1", default-features = false, features = ["fontconfig-dlopen"] }
 # Signals Molok
 libc = "0.2.190"
+# The clipboard on Wayland too, for savestate files
+arboard = { version = "3.6.1", default-features = false, features = ["wayland-data-control"] }

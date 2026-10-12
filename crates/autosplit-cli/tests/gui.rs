@@ -7,11 +7,12 @@ use std::rc::Rc;
 
 use autosplit::gui::document::{Document, folder_text, profile_on_open};
 use autosplit::gui::log::{LOG_LINES, LogLines};
+use autosplit::gui::maker_plan::{WritePlan, plan_writes};
 use autosplit::gui::messages::{Answer, Buttons, Message, MessageQueue};
-use autosplit::gui::placement::{Area, centered_over};
+use autosplit::gui::placement::{Area, beside, centered_over};
 use autosplit::gui::recorder::key_code;
 use autosplit::gui::settings_form::{SettingEdit, Shown, apply, pick_first_device};
-use autosplit::gui::view::{Picture, Pixels, Update};
+use autosplit::gui::view::{KeptFrames, Picture, Pixels, Update};
 use autosplit_capture::DeviceInfo;
 use autosplit_core::commands::{Command, TimerLink};
 use autosplit_core::profile::{TimerConnection, UserProfile, VIDEO_CAPTURE_DEVICE};
@@ -492,8 +493,8 @@ fn red(picture: &Picture) -> Option<u8> {
 #[test_case(Picture::Keep, Picture::Keep => None; "nothing to show")]
 fn merging_updates_keeps_the_newest_picture(older: Picture, newer: Picture) -> Option<u8> {
     // Arrange
-    let older = Update { texts: None, live: older, current: Picture::Keep, tiles: [const { Picture::Keep }; 4] };
-    let newer = Update { texts: None, live: newer, current: Picture::Keep, tiles: [const { Picture::Keep }; 4] };
+    let older = Update { live: older, ..Update::default() };
+    let newer = Update { live: newer, ..Update::default() };
 
     // Act
     let merged = newer.after(older);
@@ -510,12 +511,14 @@ fn merging_updates_keeps_the_newest_tiles() {
         live: Picture::Keep,
         current: Picture::Keep,
         tiles: [pixels(1), pixels(2), pixels(3), Picture::Keep],
+        ..Update::default()
     };
     let newer = Update {
         texts: None,
         live: Picture::Keep,
         current: Picture::Keep,
         tiles: [Picture::Keep, pixels(4), Picture::Clear, Picture::Keep],
+        ..Update::default()
     };
 
     // Act
@@ -523,6 +526,36 @@ fn merging_updates_keeps_the_newest_tiles() {
 
     // Assert
     assert_eq!(merged.tiles.each_ref().map(red), [Some(1), Some(4), Some(0), None]);
+}
+
+#[test_case(1, 1 => Some(2); "same request merges")]
+#[test_case(1, 2 => None; "an older request's part is dropped")]
+fn merging_updates_drops_the_testers_part_of_an_older_request(older: u64, newer: u64) -> Option<u8> {
+    // Arrange
+    let older = Update { tester_live: pixels(2), tester_request: older, ..Update::default() };
+    let newer = Update { tester_request: newer, ..Update::default() };
+
+    // Act
+    let merged = newer.after(older);
+
+    // Assert, with the expected value checked by test_case
+    red(&merged.tester_live)
+}
+
+fn kept(cleared: bool, captions: &[&str]) -> KeptFrames {
+    let frame = || Some(Pixels::new(1, 1));
+    KeptFrames { cleared, added: captions.iter().map(|caption| (frame(), (*caption).to_owned())).collect() }
+}
+
+#[test_case(kept(false, &["a"]), kept(false, &["b"]) => (false, "a b".to_owned()); "newer frames come after")]
+#[test_case(kept(true, &["a"]), kept(false, &["b"]) => (true, "a b".to_owned()); "older clear stays")]
+#[test_case(kept(false, &["a"]), kept(true, &["b"]) => (true, "b".to_owned()); "newer clear drops the older frames")]
+fn merging_kept_frames(older: KeptFrames, newer: KeptFrames) -> (bool, String) {
+    // Act
+    let merged = newer.after(older);
+
+    // Assert, with the expected value checked by test_case
+    (merged.cleared, merged.added.into_iter().map(|(_, caption)| caption).collect::<Vec<_>>().join(" "))
 }
 
 #[test_case(TimerConnection::LiveSplitOne, TimerLink::Hotkeys => true; "switch waiting for the run")]
@@ -549,4 +582,36 @@ fn opens_over_the_main_window(main: Area, screen: Option<Area>) -> (i32, i32) {
 #[test]
 fn window_bigger_than_the_screen_keeps_its_corner_on_it() {
     assert_eq!(centered_over(SECOND_SCREEN, 3000, 2000, Some(SECOND_SCREEN)), (1920, 0));
+}
+
+#[test_case(Area { x: 2000, y: 100, width: 800, height: 450 } => (2800, 100); "on the right")]
+#[test_case(Area { x: 3600, y: 100, width: 800, height: 450 } => (2600, 100); "on the left when the right is off screen")]
+#[test_case(Area { x: 2600, y: 1200, width: 800, height: 450 } => (3400, 1040); "kept inside the bottom")]
+#[test_case(Area { x: 2400, y: 100, width: 1900, height: 450 } => (2850, 125); "centered when neither side fits")]
+fn tester_opens_beside_the_main_window(main: Area) -> (i32, i32) {
+    beside(main, 1000, 400, Some(SECOND_SCREEN))
+}
+
+fn plan(names: &[&str], existing: &[&str]) -> WritePlan {
+    let names: Vec<String> = names.iter().map(|name| (*name).to_owned()).collect();
+    let existing: Vec<PathBuf> = existing.iter().map(PathBuf::from).collect();
+    plan_writes(&names, &existing)
+}
+
+#[test]
+fn saving_replaces_files_with_the_same_name() {
+    // Act
+    let plan = plan(&["05_Bottle_(0.93).png"], &["05_Bottle_(0.93).png", "06_Boss_(0.9).png"]);
+
+    // Assert
+    assert_eq!(plan, WritePlan { overwrites: vec!["05_Bottle_(0.93).png".into()], stale: vec![] });
+}
+
+#[test_case(&["05_Bottle_(0.93).png"], &["05_Bottle_(0.9).png"] => vec![PathBuf::from("05_Bottle_(0.9).png")]; "another threshold")]
+#[test_case(&["05_Bottle_(0.93).png"], &["5_Bottle_(0.93).png"] => vec![PathBuf::from("5_Bottle_(0.93).png")]; "fewer digits")]
+#[test_case(&["reset_(0.96).png"], &["reset_(0.9)_[1].png"] => vec![PathBuf::from("reset_(0.9)_[1].png")]; "reset image")]
+#[test_case(&["05_Bottle_(0.93).png"], &["06_Boss_(0.9).png", "notes.txt", "base"] => Vec::<PathBuf>::new(); "other splits and files")]
+fn saving_finds_older_images_of_the_same_splits(names: &[&str], existing: &[&str]) -> Vec<PathBuf> {
+    // Act, with the expected value checked by test_case
+    plan(names, existing).stale
 }
