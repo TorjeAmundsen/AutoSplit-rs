@@ -66,10 +66,21 @@ pub enum SplitEdit {
     Instructions(String),
 }
 
+/// The field of a split that a problem is about, to show it next to.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Field {
+    Name,
+    Mask,
+    /// Same split as the one above.
+    Group,
+}
+
 /// Something to fix before saving, of one split or of the preset.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Problem {
     pub split: Option<usize>,
+    /// The split's field it's about. None for the preset's.
+    pub field: Option<Field>,
     pub message: String,
 }
 
@@ -210,42 +221,51 @@ impl Draft {
 
     /// What has to be fixed before saving, the preset's first, then each split's in order.
     pub fn problems(&self) -> Vec<Problem> {
-        let preset = self.preset_problems().into_iter().map(|message| Problem { split: None, message });
+        let preset = self.preset_problems().into_iter().map(|message| Problem { split: None, field: None, message });
         let splits = self.preset.splits.iter().enumerate().flat_map(|(index, split)| {
-            split_problems(split).into_iter().map(move |message| Problem { split: Some(index), message })
+            split_problems(split).into_iter().map(move |(field, message)| Problem {
+                split: Some(index),
+                field: Some(field),
+                message,
+            })
         });
         let mut problems: Vec<Problem> = preset.chain(splits).collect();
-        problems
-            .extend(self.group_problems().into_iter().map(|(index, message)| Problem { split: Some(index), message }));
+        problems.extend((self.group_problems().into_iter()).map(|(index, field, message)| Problem {
+            split: Some(index),
+            field: Some(field),
+            message,
+        }));
         // Stable, so each split's problems stay in the order they're found
         problems.sort_by_key(|problem| problem.split.map_or(0, |index| index + 1));
         problems
     }
 
-    /// Whether the split's name has to change: it isn't a valid name, or a split it's compared
-    /// together with has it.
-    pub fn name_has_problem(&self, index: usize) -> bool {
-        let Some(split) = self.preset.splits.get(index) else { return false };
-        validate_split_name(&split.name).is_err() || self.preset.same_name_in_group(index).is_some()
+    /// What's wrong with `field` of split `index`, one problem a line, or empty.
+    pub fn field_problems(&self, index: usize, field: Field) -> String {
+        (self.problems().into_iter())
+            .filter(|problem| problem.split == Some(index) && problem.field == Some(field))
+            .map(|problem| problem.message)
+            .collect::<Vec<_>>()
+            .join("\n")
     }
 
     /// Splits compared together: too many reset or start images, too many splits compared
     /// together, splits with no split to be compared with, and splits compared together with the
     /// same name. Those are the only splits that could get the same file name: the others have
     /// numbers of their own, and reset and start images past the first get their place.
-    fn group_problems(&self) -> Vec<(usize, String)> {
+    fn group_problems(&self) -> Vec<(usize, Field, String)> {
         let preset = &self.preset;
         let mut problems = Vec::new();
         let mut group_size = 0;
         for (index, split) in preset.splits.iter().enumerate() {
             if preset.keyword_place(index) > Some(MAX_GROUP_SIZE) {
                 let name = &split.name;
-                problems.push((index, format!("A preset can have up to {MAX_GROUP_SIZE} {name} images.")));
+                problems.push((index, Field::Name, format!("A preset can have up to {MAX_GROUP_SIZE} {name} images.")));
             }
             group_size = if preset.joins_previous(index) { group_size + 1 } else { 1 };
             if group_size == MAX_GROUP_SIZE + 1 {
                 let message = format!("Up to {MAX_GROUP_SIZE} splits can be compared together.");
-                problems.push((index, message));
+                problems.push((index, Field::Group, message));
             }
             if split.with_previous && !preset.joins_previous(index) {
                 let message = if split.is_keyword() {
@@ -253,12 +273,12 @@ impl Draft {
                 } else {
                     "There's no split before it to compare it with.".to_owned()
                 };
-                problems.push((index, message));
+                problems.push((index, Field::Group, message));
             }
         }
         for index in (0..preset.splits.len()).filter(|&index| preset.same_name_in_group(index).is_some()) {
             let message = "It has the same name as a split it's compared together with. Give it another name.";
-            problems.push((index, message.to_owned()));
+            problems.push((index, Field::Name, message.to_owned()));
         }
         problems
     }
@@ -282,13 +302,13 @@ fn new_split(name: &str) -> PresetSplit {
     PresetSplit { name: name.into(), ..PresetSplit::default() }
 }
 
-fn split_problems(split: &PresetSplit) -> Vec<String> {
+fn split_problems(split: &PresetSplit) -> Vec<(Field, String)> {
     let mut problems = Vec::new();
     if let Err(error) = validate_split_name(&split.name) {
-        problems.push(error.to_string());
+        problems.push((Field::Name, error.to_string()));
     }
     if split.mask.is_empty() {
-        problems.push("It needs a mask. Choose one.".to_owned());
+        problems.push((Field::Mask, "It needs a mask. Choose one.".to_owned()));
     }
     problems
 }

@@ -264,11 +264,12 @@ fn main() {
     maker.set_form(SplitForm {
         parts: file_name_parts("03_EnterDeku_(0.92)_[60]_#1000#.png"),
         file: "03_EnterDeku_(0.92)_[60]_#1000#.png".into(),
-        problem: "".into(),
+        name_problem: "".into(),
+        mask_problem: "".into(),
+        group_problem: "".into(),
         mask: "006_a_button_flip.png".into(),
         savestate: "006 enter deku.gzs".into(),
         can_join: true,
-        name_error: false,
     });
     maker.set_problems("Split1: It needs a mask. Choose one.".into());
     maker.set_has_problems(true);
@@ -276,8 +277,9 @@ fn main() {
     save(&window, PhysicalSize::new(828, 672), &folder.join("maker-edit.png"));
     // A long problem wraps under the name
     maker.set_form(SplitForm {
-        problem: "It has the same name as a split it's compared together with. Give it another name.".into(),
-        name_error: true,
+        name_problem: "It has the same name as a split it's compared together with. Give it another name.".into(),
+        group_problem: "There's no split before it to compare it with.".into(),
+        mask_problem: "It needs a mask. Choose one.".into(),
         ..maker.get_form()
     });
     save(&window, PhysicalSize::new(828, 672), &folder.join("maker-edit-problem.png"));

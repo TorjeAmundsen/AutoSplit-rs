@@ -1,6 +1,6 @@
 //! The preset editor's draft: edits, list operations kept in step with other lists, and problems.
 
-use autosplit::gui::preset_form::{Draft, ListChange, Problem, SplitEdit, field_value};
+use autosplit::gui::preset_form::{Draft, Field, ListChange, Problem, SplitEdit, field_value};
 use autosplit_core::preset::{Preset, PresetSplit};
 use test_case::test_case;
 
@@ -163,14 +163,23 @@ fn problems_name_their_split() {
     let problems = draft.problems();
 
     // Assert
-    let problem = |split: Option<usize>, message: &str| Problem { split, message: message.into() };
+    let problem =
+        |split: Option<usize>, field: Option<Field>, message: &str| Problem { split, field, message: message.into() };
     assert_eq!(
         problems,
         [
-            problem(None, "The preset needs a name."),
-            problem(Some(0), "It needs a mask. Choose one."),
-            problem(Some(1), "The name can't have '(', which AutoSplit reads as the start of a setting in file names."),
-            problem(Some(3), "It has the same name as a split it's compared together with. Give it another name."),
+            problem(None, None, "The preset needs a name."),
+            problem(Some(0), Some(Field::Mask), "It needs a mask. Choose one."),
+            problem(
+                Some(1),
+                Some(Field::Name),
+                "The name can't have '(', which AutoSplit reads as the start of a setting in file names."
+            ),
+            problem(
+                Some(3),
+                Some(Field::Name),
+                "It has the same name as a split it's compared together with. Give it another name."
+            ),
         ]
     );
 }
@@ -185,7 +194,7 @@ fn a_preset_without_splits_needs_one() {
     let problems = draft.problems();
 
     // Assert
-    assert_eq!(problems, [Problem { split: None, message: "The preset needs a split. Add one.".into() }]);
+    assert_eq!(problems, [Problem { split: None, field: None, message: "The preset needs a split. Add one.".into() }]);
 }
 
 #[test_case(1.3 => 1.3; "pause")]
@@ -284,7 +293,7 @@ fn a_preset_of_reset_and_start_images_needs_a_split() {
 
     // Assert
     let message = "The preset needs a split besides the start_auto_splitter and reset images.";
-    assert_eq!(problems, [Problem { split: None, message: message.into() }]);
+    assert_eq!(problems, [Problem { split: None, field: None, message: message.into() }]);
 }
 
 #[test_case(&["Boss", "Boss"], 1 => (true, true); "same name")]
@@ -303,7 +312,7 @@ fn splits_compared_together_need_their_own_names(names: &[&str], index: usize) -
     let problems = split_problems(&draft);
 
     // Assert: a problem, so it can't be saved, and the Name field shows it
-    (problems.iter().any(|(split, _)| *split == index), draft.name_has_problem(index))
+    (problems.iter().any(|(split, _)| *split == index), !draft.field_problems(index, Field::Name).is_empty())
 }
 
 #[test]
@@ -315,7 +324,7 @@ fn the_same_name_is_fine_for_splits_not_compared_together() {
     let problems = draft.problems();
 
     // Assert
-    assert_eq!((problems, draft.name_has_problem(1)), (Vec::new(), false));
+    assert_eq!((problems, draft.field_problems(1, Field::Name)), (Vec::new(), String::new()));
 }
 
 #[test]
@@ -430,4 +439,19 @@ fn an_untouched_new_preset_has_no_changes_but_can_be_saved() {
 
     // Assert: closing it doesn't ask, and an edit counts
     assert_eq!((untouched, draft.has_changes()), ((false, true), true));
+}
+
+#[test]
+fn problems_show_by_the_field_they_are_about() {
+    // Arrange: no mask, an invalid name, and compared with nothing above
+    let mut draft = draft(&["Boss"]);
+    draft.edit_split(0, SplitEdit::Mask(String::new()));
+    draft.edit_split(0, SplitEdit::Name("Boss {".into()));
+    draft.edit_split(0, SplitEdit::WithPrevious(true));
+
+    // Act
+    let fields = [Field::Name, Field::Mask, Field::Group].map(|field| !draft.field_problems(0, field).is_empty());
+
+    // Assert
+    assert_eq!(fields, [true, true, true]);
 }

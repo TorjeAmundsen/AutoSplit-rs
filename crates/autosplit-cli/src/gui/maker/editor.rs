@@ -10,7 +10,7 @@ use autosplit_core::preset::{Preset, delete_preset, new_preset_folder, save_pres
 use slint::{ComponentHandle, SharedString};
 
 use super::super::messages::{Answer, Message};
-use super::super::preset_form::{Draft, ListChange, Problem, SplitEdit, field_value};
+use super::super::preset_form::{Draft, Field, ListChange, Problem, SplitEdit, field_value};
 use super::super::ui::SplitForm;
 use super::super::{Gui, file_name_parts};
 use super::{Kept, canonical, presets_folder, problem_summary};
@@ -232,15 +232,15 @@ impl Gui {
         window.set_has_split(selected < splits.len());
         if let Some(split) = splits.get(selected) {
             let file = names.get(selected).cloned().unwrap_or_default();
-            let problem = problems.iter().find(|problem| problem.split == Some(selected));
             window.set_form(SplitForm {
                 parts: file_name_parts(&file),
                 file: file.into(),
-                problem: problem.map(|problem| problem.message.as_str()).unwrap_or_default().into(),
+                name_problem: edit.draft.field_problems(selected, Field::Name).into(),
+                mask_problem: edit.draft.field_problems(selected, Field::Mask).into(),
+                group_problem: edit.draft.field_problems(selected, Field::Group).into(),
                 mask: file_label(&split.mask).into(),
                 savestate: file_label(&split.savestate).into(),
                 can_join: edit.draft.preset.can_join_previous(selected),
-                name_error: edit.draft.name_has_problem(selected),
             });
         }
         let summary = match problem_summary(&edit.draft.preset, &problems) {

@@ -30,14 +30,31 @@ export struct MakerRow {
 export struct SplitForm {
     parts: [NamePart],
     file: string,
-    // What has to be fixed, or empty
-    problem: string,
+    // What has to be fixed in each field, one problem a line, or empty
+    name-problem: string,
+    mask-problem: string,
+    group-problem: string,
     mask: string,
     savestate: string,
     // There's a split above that it can be compared with
     can-join: bool,
-    // The name has to change, like when a split compared together with it has it too
-    name-error: bool,
+}
+
+// A field's problems under it, lined up with the field and wrapped so all of them show.
+component FieldProblem inherits HorizontalLayout {
+    in property <length> label-width;
+    in property <string> text;
+    spacing: 6px;
+
+    Rectangle {
+        width: root.label-width;
+    }
+
+    Text {
+        color: Theme.error;
+        text: root.text;
+        wrap: word-wrap;
+    }
 }
 
 export component MakerWindow inherits Window {
@@ -640,13 +657,13 @@ export component MakerWindow inherits Window {
                         }
 
                         TextField {
-                            error: root.form.name-error;
+                            error: root.form.name-problem != "";
                             text <=> root.split-name;
                             edited(text) => { root.split-name-edited(text); }
                         }
                     }
 
-                    if root.has-split && root.form.problem == "": HorizontalLayout {
+                    if root.has-split: HorizontalLayout {
                         height: 16px;
                         spacing: 6px;
 
@@ -664,19 +681,9 @@ export component MakerWindow inherits Window {
                         }
                     }
 
-                    // Wrapped onto as many lines as it needs, so all of it shows
-                    if root.has-split && root.form.problem != "": HorizontalLayout {
-                        spacing: 6px;
-
-                        Rectangle {
-                            width: root.label-width;
-                        }
-
-                        Text {
-                            color: Theme.error;
-                            text: root.form.problem;
-                            wrap: word-wrap;
-                        }
+                    if root.has-split && root.form.name-problem != "": FieldProblem {
+                        label-width: root.label-width;
+                        text: root.form.name-problem;
                     }
 
                     if root.has-split: HorizontalLayout {
@@ -690,8 +697,8 @@ export component MakerWindow inherits Window {
 
                         Label {
                             horizontal-stretch: 1;
-                            color: root.form.mask == "" ? Theme.secondary-text : Theme.text;
-                            text: root.form.mask == "" ? "None yet" : root.form.mask;
+                            color: root.form.mask-problem != "" ? Theme.error : root.form.mask == "" ? Theme.secondary-text : Theme.text;
+                            text: root.form.mask-problem != "" ? root.form.mask-problem : root.form.mask == "" ? "None yet" : root.form.mask;
 
                             Tooltip {
                                 Tip {
@@ -848,6 +855,11 @@ export component MakerWindow inherits Window {
                                 }
                             }
                         }
+                    }
+
+                    if root.has-split && root.form.group-problem != "": FieldProblem {
+                        label-width: root.label-width;
+                        text: root.form.group-problem;
                     }
 
                     if root.has-split: HorizontalLayout {
