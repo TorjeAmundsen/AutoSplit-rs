@@ -250,9 +250,10 @@ impl Gui {
     fn choose_split_file(self: &Rc<Self>, savestate: bool) {
         let maker = self.maker.borrow();
         let Some(edit) = &maker.edit else { return };
-        let current = edit.draft.preset.splits.get(maker.selected).map(|split| {
+        // Without one yet, the preset's own folder
+        let current = edit.draft.preset.splits.get(maker.selected).and_then(|split| {
             let path = if savestate { &split.savestate } else { &split.mask };
-            maker.file(path)
+            (!path.is_empty()).then(|| maker.file(path))
         });
         let folder = current
             .and_then(|path| path.parent().map(Path::to_owned))

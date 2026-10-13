@@ -709,6 +709,9 @@ impl Gui {
         let mut held = Modifiers::empty();
         self.windows.settings.window().on_winit_window_event(move |_, event| {
             let Some(gui) = weak.upgrade() else { return EventResult::Propagate };
+            if gui.swallowed_while_blocked(event) {
+                return EventResult::PreventDefault;
+            }
             match event {
                 WindowEvent::ModifiersChanged(modifiers) => held = modifiers_held(modifiers.state()),
                 WindowEvent::Focused(focused) => {
@@ -787,6 +790,9 @@ impl Gui {
         let weak = self.me.clone();
         self.windows.tester.window().on_winit_window_event(move |_, event| {
             let Some(gui) = weak.upgrade() else { return EventResult::Propagate };
+            if gui.swallowed_while_blocked(event) {
+                return EventResult::PreventDefault;
+            }
             match event {
                 WindowEvent::Occluded(occluded) => {
                     gui.tester_occluded.set(*occluded);
@@ -799,6 +805,12 @@ impl Gui {
                 _ => {}
             }
             EventResult::Propagate
+        });
+
+        let weak = self.me.clone();
+        self.windows.maker.window().on_winit_window_event(move |_, event| match weak.upgrade() {
+            Some(gui) if gui.swallowed_while_blocked(event) => EventResult::PreventDefault,
+            _ => EventResult::Propagate,
         });
     }
 
@@ -1420,6 +1432,26 @@ impl Gui {
 
     fn focus_message(&self) {
         self.windows.message.window().with_winit_window(|window| window.focus_window());
+    }
+
+    /// While a message box is open, keys, typed text and scrolling don't reach the windows under
+    /// it. Slint would change a field or the selected split before the callback that's turned
+    /// away, so the window would show what Rust doesn't have. A key press brings the message box
+    /// to the front instead.
+    fn swallowed_while_blocked(&self, event: &WindowEvent) -> bool {
+        if !self.blocked() {
+            return false;
+        }
+        match event {
+            WindowEvent::KeyboardInput { event, .. } => {
+                if event.state == ElementState::Pressed {
+                    self.focus_message();
+                }
+                true
+            }
+            WindowEvent::Ime(_) | WindowEvent::MouseWheel { .. } => true,
+            _ => false,
+        }
     }
 
     /// A message box was answered with a button, or closed.
