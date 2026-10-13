@@ -7,12 +7,12 @@ use std::rc::Rc;
 
 use autosplit_core::mask::Mask;
 use autosplit_core::preset::{Preset, delete_preset, new_preset_folder, save_preset};
-use slint::{ComponentHandle, SharedString};
+use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
 
+use super::super::Gui;
 use super::super::messages::{Answer, Message};
-use super::super::preset_form::{Draft, Field, ListChange, Problem, SplitEdit, field_value};
+use super::super::preset_form::{Draft, Field, ListChange, Problem, SplitEdit, SplitKind, field_value};
 use super::super::ui::SplitForm;
-use super::super::{Gui, file_name_parts};
 use super::{Kept, canonical, presets_folder, problem_summary};
 
 /// A preset being edited, with what the window had before, to go back to on Cancel.
@@ -40,6 +40,14 @@ impl Gui {
         on!(weak, maker, on_game_edited, (text) gui => gui.edit_preset(|preset| preset.game = text.to_string()));
         on!(weak, maker, on_name_edited, (text) gui => gui.edit_preset(|preset| preset.name = text.to_string()));
         on!(weak, maker, on_split_name_edited, (text) gui => gui.edit_split(SplitEdit::Name(text.into())));
+        let kinds: Vec<SharedString> = SplitKind::ALL.iter().map(|kind| kind.label().into()).collect();
+        maker.set_kinds(ModelRc::new(VecModel::from(kinds)));
+        on!(weak, maker, on_kind_edited, (index) gui => {
+            let Some(&kind) = SplitKind::ALL.get(index as usize) else { return };
+            gui.edit_split(SplitEdit::Kind(kind));
+            // The name and Same split as the one above follow it
+            gui.show_form();
+        });
         on!(weak, maker, on_threshold_edited, (value) gui => gui.edit_split(SplitEdit::Threshold(field_value(value))));
         on!(weak, maker, on_delay_edited, (value) gui => gui.edit_split(SplitEdit::Delay(value.max(0.0).round() as u32)));
         on!(weak, maker, on_pause_edited, (on, value) gui => {
@@ -209,6 +217,8 @@ impl Gui {
         let window = &self.windows.maker;
         window.set_form_generation(window.get_form_generation().wrapping_add(1));
         window.set_split_name(split.name.as_str().into());
+        let kind = SplitKind::of(&split);
+        window.set_split_kind(SplitKind::ALL.iter().position(|&each| each == kind).unwrap_or_default() as i32);
         window.set_threshold(split.threshold() as f32);
         window.set_delay(split.delay as f32);
         window.set_has_pause(split.pause.is_some());
@@ -220,9 +230,9 @@ impl Gui {
         window.set_instructions(split.instructions.as_str().into());
     }
 
-    /// What editing shows besides the fields: the form's file name and problem, and whether the
-    /// preset can be saved. `names` are the splits' file names.
-    pub(super) fn show_editing(&self, names: &[String]) -> Vec<bool> {
+    /// What editing shows besides the fields: the form's problems, and whether the preset can be
+    /// saved.
+    pub(super) fn show_editing(&self) -> Vec<bool> {
         let maker = self.maker.borrow();
         let Some(edit) = &maker.edit else { return Vec::new() };
         let problems = edit.draft.problems();
@@ -231,10 +241,7 @@ impl Gui {
         let window = &self.windows.maker;
         window.set_has_split(selected < splits.len());
         if let Some(split) = splits.get(selected) {
-            let file = names.get(selected).cloned().unwrap_or_default();
             window.set_form(SplitForm {
-                parts: file_name_parts(&file),
-                file: file.into(),
                 name_problem: edit.draft.field_problems(selected, Field::Name).into(),
                 mask_problem: edit.draft.field_problems(selected, Field::Mask).into(),
                 group_problem: edit.draft.field_problems(selected, Field::Group).into(),
@@ -242,6 +249,9 @@ impl Gui {
                 savestate: file_label(&split.savestate).into(),
                 can_join: edit.draft.preset.can_join_previous(selected),
             });
+            // Also when typing the name made it a start or reset image
+            let kind = SplitKind::of(split);
+            window.set_split_kind(SplitKind::ALL.iter().position(|&each| each == kind).unwrap_or_default() as i32);
         }
         let summary = match problem_summary(&edit.draft.preset, &problems) {
             Some(summary) => summary,

@@ -459,7 +459,7 @@ impl Gui {
     fn show_maker(&self) {
         let names = self.maker_file_names();
         let in_place = self.saves_in_place(&names);
-        let mut problems = self.show_editing(&names);
+        let mut problems = self.show_editing();
         let preset_problems = self.preset_problems();
         if !self.editing() {
             problems = (0..names.len())

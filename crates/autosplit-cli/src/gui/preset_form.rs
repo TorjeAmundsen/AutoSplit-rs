@@ -46,9 +46,41 @@ impl ListChange {
     }
 }
 
+/// What a split is, which AutoSplit reads from its name: a split, or the image that starts or
+/// resets the run, named exactly `start_auto_splitter` or `reset`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SplitKind {
+    Split,
+    Start,
+    Reset,
+}
+
+impl SplitKind {
+    /// In the order the form lists them.
+    pub const ALL: [Self; 3] = [Self::Split, Self::Start, Self::Reset];
+
+    pub fn of(split: &PresetSplit) -> Self {
+        match split.name.as_str() {
+            START_KEYWORD => Self::Start,
+            RESET_KEYWORD => Self::Reset,
+            _ => Self::Split,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Split => "Split",
+            Self::Start => "Start image",
+            Self::Reset => "Reset image",
+        }
+    }
+}
+
 /// A field of a split, as the form has it.
 #[derive(Clone, Debug, PartialEq)]
 pub enum SplitEdit {
+    /// Sets the name for a start or reset image. A split gets a new name of its own.
+    Kind(SplitKind),
     Name(String),
     /// A path relative to the preset's folder, or a picked file's absolute path.
     Mask(String),
@@ -117,8 +149,12 @@ impl Draft {
 
     /// Puts an edit of split `index` into the preset.
     pub fn edit_split(&mut self, index: usize, edit: SplitEdit) {
+        if let SplitEdit::Kind(kind) = edit {
+            return self.set_kind(index, kind);
+        }
         let Some(split) = self.preset.splits.get_mut(index) else { return };
         match edit {
+            SplitEdit::Kind(_) => {}
             SplitEdit::Name(name) => split.name = name,
             SplitEdit::Mask(mask) => split.mask = mask,
             // The default isn't written, so the preset keeps following it
@@ -148,15 +184,39 @@ impl Draft {
         start..end.unwrap_or(self.preset.splits.len())
     }
 
+    /// Makes split `index` a split, start image or reset image. Those can't be compared with the
+    /// split above.
+    fn set_kind(&mut self, index: usize, kind: SplitKind) {
+        let Some(split) = self.preset.splits.get(index) else { return };
+        if SplitKind::of(split) == kind {
+            return;
+        }
+        let name = match kind {
+            SplitKind::Start => START_KEYWORD.to_owned(),
+            SplitKind::Reset => RESET_KEYWORD.to_owned(),
+            SplitKind::Split => self.free_split_name(),
+        };
+        let split = &mut self.preset.splits[index];
+        split.name = name;
+        if kind != SplitKind::Split {
+            split.with_previous = false;
+        }
+    }
+
+    /// `Split1`, `Split2` and so on, whichever no split has.
+    fn free_split_name(&self) -> String {
+        (1..)
+            .map(|n| format!("Split{n}"))
+            .find(|name| self.preset.splits.iter().all(|split| split.name != *name))
+            .expect("some number is free")
+    }
+
     /// A new split after `selected` and the splits compared together with it, or at the end.
     /// Returns where it is.
     pub fn add(&mut self, selected: Option<usize>) -> (usize, ListChange) {
         let count = self.preset.splits.len();
         let at = selected.filter(|&index| index < count).map_or(count, |index| self.group(index).end);
-        let name = (1..)
-            .map(|n| format!("Split{n}"))
-            .find(|name| self.preset.splits.iter().all(|split| split.name != *name))
-            .expect("some number is free");
+        let name = self.free_split_name();
         self.preset.splits.insert(at, new_split(&name));
         (at, ListChange::Insert(at))
     }

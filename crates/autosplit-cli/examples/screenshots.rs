@@ -252,6 +252,8 @@ fn main() {
     maker.set_rows(std::rc::Rc::new(slint::VecModel::from(rows)).into());
     maker.set_selected(3);
     maker.set_editing(true);
+    let kinds: Vec<slint::SharedString> = ["Split", "Start image", "Reset image"].map(Into::into).into();
+    maker.set_kinds(std::rc::Rc::new(slint::VecModel::from(kinds)).into());
     maker.set_edit_game("The Legend of Zelda: Ocarina of Time".into());
     maker.set_edit_name("No Wrong Warp".into());
     maker.set_has_split(true);
@@ -262,8 +264,6 @@ fn main() {
     maker.set_pause(60.0);
     maker.set_instructions("After loading, advance 1 frame before taking your screenshot.".into());
     maker.set_form(SplitForm {
-        parts: file_name_parts("03_EnterDeku_(0.92)_[60]_#1000#.png"),
-        file: "03_EnterDeku_(0.92)_[60]_#1000#.png".into(),
         name_problem: "".into(),
         mask_problem: "".into(),
         group_problem: "".into(),

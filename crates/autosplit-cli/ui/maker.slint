@@ -28,8 +28,6 @@ export struct MakerRow {
 
 // What the form shows of the selected split besides its fields, while editing.
 export struct SplitForm {
-    parts: [NamePart],
-    file: string,
     // What has to be fixed in each field, one problem a line, or empty
     name-problem: string,
     mask-problem: string,
@@ -104,6 +102,9 @@ export component MakerWindow inherits Window {
     // while they're edited
     in property <SplitForm> form;
     in-out property <string> split-name;
+    // What the split is: 0 a split, 1 the start image, 2 a reset image, from kinds
+    in-out property <int> split-kind;
+    in property <[string]> kinds;
     in-out property <float> threshold;
     // Milliseconds
     in-out property <float> delay;
@@ -135,6 +136,7 @@ export component MakerWindow inherits Window {
     callback game-edited(string);
     callback name-edited(string);
     callback split-name-edited(string);
+    callback kind-edited(int);
     callback threshold-edited(float);
     callback delay-edited(float);
     callback pause-edited(bool, float);
@@ -653,31 +655,42 @@ export component MakerWindow inherits Window {
 
                         Label {
                             width: root.label-width;
-                            text: "Name";
+                            text: "Type";
                         }
 
-                        TextField {
-                            error: root.form.name-problem != "";
-                            text <=> root.split-name;
-                            edited(text) => { root.split-name-edited(text); }
+                        ComboBox {
+                            width: 140px;
+                            model: root.kinds;
+                            current-index <=> root.split-kind;
+                            selected => { root.kind-edited(root.split-kind); }
+
+                            Tooltip {
+                                Tip {
+                                    text: "A split, or the image that starts the timer or resets the run. AutoSplit reads it from the name, start_auto_splitter or reset, which this sets.";
+                                }
+                            }
+                        }
+
+                        Rectangle {
+                            horizontal-stretch: 1;
                         }
                     }
 
                     if root.has-split: HorizontalLayout {
-                        height: 16px;
+                        height: 24px;
                         spacing: 6px;
 
-                        Rectangle {
+                        Label {
                             width: root.label-width;
+                            text: "Name";
                         }
 
-                        Rectangle {
-                            clip: true;
-
-                            FileName {
-                                parts: root.form.parts;
-                                file: root.form.file;
-                            }
+                        // A start or reset image's name is what makes it one
+                        TextField {
+                            error: root.form.name-problem != "";
+                            enabled: root.split-kind == 0;
+                            text <=> root.split-name;
+                            edited(text) => { root.split-name-edited(text); }
                         }
                     }
 

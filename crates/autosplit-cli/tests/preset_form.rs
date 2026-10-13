@@ -1,6 +1,6 @@
 //! The preset editor's draft: edits, list operations kept in step with other lists, and problems.
 
-use autosplit::gui::preset_form::{Draft, Field, ListChange, Problem, SplitEdit, field_value};
+use autosplit::gui::preset_form::{Draft, Field, ListChange, Problem, SplitEdit, SplitKind, field_value};
 use autosplit_core::preset::{Preset, PresetSplit};
 use test_case::test_case;
 
@@ -454,4 +454,31 @@ fn problems_show_by_the_field_they_are_about() {
 
     // Assert
     assert_eq!(fields, [true, true, true]);
+}
+
+#[test_case(SplitKind::Reset => ("reset".to_owned(), false); "reset image")]
+#[test_case(SplitKind::Start => ("start_auto_splitter".to_owned(), false); "start image")]
+#[test_case(SplitKind::Split => ("Door".to_owned(), true); "already a split")]
+fn the_kind_sets_the_name(kind: SplitKind) -> (String, bool) {
+    // Arrange: a split compared with the one above
+    let mut draft = grouped(&["Boss", "+Door"]);
+
+    // Act
+    draft.edit_split(1, SplitEdit::Kind(kind));
+
+    // Assert, with the expected value checked by test_case: start and reset images aren't
+    let split = &draft.preset.splits[1];
+    (split.name.clone(), split.with_previous)
+}
+
+#[test]
+fn a_reset_image_made_a_split_gets_a_name_of_its_own() {
+    // Arrange
+    let mut draft = draft(&["reset", "Split1"]);
+
+    // Act
+    draft.edit_split(0, SplitEdit::Kind(SplitKind::Split));
+
+    // Assert
+    assert_eq!((names(&draft), SplitKind::of(&draft.preset.splits[0])), (vec!["Split2", "Split1"], SplitKind::Split));
 }
