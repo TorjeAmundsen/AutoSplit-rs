@@ -223,10 +223,10 @@ impl Draft {
         validate_split_name(&split.name).is_err() || self.preset.same_name_in_group(index).is_some()
     }
 
-    /// Splits compared together, or with the same file name: too many reset or start images,
-    /// too many splits compared together, splits with no split to be compared with, splits
-    /// compared together with the same name, and split images that would be written over each
-    /// other.
+    /// Splits compared together: too many reset or start images, too many splits compared
+    /// together, splits with no split to be compared with, and splits compared together with the
+    /// same name. Those are the only splits that could get the same file name: the others have
+    /// numbers of their own, and reset and start images past the first get their place.
     fn group_problems(&self) -> Vec<(usize, String)> {
         let preset = &self.preset;
         let mut problems = Vec::new();
@@ -250,24 +250,9 @@ impl Draft {
                 problems.push((index, message));
             }
         }
-        let same_name: Vec<usize> =
-            (0..preset.splits.len()).filter(|&index| preset.same_name_in_group(index).is_some()).collect();
-        for &index in &same_name {
+        for index in (0..preset.splits.len()).filter(|&index| preset.same_name_in_group(index).is_some()) {
             let message = "It has the same name as a split it's compared together with. Give it another name.";
             problems.push((index, message.to_owned()));
-        }
-        let names = preset.file_names(None);
-        for (index, name) in names.iter().enumerate() {
-            if same_name.contains(&index) {
-                continue;
-            }
-            if let Some(first) = names[..index].iter().position(|other| other.eq_ignore_ascii_case(name)) {
-                let other = &preset.splits[first].name;
-                problems.push((
-                    index,
-                    format!("It has the same file name as {other} above. Change its name or a setting."),
-                ));
-            }
         }
         problems
     }

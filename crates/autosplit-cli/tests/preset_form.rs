@@ -289,6 +289,7 @@ fn a_preset_of_reset_and_start_images_needs_a_split() {
 
 #[test_case(&["Boss", "Boss"], 1 => (true, true); "same name")]
 #[test_case(&["Boss", "boss"], 1 => (true, true); "same name in another case")]
+#[test_case(&["Bär", "BÄR"], 1 => (true, true); "same name in another case beyond ascii")]
 #[test_case(&["Boss", "Door", "Boss"], 2 => (true, true); "same name as the first of three")]
 #[test_case(&["Boss", "Boss Alt"], 1 => (false, false); "other name")]
 fn splits_compared_together_need_their_own_names(names: &[&str], index: usize) -> (bool, bool) {
