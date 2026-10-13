@@ -28,6 +28,8 @@ export global Theme {
     out property <color> highest: dark ? #ffb84d : #d97706;
     // Something that's ignored, like a value in a split image's name
     out property <color> warning: dark ? #e0a040 : #a65f00;
+    // Something that has to be fixed, like a split without a mask
+    out property <color> error: dark ? #ff7070 : #c42b1c;
     out property <color> tooltip: dark ? #2d2d2d : #ffffdc;
     out property <color> item-hover: dark ? #3d3d3d : #e5e5e5;
     out property <color> tab: dark ? Palette.background.darker(20%) : Palette.background.darker(10%);
@@ -42,19 +44,32 @@ export global WindowFocus {
 }
 
 // A tooltip's content, drawn like Qt's: plain text in a box. Used as `Tooltip { Tip { text: ... } }`.
+// Slint draws tooltips inside the window and cuts off what's past its edge, so long text wraps at
+// a width that fits the narrowest windows that have tooltips, like Settings.
 export component Tip inherits Rectangle {
     in property <string> text;
     background: Theme.tooltip;
     border-width: 1px;
     border-color: Theme.outline;
+    // The tooltip's popup takes the preferred size, not the size
+    preferred-width: min(unwrapped.preferred-width, 300px) + 8px;
+    preferred-height: body.preferred-height + 8px;
+    width: self.preferred-width;
+    height: self.preferred-height;
 
-    VerticalLayout {
-        padding: 4px;
+    // Only measures the text on one line, for short tips that don't need the whole width
+    unwrapped := Text {
+        visible: false;
+        text: root.text;
+    }
 
-        Text {
-            text: root.text;
-            color: Theme.text;
-        }
+    body := Text {
+        x: 4px;
+        y: 4px;
+        width: parent.width - 8px;
+        text: root.text;
+        wrap: word-wrap;
+        color: Theme.text;
     }
 }
 
@@ -483,6 +498,8 @@ export component TextField inherits Rectangle {
     in property <bool> enabled: true;
     in property <bool> read-only;
     in property <string> placeholder-text;
+    // What's in it has to change, shown with a red frame
+    in property <bool> error;
     out property <bool> has-focus: input.has-focus;
     callback edited(string);
     callback accepted(string);
@@ -493,6 +510,11 @@ export component TextField inherits Rectangle {
         height: 100%;
         focused: input.has-focus;
         enabled: root.enabled;
+    }
+
+    if root.error: Rectangle {
+        border-width: 1px;
+        border-color: Theme.error;
     }
 
     Rectangle {
@@ -543,10 +565,16 @@ export component SpinBox inherits Rectangle {
     in property <bool> enabled: true;
     // Off: typing only reports on Enter or leaving the field, for values that are costly to apply
     in property <bool> live: true;
+    // Changes when the field is filled with another thing's value, like another split's: what was
+    // typed before is dropped instead of reported for it
+    in property <int> generation;
     callback edited(float);
     forward-focus: input;
     // The arrow held down: 1 up, -1 down, 0 none
     property <int> holding;
+    // Something was typed since the value was last shown, while generation was typed-at
+    property <bool> typed;
+    property <int> typed-at;
 
     function shown(number: float) -> string {
         return root.decimals == 0 ? round(number) : number.to-fixed(root.decimals);
@@ -555,6 +583,7 @@ export component SpinBox inherits Rectangle {
     // Sets a value, corrected into the range, and reports it when it changed
     function set(number: float) {
         let corrected = max(root.minimum, min(root.maximum, number));
+        root.typed = false;
         input.text = root.shown(corrected);
         if (corrected != root.value) {
             root.value = corrected;
@@ -562,12 +591,20 @@ export component SpinBox inherits Rectangle {
         }
     }
 
+    // Only what was typed is reported: the shown text is rounded, and reporting it would change a
+    // value that's only been looked at
     function commit() {
-        if (input.text.is-float()) {
+        if (root.typed && root.typed-at == root.generation && input.text.is-float()) {
             root.set(input.text.to-float());
         } else {
+            root.typed = false;
             input.text = root.shown(root.value);
         }
+    }
+
+    changed generation => {
+        root.typed = false;
+        input.text = root.shown(root.value);
     }
 
     // Typing replaces the binding to value, so changes from elsewhere are shown by hand
@@ -613,6 +650,8 @@ export component SpinBox inherits Rectangle {
             selection-background-color: Theme.selection;
             text: root.shown(root.value);
             edited => {
+                root.typed = true;
+                root.typed-at = root.generation;
                 if (root.live && self.text.is-float() && self.text.to-float() >= root.minimum && self.text.to-float() <= root.maximum && self.text.to-float() != root.value) {
                     root.value = self.text.to-float();
                     root.edited(root.value);

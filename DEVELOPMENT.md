@@ -15,7 +15,7 @@ The tests need no internet, Python or capture devices. The LiveSplit One tests l
 
 ## Release builds
 
-`build.ps1` (PowerShell 7) builds release zips into `build/`, named `AutoSplit-v{version}-{target}.zip`. It strips symbols unless you pass `--debug`. Windows zips have `autosplit.exe` and `autosplit.com` (see [From a terminal](TUTORIAL.md#from-a-terminal)).
+`build.ps1` (PowerShell 7) builds release zips into `build/`, named `AutoSplit-v{version}-{target}.zip`. It strips symbols unless you pass `--debug`. Windows zips have `AutoSplit.exe` and `AutoSplit.com`, renamed from Cargo's `autosplit.exe` and `autosplit-console.exe` (see [From a terminal](TUTORIAL.md#from-a-terminal)).
 
 ```sh
 ./build.ps1                  # pick a target from a menu
@@ -41,10 +41,10 @@ The script installs the Rust targets and the cargo tools it needs. macOS builds 
 
 ## Layout
 
-- `crates/autosplit-core`: everything that doesn't depend on the OS. `runner.rs` is the split state machine. It never blocks: the host calls `tick` with the latest frame when `next_wakeup` is due, and acts on the effects it returns. `tester.rs` is the Live Tester, which decides like the runner for one image, outside of a run. `preset.rs` reads the split image presets and `mask.rs` applies their masks, like AutoMask.
+- `crates/autosplit-core`: everything that doesn't depend on the OS. `runner.rs` is the split state machine. It never blocks: the host calls `tick` with the latest frame when `next_wakeup` is due, and acts on the effects it returns. `tester.rs` is the Live Tester, which decides like the runner for one image, outside of a run. `preset.rs` reads and saves the split image presets and `mask.rs` applies their masks, like AutoMask.
 - `crates/autosplit-capture`: video capture devices, one backend per OS, and the pixel format conversions.
 - `crates/autosplit-input`: global hotkeys (through livesplit-hotkey), sending key presses and AutoSplit's hotkey names.
-- `crates/autosplit-cli`: the `autosplit` program. `session.rs` drives the runner from capture (`device.rs`), hotkeys (`hotkeys.rs`), LiveSplit (`livesplit.rs`), LiveSplit One (`livesplit_one.rs`) and Molok (`molok.rs`). `run.rs` runs a session in the terminal and `gui/` in the window, laid out in `ui/*.slint`. `gui/tester.rs` is the Live Tester, and `gui/maker.rs` is Make Split Images, which uses the presets and masks in core (`preset.rs`, `mask.rs`, `filename.rs`). `tests/gui.rs` tests the window logic that doesn't need a window (`document.rs`, `messages.rs`, `settings_form.rs`, `placement.rs`, `maker_plan.rs`, `recorder.rs`), and `tests/view.rs` what the session hands the window. `src/bin/autosplit-console.rs` becomes `autosplit.com` on Windows.
+- `crates/autosplit-cli`: the `autosplit` program. `session.rs` drives the runner from capture (`device.rs`), hotkeys (`hotkeys.rs`), LiveSplit (`livesplit.rs`), LiveSplit One (`livesplit_one.rs`) and Molok (`molok.rs`). `run.rs` runs a session in the terminal and `gui/` in the window, laid out in `ui/*.slint`. `gui/tester.rs` is the Live Tester, and `gui/maker.rs` is Make Split Images, with its preset editing in `gui/maker/editor.rs` and `gui/preset_form.rs`. It uses the presets and masks in core (`preset.rs`, `mask.rs`, `filename.rs`). `tests/gui.rs` tests the window logic that doesn't need a window (`document.rs`, `messages.rs`, `settings_form.rs`, `placement.rs`, `maker_plan.rs`, `recorder.rs`), `tests/preset_form.rs` the preset editing, and `tests/view.rs` what the session hands the window. `src/bin/autosplit-console.rs` becomes `AutoSplit.com` on Windows.
 - `tests/fixtures`: split images, captures and profiles. `real/` holds split images made with AutoMask.
 - `tests/golden`: expected values from AutoSplit and OpenCV.
 - `tools/golden/generate.py`: regenerates the fixtures and golden values from AutoSplit 2.3.4. Instructions are at the top of the file. Only rerun it when you mean to change the baseline.

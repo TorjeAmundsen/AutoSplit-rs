@@ -9,17 +9,20 @@ use std::sync::Arc;
 use autosplit_core::image::{BgraImage, BgraView};
 use autosplit_core::imgproc::{ResizeBuffers, stretch_to_rgba};
 use autosplit_core::mask::{Mask, apply_mask};
-use autosplit_core::preset::{LoadedPreset, load_presets};
+use autosplit_core::preset::{LoadedPreset, Preset, PresetError, load_presets};
 use autosplit_core::split_folder::user_files;
 use slint::{ComponentHandle, ModelRc, Rgba8Pixel, SharedPixelBuffer, SharedString, VecModel};
 
 use super::maker_plan::{looks_made, plan_writes};
 use super::messages::{Answer, Message};
 use super::placement::beside;
+use super::preset_form::{Draft, Problem};
 use super::ui::{InstructionCard, MakerRow};
 use super::view::{Pixels, rgba};
 use super::{Gui, Tool, exe_folder, file_name_parts, with_gui};
 use crate::session::UiCommand;
+
+mod editor;
 
 /// Where a split image comes from.
 #[derive(Clone)]
@@ -78,11 +81,54 @@ pub(super) struct Maker {
     /// Changes when another preset is chosen, so split images saved for the one before don't
     /// count for this one.
     generation: u64,
+    /// The preset being edited, which the window shows instead of the chosen one.
+    edit: Option<editor::Editing>,
+    /// Split images being written and pictures being made. Editing waits for them, since going
+    /// back from it restores the splits as they were before, which would lose what they bring.
+    working: usize,
+}
+
+/// What the window has for each split, kept while a preset is edited to go back to.
+struct Kept {
+    sources: Vec<Option<Source>>,
+    saved: Vec<Option<PathBuf>>,
+    thumbs: Vec<Option<slint::Image>>,
+    selected: usize,
 }
 
 impl Maker {
     fn loaded(&self) -> Option<&LoadedPreset> {
         self.presets.get(self.preset)
+    }
+
+    /// The preset the window shows: the one being edited, or the chosen one.
+    fn shown(&self) -> Option<&Preset> {
+        match &self.edit {
+            Some(edit) => Some(&edit.draft.preset),
+            None => self.loaded().map(|loaded| &loaded.preset),
+        }
+    }
+
+    /// A mask or savestate of the shown preset: relative to its folder, or picked while editing.
+    fn file(&self, path: &str) -> PathBuf {
+        let folder = match &self.edit {
+            Some(edit) => edit.source.as_deref(),
+            None => self.loaded().map(|loaded| loaded.folder.as_path()),
+        };
+        folder.map_or_else(|| PathBuf::from(path), |folder| folder.join(path))
+    }
+
+    fn keep(&self) -> Kept {
+        Kept {
+            sources: self.sources.clone(),
+            saved: self.saved.clone(),
+            thumbs: self.thumbs.clone(),
+            selected: self.selected,
+        }
+    }
+
+    fn restore(&mut self, kept: Kept) {
+        (self.sources, self.saved, self.thumbs, self.selected) = (kept.sources, kept.saved, kept.thumbs, kept.selected);
     }
 
     /// The games of the presets, in the order they're listed.
@@ -122,13 +168,32 @@ pub fn thumbnail(shot: BgraView) -> Pixels {
     Pixels::clone_from_slice(pixels.as_flattened(), width as u32, height as u32)
 }
 
-/// A split's name as the list's heading: the reset and start images by what they are.
-fn split_heading(name: &str) -> String {
-    match name {
-        "reset" => "Reset Image".into(),
-        "start_auto_splitter" => "Start Image".into(),
-        name => name.into(),
+/// A split's name as the list's heading: the reset and start images by what they are, numbered
+/// from the second.
+fn split_heading(preset: &Preset, index: usize) -> String {
+    let Some(split) = preset.splits.get(index) else { return String::new() };
+    let kind = match split.name.as_str() {
+        "reset" => "Reset Image",
+        "start_auto_splitter" => "Start Image",
+        name => return name.into(),
+    };
+    match preset.keyword_place(index) {
+        Some(place) if place > 1 => format!("{kind} {place}"),
+        _ => kind.into(),
     }
+}
+
+/// The first of `problems`, with the split it's about, and how many more there are. `None` when
+/// there are none.
+fn problem_summary(preset: &Preset, problems: &[Problem]) -> Option<String> {
+    let first = problems.first()?;
+    let more = match problems.len() - 1 {
+        0 => String::new(),
+        1 => " And 1 more problem.".to_owned(),
+        more => format!(" And {more} more problems."),
+    };
+    let at = first.split.map(|index| format!("{}: ", split_heading(preset, index))).unwrap_or_default();
+    Some(format!("{at}{}{more}", first.message))
 }
 
 /// A game's name in the list of games.
@@ -225,10 +290,16 @@ impl Gui {
         on!(weak, maker, on_show_instructions, () gui => gui.show_instructions());
         on!(weak, maker, on_browse_folder, () gui => gui.browse_folder(gui.windows.maker.window(), |gui| gui.maker_folder_changed()));
         on!(weak, maker, on_generate_profile, () gui => gui.generate_profile());
+        on!(weak, maker, on_turn_on_grouping, () gui => gui.turn_on_grouping());
         on!(always weak, maker, on_blocked_clicked, () gui => gui.focus_message());
-        on!(always weak, maker.window(), on_close_requested, () gui => {
-            gui.maker_closed();
-        } else slint::CloseRequestResponse::HideWindow);
+        let close = weak.clone();
+        maker.window().on_close_requested(move || {
+            let Some(gui) = close.upgrade() else { return slint::CloseRequestResponse::HideWindow };
+            gui.close_maker();
+            // Closed by close_maker, unless there's a question first
+            slint::CloseRequestResponse::KeepWindowShown
+        });
+        self.connect_editor();
     }
 
     /// Opens Make Split Images beside the main window, with the presets read again.
@@ -238,22 +309,19 @@ impl Gui {
             return self.show_window(window);
         }
         let folder = presets_folder();
-        let (presets, errors) = load_presets(&folder);
+        let before = self.maker.borrow().loaded().cloned();
+        let errors = self.read_presets();
         let mut maker = self.maker.borrow_mut();
-        let chosen = maker.preset.min(presets.len().saturating_sub(1));
+        let chosen = maker.preset.min(maker.presets.len().saturating_sub(1));
         // What was grabbed or picked for the same preset is kept, unless its splits changed
-        let same = maker
-            .loaded()
-            .zip(presets.get(chosen))
+        let same = before
+            .zip(maker.presets.get(chosen))
             .is_some_and(|(before, now)| before.folder == now.folder && before.preset.splits == now.preset.splits);
-        maker.presets = presets;
         // Masks are read again, in case they were edited
         maker.masks.clear();
-        let games: Vec<SharedString> = maker.games().into_iter().map(game_label).collect();
         let empty = maker.presets.is_empty();
         drop(maker);
         let maker_window = &self.windows.maker;
-        maker_window.set_games(ModelRc::new(VecModel::from(games)));
         maker_window.set_rows(ModelRc::from(self.maker_rows.clone()));
         maker_window.set_grid_image(transparency_grid(320, 240));
         maker_window.set_status(SharedString::new());
@@ -270,16 +338,39 @@ impl Gui {
         self.tool_opened(Tool::Maker);
         self.send(UiCommand::SetMakerOpen(true));
         self.update_visibility();
+        self.show_preset_errors(errors);
+    }
+
+    /// Reads the presets in the presets folder, and lists their games. Returns the ones that
+    /// couldn't be read.
+    fn read_presets(&self) -> Vec<PresetError> {
+        let (presets, errors) = load_presets(&presets_folder());
+        let mut maker = self.maker.borrow_mut();
+        maker.presets = presets;
+        let games: Vec<SharedString> = maker.games().into_iter().map(game_label).collect();
+        drop(maker);
+        self.windows.maker.set_games(ModelRc::new(VecModel::from(games)));
+        errors
+    }
+
+    fn show_preset_errors(&self, errors: Vec<PresetError>) {
         if !errors.is_empty() {
             let errors: Vec<String> = errors.iter().map(ToString::to_string).collect();
             self.show_message(Message::warning(format!("Some presets couldn't be read:\n\n{}", errors.join("\n\n"))));
         }
     }
 
-    /// The main window's Close button.
-    pub(super) fn close_maker(&self) {
-        self.maker_closed();
-        let _ = self.windows.maker.hide();
+    /// Closes Make Split Images, from its close button or the main window's, after asking about
+    /// a preset with unsaved changes. Editing ends with it.
+    pub(super) fn close_maker(self: &Rc<Self>) {
+        if self.blocked() {
+            return self.focus_message();
+        }
+        self.unless_discarded(|gui| {
+            gui.stop_editing(true);
+            gui.maker_closed();
+            let _ = gui.windows.maker.hide();
+        });
     }
 
     /// Make Split Images closes: the capture is only needed for it while it's open.
@@ -335,6 +426,7 @@ impl Gui {
         self.maker.borrow_mut().selected = index;
         self.windows.maker.set_selected(index as i32);
         self.maker.borrow_mut().live_mask = None;
+        self.show_form();
         self.show_maker();
     }
 
@@ -348,17 +440,22 @@ impl Gui {
     /// The preset's file names, with the profile's defaults for what they leave out.
     fn maker_file_names(&self) -> Vec<String> {
         let defaults = self.state.borrow().document.profile.split_defaults();
-        self.maker.borrow().loaded().map(|loaded| loaded.preset.file_names(Some(&defaults))).unwrap_or_default()
+        self.maker.borrow().shown().map(|preset| preset.file_names(Some(&defaults))).unwrap_or_default()
     }
 
-    /// Forgets split images saved before that aren't in the split image folder anymore: the
-    /// folder changed, or they were deleted or renamed.
-    fn forget_missing_saves(&self) {
+    /// Forgets split images saved before that aren't in the split image folder anymore under
+    /// their split's file name: the folder changed, they were deleted or renamed, or the split's
+    /// settings changed its name.
+    fn forget_missing_saves(&self, names: &[String]) {
         let folder = self.split_image_folder().map(|folder| canonical(&folder));
         let mut maker = self.maker.borrow_mut();
-        for saved in &mut maker.saved {
+        for (index, saved) in maker.saved.iter_mut().enumerate() {
             let still_there = saved.as_ref().is_some_and(|path| {
-                path.is_file() && path.parent().map(canonical).is_some_and(|parent| Some(parent) == folder)
+                path.is_file()
+                    && path.parent().map(canonical).is_some_and(|parent| Some(parent) == folder)
+                    && path
+                        .file_name()
+                        .is_some_and(|name| names.get(index).is_some_and(|wanted| name == wanted.as_str()))
             });
             if !still_there {
                 *saved = None;
@@ -368,21 +465,30 @@ impl Gui {
 
     /// Puts the preset's splits, the selected split's split image and the buttons in the window.
     fn show_maker(&self) {
-        self.forget_missing_saves();
         let names = self.maker_file_names();
+        self.forget_missing_saves(&names);
+        let mut problems = self.show_editing(&names);
+        let preset_problems = self.preset_problems();
+        if !self.editing() {
+            problems = (0..names.len())
+                .map(|index| preset_problems.iter().any(|problem| problem.split == Some(index)))
+                .collect();
+        }
+        let summary = self.maker.borrow().loaded().and_then(|loaded| problem_summary(&loaded.preset, &preset_problems));
         let maker = self.maker.borrow();
-        let splits = maker.loaded().map_or(&[][..], |loaded| &loaded.preset.splits[..]);
         let rows: Vec<MakerRow> = names
             .iter()
             .enumerate()
             .map(|(index, name)| MakerRow {
-                heading: splits.get(index).map(|split| split_heading(&split.name)).unwrap_or_default().into(),
+                heading: maker.shown().map(|preset| split_heading(preset, index)).unwrap_or_default().into(),
                 parts: file_name_parts(name),
                 file: name.into(),
                 source: maker.sources[index].as_ref().map(Source::label).unwrap_or_default().into(),
                 saved: maker.saved[index].is_some(),
                 thumb: maker.thumbs[index].clone().unwrap_or_default(),
                 has_thumb: maker.thumbs[index].is_some(),
+                problem: problems.get(index).copied().unwrap_or_default(),
+                joined: maker.shown().is_some_and(|preset| preset.joins_previous(index)),
             })
             .collect();
         let selected = maker.selected;
@@ -399,13 +505,19 @@ impl Gui {
             None => "no split image folder, pick one with Browse...".into(),
         };
         window.set_output_folder(folder_text.into());
-        window.set_can_grab(has_splits);
-        window.set_can_save_selected(has_source);
-        window.set_can_save_all(any_source);
-        window.set_can_test(saved);
+        // A preset with problems is only for fixing, so nothing's made from it
+        let usable = summary.is_none();
+        window.set_preset_problem(summary.unwrap_or_default().into());
+        window.set_can_grab(has_splits && usable);
+        window.set_can_save_selected(has_source && usable);
+        window.set_can_save_all(any_source && usable);
+        window.set_can_test(saved && usable);
+        let needs_grouping = self.maker.borrow().loaded().is_some_and(|loaded| loaded.preset.needs_grouping());
+        window.set_needs_grouping(needs_grouping && !self.state.borrow().document.profile.group_split_images);
+        window.set_working(self.maker.borrow().working > 0);
         let maker = self.maker.borrow();
         let splits = maker.loaded().map_or(&[][..], |loaded| &loaded.preset.splits[..]);
-        window.set_has_savestates(splits.iter().any(|split| !split.savestate.is_empty()));
+        window.set_has_savestates(usable && splits.iter().any(|split| !split.savestate.is_empty()));
         window.set_has_instructions(
             splits.iter().any(|split| !split.savestate.is_empty() && !split.instructions.is_empty()),
         );
@@ -413,13 +525,36 @@ impl Gui {
         self.show_maker_preview();
     }
 
+    /// What the editor would ask to fix in the chosen preset, like splits compared together
+    /// with the same name in a preset written by hand.
+    fn preset_problems(&self) -> Vec<Problem> {
+        let maker = self.maker.borrow();
+        maker.loaded().map(|loaded| Draft::edit(loaded.preset.clone()).problems()).unwrap_or_default()
+    }
+
+    /// Says what to fix when the chosen preset has problems, and whether it has. Making split
+    /// images or copying savestates from it waits until it's fixed.
+    fn refused_for_problems(&self) -> bool {
+        let problems = self.preset_problems();
+        let maker = self.maker.borrow();
+        let Some(summary) = maker.loaded().and_then(|loaded| problem_summary(&loaded.preset, &problems)) else {
+            return false;
+        };
+        drop(maker);
+        self.show_message(Message::warning(format!("Fix the preset with Edit first. {summary}")));
+        true
+    }
+
     /// The mask of split `index`, read once.
     fn maker_mask(&self, index: usize) -> Result<Arc<Mask>, String> {
         let mut maker = self.maker.borrow_mut();
-        let Some(path) = maker.loaded().and_then(|loaded| Some(loaded.file(&loaded.preset.splits.get(index)?.mask)))
-        else {
+        let Some(mask) = maker.shown().and_then(|preset| Some(preset.splits.get(index)?.mask.clone())) else {
             return Err("There's no preset.".into());
         };
+        if mask.is_empty() {
+            return Err("Choose a mask for this split to see what it keeps.".into());
+        }
+        let path = maker.file(&mask);
         if let Some(mask) = maker.masks.get(&path) {
             return Ok(mask.clone());
         }
@@ -433,20 +568,24 @@ impl Gui {
         let maker = self.maker.borrow();
         let selected = maker.selected;
         let source = maker.sources.get(selected).cloned().flatten();
-        let has_split = maker.loaded().is_some_and(|loaded| selected < loaded.preset.splits.len());
+        let has_split = maker.shown().is_some_and(|preset| selected < preset.splits.len());
+        let (editing, no_presets) = (maker.edit.is_some(), maker.presets.is_empty());
         drop(maker);
         let window = &self.windows.maker;
         if !has_split {
-            let message = if self.maker.borrow().presets.is_empty() {
-                "There are no presets."
-            } else {
-                "The preset has no splits."
+            let message = match (editing, no_presets) {
+                (true, _) => "Add a split.",
+                (false, true) => "There are no presets.",
+                (false, false) => "The preset has no splits.",
             };
             return window.set_preview_message(message.into());
         }
         let Some(source) = source else {
-            // The capture's preview fills it in, masked, as frames come
-            let message = window.get_live_message();
+            // The capture's preview fills it in, masked, as frames come, once there's a mask
+            let message = match self.maker_mask(selected) {
+                Ok(_) => window.get_live_message(),
+                Err(error) => error.into(),
+            };
             window.set_preview_message(message);
             return;
         };
@@ -511,6 +650,13 @@ impl Gui {
         if !self.windows.maker.window().is_visible() {
             return;
         }
+        // The split's file name and mask aren't settled until the preset is saved
+        if self.editing() {
+            return self.show_message(Message::warning("Save or cancel the changes to the preset first, then grab."));
+        }
+        if self.refused_for_problems() {
+            return;
+        }
         let image = match image {
             Ok(image) => Arc::new(image),
             Err(error) => return self.show_message(Message::error(error)),
@@ -535,6 +681,9 @@ impl Gui {
     /// Asks for screenshots: one for the selected split, or several for the splits in order from
     /// the first, like AutoSplit numbers its screenshots.
     fn pick_screenshots(self: &Rc<Self>) {
+        if self.refused_for_problems() {
+            return;
+        }
         let state = self.state.borrow();
         let profile = &state.document.profile;
         let folder = match profile.screenshot_directory.as_str() {
@@ -598,6 +747,9 @@ impl Gui {
     /// Writes the split images of `indexes` that have something to make them from, after asking
     /// about files they replace. Returns false when they can't be saved.
     fn save_split_images(self: &Rc<Self>, indexes: Vec<usize>) -> bool {
+        if self.refused_for_problems() {
+            return false;
+        }
         let Some(folder) = self.split_image_folder().filter(|folder| folder.is_dir()) else {
             self.show_message(Message::error(
                 "Pick a split image folder that exists with Browse... first: the split images are saved there.",
@@ -629,7 +781,7 @@ impl Gui {
                 Source::Grabbed(_) => None,
             })
             .collect();
-        let plan = plan_writes(&written, &existing, &sources);
+        let plan = plan_writes(&written, &names, &existing, &sources);
         if plan.overwrites.is_empty() && plan.stale.is_empty() {
             self.write_split_images(folder, jobs, Vec::new());
             return true;
@@ -674,6 +826,7 @@ impl Gui {
     fn write_split_images(&self, folder: PathBuf, jobs: Vec<Job>, stale: Vec<PathBuf>) {
         self.windows.maker.set_status(format!("Saving {}...", plural(jobs.len(), "split image")).into());
         let generation = self.maker.borrow().generation;
+        self.start_work();
         let spawned = std::thread::Builder::new().name("split images".into()).spawn(move || {
             let results: Vec<(usize, Result<PathBuf, String>)> =
                 jobs.iter().map(|job| (job.index, job.run().map(|()| job.target.clone()))).collect();
@@ -697,6 +850,7 @@ impl Gui {
             with_gui(move |gui| gui.split_images_written(generation, results, moved, errors));
         });
         if let Err(error) = spawned {
+            self.end_work();
             self.show_message(Message::error(format!("Couldn't save the split images: {error}")));
         }
     }
@@ -708,6 +862,7 @@ impl Gui {
         moved: usize,
         mut errors: Vec<String>,
     ) {
+        self.end_work();
         let mut written = 0;
         let mut maker = self.maker.borrow_mut();
         // Another preset was chosen meanwhile: its splits aren't the ones saved
@@ -748,10 +903,13 @@ impl Gui {
         }
     }
 
-    /// Copies the preset's savestates to their folder in the temp folder, named for the emulator,
+    /// Copies the preset's savestates to their folder in the temp folder, named in split order,
     /// and puts them on the clipboard, or opens the folder when the clipboard can't take files.
     /// The folder is emptied first and kept after closing, so they can still be pasted then.
     fn copy_savestates(&self) {
+        if self.refused_for_problems() {
+            return;
+        }
         let maker = self.maker.borrow();
         let Some(loaded) = maker.loaded() else { return };
         let copies: Vec<(PathBuf, String)> =
@@ -781,7 +939,10 @@ impl Gui {
         if clipboard.is_none() {
             *clipboard = arboard::Clipboard::new().ok();
         }
-        let set = clipboard.as_mut().map(|clipboard| clipboard.set().file_list(&copied));
+        // On Windows, setting a file list adds it to what's on the clipboard, and a program pasting
+        // can take the text that was there before instead
+        let set =
+            clipboard.as_mut().map(|clipboard| clipboard.clear().and_then(|()| clipboard.set().file_list(&copied)));
         drop(clipboard);
         let status = match set {
             Some(Ok(())) => format!("Copied {} savestates to the clipboard.", copied.len()),
@@ -832,6 +993,7 @@ impl Gui {
         let jobs: Vec<(usize, Source)> =
             indexes.into_iter().filter_map(|index| Some((index, maker.sources.get(index)?.clone()?))).collect();
         drop(maker);
+        self.start_work();
         let spawned = std::thread::Builder::new().name("thumbnails".into()).spawn(move || {
             let made: Vec<(usize, Source, Pixels)> = jobs
                 .into_iter()
@@ -843,15 +1005,29 @@ impl Gui {
             with_gui(move |gui| gui.thumbnails_made(generation, made));
         });
         if let Err(error) = spawned {
+            self.end_work();
             self.add_log_line(format!("error: Couldn't make the split images' pictures: {error}"));
         }
     }
 
+    fn start_work(&self) {
+        self.maker.borrow_mut().working += 1;
+        self.windows.maker.set_working(true);
+    }
+
+    /// Done with work from `start_work`. The caller shows the window again.
+    fn end_work(&self) {
+        let mut maker = self.maker.borrow_mut();
+        maker.working = maker.working.saturating_sub(1);
+    }
+
     /// Shows the pictures that are still of their split's source.
     fn thumbnails_made(&self, generation: u64, made: Vec<(usize, Source, Pixels)>) {
+        self.end_work();
         let mut maker = self.maker.borrow_mut();
         if maker.generation != generation {
-            return;
+            drop(maker);
+            return self.show_maker();
         }
         for (index, source, thumb) in made {
             if maker.sources.get(index).cloned().flatten().is_some_and(|now| now.same(&source)) {
@@ -871,7 +1047,13 @@ impl Gui {
     /// Saves the profile as a new file named for the preset, which is loaded from then on like
     /// Save Profile As does.
     fn generate_profile(self: &Rc<Self>) {
-        let Some(name) = self.maker.borrow().loaded().map(|loaded| loaded.preset.profile_file_name()) else { return };
+        if self.refused_for_problems() {
+            return;
+        }
+        let maker = self.maker.borrow();
+        let Some(loaded) = maker.loaded() else { return };
+        let (name, needs_grouping) = (loaded.preset.profile_file_name(), loaded.preset.needs_grouping());
+        drop(maker);
         let folder = self.state.borrow().document.folder(&exe_folder());
         let dialog = self
             .file_dialog_over("Generate Profile", self.windows.maker.window())
@@ -879,7 +1061,10 @@ impl Gui {
             .set_file_name(name)
             .add_filter("TOML", &["toml"])
             .save_file();
-        self.when_picked(dialog, |gui, path| {
+        self.when_picked(dialog, move |gui, path| {
+            if needs_grouping {
+                gui.turn_on_grouping();
+            }
             let name = path.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
             let saved =
                 move |gui: &Rc<Gui>| gui.windows.maker.set_status(format!("Saved the profile as {name}.").into());
@@ -887,8 +1072,19 @@ impl Gui {
         });
     }
 
+    /// Has the profile compare split images with the same number for one split, which the preset
+    /// needs.
+    fn turn_on_grouping(&self) {
+        self.state.borrow_mut().document.profile.group_split_images = true;
+        self.profile_edited();
+        self.show_maker();
+    }
+
     /// Opens the Live Tester on the selected split's split image.
     fn test_split_image(self: &Rc<Self>) {
+        if self.refused_for_problems() {
+            return;
+        }
         let maker = self.maker.borrow();
         let Some(path) = maker.saved.get(maker.selected).cloned().flatten() else { return };
         drop(maker);

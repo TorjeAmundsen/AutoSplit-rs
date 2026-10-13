@@ -648,7 +648,21 @@ fn plan_with_sources(names: &[&str], existing: &[&str], sources: &[&str]) -> Wri
     let names: Vec<String> = names.iter().map(|name| (*name).to_owned()).collect();
     let existing: Vec<PathBuf> = existing.iter().map(PathBuf::from).collect();
     let sources: Vec<PathBuf> = sources.iter().map(PathBuf::from).collect();
-    plan_writes(&names, &existing, &sources)
+    plan_writes(&names, &names, &existing, &sources)
+}
+
+#[test]
+fn other_split_images_compared_for_the_same_split_arent_stale() {
+    // Arrange: the preset compares two images for split 2, and has two reset images
+    let preset: Vec<String> =
+        ["reset_(0.9).png", "reset_2_(0.9).png", "02_Boss_(0.9).png", "02_Boss Alt_(0.9).png"].map(String::from).into();
+    let existing: Vec<PathBuf> = preset.iter().map(PathBuf::from).collect();
+
+    // Act: saving only the first of each
+    let plan = plan_writes(&[preset[0].clone(), preset[2].clone()], &preset, &existing, &[]);
+
+    // Assert
+    assert_eq!(plan.stale, Vec::<PathBuf>::new());
 }
 
 #[test]

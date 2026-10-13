@@ -9,7 +9,7 @@ Only video capture devices work for now, meaning capture cards, webcams and OBS 
 1. Download the zip for your system from the releases (`windows-x64`, `windows-arm64`, `linux-x64`, `linux-arm64` or `macos-universal`) and unzip it.
 2. macOS blocks the first start because the program isn't notarized. Run `xattr -d com.apple.quarantine autosplit` in the folder, or click Open Anyway in System Settings > Privacy & Security.
 3. On Linux and macOS, set up the [permissions](#permissions).
-4. Start `autosplit` (`autosplit.exe` on Windows). If there's exactly one `.toml` file next to it, it loads that profile, like AutoSplit. Otherwise use File > Load Profile, or set things up and save with File > Save Profile As.
+4. Start `autosplit` (`AutoSplit.exe` on Windows). If there's exactly one `.toml` file next to it, it loads that profile, like AutoSplit. Otherwise use File > Load Profile, or set things up and save with File > Save Profile As.
 5. In File > Settings, pick your capture device. With Live Capture Region on, the left preview shows what gets compared.
 6. Set the [capture region](#capture-region).
 7. Pick your split image folder with Browse..., set the hotkeys your timer uses in Settings > Hotkeys, and press Start Auto Splitter (or your split hotkey).
@@ -18,12 +18,12 @@ If it doesn't split, Help > View Log says why. The same log is in `autosplit.log
 
 ## Which timer setup to use
 
-- Windows with LiveSplit: add LiveSplit's AutoSplit Integration component, and in its settings choose `autosplit.exe` and your profile. LiveSplit starts `autosplit` and tells it when the timer starts, splits, skips, undoes and resets, like it does for AutoSplit. The window title says "(externally controlled)". If the component already runs AutoSplit, point it at `autosplit.exe` instead and keep your profile.
+- Windows with LiveSplit: add LiveSplit's AutoSplit Integration component, and in its settings choose `AutoSplit.exe` and your profile. LiveSplit starts `autosplit` and tells it when the timer starts, splits, skips, undoes and resets, like it does for AutoSplit. The window title says "(externally controlled)". If the component already runs AutoSplit, point it at `AutoSplit.exe` instead and keep your profile.
 - LiveSplit One, on any system: see [LiveSplit One](#livesplit-one). It needs no hotkeys and no permissions.
 - Molok, on Linux: see [Molok](#molok). It needs no hotkeys and no permissions.
 - Any other timer: hotkeys, like AutoSplit. `autosplit` presses the profile's hotkeys, and the timer listens for them as global hotkeys.
 
-![LiveSplit's Layout Settings with the AutoSplit Integration component, autosplit.exe and a profile picked](docs/images/livesplit-integration.png)
+![LiveSplit's Layout Settings with the AutoSplit Integration component, AutoSplit.exe and a profile picked](docs/images/livesplit-integration.png)
 
 ## Setting up OBS
 
@@ -133,9 +133,23 @@ Saving asks before replacing split images, and before leaving older images of th
 
 Click the Output Preview, or Transparency grid, to show what the mask removes as a checkerboard.
 
-Generate Profile... saves the settings as a new profile named for the game and preset, for example `tlozoot_no_wrong_warp.toml` for The Legend of Zelda: Ocarina of Time's No Wrong Warp, with the split image folder in it. That profile is the one in use afterwards, like after Save Profile As.
+Generate Profile... saves the settings as a new profile named for the game and preset, for example `tlozoot_no_wrong_warp.toml` for The Legend of Zelda: Ocarina of Time's No Wrong Warp, with the split image folder in it. That profile is the one in use afterwards, like after Save Profile As. For a preset that compares several images for one split, it also turns on Compare images with the same number for one split, which the folder needs. Until that's on, the line at the bottom of the window says so, with a Turn It On button.
 
-Some presets come with savestates, for practicing a split from an emulator. Copy Savestates puts them on the clipboard, numbered like the split images, to paste into the emulator's savestate folder. The copies are in the `AutoSplit savestates` folder in the temp folder, which the next Copy Savestates empties first. Savestate Instructions shows what to do with the savestates that need more than loading.
+A preset can have something the editor wouldn't save, like a preset written by hand where splits compared together have the same name, which would give their savestate copies the same name. Then the line at the bottom of the window says what to fix, the split's name in the list is red, and Grab, Use Screenshots..., saving, Test, Copy Savestates and Generate Profile... wait until it's fixed. Fix It opens the preset in the editor.
+
+Some presets come with savestates for a practice tool that loads savestates on the console, like gz for Ocarina of Time (`.gzs` files), to get to each split's screen for its screenshot. Emulators don't need them, since they can auto split by reading the game's memory. Copy Savestates puts them on the clipboard, numbered like the split images, to paste where the practice tool loads them from. Don't copy them out of the preset's `savestates` folder yourself, as its `DO_NOT_COPY.txt` says: presets use some savestates for several splits, and the file names there aren't in split order. The copies are in the `AutoSplit savestates` folder in the temp folder, which the next Copy Savestates empties first. Savestate Instructions shows what to do with the savestates that need more than loading.
+
+#### Editing presets
+
+Edit, next to the preset, switches the window to editing it, and New starts a new preset for the same game. The game and the preset's name become fields, and the buttons under the list add, duplicate, remove and move splits. The right side edits the selected split:
+
+- Name: the part of the file name between the number and the settings. Name a split exactly `reset` or `start_auto_splitter` for the reset and start images. A preset can have up to 4 of each, any of which matches, and the second one on is named `reset_2`, `reset_3` and so on. Other names can't have those words in them, or `#@{}()[]^`, which AutoSplit reads as settings. The file name it makes shows under the field.
+- Mask: a PNG that's opaque where the screen is compared. The Output Preview shows it applied to the capture while you edit, or to the split's grab or screenshot when it has one, so you can see what it keeps.
+- Threshold, Delay, Pause, Dummy and Split below threshold: what the file name carries. An unchecked Pause uses the profile's default pause time.
+- Same split as the one above: the split is compared for the same split as the split above it, and gets its number, so either one matching splits. Splits compared together need their own names, or their savestates would be copied with the same name. See [Several images for one split](#several-images-for-one-split). Up to 4 splits can be together, and the list shows them joined by a line. Reset and start images can't be joined.
+- Savestate and its instructions, for Copy Savestates and Savestate Instructions.
+
+Splits with something to fix have a red name, and the line at the bottom says what. Save writes the preset into its folder in `presets`. Masks and savestates picked from elsewhere are copied in, masks named after their split, and savestates and masks the preset doesn't use anymore are deleted. Save as New saves the changes as a new preset and leaves the old one as it was. Cancel, closing the window or quitting asks before throwing changes away. Delete Preset deletes the preset's folder. Grabs and screenshots stay with their splits while you add, remove and move them, and grabbing waits until editing ends.
 
 ## Settings
 
@@ -218,15 +232,17 @@ Some splits can look different from run to run, like a boss that dies in one of 
 
 Every split image needs a number at the start of its name, or the folder won't load. Leading zeros don't matter, so `1_a.png` and `01_b.png` are the same split. Splits run in number order, and the images of a split in name order. Start and reset images need no number.
 
-Each image keeps its own threshold, comparison method and `{b}` flag. The image that matched decides the rest: its delay, pause time and `{d}` or `{p}` flag. The images of a split need the same loop count. Above the current image, the file name becomes "Comparing against 2 images" (or 3, or 4). The current image area shows the split's first image, or all of them in a 2x2 grid with Show a split's images in a 2x2 grid turned on. The Similarity Viewer gets a row for each image, Current Image (1) to (4), with its own live, highest and threshold values.
+With the setting on, a folder can also have up to 4 start images and up to 4 reset images, like `reset.png` and `reset_2.png`, and any of them matching starts or resets the run. Without it, a folder with more than one is refused, like in AutoSplit.
+
+Each image keeps its own threshold, comparison method and `{b}` flag. The image that matched decides the rest: its delay, pause time and `{d}` or `{p}` flag. The images of a split need the same loop count. Above the current image, the file name becomes "Comparing against 2 images" (or 3, or 4). The current image area shows the split's first image, or all of them in a 2x2 grid with Show a split's images in a 2x2 grid turned on. The Similarity Viewer gets a row for each image, Current Image (1) to (4), with its own live, highest and threshold values. Several start images show the same way while `autosplit` looks for them. For several reset images, the Reset Image row shows the best similarity, with that image's threshold.
 
 ### Start image
 
-One image can have `start_auto_splitter` in its name, as a whole word. Before the run, `autosplit` looks for it and starts the timer when it matches. Its pause time is the wait before comparing the first split image, and its delay is the wait before starting the timer. After you change it, Reload Split Images loads it again.
+One image can have `start_auto_splitter` in its name, as a whole word, or up to 4 with [several images for one split](#several-images-for-one-split) turned on. Before the run, `autosplit` looks for it and starts the timer when it matches. Its pause time is the wait before comparing the first split image, and its delay is the wait before starting the timer. With several, the one that matched decides both. After you change it, Reload Split Images loads it again.
 
 ### Reset image
 
-One image can have `reset` in its name, as a whole word, so `preset_menu.png` is a normal split image. During the run, `autosplit` resets the timer when it matches. It isn't one of the splits. Its pause time is how long after the start it waits before looking for it, as in `reset_(0.95)_[10].png`.
+One image can have `reset` in its name, as a whole word, so `preset_menu.png` is a normal split image. With [several images for one split](#several-images-for-one-split) turned on, up to 4 can. During the run, `autosplit` resets the timer when one matches. They aren't splits. A reset image's pause time is how long after the start it waits before looking for it, as in `reset_(0.95)_[10].png`. With several, each waits for its own.
 
 ### Masked images
 
@@ -348,4 +364,4 @@ autosplit replay settings.toml frames/ --fps 60 [--auto-controlled]
 autosplit bench [split images...] --capture 1920x1080
 ```
 
-The Windows zip has two programs. `autosplit.exe` opens the window without a console, and `autosplit.com` is for terminals. Typing `autosplit` in a terminal runs `autosplit.com`, which runs `autosplit.exe` inside the terminal so output and Ctrl+C work. Without a command, it opens the window and returns to the prompt.
+The Windows zip has two programs. `AutoSplit.exe` opens the window without a console, and `AutoSplit.com` is for terminals. Typing `autosplit` in a terminal runs `AutoSplit.com`, which runs `AutoSplit.exe` inside the terminal so output and Ctrl+C work. Without a command, it opens the window and returns to the prompt.

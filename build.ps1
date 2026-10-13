@@ -162,11 +162,12 @@ function Build($name) {
 
     $folders = @($targets[$name] | ForEach-Object { BuildTriple $_ })
     if ((OsOf $targets[$name][0]) -eq "windows") {
-        # autosplit.exe is a GUI program, so the command prompt doesn't wait for it. Typing
-        # autosplit runs autosplit.com first, which runs autosplit.exe as a console program.
-        $binaryName = "autosplit.exe"
-        Copy-Item "$($folders[0])/$binaryName" "$output/$binaryName"
-        Copy-Item "$($folders[0])/autosplit-console.exe" "$output/autosplit.com"
+        # AutoSplit.exe is a GUI program, so the command prompt doesn't wait for it. Typing
+        # autosplit runs AutoSplit.com first, which runs AutoSplit.exe as a console program.
+        # Named like AutoSplit's, where Cargo names them in lowercase.
+        $binaryName = "AutoSplit.exe"
+        Copy-Item "$($folders[0])/autosplit.exe" "$output/$binaryName"
+        Copy-Item "$($folders[0])/autosplit-console.exe" "$output/AutoSplit.com"
     }
     else {
         $binaryName = "autosplit"

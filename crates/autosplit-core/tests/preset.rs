@@ -6,8 +6,10 @@ use autosplit_core::filename::{
     BELOW_FLAG, DUMMY_FLAG, comparison_method_from_filename, delay_time_from_filename, filename_warnings,
     flags_from_filename, pause_from_filename, threshold_from_filename,
 };
+use autosplit_core::image::BgraImage;
 use autosplit_core::preset::{PRESET_FILE, Preset, PresetError, PresetSplit, load_libraries, load_presets};
 use autosplit_core::profile::{ProfileError, UserProfile};
+use autosplit_core::split_folder::{ValidationContext, load_split_folder};
 use autosplit_core::split_image::SplitDefaults;
 use test_case::test_case;
 
@@ -179,4 +181,96 @@ fn profiles_are_named_for_the_game_and_preset(game: &str, name: &str) -> String 
 
     // Act, with the expected value checked by test_case
     preset.profile_file_name()
+}
+
+/// A preset of splits named `names`, with `+` before a name for a split compared with the one
+/// before it.
+fn grouped_preset(names: &[&str]) -> Preset {
+    let splits = names.iter().map(|name| PresetSplit {
+        name: name.trim_start_matches('+').into(),
+        with_previous: name.starts_with('+'),
+        ..PresetSplit::default()
+    });
+    Preset { name: "Any%".into(), splits: splits.collect(), ..Preset::default() }
+}
+
+#[test]
+fn splits_compared_together_share_a_number() {
+    // Arrange
+    let preset = grouped_preset(&["start_auto_splitter", "reset", "reset", "Boss", "+Boss Alt", "Door"]);
+
+    // Act
+    let names = preset.file_names(None);
+
+    // Assert: the second reset image takes no number, so there are 4
+    assert_eq!(
+        names,
+        [
+            "start_auto_splitter_(0.95).png",
+            "reset_(0.95).png",
+            "reset_2_(0.95).png",
+            "2_Boss_(0.95).png",
+            "2_Boss Alt_(0.95).png",
+            "3_Door_(0.95).png"
+        ]
+    );
+}
+
+#[test_case(&["+Boss", "Door"] => vec!["0_Boss_(0.95).png", "1_Door_(0.95).png"]; "first split")]
+#[test_case(&["reset", "+Boss"] => vec!["reset_(0.95).png", "1_Boss_(0.95).png"]; "after a reset image")]
+#[test_case(&["Boss", "+reset"] => vec!["0_Boss_(0.95).png", "reset_(0.95).png"]; "reset image")]
+fn compared_with_the_split_before_needs_a_split_before(names: &[&str]) -> Vec<String> {
+    // Act, with the expected value checked by test_case
+    grouped_preset(names).file_names(None)
+}
+
+#[test]
+fn grouped_presets_make_a_folder_that_loads_grouped() {
+    // Arrange
+    let preset = grouped_preset(&["start_auto_splitter", "start_auto_splitter", "reset", "reset", "A", "+B", "C"]);
+    let folder = tempfile::tempdir().unwrap();
+    let png = BgraImage::from_raw(4, 4, [0, 0, 255, 255].repeat(16)).encode_png().unwrap();
+    for name in preset.file_names(None) {
+        std::fs::write(folder.path().join(name), &png).unwrap();
+    }
+    let context = ValidationContext {
+        split_hotkey_set: true,
+        reset_hotkey_set: true,
+        pause_hotkey_set: true,
+        hotkeys_needed: true,
+        group_split_images: true,
+    };
+
+    // Act
+    let set = load_split_folder(folder.path(), &context).result.unwrap();
+
+    // Assert
+    assert_eq!((set.start.len(), set.reset.len(), set.groups), (2, 2, vec![0..2, 2..3]));
+}
+
+#[test]
+fn savestates_of_several_reset_images_get_their_place() {
+    // Arrange
+    let mut preset = grouped_preset(&["reset", "reset", "Boss"]);
+    for split in &mut preset.splits {
+        split.savestate = "savestates/state.gzs".into();
+    }
+
+    // Act
+    let names: Vec<String> = preset.savestate_copies().into_iter().map(|(_, name)| name).collect();
+
+    // Assert
+    assert_eq!(names, ["0_reset.gzs", "0_reset_2.gzs", "1_Boss.gzs"]);
+}
+
+#[test]
+fn splits_compared_together_with_the_same_name_are_found() {
+    // Arrange: written by hand, their savestate copies would get the same name
+    let preset = grouped_preset(&["A", "Boss", "+Door", "+boss", "Boss"]);
+
+    // Act
+    let same: Vec<Option<usize>> = (0..5).map(|index| preset.same_name_in_group(index)).collect();
+
+    // Assert: only the joined one, not the next split with the name
+    assert_eq!(same, [None, None, None, Some(1), None]);
 }

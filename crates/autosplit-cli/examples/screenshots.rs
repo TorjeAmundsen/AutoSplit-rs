@@ -6,7 +6,7 @@ use std::rc::Rc;
 use autosplit::gui::messages::Buttons;
 use autosplit::gui::ui::{
     AboutWindow, HotkeyRow, InfoCell, InstructionCard, InstructionsWindow, LogWindow, MainWindow, MakerRow,
-    MakerWindow, MessageWindow, SettingsWindow, SimilarityRow, TesterWindow,
+    MakerWindow, MessageWindow, SettingsWindow, SimilarityRow, SplitForm, TesterWindow,
 };
 use autosplit::gui::{HOTKEY_ROWS, file_name_parts, thumbnail, transparency_grid};
 use slint::platform::software_renderer::{MinimalSoftwareWindow, RepaintBufferType, Rgb565Pixel};
@@ -186,6 +186,8 @@ fn main() {
         saved,
         thumb: if source.is_empty() { slint::Image::default() } else { thumb.clone() },
         has_thumb: !source.is_empty(),
+        problem: false,
+        joined: false,
     };
     let rows = vec![
         row("Reset Image", "reset_(0.96)_[0.1].png", "000_SplitImage.png", true),
@@ -214,6 +216,14 @@ fn main() {
     maker.set_live_image(solid([90, 140, 90]));
     maker.set_can_grab(true);
     save(&window, PhysicalSize::new(828, 672), &folder.join("maker.png"));
+    // A preset written by hand that has to be fixed before anything's made from it
+    maker.set_preset_problem(
+        "Boss Alt: It has the same name as a split it's compared together with. Give it another name.".into(),
+    );
+    maker.set_can_grab(false);
+    save(&window, PhysicalSize::new(828, 672), &folder.join("maker-problem.png"));
+    maker.set_preset_problem("".into());
+    maker.set_can_grab(true);
     maker.invoke_split_images_saved();
     save(&window, PhysicalSize::new(828, 672), &folder.join("maker-saved.png"));
     // Enough splits to scroll, which puts the scroll bar over the rows' right side
@@ -224,6 +234,49 @@ fn main() {
         .collect();
     maker.set_rows(std::rc::Rc::new(slint::VecModel::from(many)).into());
     save(&window, PhysicalSize::new(828, 672), &folder.join("maker-long.png"));
+    // Editing, with the masked capture below the form and a split that needs a mask
+    let mut rows = vec![
+        row("Reset Image", "reset_(0.96)_[0.1].png", "000_SplitImage.png", false),
+        row("Start Image", "start_auto_splitter_(0.96)_[10]_{b}.png", "grabbed", false),
+        row("DekuDummy", "02_DekuDummy_(0.94)_[6.5]_{d}.png", "002_SplitImage.png", false),
+        row("EnterDeku", "03_EnterDeku_(0.92)_[60]_#1000#.png", "", false),
+        row("EnterDekuBackflip", "03_EnterDekuBackflip_(0.9)_[60]_#1000#.png", "", false),
+        row("Split1", "04_Split1_(0.95).png", "", false),
+    ];
+    rows[4].joined = true;
+    rows[5].problem = true;
+    maker.set_rows(std::rc::Rc::new(slint::VecModel::from(rows)).into());
+    maker.set_selected(3);
+    maker.set_editing(true);
+    maker.set_edit_game("The Legend of Zelda: Ocarina of Time".into());
+    maker.set_edit_name("No Wrong Warp".into());
+    maker.set_has_split(true);
+    maker.set_split_name("EnterDeku".into());
+    maker.set_threshold(0.92);
+    maker.set_delay(1000.0);
+    maker.set_has_pause(true);
+    maker.set_pause(60.0);
+    maker.set_instructions("After loading, advance 1 frame before taking your screenshot.".into());
+    maker.set_form(SplitForm {
+        parts: file_name_parts("03_EnterDeku_(0.92)_[60]_#1000#.png"),
+        file: "03_EnterDeku_(0.92)_[60]_#1000#.png".into(),
+        problem: "".into(),
+        mask: "006_a_button_flip.png".into(),
+        savestate: "006 enter deku.gzs".into(),
+        can_join: true,
+        name_error: false,
+    });
+    maker.set_problems("Split1: It needs a mask. Choose one.".into());
+    maker.set_has_problems(true);
+    maker.set_can_delete_preset(true);
+    save(&window, PhysicalSize::new(828, 672), &folder.join("maker-edit.png"));
+    // A long problem wraps under the name
+    maker.set_form(SplitForm {
+        problem: "It has the same name as a split it's compared together with. Give it another name.".into(),
+        name_error: true,
+        ..maker.get_form()
+    });
+    save(&window, PhysicalSize::new(828, 672), &folder.join("maker-edit-problem.png"));
     maker.hide().unwrap();
 
     let instructions = InstructionsWindow::new().unwrap();

@@ -2,7 +2,7 @@
 //! split from a capture device without a window, check split image folders, compare images,
 //! replay recorded frames through the split state machine, and benchmark comparisons.
 
-// On Windows, a GUI program, so opening the window shows no console. Terminals run autosplit.com
+// On Windows, a GUI program, so opening the window shows no console. Terminals run AutoSplit.com
 // instead, which runs this one inside the terminal (src/bin/autosplit-console.rs).
 #![cfg_attr(windows, windows_subsystem = "windows")]
 
@@ -290,8 +290,8 @@ fn check(profile_path: &Path, split_dir: Option<PathBuf>) -> Result<()> {
     };
     println!(
         "\n{summary}: {}, {}, {}",
-        count(set.start.iter().count(), "start image"),
-        count(set.reset.iter().count(), "reset image"),
+        count(set.start.len(), "start image"),
+        count(set.reset.len(), "reset image"),
         count(set.splits.len(), "split image")
     );
     Ok(())
@@ -395,7 +395,7 @@ fn replay(
 
     let mut runner = Runner::new(RunnerSettings::from_profile(&profile), link.timer_synced());
     let (initial, _) = folder_result(load_profile_folder(&profile, hotkeys_needed))?;
-    let has_start_image = initial.start.is_some();
+    let has_start_image = !initial.start.is_empty();
     runner.arm(initial, Duration::ZERO);
     let mut runs = 0;
     if !has_start_image {

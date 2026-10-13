@@ -16,7 +16,7 @@ pub fn decode_ansi(bytes: &[u8]) -> String {
     String::from_utf8_lossy(bytes).into_owned()
 }
 
-/// When a console program that LiveSplit started (an older build, or autosplit.com) runs
+/// When a console program that LiveSplit started (an older build, or AutoSplit.com) runs
 /// AutoSplit, Windows opens an empty console window that closes AutoSplit when closed. Detaches
 /// from it when nothing else uses it, which leaves a console AutoSplit was started from alone.
 pub fn leave_own_console() {
@@ -87,8 +87,8 @@ impl Drop for PreciseTimer {
     }
 }
 
-/// On Windows, where `autosplit.exe` is a GUI program, writes to the console of the terminal it
-/// was started from: autosplit.com's, or the terminal's when started directly. Returns whether
+/// On Windows, where `AutoSplit.exe` is a GUI program, writes to the console of the terminal it
+/// was started from: AutoSplit.com's, or the terminal's when started directly. Returns whether
 /// there was one; elsewhere, whether stderr is a terminal.
 pub fn attach_console() -> bool {
     #[cfg(windows)]

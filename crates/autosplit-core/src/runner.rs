@@ -45,6 +45,7 @@ pub enum Effect {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ImageRef {
+    /// The start images, shown by the first.
     Start,
     /// Index into [`SplitSet::splits`].
     Split(usize),
@@ -125,8 +126,8 @@ pub struct Status {
     /// The current image has the below flag, `{b}`: it splits once the similarity drops back
     /// below the threshold.
     pub below: bool,
-    /// Each image of the split being compared, in the order they're compared. Empty for the
-    /// start image.
+    /// Each image of the split being compared, in the order they're compared. Empty for a
+    /// single start image, and each start image when there are several.
     pub group: Vec<ImageReading>,
     pub reset_similarity: Option<ResetReading>,
     pub reset_highest: Option<f64>,
@@ -208,8 +209,10 @@ pub struct Runner {
     state: State,
     highest: f64,
     reset_highest: f64,
-    /// Per image of the group being compared, or `[0]` for the start image.
+    /// Per image of the group being compared, or of the start images.
     below_armed: [bool; MAX_GROUP_SIZE],
+    /// The start image that started the run, whose pause time applies.
+    started_by: usize,
     /// The split image that matched, which decides what the split does.
     matched: usize,
     run_start: Duration,
@@ -222,8 +225,10 @@ pub struct Runner {
 /// Which image a comparison was of.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Compared {
-    Start,
-    Reset,
+    /// Index into [`SplitSet::start`].
+    Start(usize),
+    /// Index into [`SplitSet::reset`].
+    Reset(usize),
     /// Index into [`SplitSet::splits`].
     Split(usize),
 }
@@ -305,6 +310,7 @@ impl Runner {
             highest: 0.0,
             reset_highest: 0.0,
             below_armed: [false; MAX_GROUP_SIZE],
+            started_by: 0,
             matched: 0,
             run_start: Duration::ZERO,
             scratch: CompareScratch::default(),
@@ -359,18 +365,32 @@ impl Runner {
         }
     }
 
-    /// Within the start or reset image's pause time since the run started, when the reset
-    /// image isn't checked.
+    /// Within every reset image's pause time since the run started, when none is checked.
     fn in_reset_pause_window(&self, now: Duration) -> bool {
-        self.reset_pause_secs().is_some_and(|pause| now.saturating_sub(self.run_start).as_secs_f64() <= pause)
+        self.reset_pause_secs().is_some_and(|pause| self.within(now, pause))
     }
 
-    /// The reset image's pause time, or the start image's when that's longer.
+    fn within(&self, now: Duration, pause: f64) -> bool {
+        now.saturating_sub(self.run_start).as_secs_f64() <= pause
+    }
+
+    /// The shortest of the reset images' pause times, each one the start image's when that's
+    /// longer. `None` without a reset image.
     fn reset_pause_secs(&self) -> Option<f64> {
-        let defaults = self.settings.defaults;
-        let reset = self.images.reset.as_ref()?;
-        let start_pause = self.images.start.as_ref().map_or(0.0, |start| start.pause_time_secs(&defaults));
-        Some(reset.pause_time_secs(&defaults).max(start_pause))
+        self.images.reset.iter().map(|reset| self.reset_pause(reset)).reduce(f64::min)
+    }
+
+    /// How long after the start `reset` isn't checked: its pause time, or the start image's
+    /// when that's longer.
+    fn reset_pause(&self, reset: &SplitImage) -> f64 {
+        reset.pause_time_secs(&self.settings.defaults).max(self.start_pause())
+    }
+
+    /// The pause time of the start image that started the run, or of the first one when the
+    /// run was started another way.
+    fn start_pause(&self) -> f64 {
+        let start = self.images.start.get(self.started_by).or(self.images.start.first());
+        start.map_or(0.0, |start| start.pause_time_secs(&self.settings.defaults))
     }
 
     /// When to check the reset image next during a pause or delay: at its FPS limit, but not
@@ -417,7 +437,8 @@ impl Runner {
         self.highest = 0.0;
         self.reset_highest = 0.0;
         self.below_armed = [false; MAX_GROUP_SIZE];
-        self.state = if self.images.start.is_some() {
+        self.started_by = 0;
+        self.state = if !self.images.start.is_empty() {
             self.status.start_status = StartStatus::Ready;
             self.show_image(ImageRef::Start);
             State::WaitingForStart { epoch: now, next_tick: now + interval(self.settings.defaults.fps_limit) }
@@ -459,8 +480,7 @@ impl Runner {
         self.status.running = true;
         self.index = 0;
         self.below_armed = [false; MAX_GROUP_SIZE];
-        let start_pause =
-            self.images.start.as_ref().map_or(0.0, |start| start.pause_time_secs(&self.settings.defaults));
+        let start_pause = self.start_pause();
         if start_pause > 0.0 {
             self.enter_pause(now, start_pause);
         } else {
@@ -504,7 +524,7 @@ impl Runner {
 
     fn image(&self, image: ImageRef) -> &SplitImage {
         match image {
-            ImageRef::Start => self.images.start.as_ref().expect("start image"),
+            ImageRef::Start => self.images.start.first().expect("start image"),
             ImageRef::Split(index) => &self.images.splits[index],
         }
     }
@@ -517,15 +537,16 @@ impl Runner {
         self.status.showing = Showing::Image(image_ref);
         self.status.current_filename = Some(filename);
         self.status.threshold = Some(threshold);
+        let reading = |image: &SplitImage| ImageReading {
+            similarity: None,
+            highest: None,
+            threshold: image.similarity_threshold(&defaults),
+        };
         self.status.group = match image_ref {
-            ImageRef::Start => Vec::new(),
+            ImageRef::Start if self.images.start.len() == 1 => Vec::new(),
+            ImageRef::Start => self.images.start.iter().map(reading).collect(),
             ImageRef::Split(_) => {
                 let group = self.images.groups[self.plan[self.index].0].clone();
-                let reading = |image: &SplitImage| ImageReading {
-                    similarity: None,
-                    highest: None,
-                    threshold: image.similarity_threshold(&defaults),
-                };
                 self.images.splits[group].iter().map(reading).collect()
             }
         };
@@ -696,37 +717,51 @@ impl Runner {
         }
     }
 
-    /// One comparison of the start image.
+    /// One comparison of the start image, or of each start image. The first one that matches
+    /// starts the run. The status shows the best similarity.
     fn compare_start_image(&mut self, epoch: Duration, now: Duration, capture: Option<BgraView>) {
         let defaults = self.settings.defaults;
-        let start = self.images.start.as_ref().expect("start image");
-        let similarity = self.cache.get_or_compare(Compared::Start, || {
-            start.compare(capture, start.comparison_method(&defaults), &mut self.scratch)
-        });
-        let threshold = start.similarity_threshold(&defaults);
-        let (below, dummy, delay) = (start.is_below(), start.is_dummy(), start.delay_time_ms(&defaults));
         let next_tick = next_grid_tick(epoch, now, interval(self.settings.defaults.fps_limit));
-
         self.status.start_status = StartStatus::Ready;
         if self.status.showing != Showing::Image(ImageRef::Start) {
             self.show_image(ImageRef::Start);
         }
-        self.highest = self.highest.max(similarity);
-        self.status.similarity = Some(similarity);
+        let mut best = 0.0_f64;
+        let mut matched = None;
+        for (slot, start) in self.images.start.iter().enumerate() {
+            let similarity = self.cache.get_or_compare(Compared::Start(slot), || {
+                start.compare(capture, start.comparison_method(&defaults), &mut self.scratch)
+            });
+            best = best.max(similarity);
+            if let Some(reading) = self.status.group.get_mut(slot) {
+                reading.similarity = Some(similarity);
+                reading.highest = Some(reading.highest.map_or(similarity, |highest| highest.max(similarity)));
+            }
+            if matched.is_some() {
+                continue;
+            }
+            let armed = &mut self.below_armed[slot];
+            if similarity >= start.similarity_threshold(&defaults) {
+                if start.is_below() {
+                    *armed = true;
+                } else {
+                    matched = Some(slot);
+                }
+            } else if start.is_below() && *armed && capture.is_some() {
+                matched = Some(slot);
+            }
+        }
+        self.highest = self.highest.max(best);
+        self.status.similarity = Some(best);
         self.status.highest = Some(self.highest);
 
-        let difference = similarity - threshold;
-        if below && !self.below_armed[0] && difference >= 0.0 {
-            self.below_armed[0] = true;
+        let Some(slot) = matched else {
             self.state = State::WaitingForStart { epoch, next_tick };
             return;
-        }
-        let triggered =
-            (below && self.below_armed[0] && difference < 0.0 && capture.is_some()) || (!below && difference >= 0.0);
-        if !triggered {
-            self.state = State::WaitingForStart { epoch, next_tick };
-            return;
-        }
+        };
+        let start = &self.images.start[slot];
+        let (dummy, delay) = (start.is_dummy(), start.delay_time_ms(&defaults));
+        self.started_by = slot;
         self.below_armed = [false; MAX_GROUP_SIZE];
         if dummy {
             self.status.start_status = StartStatus::Started;
@@ -855,42 +890,59 @@ impl Runner {
     /// How often the reset image is checked during pauses and delays. AutoSplit checks it every
     /// millisecond; checking at the reset image's FPS limit catches the same frames.
     fn reset_check_interval(&self) -> Duration {
-        match &self.images.reset {
-            Some(reset) if self.settings.enable_auto_reset => interval(self.settings.defaults.fps_limit),
-            _ => Duration::MAX,
+        if !self.images.reset.is_empty() && self.settings.enable_auto_reset {
+            interval(self.settings.defaults.fps_limit)
+        } else {
+            Duration::MAX
         }
     }
 
-    /// Compares the reset image, outside its pause window, and resets on a match. Returns true
-    /// when the run is over.
+    /// Compares the reset images that are past their pause window, and resets when one matches.
+    /// The status shows the best similarity, with that image's threshold. Returns true when the
+    /// run is over.
     fn check_reset(&mut self, now: Duration, capture: Option<BgraView>) -> bool {
         let defaults = self.settings.defaults;
-        match &self.images.reset {
+        if self.images.reset.is_empty() {
+            self.status.reset_similarity = Some(ResetReading::NotApplicable);
+            self.status.reset_threshold = None;
+            self.status.reset_highest = None;
+            return !self.is_running();
+        }
+        if !self.settings.enable_auto_reset {
+            self.status.reset_similarity = Some(ResetReading::Disabled);
+            return !self.is_running();
+        }
+        // The best similarity, with its image's threshold
+        let mut best: Option<(f64, f64)> = None;
+        let mut matched = false;
+        for (slot, reset) in self.images.reset.iter().enumerate() {
+            if self.within(now, self.reset_pause(reset)) {
+                continue;
+            }
+            let similarity = self.cache.get_or_compare(Compared::Reset(slot), || {
+                reset.compare(capture, reset.comparison_method(&defaults), &mut self.scratch)
+            });
+            let threshold = reset.similarity_threshold(&defaults);
+            if best.is_none_or(|(best, _)| similarity > best) {
+                best = Some((similarity, threshold));
+            }
+            matched |= similarity >= threshold;
+        }
+        match best {
             None => {
-                self.status.reset_similarity = Some(ResetReading::NotApplicable);
-                self.status.reset_threshold = None;
-                self.status.reset_highest = None;
+                self.status.reset_threshold = Some(self.images.reset[0].similarity_threshold(&defaults));
+                self.status.reset_similarity = Some(ResetReading::Paused);
             }
-            Some(_) if !self.settings.enable_auto_reset => self.status.reset_similarity = Some(ResetReading::Disabled),
-            Some(reset) => {
-                let threshold = reset.similarity_threshold(&defaults);
-                let paused = self.in_reset_pause_window(now);
+            Some((similarity, threshold)) => {
+                self.reset_highest = self.reset_highest.max(similarity);
                 self.status.reset_threshold = Some(threshold);
-                if paused {
-                    self.status.reset_similarity = Some(ResetReading::Paused);
-                } else {
-                    let similarity = self.cache.get_or_compare(Compared::Reset, || {
-                        reset.compare(capture, reset.comparison_method(&defaults), &mut self.scratch)
-                    });
-                    self.reset_highest = self.reset_highest.max(similarity);
-                    self.status.reset_similarity = Some(ResetReading::Similarity(similarity));
-                    self.status.reset_highest = Some(self.reset_highest);
-                    if similarity >= threshold {
-                        self.effects.push(Effect::Send(Command::Reset));
-                        self.stop();
-                    }
-                }
+                self.status.reset_similarity = Some(ResetReading::Similarity(similarity));
+                self.status.reset_highest = Some(self.reset_highest);
             }
+        }
+        if matched {
+            self.effects.push(Effect::Send(Command::Reset));
+            self.stop();
         }
         !self.is_running()
     }

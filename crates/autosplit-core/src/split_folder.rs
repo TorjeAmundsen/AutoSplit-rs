@@ -10,8 +10,11 @@ use crate::split_image::{self, ImageType, LoadError, LoadWarning, SplitImage};
 /// The images of a valid split image folder.
 #[derive(Clone, Debug, Default)]
 pub struct SplitSet {
-    pub start: Option<SplitImage>,
-    pub reset: Option<SplitImage>,
+    /// In file name order. Any of them starts the run. Up to [`MAX_GROUP_SIZE`] when the profile
+    /// groups split images by number, else at most one.
+    pub start: Vec<SplitImage>,
+    /// In file name order. Any of them resets the run. As many as the start images can be.
+    pub reset: Vec<SplitImage>,
     /// In file name order, or by number then name when grouped.
     pub splits: Vec<SplitImage>,
     /// Ranges of `splits` compared for the same split. One image each, unless the profile
@@ -19,7 +22,8 @@ pub struct SplitSet {
     pub groups: Vec<Range<usize>>,
 }
 
-/// How many split images can be compared for the same split.
+/// How many split images can be compared for the same split, and how many start and reset
+/// images a folder can have when they're grouped.
 pub const MAX_GROUP_SIZE: usize = 4;
 
 /// How many splits a run can have with every loop counted, so a typo like `@1000000000@` is an
@@ -70,8 +74,12 @@ pub enum ValidationError {
     InvalidImage(LoadError),
     #[error("'{0}' has the pause flag {{p}}, but no pause hotkey is set.")]
     PauseWithoutPauseHotkey(String),
-    #[error("There can only be one image with the keyword '{0}'.")]
+    #[error(
+        "There can only be one image with the keyword '{0}', unless Compare images with the same number for one split is turned on in Settings."
+    )]
     MultipleKeywordImages(&'static str),
+    #[error("More than {MAX_GROUP_SIZE} images have the keyword '{0}'. Up to {MAX_GROUP_SIZE} can be compared.")]
+    TooManyKeywordImages(&'static str),
     #[error("'{0}' doesn't start with a number. Grouping split images by number needs one on every split image.")]
     NoNumberPrefix(String),
     #[error(
@@ -154,10 +162,13 @@ pub fn load_split_folder(directory: &Path, context: &ValidationContext) -> Folde
         })
         .collect();
 
-    let mut take_first =
-        |image_type| images.iter().position(|image| image.image_type == image_type).map(|index| images.remove(index));
-    let start = take_first(ImageType::Start);
-    let reset = take_first(ImageType::Reset);
+    let mut take = |image_type| {
+        let (taken, rest) = std::mem::take(&mut images).into_iter().partition(|image| image.image_type == image_type);
+        images = rest;
+        taken
+    };
+    let start = take(ImageType::Start);
+    let reset = take(ImageType::Reset);
     let set = SplitSet { start, reset, splits: images, groups: Vec::new() };
     FolderLoad { result: validate(set, context), load_errors, ignored_files, warnings }
 }
@@ -169,10 +180,18 @@ fn validate(mut set: SplitSet, context: &ValidationContext) -> Result<SplitSet, 
     if let Some(error) = set.start.iter().chain(&set.reset).find_map(SplitImage::load_error) {
         return Err(ValidationError::InvalidImage(error.clone()));
     }
-    if set.start.is_some() && !context.split_hotkey_set && context.hotkeys_needed {
+    for (images, keyword) in [(&set.start, START_KEYWORD), (&set.reset, RESET_KEYWORD)] {
+        if images.len() > 1 && !context.group_split_images {
+            return Err(ValidationError::MultipleKeywordImages(keyword));
+        }
+        if images.len() > MAX_GROUP_SIZE {
+            return Err(ValidationError::TooManyKeywordImages(keyword));
+        }
+    }
+    if !set.start.is_empty() && !context.split_hotkey_set && context.hotkeys_needed {
         return Err(ValidationError::StartWithoutSplitHotkey);
     }
-    if set.reset.is_some() && !context.reset_hotkey_set && context.hotkeys_needed {
+    if !set.reset.is_empty() && !context.reset_hotkey_set && context.hotkeys_needed {
         return Err(ValidationError::ResetWithoutResetHotkey);
     }
     for image in &set.splits {
@@ -181,11 +200,6 @@ fn validate(mut set: SplitSet, context: &ValidationContext) -> Result<SplitSet, 
         }
         if !context.pause_hotkey_set && image.is_pause() && context.hotkeys_needed {
             return Err(ValidationError::PauseWithoutPauseHotkey(image.filename.clone()));
-        }
-        match image.image_type {
-            ImageType::Reset => return Err(ValidationError::MultipleKeywordImages(RESET_KEYWORD)),
-            ImageType::Start => return Err(ValidationError::MultipleKeywordImages(START_KEYWORD)),
-            ImageType::Split => {}
         }
     }
     set.groups = group_splits(&mut set.splits, context.group_split_images)?;

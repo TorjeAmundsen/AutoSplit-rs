@@ -7,6 +7,7 @@ pub mod log;
 pub mod maker_plan;
 pub mod messages;
 pub mod placement;
+pub mod preset_form;
 pub mod recorder;
 pub mod settings_form;
 pub mod view;
@@ -595,7 +596,7 @@ impl Gui {
     }
 
     /// The main window's Close button for the newest tool window.
-    fn close_tool(&self) {
+    fn close_tool(self: &Rc<Self>) {
         let Some(tool) = self.state.borrow().tools.last().copied() else { return };
         match tool {
             Tool::Tester => self.close_tester(),
@@ -1329,7 +1330,8 @@ impl Gui {
         if self.blocked() {
             return self.focus_message();
         }
-        self.unless_cancelled(|_| quit());
+        // A preset being edited is asked about first, then the profile
+        self.unless_discarded(|gui| gui.unless_cancelled(|_| quit()));
     }
 
     /// Does `then` after asking whether to save the profile's changes, if it has any, like

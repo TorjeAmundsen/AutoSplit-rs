@@ -15,7 +15,7 @@ A Rust rewrite of [AutoSplit](https://github.com/Toufool/AutoSplit), the image c
 ## Getting started
 
 1. Download the zip for your system from the [releases](https://github.com/TorjeAmundsen/AutoSplit-rs/releases) and unzip it.
-2. Start `autosplit` (`autosplit.exe` on Windows).
+2. Start `autosplit` (`AutoSplit.exe` on Windows).
 3. Follow [TUTORIAL.md](TUTORIAL.md), which covers the OBS setup, the window, split image file names and the permissions Linux and macOS need. Help > View Help in the program opens it too.
 
 ## Documentation

@@ -51,10 +51,12 @@ fn is_png(path: &Path) -> bool {
     path.extension().is_some_and(|extension| extension.eq_ignore_ascii_case("png"))
 }
 
-/// Writing `names` into a folder that has `existing` files. `sources`, the files the split images
-/// are made from, are never stale, and neither are screenshots (`NNN_SplitImage.png`): their
-/// numbers count from 1 where split images count from 0, so they'd look like the next split's.
-pub fn plan_writes(names: &[String], existing: &[PathBuf], sources: &[PathBuf]) -> WritePlan {
+/// Writing `names` into a folder that has `existing` files. The split images of the preset, all
+/// its file names in `preset`, are never stale, like the ones compared for the same split.
+/// `sources`, the files the split images are made from, aren't either, and neither are
+/// screenshots (`NNN_SplitImage.png`): their numbers count from 1 where split images count from
+/// 0, so they'd look like the next split's.
+pub fn plan_writes(names: &[String], preset: &[String], existing: &[PathBuf], sources: &[PathBuf]) -> WritePlan {
     let file_name = |path: &PathBuf| path.file_name().map(|name| name.to_string_lossy().into_owned());
     let same_name = |name: &str, other: &str| name.eq_ignore_ascii_case(other);
     let keys: Vec<SplitKey> = names.iter().filter_map(|name| split_key(name)).collect();
@@ -64,6 +66,7 @@ pub fn plan_writes(names: &[String], existing: &[PathBuf], sources: &[PathBuf]) 
         if names.iter().any(|name| same_name(name, &existing_name)) {
             plan.overwrites.push(existing_name);
         } else if !sources.contains(path)
+            && !preset.iter().any(|name| same_name(name, &existing_name))
             && !is_screenshot_name(&existing_name)
             && split_key(&existing_name).is_some_and(|key| keys.contains(&key))
         {

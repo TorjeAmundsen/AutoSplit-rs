@@ -822,7 +822,7 @@ impl Session {
         self.folder_error = images.as_ref().err().cloned();
         match images {
             Ok(images) => {
-                let has_start = images.start.is_some();
+                let has_start = !images.start.is_empty();
                 let now = self.elapsed();
                 if self.runner.arm(images, now) && has_start {
                     self.console.log("Looking for the start image");

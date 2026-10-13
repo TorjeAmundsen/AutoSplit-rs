@@ -1,8 +1,9 @@
 // Make Split Images: a preset's masks applied to screenshots, saved as split images named the way
-// AutoSplit reads them, into the split image folder.
+// AutoSplit reads them, into the split image folder. Edit switches it to editing the preset, with
+// the selected split's mask shown on the capture as it's changed.
 
-import { CheckBox, ScrollView } from "std-widgets.slint";
-import { Button, ComboBox, FileName, Label, NamePart, Preview, SavedCheck, Theme, Tip } from "widgets.slint";
+import { CheckBox, ScrollView, TextEdit } from "std-widgets.slint";
+import { Button, ComboBox, FileName, Label, NamePart, Preview, SavedCheck, SpinBox, TextField, Theme, Tip } from "widgets.slint";
 
 // A split of the preset, with the file name it gets and where its screenshot comes from.
 export struct MakerRow {
@@ -17,6 +18,24 @@ export struct MakerRow {
     // A small picture of its split image, once there's something to make it from
     thumb: image,
     has-thumb: bool,
+    // Something has to be fixed before the preset can be saved
+    problem: bool,
+    // Compared for the same split as the row above
+    joined: bool,
+}
+
+// What the form shows of the selected split besides its fields, while editing.
+export struct SplitForm {
+    parts: [NamePart],
+    file: string,
+    // What has to be fixed, or empty
+    problem: string,
+    mask: string,
+    savestate: string,
+    // There's a split above that it can be compared with
+    can-join: bool,
+    // The name has to change, like when a split compared together with it has it too
+    name-error: bool,
 }
 
 export component MakerWindow inherits Window {
@@ -48,19 +67,82 @@ export component MakerWindow inherits Window {
     in property <bool> can-test;
     in property <bool> has-savestates;
     in property <bool> has-instructions;
+    // The preset compares several images for one split, which the profile doesn't do
+    in property <bool> needs-grouping;
+    // What has to be fixed in the chosen preset before anything's made from it, or empty
+    in property <string> preset-problem;
     // A message box is open, which AutoSplit's are modal
     in property <bool> blocked;
+
+    // Editing the preset instead of making its split images
+    in property <bool> editing;
+    // Split images are being saved or the list's pictures made, which editing waits for
+    in property <bool> working;
+    // The preset's game and name while editing, set when editing starts
+    in-out property <string> edit-game;
+    in-out property <string> edit-name;
+    // The selected split's fields, set when another split is selected and kept by the fields
+    // while they're edited
+    in property <SplitForm> form;
+    in-out property <string> split-name;
+    in-out property <float> threshold;
+    // Milliseconds
+    in-out property <float> delay;
+    in-out property <bool> has-pause;
+    // Seconds
+    in-out property <float> pause;
+    in-out property <bool> dummy;
+    in-out property <bool> below;
+    in-out property <bool> with-previous;
+    in-out property <string> instructions;
+    // Changes when the form is filled with a split, so number fields drop what was typed for the
+    // split before
+    in property <int> form-generation;
+    // Whether a split is selected to edit
+    in property <bool> has-split;
+    // What has to be fixed before saving, or that it's ready
+    in property <string> problems;
+    in property <bool> has-problems;
+    in property <bool> can-save-preset;
+    // The preset is saved already, so there's a folder to delete
+    in property <bool> can-delete-preset;
 
     callback game-chosen(int);
     // The index among the game's presets
     callback preset-chosen(int);
     callback split-chosen(int);
+    callback edit-preset();
+    callback new-preset();
+    callback game-edited(string);
+    callback name-edited(string);
+    callback split-name-edited(string);
+    callback threshold-edited(float);
+    callback delay-edited(float);
+    callback pause-edited(bool, float);
+    callback dummy-edited(bool);
+    callback below-edited(bool);
+    callback with-previous-edited(bool);
+    callback instructions-edited(string);
+    callback choose-mask();
+    callback choose-savestate();
+    callback clear-savestate();
+    callback add-split();
+    callback duplicate-split();
+    callback remove-split();
+    callback move-split(bool);
+    callback save-preset();
+    callback save-preset-as-new();
+    callback cancel-edit();
+    callback delete-preset();
+    callback turn-on-grouping();
 
     // The split list's rows: the split's name over its file name, beside a picture
     property <length> row-height: 44px;
+    // The form's labels, so the fields line up
+    property <length> label-width: 66px;
 
     // Selects split `index`, scrolled into view
-    function pick(index: int) {
+    public function pick(index: int) {
         root.selected = index;
         if (index * root.row-height < -list.content-y) {
             list.content-y = -index * root.row-height;
@@ -121,10 +203,16 @@ export component MakerWindow inherits Window {
                         text: "Game:";
                     }
 
-                    ComboBox {
+                    if !root.editing: ComboBox {
                         model: root.games;
                         current-index <=> root.game-index;
                         selected => { root.game-chosen(root.game-index); }
+                    }
+
+                    if root.editing: TextField {
+                        text <=> root.edit-game;
+                        placeholder-text: "The game, which presets are listed under";
+                        edited(text) => { root.game-edited(text); }
                     }
                 }
 
@@ -137,10 +225,44 @@ export component MakerWindow inherits Window {
                         text: "Preset:";
                     }
 
-                    ComboBox {
+                    if !root.editing: ComboBox {
                         model: root.presets;
                         current-index <=> root.preset-index;
                         selected => { root.preset-chosen(root.preset-index); }
+                    }
+
+                    if !root.editing: Button {
+                        width: 60px;
+                        height: 24px;
+                        text: "Edit";
+                        enabled: root.presets.length > 0 && !root.working;
+                        clicked => { root.edit-preset(); }
+
+                        Tooltip {
+                            Tip {
+                                text: "Change this preset's splits, masks and settings";
+                            }
+                        }
+                    }
+
+                    if !root.editing: Button {
+                        width: 60px;
+                        height: 24px;
+                        text: "New";
+                        enabled: !root.working;
+                        clicked => { root.new-preset(); }
+
+                        Tooltip {
+                            Tip {
+                                text: "Make a new preset for this game";
+                            }
+                        }
+                    }
+
+                    if root.editing: TextField {
+                        text <=> root.edit-name;
+                        placeholder-text: "The preset's name, like the category";
+                        edited(text) => { root.name-edited(text); }
                     }
                 }
 
@@ -193,8 +315,25 @@ export component MakerWindow inherits Window {
                                     }
                                 }
 
+                                // Joins a split to the one above, which it's compared with
+                                if row.joined: Rectangle {
+                                    x: 9px;
+                                    y: 0px;
+                                    width: 2px;
+                                    height: root.row-height / 2 + 1px;
+                                    background: Theme.frame;
+                                }
+
+                                if row.joined: Rectangle {
+                                    x: 9px;
+                                    y: root.row-height / 2 - 1px;
+                                    width: 11px;
+                                    height: 2px;
+                                    background: Theme.frame;
+                                }
+
                                 HorizontalLayout {
-                                    padding-left: 4px;
+                                    padding-left: row.joined ? 20px : 4px;
                                     // Clear of the scroll bar, 14px wide over the rows when it shows
                                     padding-right: root.rows.length * root.row-height > list.visible-height ? 20px : 6px;
                                     spacing: 8px;
@@ -229,6 +368,7 @@ export component MakerWindow inherits Window {
                                             height: 18px;
                                             font-size: 13px;
                                             font-weight: 600;
+                                            color: row.problem ? Theme.error : Theme.text;
                                             text: row.heading;
                                         }
 
@@ -268,7 +408,7 @@ export component MakerWindow inherits Window {
                 }
 
                 // Where split images come from, then what's done with them, out to the list's edges
-                HorizontalLayout {
+                if !root.editing: HorizontalLayout {
                     height: 24px;
                     spacing: 6px;
 
@@ -291,6 +431,7 @@ export component MakerWindow inherits Window {
                         width: 120px;
                         height: 24px;
                         text: "Use Screenshots...";
+                        enabled: root.preset-problem == "";
                         clicked => { root.use-screenshots(); }
 
                         Tooltip {
@@ -334,18 +475,79 @@ export component MakerWindow inherits Window {
                         clicked => { root.save-all(); }
                     }
                 }
+
+                // The splits' order, out to the list's edges like the buttons they replace
+                if root.editing: HorizontalLayout {
+                    height: 24px;
+                    spacing: 6px;
+
+                    Button {
+                        width: 70px;
+                        height: 24px;
+                        text: "Add";
+                        clicked => { root.add-split(); }
+
+                        Tooltip {
+                            Tip {
+                                text: "Add a split after the selected one";
+                            }
+                        }
+                    }
+
+                    Button {
+                        width: 80px;
+                        height: 24px;
+                        text: "Duplicate";
+                        enabled: root.has-split;
+                        clicked => { root.duplicate-split(); }
+
+                        Tooltip {
+                            Tip {
+                                text: "Add a copy of the selected split after it, with the same mask";
+                            }
+                        }
+                    }
+
+                    Button {
+                        width: 70px;
+                        height: 24px;
+                        text: "Remove";
+                        enabled: root.has-split;
+                        clicked => { root.remove-split(); }
+                    }
+
+                    Rectangle {
+                        horizontal-stretch: 1;
+                    }
+
+                    Button {
+                        width: 80px;
+                        height: 24px;
+                        text: "Move Up";
+                        enabled: root.has-split && root.selected > 0;
+                        clicked => { root.move-split(true); }
+                    }
+
+                    Button {
+                        width: 80px;
+                        height: 24px;
+                        text: "Move Down";
+                        enabled: root.has-split && root.selected < root.rows.length - 1;
+                        clicked => { root.move-split(false); }
+                    }
+                }
             }
 
             VerticalLayout {
                 width: 320px;
                 spacing: 6px;
 
-                Label {
+                if !root.editing: Label {
                     height: 24px;
                     text: "Saves to the split image folder:";
                 }
 
-                HorizontalLayout {
+                if !root.editing: HorizontalLayout {
                     height: 24px;
                     spacing: 6px;
 
@@ -401,15 +603,296 @@ export component MakerWindow inherits Window {
                     }
                 }
 
-                Label {
+                if !root.editing: Label {
                     height: 20px;
                     text: "Capture Region";
                 }
 
-                Preview {
+                if !root.editing: Preview {
                     height: 240px;
                     source: root.live-image;
                     message: root.live-message;
+                }
+
+                // The selected split, in the space of the folder and the capture, which the
+                // output preview below shows masked as it's edited
+                if root.editing: VerticalLayout {
+                    height: 326px;
+                    spacing: 6px;
+
+                    if !root.has-split: Label {
+                        vertical-stretch: 1;
+                        horizontal-alignment: center;
+                        color: Theme.secondary-text;
+                        text: "Add a split to edit it.";
+                    }
+
+                    if root.has-split: HorizontalLayout {
+                        height: 24px;
+                        spacing: 6px;
+
+                        Label {
+                            width: root.label-width;
+                            text: "Name";
+                        }
+
+                        TextField {
+                            error: root.form.name-error;
+                            text <=> root.split-name;
+                            edited(text) => { root.split-name-edited(text); }
+                        }
+                    }
+
+                    if root.has-split && root.form.problem == "": HorizontalLayout {
+                        height: 16px;
+                        spacing: 6px;
+
+                        Rectangle {
+                            width: root.label-width;
+                        }
+
+                        Rectangle {
+                            clip: true;
+
+                            FileName {
+                                parts: root.form.parts;
+                                file: root.form.file;
+                            }
+                        }
+                    }
+
+                    // Wrapped onto as many lines as it needs, so all of it shows
+                    if root.has-split && root.form.problem != "": HorizontalLayout {
+                        spacing: 6px;
+
+                        Rectangle {
+                            width: root.label-width;
+                        }
+
+                        Text {
+                            color: Theme.error;
+                            text: root.form.problem;
+                            wrap: word-wrap;
+                        }
+                    }
+
+                    if root.has-split: HorizontalLayout {
+                        height: 24px;
+                        spacing: 6px;
+
+                        Label {
+                            width: root.label-width;
+                            text: "Mask";
+                        }
+
+                        Label {
+                            horizontal-stretch: 1;
+                            color: root.form.mask == "" ? Theme.secondary-text : Theme.text;
+                            text: root.form.mask == "" ? "None yet" : root.form.mask;
+
+                            Tooltip {
+                                Tip {
+                                    text: "The part of the screen that's compared: where the mask is opaque. The output preview shows it on the capture.";
+                                }
+                            }
+                        }
+
+                        Button {
+                            width: 80px;
+                            height: 24px;
+                            text: "Choose...";
+                            primary: root.form.mask == "";
+                            clicked => { root.choose-mask(); }
+                        }
+                    }
+
+                    if root.has-split: HorizontalLayout {
+                        height: 24px;
+                        spacing: 6px;
+
+                        Label {
+                            width: root.label-width;
+                            text: "Threshold";
+                        }
+
+                        SpinBox {
+                            width: 64px;
+                            height: 22px;
+                            minimum: 0;
+                            maximum: 1;
+                            step: 0.01;
+                            decimals: 2;
+                            generation: root.form-generation;
+                            value <=> root.threshold;
+                            edited(value) => { root.threshold-edited(value); }
+                        }
+
+                        Label {
+                            horizontal-alignment: right;
+                            horizontal-stretch: 1;
+                            text: "Delay";
+
+                            Tooltip {
+                                Tip {
+                                    text: "How long to wait after the image matches before splitting";
+                                }
+                            }
+                        }
+
+                        SpinBox {
+                            width: 74px;
+                            height: 22px;
+                            minimum: 0;
+                            maximum: 600000;
+                            step: 100;
+                            generation: root.form-generation;
+                            value <=> root.delay;
+                            edited(value) => { root.delay-edited(value); }
+                        }
+
+                        Label {
+                            width: 20px;
+                            text: "ms";
+                        }
+                    }
+
+                    if root.has-split: HorizontalLayout {
+                        height: 24px;
+                        spacing: 6px;
+
+                        CheckBox {
+                            width: root.label-width;
+                            text: "Pause";
+                            checked <=> root.has-pause;
+                            toggled => { root.pause-edited(self.checked, root.pause); }
+
+                            Tooltip {
+                                Tip {
+                                    text: "How long to stop comparing after the split. Unchecked uses the profile's default pause time.";
+                                }
+                            }
+                        }
+
+                        SpinBox {
+                            width: 64px;
+                            height: 22px;
+                            minimum: 0;
+                            maximum: 3600;
+                            step: 0.5;
+                            decimals: 1;
+                            enabled: root.has-pause;
+                            generation: root.form-generation;
+                            value <=> root.pause;
+                            edited(value) => { root.pause-edited(true, value); }
+                        }
+
+                        Label {
+                            color: root.has-pause ? Theme.text : Theme.secondary-text;
+                            text: root.has-pause ? "seconds" : "the profile's default";
+                        }
+                    }
+
+                    if root.has-split: HorizontalLayout {
+                        height: 24px;
+                        spacing: 12px;
+
+                        Rectangle {
+                            width: root.label-width - 6px;
+                        }
+
+                        CheckBox {
+                            text: "Dummy";
+                            checked <=> root.dummy;
+                            toggled => { root.dummy-edited(self.checked); }
+
+                            Tooltip {
+                                Tip {
+                                    text: "Matching it moves on to the next image without splitting, for screens that come before the real split";
+                                }
+                            }
+                        }
+
+                        CheckBox {
+                            text: "Split below threshold";
+                            checked <=> root.below;
+                            toggled => { root.below-edited(self.checked); }
+
+                            Tooltip {
+                                Tip {
+                                    text: "Split when the similarity drops back below the threshold after reaching it, like when a screen goes away";
+                                }
+                            }
+                        }
+                    }
+
+                    if root.has-split: HorizontalLayout {
+                        height: 24px;
+                        spacing: 12px;
+
+                        Rectangle {
+                            width: root.label-width - 6px;
+                        }
+
+                        CheckBox {
+                            text: "Same split as the one above";
+                            enabled: root.form.can-join || root.with-previous;
+                            checked <=> root.with-previous;
+                            toggled => { root.with-previous-edited(self.checked); }
+
+                            Tooltip {
+                                Tip {
+                                    text: "Compare it for the same split as the split above, so either one matching splits, like a boss that dies in one of two rooms. They get the same number. Up to 4 splits together. Needs Compare images with the same number for one split, in Settings.";
+                                }
+                            }
+                        }
+                    }
+
+                    if root.has-split: HorizontalLayout {
+                        height: 24px;
+                        spacing: 6px;
+
+                        Label {
+                            width: root.label-width;
+                            text: "Savestate";
+                        }
+
+                        Label {
+                            horizontal-stretch: 1;
+                            color: root.form.savestate == "" ? Theme.secondary-text : Theme.text;
+                            text: root.form.savestate == "" ? "None" : root.form.savestate;
+
+                            Tooltip {
+                                Tip {
+                                    text: "A savestate at the split's screen, for taking its screenshot, made with a practice tool that loads savestates on the console, like gz for Ocarina of Time (.gzs). Copy Savestates puts them on the clipboard.";
+                                }
+                            }
+                        }
+
+                        Button {
+                            width: 80px;
+                            height: 24px;
+                            text: "Choose...";
+                            clicked => { root.choose-savestate(); }
+                        }
+
+                        Button {
+                            width: 50px;
+                            height: 24px;
+                            text: "Clear";
+                            enabled: root.form.savestate != "";
+                            clicked => { root.clear-savestate(); }
+                        }
+                    }
+
+                    if root.has-split: TextEdit {
+                        vertical-stretch: 1;
+                        font-size: 12px;
+                        wrap: word-wrap;
+                        enabled: root.form.savestate != "";
+                        placeholder-text: root.form.savestate == "" ? "Instructions for the savestate, once there is one" : "What to do after loading the savestate, if anything";
+                        text <=> root.instructions;
+                        edited(text) => { root.instructions-edited(text); }
+                    }
                 }
 
                 HorizontalLayout {
@@ -418,7 +901,7 @@ export component MakerWindow inherits Window {
 
                     Label {
                         horizontal-stretch: 1;
-                        text: "Output Preview";
+                        text: root.editing ? "Output Preview, with the mask" : "Output Preview";
                     }
 
                     CheckBox {
@@ -443,7 +926,7 @@ export component MakerWindow inherits Window {
                     }
                 }
 
-                HorizontalLayout {
+                if !root.editing: HorizontalLayout {
                     height: 24px;
                     spacing: 6px;
 
@@ -455,7 +938,7 @@ export component MakerWindow inherits Window {
 
                         Tooltip {
                             Tip {
-                                text: "Put the preset's savestates on the clipboard, numbered like the split images, to paste into the emulator's folder";
+                                text: "Put the preset's savestates on the clipboard, numbered like the split images, to paste where the practice tool on the console loads them from, like gz's savestate folder on the SD card";
                             }
                         }
                     }
@@ -467,23 +950,81 @@ export component MakerWindow inherits Window {
                         clicked => { root.show-instructions(); }
                     }
                 }
+
+                if root.editing: HorizontalLayout {
+                    height: 24px;
+                    alignment: end;
+
+                    Button {
+                        width: 110px;
+                        height: 24px;
+                        text: "Delete Preset...";
+                        enabled: root.can-delete-preset;
+                        clicked => { root.delete-preset(); }
+
+                        Tooltip {
+                            Tip {
+                                text: "Delete this preset's folder, with its masks and savestates";
+                            }
+                        }
+                    }
+                }
             }
         }
 
-        HorizontalLayout {
+        if !root.editing: HorizontalLayout {
             height: 24px;
             spacing: 6px;
 
-            Label {
+            if root.preset-problem == "" && !root.needs-grouping: Label {
                 horizontal-stretch: 1;
                 text: root.status;
+            }
+
+            if root.preset-problem != "": Label {
+                horizontal-stretch: 1;
+                color: Theme.error;
+                text: root.preset-problem;
+
+                Tooltip {
+                    Tip {
+                        text: "The preset has to be fixed before split images are made or savestates copied from it. " + root.preset-problem;
+                    }
+                }
+            }
+
+            if root.preset-problem != "": Button {
+                width: 80px;
+                height: 24px;
+                text: "Fix It";
+                enabled: !root.working;
+                clicked => { root.edit-preset(); }
+            }
+
+            if root.preset-problem == "" && root.needs-grouping: Label {
+                horizontal-stretch: 1;
+                color: Theme.error;
+                text: "This preset compares several images for one split, which the profile has turned off.";
+
+                Tooltip {
+                    Tip {
+                        text: "Some splits are compared together, or there are several reset or start images. The split image folder only loads like that with Compare images with the same number for one split turned on in Settings.";
+                    }
+                }
+            }
+
+            if root.preset-problem == "" && root.needs-grouping: Button {
+                width: 80px;
+                height: 24px;
+                text: "Turn It On";
+                clicked => { root.turn-on-grouping(); }
             }
 
             Button {
                 width: 130px;
                 height: 24px;
                 text: "Generate Profile...";
-                enabled: root.presets.length > 0;
+                enabled: root.presets.length > 0 && root.preset-problem == "";
                 clicked => { root.generate-profile(); }
 
                 Tooltip {
@@ -491,6 +1032,53 @@ export component MakerWindow inherits Window {
                         text: "Save the settings as a new profile named for the game and preset, with this split image folder, and use it from now on";
                     }
                 }
+            }
+        }
+
+        if root.editing: HorizontalLayout {
+            height: 24px;
+            spacing: 6px;
+
+            Label {
+                horizontal-stretch: 1;
+                color: root.has-problems ? Theme.error : Theme.secondary-text;
+                text: root.problems;
+
+                Tooltip {
+                    Tip {
+                        text: root.problems;
+                    }
+                }
+            }
+
+            Button {
+                width: 110px;
+                height: 24px;
+                text: "Save as New...";
+                enabled: !root.has-problems;
+                clicked => { root.save-preset-as-new(); }
+
+                Tooltip {
+                    Tip {
+                        text: "Save these changes as a new preset, and leave this one as it was";
+                    }
+                }
+            }
+
+            Button {
+                width: 70px;
+                height: 24px;
+                text: "Cancel";
+                clicked => { root.cancel-edit(); }
+            }
+
+            Button {
+                width: 70px;
+                height: 24px;
+                text: "Save";
+                primary: true;
+                enabled: root.can-save-preset;
+                clicked => { root.save-preset(); }
             }
         }
     }

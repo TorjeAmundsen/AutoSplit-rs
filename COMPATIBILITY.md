@@ -18,10 +18,11 @@
 | Global hotkeys and sending key presses | Done, with AutoSplit's hotkey names |
 | LiveSplit One (WebSocket) | Done, new |
 | Molok (POSIX signals, Linux) | Done, new |
-| Up to 4 split images compared for one split, grouped by number | Done, new, off by default |
+| Up to 4 split images compared for one split, grouped by number, and up to 4 start and reset images | Done, new, off by default |
 | Screenshots | Done |
 | Live Tester (one split image against the capture, outside of a run) | Done, new. Replaces AutoMask's tester |
 | Make Split Images (a preset's masks applied to the capture or screenshots, savestates) | Done, new. Replaces AutoMask |
+| Editing presets (in Make Split Images) | Done, new. Replaces AutoMask's preset editor |
 | Screen and window capture | Not planned: OBS Virtual Camera captures any window or screen, and PC games are better split by a memory-reading autosplitter |
 | Window (Slint): main window, settings, Set Hotkey, Live Tester, Make Split Images | Done, for capture devices |
 | Align Region | Removed: split images are made for one capture setup, so the region is set once with its boxes |

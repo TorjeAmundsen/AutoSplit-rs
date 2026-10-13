@@ -1,7 +1,6 @@
 //! Shows the session in the main window. Runs on the session's thread and hands what changed to
 //! the window's thread.
 
-use std::ops::Range;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -344,11 +343,12 @@ impl GuiView {
         self.kept_sent = (snapshot.tester_loaded, tester.generation(), triggers.len());
     }
 
-    /// The current image, or the grid's tiles when `grid` has the images of the split.
+    /// The current image, or the grid's tiles when `grid` has the images of the split, or the
+    /// start images.
     fn current_image(
         &mut self,
         snapshot: &Snapshot,
-        grid: Option<Range<usize>>,
+        grid: Option<&[SplitImage]>,
     ) -> (Picture, [Picture; MAX_GROUP_SIZE]) {
         let shown = match snapshot.status.showing {
             Showing::Image(image) => Some((image, snapshot.images_loaded, grid.is_some())),
@@ -362,12 +362,11 @@ impl GuiView {
             Some(SplitContent::Image { pixels, .. }) => Picture::Show(rgba(pixels.view())),
             _ => Picture::Clear,
         };
-        if let Some(group) = grid {
-            let images = &snapshot.images.splits[group];
+        if let Some(images) = grid {
             return (Picture::Clear, std::array::from_fn(|slot| picture(images.get(slot))));
         }
         let image = shown.and_then(|(image, ..)| match image {
-            ImageRef::Start => snapshot.images.start.as_ref(),
+            ImageRef::Start => snapshot.images.start.first(),
             ImageRef::Split(index) => snapshot.images.splits.get(index),
         });
         (picture(image), [const { Picture::Clear }; MAX_GROUP_SIZE])
@@ -447,10 +446,15 @@ impl View for GuiView {
             if self.visible() { self.live_preview(&snapshot) } else { (String::new(), Picture::Keep) };
         let status = snapshot.status;
         let profile = snapshot.profile;
-        // The images of the split being compared, when there are several to show in the grid
+        // The images of the split being compared, or the start images, when there are several to
+        // show in the grid
+        let images = &snapshot.images;
         let grid = match status.showing {
-            Showing::Image(ImageRef::Split(first)) if profile.split_image_grid => {
-                snapshot.images.groups.iter().find(|group| group.start == first && group.len() > 1).cloned()
+            Showing::Image(ImageRef::Split(first)) if profile.split_image_grid => (images.groups.iter())
+                .find(|group| group.start == first && group.len() > 1)
+                .map(|group| &images.splits[group.clone()]),
+            Showing::Image(ImageRef::Start) if profile.split_image_grid && images.start.len() > 1 => {
+                Some(&images.start[..])
             }
             _ => None,
         };
