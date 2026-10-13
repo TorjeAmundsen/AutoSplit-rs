@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use autosplit_core::mask::Mask;
-use autosplit_core::preset::{Preset, new_preset_folder, save_preset};
+use autosplit_core::preset::{Preset, delete_preset, new_preset_folder, save_preset};
 use slint::{ComponentHandle, SharedString};
 
 use super::super::messages::{Answer, Message};
@@ -317,8 +317,8 @@ impl Gui {
         let weak = Rc::downgrade(self);
         self.show_message(Message::choice(text, ["Delete Preset", "", "Cancel"], 2, move |answer| {
             let (Some(gui), Answer::Yes) = (weak.upgrade(), answer) else { return };
-            if let Err(error) = std::fs::remove_dir_all(&folder) {
-                return gui.show_message(Message::error(format!("Couldn't delete {}: {error}", folder.display())));
+            if let Err(error) = delete_preset(&folder) {
+                return gui.show_message(Message::error(format!("Couldn't delete the preset. {error}")));
             }
             gui.maker.borrow_mut().edit = None;
             gui.windows.maker.set_editing(false);

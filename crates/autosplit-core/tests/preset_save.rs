@@ -3,8 +3,8 @@
 use std::path::Path;
 
 use autosplit_core::preset::{
-    PRESET_FILE, Preset, PresetError, PresetSplit, SAVESTATE_NOTE_FILE, new_preset_folder, sanitize_file_name,
-    save_preset, unique_file_name,
+    PRESET_FILE, Preset, PresetError, PresetSplit, SAVESTATE_NOTE_FILE, delete_preset, load_presets, new_preset_folder,
+    sanitize_file_name, save_preset, unique_file_name,
 };
 use test_case::test_case;
 
@@ -316,4 +316,51 @@ fn the_savestate_folder_says_not_to_copy_from_it() {
     // Assert
     let note = |folder: &Path| folder.join("savestates").join(SAVESTATE_NOTE_FILE).is_file();
     assert_eq!((note(without.path()), note(with.path())), (false, true));
+}
+
+#[test]
+fn deleted_presets_are_gone() {
+    // Arrange: two presets
+    let presets = tempfile::tempdir().unwrap();
+    for name in ["Any%", "100%"] {
+        let folder = presets.path().join(name);
+        file(&folder.join("boss.png"), "mask");
+        save_preset(Some(&folder), &folder, &preset(vec![split("Boss", "boss.png")])).unwrap();
+    }
+
+    // Act
+    delete_preset(&presets.path().join("Any%")).unwrap();
+
+    // Assert
+    assert_eq!(files(presets.path()), ["100%/boss.png", &format!("100%/{PRESET_FILE}")]);
+}
+
+#[test]
+fn what_is_left_of_a_deleted_preset_isnt_a_preset() {
+    // Arrange: a delete that stopped partway, which left the renamed folder
+    let presets = tempfile::tempdir().unwrap();
+    let left = presets.path().join(".deleting-Any%-1");
+    file(&left.join("boss.png"), "mask");
+    std::fs::write(left.join(PRESET_FILE), preset(vec![split("Boss", "boss.png")]).to_toml()).unwrap();
+
+    // Act
+    let (loaded, errors) = load_presets(presets.path());
+
+    // Assert
+    assert_eq!((loaded.len(), errors.len()), (0, 0));
+}
+
+#[test]
+fn deleting_again_removes_what_was_left() {
+    // Arrange
+    let presets = tempfile::tempdir().unwrap();
+    file(&presets.path().join(".deleting-Old-1/boss.png"), "mask");
+    let folder = presets.path().join("Any%");
+    file(&folder.join("boss.png"), "mask");
+
+    // Act
+    delete_preset(&folder).unwrap();
+
+    // Assert
+    assert_eq!(files(presets.path()), Vec::<String>::new());
 }

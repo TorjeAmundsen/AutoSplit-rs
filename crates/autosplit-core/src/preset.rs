@@ -302,11 +302,15 @@ impl SplitLibrary {
     }
 }
 
-/// The folders in `directory` that have `file`, by name, or none when it can't be read.
+/// The folders in `directory` that have `file`, by name, or none when it can't be read. Hidden
+/// folders are left out, like what's left of a deleted preset.
 fn folders_with(directory: &Path, file: &str) -> Vec<PathBuf> {
     let Ok(entries) = std::fs::read_dir(directory) else { return Vec::new() };
-    let mut folders: Vec<PathBuf> =
-        entries.filter_map(|entry| Some(entry.ok()?.path())).filter(|path| path.join(file).is_file()).collect();
+    let mut folders: Vec<PathBuf> = entries
+        .filter_map(|entry| Some(entry.ok()?.path()))
+        .filter(|path| !path.file_name().is_some_and(|name| name.to_string_lossy().starts_with('.')))
+        .filter(|path| path.join(file).is_file())
+        .collect();
     folders.sort();
     folders
 }
@@ -469,6 +473,36 @@ pub fn save_preset(source: Option<&Path>, target: &Path, preset: &Preset) -> Res
             Err(error)
         }
     }
+}
+
+/// The start of the hidden name a preset's folder gets while it's deleted.
+const DELETING_PREFIX: &str = ".deleting-";
+
+/// Deletes the preset folder `folder`. It's first renamed to a hidden name next to it, which
+/// fails without changing anything when a file in it is open, as on Windows. Once renamed it's
+/// no longer a preset, so a delete that stops partway leaves a hidden folder instead of half a
+/// preset. Those are deleted again here, the next time.
+pub fn delete_preset(folder: &Path) -> Result<(), PresetError> {
+    let parent = folder.parent().unwrap_or(Path::new("."));
+    if let Ok(entries) = std::fs::read_dir(parent) {
+        for entry in entries.flatten() {
+            if entry.file_name().to_string_lossy().starts_with(DELETING_PREFIX) {
+                let _ = std::fs::remove_dir_all(entry.path());
+            }
+        }
+    }
+    let name = folder.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
+    let hidden = (1..)
+        .map(|n| parent.join(format!("{DELETING_PREFIX}{name}-{n}")))
+        .find(|path| !path.exists())
+        .expect("some number is free");
+    std::fs::rename(folder, &hidden).map_err(|error| PresetError::Unwritable {
+        path: folder.to_owned(),
+        reason: format!("{error}. Close any program that has a file in it open, then try again"),
+    })?;
+    // Not a preset anymore, whether or not all of it goes now
+    let _ = std::fs::remove_dir_all(&hidden);
+    Ok(())
 }
 
 fn unwritable(path: &Path, error: std::io::Error) -> PresetError {
