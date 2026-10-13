@@ -9,6 +9,7 @@ use autosplit_core::profile::{TimerConnection, UserProfile, VIDEO_CAPTURE_DEVICE
 pub enum SettingEdit {
     FpsLimit(i32),
     LiveCaptureRegion(bool),
+    DisplayPauseTimer(bool),
     /// The capture method list's index: 0 is Video Capture Device, 1 the profile's own
     /// unsupported method when it has one.
     CaptureMethod(i32),
@@ -53,6 +54,7 @@ pub fn apply(profile: &mut UserProfile, edit: SettingEdit, devices: &[DeviceInfo
     match edit {
         SettingEdit::FpsLimit(fps) if (20..=240).contains(&fps) => profile.fps_limit = fps.into(),
         SettingEdit::LiveCaptureRegion(on) => profile.live_capture_region = on,
+        SettingEdit::DisplayPauseTimer(on) => profile.display_pause_timer = on,
         SettingEdit::CaptureMethod(0) => profile.capture_method = VIDEO_CAPTURE_DEVICE.into(),
         SettingEdit::CaptureMethod(_) => {}
         SettingEdit::CaptureDevice(index) => {
@@ -112,13 +114,15 @@ pub fn apply(profile: &mut UserProfile, edit: SettingEdit, devices: &[DeviceInfo
     true
 }
 
-/// Gives a profile without a capture device the first listed one, which the device list
-/// shows selected, like AutoSplit's list picks it when filled. Returns whether it did.
-pub fn pick_first_device(profile: &mut UserProfile, devices: &[DeviceInfo]) -> bool {
+/// Gives a profile without a capture device OBS Virtual Camera when it's listed, since that's what
+/// most runs use, or else the first listed device like AutoSplit's list picks when filled. The
+/// device list shows it selected. Returns whether it picked one.
+pub fn pick_default_device(profile: &mut UserProfile, devices: &[DeviceInfo]) -> bool {
     if devices.is_empty() || profile.has_capture_device() || profile.window_capture_method().is_some() {
         return false;
     }
-    apply(profile, SettingEdit::CaptureDevice(0), devices)
+    let obs = devices.iter().position(|device| device.name.to_lowercase().contains("obs virtual cam"));
+    apply(profile, SettingEdit::CaptureDevice(obs.unwrap_or(0) as i32), devices)
 }
 
 /// What the settings window shows that isn't a profile value as it is.
@@ -128,8 +132,10 @@ pub struct Shown {
     pub capture_method_index: i32,
     /// Shown instead of the devices, and disabling the list, when not empty.
     pub device_placeholder: &'static str,
+    /// The devices, then the profile's device when it isn't connected, which picking does
+    /// nothing for.
     pub device_names: Vec<String>,
-    /// -1 when the profile's device isn't connected.
+    /// -1 when the profile has no device.
     pub device_index: i32,
     pub hotkeys_note: &'static str,
     pub timer_connection: i32,
@@ -145,7 +151,7 @@ impl Shown {
         let mut capture_methods = vec!["Video Capture Device (see below)".to_owned()];
         let other_method = !profile.capture_method.is_empty() && profile.capture_method != VIDEO_CAPTURE_DEVICE;
         if other_method {
-            capture_methods.push(format!("{} (not supported yet)", capture_method_name(&profile.capture_method)));
+            capture_methods.push(format!("{} (not supported)", capture_method_name(&profile.capture_method)));
         }
         let device_placeholder = if other_method {
             "Select \"Video Capture Device\" above"
@@ -158,12 +164,23 @@ impl Shown {
         };
         let selected = autosplit_capture::pick_device(devices, &profile.capture_device_name, profile.capture_device_id)
             .and_then(|(picked, _)| devices.iter().position(|device| device == picked));
+        let mut device_names: Vec<String> = devices.iter().map(|device| device.name.clone()).collect();
+        // Shown as not connected instead of an empty box
+        let missing = selected.is_none() && !profile.capture_device_name.is_empty();
+        if missing {
+            device_names.push(format!("{} (not connected)", profile.capture_device_name));
+        }
+        let device_index = match selected {
+            Some(index) => index as i32,
+            None if missing => (device_names.len() - 1) as i32,
+            None => -1,
+        };
         Self {
             capture_methods,
             capture_method_index: i32::from(other_method),
             device_placeholder,
-            device_names: devices.iter().map(|device| device.name.clone()).collect(),
-            device_index: selected.map_or(-1, |index| index as i32),
+            device_names,
+            device_index,
             hotkeys_note: match link {
                 TimerLink::Hotkeys => "",
                 #[cfg(target_os = "linux")]

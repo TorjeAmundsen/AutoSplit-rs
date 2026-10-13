@@ -241,10 +241,12 @@ impl GuiView {
 
     fn live_preview(&mut self, snapshot: &Snapshot) -> (String, Picture) {
         let profile = snapshot.profile;
-        if !profile.live_capture_region || !profile.has_capture_device() {
-            return (String::new(), if self.shown_frame.take().is_some() { Picture::Clear } else { Picture::Keep });
-        }
-        region_preview(snapshot, &mut self.shown_frame)
+        let message = match (profile.live_capture_region, profile.has_capture_device()) {
+            (true, true) => return region_preview(snapshot, &mut self.shown_frame),
+            (true, false) => NO_DEVICE.to_owned(),
+            (false, _) => String::new(),
+        };
+        (message, if self.shown_frame.take().is_some() { Picture::Clear } else { Picture::Keep })
     }
 
     fn maker_seen(&self) -> bool {
@@ -260,7 +262,7 @@ impl GuiView {
         let (message, live) = if snapshot.profile.has_capture_device() {
             region_preview(snapshot, &mut self.maker_frame)
         } else {
-            ("No capture device. Pick one in Settings.".into(), Picture::Keep)
+            (NO_DEVICE_IN_TOOL.into(), Picture::Keep)
         };
         update.maker_live = live;
         if self.maker_message.as_ref() != Some(&message) {
@@ -286,7 +288,7 @@ impl GuiView {
         self.gone_sent = None;
         let (live_message, live) = if !snapshot.profile.has_capture_device() {
             self.tester_frame = None;
-            ("No capture device. Pick one in Settings.".into(), Picture::Keep)
+            (NO_DEVICE_IN_TOOL.into(), Picture::Keep)
         } else if self.tester_visible.load(Ordering::Relaxed) {
             region_preview(snapshot, &mut self.tester_frame)
         } else {
@@ -372,13 +374,20 @@ impl GuiView {
     }
 }
 
+/// Shown instead of the capture when the profile has no capture device.
+pub const NO_DEVICE: &str = "No capture device. Pick one in File > Settings.";
+
+/// `NO_DEVICE` in a tool window, which the main window's menu can't be used beside.
+pub const NO_DEVICE_IN_TOOL: &str = "No capture device. Close this window, then pick one in File > Settings.";
+
 /// The capture region of the newest frame, unless `shown` is that frame already, or why there's
 /// none.
 fn region_preview(snapshot: &Snapshot, shown: &mut Option<u64>) -> (String, Picture) {
     let profile = snapshot.profile;
     let Some(frame) = snapshot.frame.as_ref().filter(|_| snapshot.receiving) else {
         *shown = None;
-        return ("Waiting for capture device...".into(), Picture::Keep);
+        let message = snapshot.device_problem.unwrap_or("Waiting for capture device...");
+        return (message.into(), Picture::Keep);
     };
     let (width, height) = frame.frame_size();
     if profile.capture_region.rect(width, height).area() == 0 {
@@ -452,7 +461,7 @@ impl View for GuiView {
             running: status.running,
             device_name: snapshot.device_name.unwrap_or(&profile.capture_device_name).to_owned(),
             live_message,
-            window: window_texts(status, snapshot.now, &snapshot.idle, snapshot.receiving),
+            window: window_texts(status, snapshot.now, &snapshot.idle, snapshot.receiving, profile.display_pause_timer),
             buttons: [
                 buttons.start,
                 buttons.reset,

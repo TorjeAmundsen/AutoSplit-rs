@@ -6,7 +6,7 @@ use autosplit_core::filename::{
     BELOW_FLAG, DUMMY_FLAG, comparison_method_from_filename, delay_time_from_filename, filename_warnings,
     flags_from_filename, pause_from_filename, threshold_from_filename,
 };
-use autosplit_core::preset::{Preset, PresetError, PresetSplit, load_libraries, load_presets};
+use autosplit_core::preset::{PRESET_FILE, Preset, PresetError, PresetSplit, load_libraries, load_presets};
 use autosplit_core::profile::{ProfileError, UserProfile};
 use autosplit_core::split_image::SplitDefaults;
 use test_case::test_case;
@@ -29,7 +29,10 @@ fn bundled_presets_load_with_all_their_files() {
         })
         .filter(|path| !path.is_file())
         .collect();
-    assert_eq!((presets.len(), errors, missing), (5, vec![], vec![]));
+    // Every folder with a preset file loads
+    let folders = std::fs::read_dir(bundled("presets")).unwrap();
+    let with_file = folders.filter(|entry| entry.as_ref().unwrap().path().join(PRESET_FILE).is_file()).count();
+    assert_eq!((presets.len(), errors, missing), (with_file, vec![], vec![]));
 }
 
 #[test]
@@ -163,4 +166,17 @@ fn savestates_are_copied_numbered_like_the_split_images() {
             ("savestates/boss.gzs", "09_Boss_SEE_INSTRUCTIONS.gzs".to_owned())
         ]
     );
+}
+
+#[test_case("The Legend of Zelda: Ocarina of Time", "Classic Kakariko (Sworded, Gohma Clip)" => "tlozoot_classic_kakariko_sworded_gohma_clip.toml"; "game and preset")]
+#[test_case("Super Mario 64", "16 Star" => "sm6_16_star.toml"; "numbers")]
+#[test_case("", "No Wrong Warp" => "no_wrong_warp.toml"; "no game")]
+#[test_case("Celeste", "!!!" => "c.toml"; "no words in the name")]
+#[test_case("", "" => "settings.toml"; "nothing")]
+fn profiles_are_named_for_the_game_and_preset(game: &str, name: &str) -> String {
+    // Arrange
+    let preset = Preset { name: name.into(), game: game.into(), ..Preset::default() };
+
+    // Act, with the expected value checked by test_case
+    preset.profile_file_name()
 }

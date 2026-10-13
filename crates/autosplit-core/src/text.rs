@@ -89,12 +89,17 @@ pub struct WindowTexts {
 
 /// AutoSplit's main window texts. `idle` is shown when there's no image to show. Without a
 /// capture, the live similarities show as `-` instead of the 0 that comparing nothing gives.
-pub fn window_texts(status: &Status, now: Duration, idle: &str, capture: bool) -> WindowTexts {
+/// Without `pause_timer` (the profile's `display_pause_timer`), pauses and split delays don't
+/// show the seconds left, like AutoSplit.
+pub fn window_texts(status: &Status, now: Duration, idle: &str, capture: bool, pause_timer: bool) -> WindowTexts {
     let left = |until: Duration| seconds_remaining_text(until.saturating_sub(now).as_secs_f64());
+    let with_timer = |message: &str, until: Duration| {
+        if pause_timer { format!("{message} {}", left(until)) } else { message.to_owned() }
+    };
     let current_message = match status.showing {
         Showing::StartDelay { until } => format!("Delayed Before Starting:\n {}", left(until)),
-        Showing::Pause { until } => format!("None (Paused). {}", left(until)),
-        Showing::SplitDelay { until } => format!("Delayed Split: {}", left(until)),
+        Showing::Pause { until } => with_timer("None (Paused).", until),
+        Showing::SplitDelay { until } => with_timer("Delayed Split:", until),
         Showing::Image(_) => String::new(),
         Showing::Nothing => idle.to_owned(),
     };
@@ -254,7 +259,7 @@ pub fn tester_status(tester: &Tester) -> String {
         Phase::Armed => "Reached the threshold. Waiting for it to drop back below.".into(),
         Phase::Delaying { delay, .. } => format!("Waiting for the {delay} ms delay."),
         Phase::Done => {
-            format!("Done: the image {} here. Press Start Over to watch for the next match.", action(tester))
+            format!("Done: this is where it {}. Press Start Over to watch for the next match.", action(tester))
         }
     }
 }

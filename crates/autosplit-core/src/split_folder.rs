@@ -22,6 +22,10 @@ pub struct SplitSet {
 /// How many split images can be compared for the same split.
 pub const MAX_GROUP_SIZE: usize = 4;
 
+/// How many splits a run can have with every loop counted, so a typo like `@1000000000@` is an
+/// error instead of running out of memory.
+pub const MAX_RUN_SPLITS: i64 = 100_000;
+
 /// What validation needs to know besides the images.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct ValidationContext {
@@ -78,6 +82,10 @@ pub enum ValidationError {
         "The split images that start with the number {0} have different loop counts. Images compared for the same split need the same @loops@."
     )]
     GroupLoopsDiffer(String),
+    #[error(
+        "With their @loops@, the split images make {0} splits. A run can have up to {MAX_RUN_SPLITS}, so a loop count is probably mistyped."
+    )]
+    TooManySplits(i64),
 }
 
 /// The outcome of loading a folder. Load errors are reported even when the folder is valid,
@@ -103,9 +111,7 @@ impl FolderLoad {
             return None;
         }
         let names: Vec<String> = self.ignored_files.iter().map(|path| split_image::file_name(path)).collect();
-        Some(format!("These files aren't PNG split images and will be ignored:
-{}", names.join("
-")))
+        Some(format!("These files aren't PNG split images and will be ignored:\n{}", names.join("\n")))
     }
 }
 
@@ -135,10 +141,10 @@ pub fn load_split_folder(directory: &Path, context: &ValidationContext) -> Folde
         return FolderLoad::failed(ValidationError::InvalidDirectory(directory.to_owned()));
     };
 
-    let (ignored, mut images): (Vec<SplitImage>, Vec<SplitImage>) =
-        paths.iter().map(|path| SplitImage::load(path)).partition(|image| {
-            matches!(image.load_error(), Some(LoadError::NotPng(_) | LoadError::OcrUnsupported(_)))
-        });
+    let (ignored, mut images): (Vec<SplitImage>, Vec<SplitImage>) = paths
+        .iter()
+        .map(|path| SplitImage::load(path))
+        .partition(|image| matches!(image.load_error(), Some(LoadError::NotPng(_) | LoadError::OcrUnsupported(_))));
     let ignored_files = ignored.into_iter().map(|image| image.path).collect();
     let load_errors = images.iter().filter_map(|image| image.load_error().cloned()).collect();
     let warnings = images
@@ -183,6 +189,11 @@ fn validate(mut set: SplitSet, context: &ValidationContext) -> Result<SplitSet, 
         }
     }
     set.groups = group_splits(&mut set.splits, context.group_split_images)?;
+    // Images in a group have the same loop count
+    let splits = set.groups.iter().fold(0_i64, |total, group| total.saturating_add(set.splits[group.start].loops));
+    if splits > MAX_RUN_SPLITS {
+        return Err(ValidationError::TooManySplits(splits));
+    }
     Ok(set)
 }
 

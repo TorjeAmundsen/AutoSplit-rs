@@ -12,6 +12,9 @@ export global Theme {
     out property <color> field: dark ? #2d2d2d : #ffffff;
     out property <color> text: dark ? #ffffff : #1e1e1e;
     out property <color> disabled-text: dark ? #8c8c8c : #a0a0a0;
+    // Text that says something but is less important, like labels and notes. Darker than
+    // disabled text, so it reads well on white
+    out property <color> secondary-text: dark ? #a8a8a8 : #6b6b6b;
     out property <color> arrow: dark ? #bebebe : #4a4a4a;
     out property <color> focus: dark ? #2a82da : #308cc6;
     out property <color> frame: dark ? #ffffff : #a0a0a0;
@@ -538,6 +541,8 @@ export component SpinBox inherits Rectangle {
     in property <float> step: 1;
     in property <int> decimals: 0;
     in property <bool> enabled: true;
+    // Off: typing only reports on Enter or leaving the field, for values that are costly to apply
+    in property <bool> live: true;
     callback edited(float);
     forward-focus: input;
     // The arrow held down: 1 up, -1 down, 0 none
@@ -608,7 +613,7 @@ export component SpinBox inherits Rectangle {
             selection-background-color: Theme.selection;
             text: root.shown(root.value);
             edited => {
-                if (self.text.is-float() && self.text.to-float() >= root.minimum && self.text.to-float() <= root.maximum && self.text.to-float() != root.value) {
+                if (root.live && self.text.is-float() && self.text.to-float() >= root.minimum && self.text.to-float() <= root.maximum && self.text.to-float() != root.value) {
                     root.value = self.text.to-float();
                     root.edited(root.value);
                 }
@@ -714,7 +719,7 @@ global NameColors {
             return Theme.warning;
         }
         if part.kind == "Number" || part.kind == "Extension" {
-            return Theme.disabled-text;
+            return Theme.secondary-text;
         }
         if part.kind == "Keyword" {
             return Theme.dark ? #f1948a : #b03a2e;
@@ -768,6 +773,42 @@ export component FileName inherits HorizontalLayout {
             Tip {
                 text: part.meaning != "" ? part.meaning : root.path;
             }
+        }
+    }
+}
+
+// Something was saved: what's under it dims behind a green check mark at once, then both fade out
+// when `shown` turns off.
+export component SavedCheck inherits Rectangle {
+    in property <bool> shown;
+    width: 100%;
+    height: 100%;
+    background: #000000.with-alpha(0.45);
+    opacity: 0;
+
+    states [
+        saved when root.shown: {
+            opacity: 1;
+            out {
+                animate opacity { duration: 300ms; easing: ease-out; }
+            }
+        }
+    ]
+
+    Rectangle {
+        width: 64px;
+        height: 64px;
+        border-radius: 32px;
+        background: #2ea44f;
+
+        Path {
+            width: 32px;
+            height: 24px;
+            viewbox-width: 32;
+            viewbox-height: 24;
+            commands: "M 3 12 L 12 21 L 29 3";
+            stroke: white;
+            stroke-width: 5px;
         }
     }
 }

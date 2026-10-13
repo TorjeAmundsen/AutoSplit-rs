@@ -125,11 +125,18 @@ pub struct Watch {
     warned_no_frames: bool,
     /// The frame size last logged.
     size: Option<(usize, usize)>,
+    /// Why no frames arrive, once that was warned about.
+    problem: Option<String>,
 }
 
 impl Watch {
     pub fn new(name: &str, opened_at: Instant) -> Self {
-        Self { name: name.to_owned(), opened_at, receiving: false, warned_no_frames: false, size: None }
+        Self { name: name.to_owned(), opened_at, receiving: false, warned_no_frames: false, size: None, problem: None }
+    }
+
+    /// Why no frames arrive, once that was warned about.
+    pub fn problem(&self) -> Option<&str> {
+        self.problem.as_deref()
     }
 
     pub fn receiving(&self) -> bool {
@@ -157,15 +164,20 @@ impl Watch {
                 }
             }
             self.warned_no_frames = false;
+            self.problem = None;
         } else if !observed.receiving && self.receiving {
             let when = format!("for {} second", FRAME_TIMEOUT.as_secs());
-            notices.push(Notice::Warn(no_frames(name, not_started, &when)));
+            let problem = no_frames(name, not_started, &when);
+            notices.push(Notice::Warn(problem.clone()));
+            self.problem = Some(problem);
             self.warned_no_frames = true;
         } else if !observed.receiving
             && !self.warned_no_frames
             && now.duration_since(self.opened_at) >= FIRST_FRAME_WAIT
         {
-            notices.push(Notice::Warn(no_frames(name, not_started, "yet")));
+            let problem = no_frames(name, not_started, "yet");
+            notices.push(Notice::Warn(problem.clone()));
+            self.problem = Some(problem);
             self.warned_no_frames = true;
         }
         self.receiving = observed.receiving;
@@ -252,6 +264,15 @@ impl Device {
         matches!(&self.state, State::Open { watch, .. } if watch.receiving())
     }
 
+    /// Why there are no frames, when that's known: the device isn't there, couldn't be opened,
+    /// or sends nothing.
+    pub fn problem(&self) -> Option<&str> {
+        match &self.state {
+            State::Closed { problems, .. } | State::Opening { problems, .. } => problems.last.as_deref(),
+            State::Open { watch, .. } => watch.problem(),
+        }
+    }
+
     /// Closes the device, to open the profile's again right away. An open still running is
     /// left to finish first, so two opens never hold the same device.
     pub fn reset(&mut self) {
@@ -301,8 +322,8 @@ impl Device {
                         Notice::Log(message) => console.log(message),
                         Notice::Warn(message) => console.warn(message),
                         Notice::Lost(message) => {
-                            console.warn(message);
-                            let problems = Problems { last: None, lost: true };
+                            console.warn(&message);
+                            let problems = Problems { last: Some(message), lost: true };
                             self.state = State::Closed { next_open: Some(now + REOPEN_INTERVAL), problems };
                             return;
                         }

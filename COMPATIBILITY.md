@@ -9,7 +9,7 @@
 | Split image filename conventions (`(0.95)`, `[10]`, `#500#`, `@3@`, `^1^`, `{dbp}`, `start_auto_splitter`, `reset`) | Done |
 | Image loading, masks and the adaptive resize for transparent images | Done, PNG only |
 | L2 norm, histograms and pHash comparisons | Done, bit-exact with AutoSplit |
-| OCR split files (tesseract) | Not supported for now. Folders containing one can't start |
+| OCR split files (tesseract) | Not supported for now. They're skipped with a warning |
 | Split image folder validation, with AutoSplit's error messages | Done |
 | Settings profiles (`.toml`) | Done, reads and writes AutoSplit's files |
 | Split state machine (delays, pauses, below flag, dummies, loops, reset image, start image, skip and undo) | Done |
@@ -21,10 +21,11 @@
 | Up to 4 split images compared for one split, grouped by number | Done, new, off by default |
 | Screenshots | Done |
 | Live Tester (one split image against the capture, outside of a run) | Done, new. Replaces AutoMask's tester |
-| Screen and window capture | Later |
-| Window (Slint): main window, settings, Set Hotkey, Live Tester | Done, for capture devices |
+| Make Split Images (a preset's masks applied to the capture or screenshots, savestates) | Done, new. Replaces AutoMask |
+| Screen and window capture | Not planned: OBS Virtual Camera captures any window or screen, and PC games are better split by a memory-reading autosplitter |
+| Window (Slint): main window, settings, Set Hotkey, Live Tester, Make Split Images | Done, for capture devices |
 | Align Region | Removed: split images are made for one capture setup, so the region is set once with its boxes |
-| Select Region and Select Window | Later, with screen and window capture |
+| Select Region and Select Window | Removed, with screen and window capture |
 
 ## Tests
 
@@ -44,15 +45,13 @@ Similarity values, file formats, the LiveSplit protocol and how a run plays out 
 
 Split images and filenames:
 
-- Only PNG split images are supported. Other formats get a load error saying so.
-- OCR split files (`.txt`) aren't supported yet. A folder with one gets a load error and can't start.
+- Only PNG split images are used. Other files in the folder, like JPEGs and OCR split files (`.txt`), are skipped, and loading the folder warns about them. AutoSplit uses any image OpenCV reads, so a folder with other formats splits in a different order here.
 - Grayscale and 16-bit PNGs load. AutoSplit crashes on them.
 - A fully transparent split image is a load error, since there's nothing to compare. AutoSplit compares it as an opaque image.
 - A start or reset image that can't be used makes the folder invalid, like a broken split image. AutoSplit lets the folder run, and that image never matches.
 - `reset` and `start_auto_splitter` only count as whole words, so `preset_menu.png` is a normal split image. AutoSplit matches them anywhere in the name.
-- Values need their closing delimiter, so `x_(0.9` has no threshold. AutoSplit reads up to the end of the name.
 - Numbers in filenames are parsed more strictly than Python does. Spaces around the value (`( 0.95 )`), underscores (`#1_000#`) and digits from other scripts (`٣`) aren't accepted, and the default is used instead.
-- Ignored filename values get a warning when the folder loads. That covers values that aren't numbers, values out of range (`(1.5)`, `@0@`), unknown comparison methods (`^5^`, which never matches) and invalid or conflicting flags (`{x}`, `{dp}`). They're still ignored, like in AutoSplit.
+- Ignored filename values get a warning when the folder loads. That covers values that aren't numbers, values out of range (`(1.5)`, `@0@`), unknown comparison methods (`^5^`, which compares as 0) and invalid or conflicting flags (`{x}`, `{dp}`). They're still ignored, like in AutoSplit. Delimiters that don't make exactly one value (`x_(0.9`, `x_(0.5)_(0.7)`) are ignored and warned about like AutoSplit 2.3.4 does.
 
 Runs:
 

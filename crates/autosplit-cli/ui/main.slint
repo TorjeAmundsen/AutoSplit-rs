@@ -178,6 +178,26 @@ export component MainWindow inherits Window {
     callback open-maker();
     callback close-tool();
 
+    // The last screenshot's file name, shown under Take Screenshot for a few seconds
+    property <string> saved-screenshot;
+
+    // A screenshot was saved as `file`
+    public function screenshot-saved(file: string) {
+        root.saved-screenshot = file;
+        // Restarting only resets a running timer, it doesn't start a stopped one
+        note-timer.running = true;
+        note-timer.restart();
+    }
+
+    note-timer := Timer {
+        interval: 5s;
+        running: false;
+        triggered => {
+            self.running = false;
+            root.saved-screenshot = "";
+        }
+    }
+
     function region-changed() {
         root.region-edited(root.region-x, root.region-y, root.region-width, root.region-height);
     }
@@ -340,28 +360,9 @@ export component MainWindow inherits Window {
                 }
             }
 
-            // Window capture isn't supported yet, like AutoSplit disables these for capture devices
-            Button {
-                x: 10px;
-                y: 67px;
-                width: 107px;
-                height: 24px;
-                text: "Select Region";
-                enabled: false;
-            }
-
-            Button {
-                x: 10px;
-                y: 93px;
-                width: 107px;
-                height: 24px;
-                text: "Select Window";
-                enabled: false;
-            }
-
             Label {
                 x: 11px;
-                y: 145px;
+                y: 67px;
                 width: 49px;
                 height: 20px;
                 text: "X";
@@ -370,7 +371,7 @@ export component MainWindow inherits Window {
 
             Label {
                 x: 66px;
-                y: 145px;
+                y: 67px;
                 width: 49px;
                 height: 20px;
                 text: "Y";
@@ -379,7 +380,7 @@ export component MainWindow inherits Window {
 
             SpinBox {
                 x: 11px;
-                y: 165px;
+                y: 87px;
                 width: 51px;
                 height: 24px;
                 maximum: 999999999;
@@ -389,7 +390,7 @@ export component MainWindow inherits Window {
 
             SpinBox {
                 x: 66px;
-                y: 165px;
+                y: 87px;
                 width: 51px;
                 height: 24px;
                 maximum: 999999999;
@@ -399,7 +400,7 @@ export component MainWindow inherits Window {
 
             Label {
                 x: 11px;
-                y: 190px;
+                y: 112px;
                 width: 49px;
                 height: 20px;
                 text: "Width";
@@ -408,7 +409,7 @@ export component MainWindow inherits Window {
 
             Label {
                 x: 66px;
-                y: 190px;
+                y: 112px;
                 width: 49px;
                 height: 20px;
                 text: "Height";
@@ -417,7 +418,7 @@ export component MainWindow inherits Window {
 
             SpinBox {
                 x: 11px;
-                y: 210px;
+                y: 132px;
                 width: 51px;
                 height: 24px;
                 minimum: 1;
@@ -428,7 +429,7 @@ export component MainWindow inherits Window {
 
             SpinBox {
                 x: 66px;
-                y: 210px;
+                y: 132px;
                 width: 51px;
                 height: 24px;
                 minimum: 1;
@@ -439,11 +440,21 @@ export component MainWindow inherits Window {
 
             Button {
                 x: 10px;
-                y: 240px;
+                y: 162px;
                 width: 107px;
                 height: 24px;
                 text: "Take Screenshot";
                 clicked => { root.take-screenshot(); }
+            }
+
+            Text {
+                x: 10px;
+                y: 190px;
+                width: 107px;
+                wrap: word-wrap;
+                font-size: 11px;
+                color: Theme.secondary-text;
+                text: root.saved-screenshot == "" ? "" : "Saved " + root.saved-screenshot;
             }
 
             Preview {
@@ -609,6 +620,36 @@ export component MainWindow inherits Window {
                     text: "Close " + root.tool;
                     enabled: !root.blocked;
                     clicked => { root.close-tool(); }
+                }
+            }
+
+            // The run goes on beside the tool window
+            if root.running: HorizontalLayout {
+                alignment: center;
+                spacing: 6px;
+
+                Button {
+                    width: 59px;
+                    height: 27px;
+                    text: "Undo";
+                    enabled: root.can-undo && !root.blocked;
+                    clicked => { root.undo-split(); }
+                }
+
+                Button {
+                    width: 59px;
+                    height: 27px;
+                    text: "Skip";
+                    enabled: root.can-skip && !root.blocked;
+                    clicked => { root.skip-split(); }
+                }
+
+                Button {
+                    width: 59px;
+                    height: 27px;
+                    text: "Reset";
+                    enabled: root.can-reset && !root.blocked;
+                    clicked => { root.reset(); }
                 }
             }
         }

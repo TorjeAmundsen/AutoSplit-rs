@@ -44,15 +44,21 @@ const TESTER_FILE_INTERVAL: Duration = Duration::from_millis(500);
 /// are delivered lowest first, so a start sent right after a reset could arrive before it.
 #[cfg(target_os = "linux")]
 const MOLOK_GAP: Duration = Duration::from_millis(5);
+/// How often listening for LiveSplit One is tried again after the port was taken.
+const LIVESPLIT_ONE_RETRY: Duration = Duration::from_secs(5);
 
 pub enum Event {
-    Hotkey(HotkeyAction),
+    /// A hotkey, and when it was pressed. The press time tells autosplit's own presses apart even
+    /// when the event waited behind something slow, like loading the split image folder.
+    Hotkey(HotkeyAction, Instant),
     Stdin(String),
     StdinClosed,
     LiveSplitOne(ServerEvent),
     DeviceOpened(u64, Opened),
     /// A message from a background task: a log line, or an error.
     Log(Result<String, String>),
+    /// A screenshot was saved in the background, or couldn't be.
+    Screenshot(screenshot::Saved),
     /// Ctrl+C, or the window closing.
     Stop,
     Ui(UiCommand),
@@ -108,6 +114,8 @@ pub enum Notice {
     Grabbed(Result<BgraImage, String>),
     /// The timer is told another way now, after the profile's timer connection changed.
     TimerLinkChanged(TimerLink),
+    /// A screenshot was saved to this file.
+    ScreenshotSaved(PathBuf),
 }
 
 /// What a [`View`] shows of the session.
@@ -122,6 +130,8 @@ pub struct Snapshot<'a> {
     pub device_name: Option<&'a str>,
     /// Whether the device sends frames.
     pub receiving: bool,
+    /// Why the device sends no frames, when that's known.
+    pub device_problem: Option<&'a str>,
     /// The newest frame, when the view wants frames.
     pub frame: Option<Arc<Frame>>,
     pub images: &'a SplitSet,
@@ -155,8 +165,8 @@ pub struct Session {
     link: TimerLink,
     /// The link and LiveSplit One port set up, to tell when the profile asks for others.
     connected_to: (TimerLink, Option<u16>),
-    /// The profile asked for another timer connection during a run.
-    link_after_run: bool,
+    /// When to try listening for LiveSplit One again, after its port was taken.
+    livesplit_one_retry: Option<Instant>,
     runner: Runner,
     console: Console,
     /// The window, or `None` for the terminal's status line. Taken out while it updates.
@@ -178,6 +188,8 @@ pub struct Session {
     tester_loaded: u64,
     tester_request: u64,
     maker_open: bool,
+    /// The split image folder is read once Make Split Images closes, since it writes into it.
+    read_after_maker: bool,
     /// The Live Tester's file and when it was changed, to load it again when it changes.
     tester_file: Option<(PathBuf, Option<SystemTime>)>,
     next_tester_file_check: Instant,
@@ -201,7 +213,7 @@ impl Session {
         Self {
             runner: Runner::new(RunnerSettings::from_profile(&profile), link.timer_synced()),
             connected_to: (link, (link == TimerLink::LiveSplitOne).then_some(profile.livesplit_one_port)),
-            link_after_run: false,
+            livesplit_one_retry: None,
             profile,
             profile_loaded: true,
             link,
@@ -212,7 +224,7 @@ impl Session {
             started: now,
             events,
             hotkeys: Hotkeys::new(link, move |action| {
-                let _ = hotkey_events.send(Event::Hotkey(action));
+                let _ = hotkey_events.send(Event::Hotkey(action, Instant::now()));
             }),
             device: Device::default(),
             livesplit_one: None,
@@ -223,6 +235,7 @@ impl Session {
             tester_loaded: 0,
             tester_request: 0,
             maker_open: false,
+            read_after_maker: false,
             tester_file: None,
             next_tester_file_check: now,
             timer: PreciseTimer::default(),
@@ -261,7 +274,11 @@ impl Session {
                 self.profile_loaded = false;
                 livesplit::connect(&self.events)
             }
-            TimerLink::LiveSplitOne => self.listen_for_livesplit_one(self.profile.livesplit_one_port),
+            TimerLink::LiveSplitOne => {
+                self.listen_for_livesplit_one(self.profile.livesplit_one_port).inspect_err(|_| {
+                    self.livesplit_one_retry = Some(Instant::now() + LIVESPLIT_ONE_RETRY);
+                })
+            }
             // Signals need no setup
             #[cfg(target_os = "linux")]
             TimerLink::Molok => Ok(()),
@@ -304,18 +321,19 @@ impl Session {
         if wanted == self.connected_to {
             return false;
         }
+        // Switched when the run ends
         if self.runner.is_running() {
-            self.link_after_run = true;
             return false;
         }
-        self.link_after_run = false;
         self.connected_to = wanted;
         // Closes the port and LiveSplit One's connection
         self.livesplit_one = None;
+        self.livesplit_one_retry = None;
         if link == TimerLink::LiveSplitOne
             && let Err(error) = self.listen_for_livesplit_one(port)
         {
-            self.dialog(format_args!("{error:#}"));
+            self.livesplit_one_retry = Some(Instant::now() + LIVESPLIT_ONE_RETRY);
+            self.dialog(format_args!("{error:#} Trying again every {} seconds.", LIVESPLIT_ONE_RETRY.as_secs()));
         }
         self.link = link;
         self.hotkeys.set_link(link, &self.profile, &mut self.console);
@@ -335,11 +353,31 @@ impl Session {
         }
     }
 
+    /// Listens for LiveSplit One again when its port was taken, between runs.
+    fn retry_livesplit_one(&mut self, now: Instant) {
+        if self.livesplit_one_retry.is_none_or(|due| now < due) || self.runner.is_running() {
+            return;
+        }
+        match self.listen_for_livesplit_one(self.profile.livesplit_one_port) {
+            Ok(()) => {
+                self.livesplit_one_retry = None;
+                self.log_timer();
+            }
+            Err(_) => self.livesplit_one_retry = Some(now + LIVESPLIT_ONE_RETRY),
+        }
+    }
+
     fn log_timer(&mut self) {
         let message = match (&self.livesplit_one, self.link) {
             (Some(link), _) => format!(
                 "Timer: LiveSplit One. In LiveSplit One's menu, choose Connect to Server and enter {}",
                 link.address()
+            ),
+            (None, TimerLink::LiveSplitOne) => format!(
+                "Timer: LiveSplit One, but port {} is in use, so LiveSplit One can't connect yet. Trying again every \
+                 {} seconds.",
+                self.profile.livesplit_one_port,
+                LIVESPLIT_ONE_RETRY.as_secs()
             ),
             (None, TimerLink::Hotkeys) => {
                 let hotkeys: Vec<String> = HotkeyAction::SENT
@@ -371,7 +409,7 @@ impl Session {
                  window and probably needs changing too."
             };
             self.console.warn(format_args!(
-                "The profile captures a window ({}), which isn't supported yet. {tail}",
+                "The profile captures a window ({}), which isn't supported. {tail}",
                 capture_method_name(method)
             ));
         }
@@ -392,6 +430,7 @@ impl Session {
             }
             let now = Instant::now();
             self.update_device(now);
+            self.retry_livesplit_one(now);
             self.hotkeys.check_health(now, &mut self.console);
             if self.runner.next_wakeup().is_some_and(|due| self.elapsed() >= due) {
                 self.tick();
@@ -405,17 +444,19 @@ impl Session {
             if self.view_interval().is_some() {
                 wake = wake.min(self.next_view);
             }
-            for next in [self.device.next_open(), self.hotkeys.next_health_check()].into_iter().flatten() {
+            let retry = self.livesplit_one_retry;
+            for next in [self.device.next_open(), self.hotkeys.next_health_check(), retry].into_iter().flatten() {
                 wake = wake.min(next);
             }
             // Waits are only precise to Windows' 15.6 ms tick unless asked for, which costs
             // power, so precision is asked for while comparing and just before other wakeups
             let mut precise =
                 self.runner.needs_frames(self.elapsed()) || (self.tester.is_some() && self.device.receiving());
-            if let Some(due) = self.tester.as_ref().map(|tester| self.started + tester.next_wakeup()) {
+            // An endless pause, like `[inf]`, is past any Instant: it never wakes the loop
+            if let Some(due) = self.tester.as_ref().and_then(|tester| self.started.checked_add(tester.next_wakeup())) {
                 wake = wake.min(due);
             }
-            if let Some(due) = self.runner.next_wakeup().map(|due| self.started + due) {
+            if let Some(due) = self.runner.next_wakeup().and_then(|due| self.started.checked_add(due)) {
                 if precise || due <= now + PRECISE_LEAD {
                     precise = true;
                     wake = wake.min(due);
@@ -507,7 +548,7 @@ impl Session {
 
     fn handle(&mut self, event: Event) {
         match event {
-            Event::Hotkey(action) => self.hotkey(action),
+            Event::Hotkey(action, pressed) => self.hotkey(action, pressed),
             Event::Stdin(line) => {
                 let report = parse_control_line(&line);
                 if report.request.is_some() {
@@ -530,6 +571,7 @@ impl Session {
             }
             Event::Log(Ok(message)) => self.console.log(message),
             Event::Log(Err(message)) => self.console.error(message),
+            Event::Screenshot(saved) => self.screenshot_saved(saved),
             Event::Stop => {
                 self.console.log("Stopped");
                 self.quit = true;
@@ -581,7 +623,12 @@ impl Session {
                 }
             }
             UiCommand::CloseTester => (self.tester, self.tester_file) = (None, None),
-            UiCommand::SetMakerOpen(open) => self.maker_open = open,
+            UiCommand::SetMakerOpen(open) => {
+                self.maker_open = open;
+                if !open && std::mem::take(&mut self.read_after_maker) && !self.runner.is_running() {
+                    self.arm(false);
+                }
+            }
             UiCommand::Grab => self.grab(),
         }
         self.handle_effects();
@@ -634,9 +681,11 @@ impl Session {
         self.handle_effects();
     }
 
-    fn hotkey(&mut self, action: HotkeyAction) {
+    fn hotkey(&mut self, action: HotkeyAction, pressed: Instant) {
         let now = self.elapsed();
-        if self.hotkeys.is_own(action.hotkey(&self.profile), now) {
+        // When the key was pressed, not now: the event can wait behind a slow folder load for
+        // longer than an own press is recognized
+        if self.hotkeys.is_own(action.hotkey(&self.profile), pressed.saturating_duration_since(self.started)) {
             return;
         }
         match action {
@@ -709,11 +758,13 @@ impl Session {
                         self.quit = true;
                     }
                 }
-                Output::LiveSplitOne(message) => {
-                    if let Some(link) = &mut self.livesplit_one {
-                        link.send(command, message, &details, &mut self.console);
-                    }
-                }
+                Output::LiveSplitOne(message) => match &mut self.livesplit_one {
+                    Some(link) => link.send(command, message, &details, &mut self.console),
+                    None => self.console.error(format_args!(
+                        "{name}{details}: not sent, LiveSplit One can't connect while port {} is in use",
+                        self.profile.livesplit_one_port
+                    )),
+                },
                 #[cfg(target_os = "linux")]
                 Output::Molok(offset) => {
                     if signaled {
@@ -759,6 +810,12 @@ impl Session {
     /// Loads the split image folder and looks for its start image. `asked` when a button asked,
     /// which shows errors in message boxes.
     fn arm(&mut self, asked: bool) {
+        // Make Split Images saves into the folder one split at a time, so it's read once it closes,
+        // not while it's half done
+        if self.maker_open {
+            self.read_after_maker = true;
+            return;
+        }
         let load = load_profile_folder(&self.profile, self.link.needs_hotkeys());
         self.images_loaded += 1;
         let images = self.folder(load, asked);
@@ -852,7 +909,9 @@ impl Session {
             self.hotkeys.set_profile(&self.profile, &mut self.console);
         }
         let switched = self.follow_timer_connection();
-        if (folder_changed || loaded) && !switched && !self.runner.is_running() {
+        // Whether the folder can be used depends on the hotkeys when the timer gets hotkeys
+        let rearm = folder_changed || loaded || (hotkeys_changed && self.link.needs_hotkeys());
+        if rearm && !switched && !self.runner.is_running() {
             self.logged_folder_messages.clear();
             self.arm(false);
         }
@@ -877,11 +936,22 @@ impl Session {
             .latest()
             .and_then(|frame| frame.region_view(&self.profile.capture_region).map(|view| view.to_image()));
         let events = self.events.clone();
-        let saving = screenshot::save(&self.profile, image, move |message| {
-            let _ = events.send(Event::Log(message));
+        let saving = screenshot::save(&self.profile, image, move |saved| {
+            let _ = events.send(Event::Screenshot(saved));
         });
         if let Err(error) = saving {
             self.dialog(error);
+        }
+    }
+
+    /// Failures are shown like the ones found before saving, which AutoSplit shows in a message box.
+    fn screenshot_saved(&mut self, saved: screenshot::Saved) {
+        if let Some(path) = saved.path() {
+            self.notify(Notice::ScreenshotSaved(path.to_owned()));
+        }
+        match saved.message() {
+            Ok(message) => self.console.log(message),
+            Err(message) => self.dialog(message),
         }
     }
 
@@ -911,6 +981,7 @@ impl Session {
             idle: self.idle_text(),
             device_name: self.device.capture().map(|capture| capture.device().name.as_str()),
             receiving: self.device.receiving(),
+            device_problem: self.device.problem(),
             frame,
             images: self.runner.images(),
             images_loaded: self.images_loaded,
@@ -948,8 +1019,12 @@ impl Session {
             TimerLink::Molok => "can't start: the profile has no split hotkey or start image".into(),
             TimerLink::AutoControlled => "ready: start the timer in LiveSplit".into(),
             TimerLink::LiveSplitOne => match link {
+                None => format!(
+                    "LiveSplit One can't connect: port {} is in use, trying again ({see_log})",
+                    self.profile.livesplit_one_port
+                ),
                 Some(link) if !link.connected() => format!("connect LiveSplit One: {}", link.address()),
-                _ => "ready: start the timer in LiveSplit One".into(),
+                Some(_) => "ready: start the timer in LiveSplit One".into(),
             },
         }
     }
@@ -967,7 +1042,11 @@ impl Session {
             }
         }
         // Idle, the idle text already says to connect it
-        if link.is_some_and(|link| !link.connected()) && self.runner.is_running() {
+        let not_connected = match link {
+            Some(link) => !link.connected(),
+            None => self.link == TimerLink::LiveSplitOne,
+        };
+        if not_connected && self.runner.is_running() {
             problems.push("LIVESPLIT ONE NOT CONNECTED");
         }
         let status = status_line(self.runner.status(), self.elapsed(), &idle, self.device.receiving());

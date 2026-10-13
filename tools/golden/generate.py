@@ -10,6 +10,8 @@ Usage (from the repository root):
     VIRTUAL_ENV=.golden-venv uv pip install opencv-contrib-python-headless==4.11.0.86 "numpy>=2.3.3,<2.6" "Levenshtein>=0.27.1,<0.28" tomli-w==1.2.0
     .golden-venv/bin/python tools/golden/generate.py --autosplit-src ../AutoSplit/src
 
+The AutoSplit checkout should be at the release the Rust code follows, v2.3.4.
+
 OpenCV and tomli-w match AutoSplit's uv.lock. numpy is the nearest version with Python 3.14 wheels,
 which doesn't affect the values. AutoSplit's compare.py imports Levenshtein, so it's needed to
 import it. Regenerate only when deliberately re-baselining.
@@ -277,6 +279,11 @@ FILENAMES = [
     "preset.png",
     "start_auto_splitter_reset.png",
     "x_(0.5)_(0.7).png",
+    "a)(0.9).png",
+    "x_)0.9(.png",
+    "x_#5#_#6#.png",
+    "boss #2.png",
+    "x_#+5#.png",
 ]
 
 
@@ -317,6 +324,7 @@ def generate_profiles():
         "toggle_auto_reset_image_hotkey": "",
         "fps_limit": 60,
         "live_capture_region": True,
+        "display_pause_timer": True,
         "capture_method": "WINDOWS_GRAPHICS_CAPTURE",
         "capture_device_id": -1,
         "capture_device_name": "",

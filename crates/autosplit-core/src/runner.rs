@@ -193,7 +193,7 @@ enum State {
 pub struct Runner {
     settings: RunnerSettings,
     /// The timer reports its splits, skips, undos and resets (LiveSplit with `--auto-controlled`,
-    /// or LiveSplit One). Fixed for the runner's lifetime, like AutoSplit's command line flag.
+    /// or LiveSplit One). Changes with the timer connection, but only between runs.
     timer_synced: bool,
     images: SplitSet,
     /// `split_images_and_loop_number`: each group of [`SplitSet::groups`] repeated by its loop

@@ -231,7 +231,7 @@
   "delay": null,
   "loops": 1,
   "comparison_method": null,
-  "flags": 2
+  "flags": 0
  },
  {
   "filename": "reset_(0.96)_[0.1].png",
@@ -262,9 +262,54 @@
  },
  {
   "filename": "x_(0.5)_(0.7).png",
-  "threshold": 0.5,
+  "threshold": null,
   "pause": null,
   "delay": null,
+  "loops": 1,
+  "comparison_method": null,
+  "flags": 0
+ },
+ {
+  "filename": "a)(0.9).png",
+  "threshold": null,
+  "pause": null,
+  "delay": null,
+  "loops": 1,
+  "comparison_method": null,
+  "flags": 0
+ },
+ {
+  "filename": "x_)0.9(.png",
+  "threshold": 0.9,
+  "pause": null,
+  "delay": null,
+  "loops": 1,
+  "comparison_method": null,
+  "flags": 0
+ },
+ {
+  "filename": "x_#5#_#6#.png",
+  "threshold": null,
+  "pause": null,
+  "delay": null,
+  "loops": 1,
+  "comparison_method": null,
+  "flags": 0
+ },
+ {
+  "filename": "boss #2.png",
+  "threshold": null,
+  "pause": null,
+  "delay": null,
+  "loops": 1,
+  "comparison_method": null,
+  "flags": 0
+ },
+ {
+  "filename": "x_#+5#.png",
+  "threshold": null,
+  "pause": null,
+  "delay": 5,
   "loops": 1,
   "comparison_method": null,
   "flags": 0

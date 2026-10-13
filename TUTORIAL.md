@@ -77,13 +77,11 @@ The Virtual Camera sends a picture the size of OBS's canvas, with your source in
 
 The folder with your split images, picked with Browse.... They're used in file name order, so number them `001_SplitName.png`, `002_SplitName.png` and so on. Only PNG images work. The file name also sets how each image is used, see [Split image file names](#split-image-file-names).
 
-Take Screenshot saves the capture region as the next free `NNN_SplitImage.png` in the screenshot folder (Settings > Capture Settings), or in the split image folder when none is set. It's the most accurate way to make split images, since it saves exactly what gets compared. [AutoMask](https://github.com/TorjeAmundsen/AutoSplit-AutoMask) turns those screenshots into masked, named split images when your category has a preset. Check them with the [Live Tester](#live-tester).
+Take Screenshot saves the capture region as the next free `NNN_SplitImage.png` in the screenshot folder (Settings > Capture Settings), or in the split image folder when none is set. Its file name shows under the button for a few seconds. It's the most accurate way to make split images, since it saves exactly what gets compared. [Make Split Images](#make-split-images) turns those screenshots into masked, named split images when your category has a preset. Check them with the [Live Tester](#live-tester).
 
 ### Capture region
 
 The part of the capture device's picture that split images are compared with, usually the whole game screen. X and Y are where it starts, in pixels of the device's frames, and Width and Height its size. The arrow keys change the number in a box by 1.
-
-Select Region and Select Window are for screen and window capture, which don't exist yet.
 
 Once the region is right, you can turn off Live Capture Region in the settings to stop the preview and save a little CPU.
 
@@ -106,7 +104,7 @@ The second row is the same for the reset image. Image Loop shows which loop of a
 
 ### Live Tester
 
-File > Live Tester (Ctrl+T) compares one split image with the capture region without starting a run, to check a new image before you rely on it. It opens beside the main window, which can't be used while the tester is open: close the tester to change the capture region or the settings. It opens the first image of the split image folder, and switches to the new folder's first image when you change the folder or load another profile. Without a split image folder, it asks for an image. Open Image... picks another one, from any folder, and `<` and `>` next to it open the previous and next PNG in the same folder, in file name order. The image loads again by itself when its file changes, for example when AutoMask saves it again. Reload does the same by hand.
+File > Live Tester (Ctrl+T) compares one split image with the capture region without starting a run, to check a new image before you rely on it. It opens beside the main window, which can't be used while the tester is open: close the tester to change the capture region or the settings. It opens the first image of the split image folder, and switches to the new folder's first image when you change the folder or load another profile. Without a split image folder, it asks for an image. Open Image... picks another one, from any folder, and `<` and `>` next to it open the previous and next PNG in the same folder, in file name order. The image loads again by itself when its file changes, for example when Make Split Images saves it again. Reload does the same by hand.
 
 The image is read like in the split image folder: its file name sets the threshold, comparison method, delay and flags, and the loaded profile's defaults fill in the rest, also right after you change them. The file name next to the buttons is colored by what each part does, the way the split image folder reads it: threshold, pause, delay, loops, comparison method, flags and the start or reset keyword. Hover over a part to see what it does. Values that are ignored are orange, and listed below the boxes. The boxes under the buttons say what the image does and how it's compared, and mark the values that come from the profile. The tester takes one image at a time, so the images of a [grouped split](#several-images-for-one-split) are tested one by one.
 
@@ -122,13 +120,30 @@ The right side keeps the frames that would have made the image act, decided like
 
 `<` and `>` above the frames go through them. After that, nothing more is kept until you press Start Over, which also clears Highest. The tester uses the capture device, capture region and FPS limit from the main window and the settings, and works during a run too.
 
+### Make Split Images
+
+File > Make Split Images (Ctrl+M) makes split images from a preset: a list of a category's splits, each with a mask that keeps only the part of the screen that tells the split apart, and the threshold, pause, delay and flags it needs. Presets come with `autosplit`, in the `presets` folder next to it. Pick the game and the preset at the top. Like the Live Tester, it opens beside the main window, which can't be used while it's open apart from the Help menu, so set the capture region first. The split images are saved into the profile's split image folder, which Browse... next to it changes.
+
+The list shows each split's name over its file name, colored like in the Live Tester, and what its image is made from. The box on the left shows the grab or screenshot, unmasked, and stays empty until there is one. The file names use the profile's defaults for what the preset leaves out, and are numbered from 00 like AutoSplit reads them. There are two ways to make the images:
+
+- Grab takes the capture region now, masks it for the selected split, saves it into the split image folder and selects the next split. The screenshot hotkey does the same while the window is open, so you can play through the category and press it at each split. Until a split has an image, the Output Preview shows the capture masked as it would be saved.
+- Use Screenshots... uses screenshot files instead, like the ones Take Screenshot saves. Pick one for the selected split, or several for the splits in order from the first. Save Selected and Save All then save them.
+
+Saving asks before replacing split images, and before leaving older images of the same splits under other names, for example after a threshold changed, since the split image folder would use those too. Delete Old Images removes them, Keep Old Images keeps them. The main window reads the split image folder again once Make Split Images closes, not while it's saving split images one at a time. A green check mark over the Output Preview shows when they're saved. Screenshots that were in the split image folder move into its `base` folder, where they aren't read as split images. Test opens the selected split's saved image in the Live Tester. What you grabbed or picked is kept, in memory until `autosplit` closes, when you close the window and open it again on the same preset, so Save All can save it again into another split image folder. Splits are only marked saved while their split image is in the split image folder.
+
+Click the Output Preview, or Transparency grid, to show what the mask removes as a checkerboard.
+
+Generate Profile... saves the settings as a new profile named for the game and preset, for example `tlozoot_no_wrong_warp.toml` for The Legend of Zelda: Ocarina of Time's No Wrong Warp, with the split image folder in it. That profile is the one in use afterwards, like after Save Profile As.
+
+Some presets come with savestates, for practicing a split from an emulator. Copy Savestates puts them on the clipboard, numbered like the split images, to paste into the emulator's savestate folder. The copies are in the `AutoSplit savestates` folder in the temp folder, which the next Copy Savestates empties first. Savestate Instructions shows what to do with the savestates that need more than loading.
+
 ## Settings
 
 ### Capture settings
 
 - Comparison FPS Limit: how often the capture is compared, 20 to 240 times a second. Set it near what the game runs at. More only costs CPU.
 - Live Capture Region: show the live preview.
-- Capture device: the device to capture from. `autosplit` finds it by name, so it keeps working when devices are added or removed.
+- Capture device: the device to capture from. `autosplit` finds it by name, so it keeps working when devices are added or removed. A profile without one gets OBS Virtual Camera when it's connected, or else the first device in the list. The Refresh button lists the devices again.
 - Screenshots folder: where Take Screenshot and the "Screenshot on" options save. Open screenshots on capture opens each one.
 - Screenshot on Start, Split, Reset, Skip, Undo and Pause: take a screenshot when that happens, to check later what split.
 
@@ -144,7 +159,7 @@ These are the defaults for images whose file names don't set their own.
 - Default Delay Time: how long to wait after a match before splitting, in milliseconds.
 - Default Pause Time: how long to stop comparing after a split, in seconds. It stops two identical images in a row from splitting at once, and saves CPU.
 - Loop Last Split Image to First Split Image: after the last image splits, start over with the first one. Otherwise comparing stops.
-- Start also Resets: when the start image matches, reset the timer too. LiveSplit, LiveSplit One and Molok get a reset and then a start. With hotkeys, only the reset hotkey is pressed, like AutoSplit, so you still have to start the timer.
+- Start also Resets: when the start image matches, reset the timer too. The timer gets a reset and then a start: with hotkeys, the reset hotkey and then the split hotkey, like AutoSplit 2.3.4.
 - Enable auto reset image: use the reset image. The toggle auto reset image hotkey turns it on and off, for example when a mistake in the run would show the reset image.
 - Compare images with the same number for one split: split images that start with the same number count as one split, and any of them can match it. See [Several images for one split](#several-images-for-one-split). AutoSplit doesn't have this setting.
 - Show a split's images in a 2x2 grid: with the setting above on, a split with several images shows all of them in the current image area, and `None` in the tiles without an image.
@@ -164,7 +179,7 @@ When LiveSplit or LiveSplit One controls the timer, only the screenshot and togg
 ### Other
 
 - Timer: Any timer (hotkeys), LiveSplit One (WebSocket), or Molok (POSIX signals, listed on Linux only). The change applies right away, or after the current run ends.
-- LiveSplit One port: the port LiveSplit One connects to, 16835 by default. Change it if another program uses that port.
+- LiveSplit One port: the port LiveSplit One connects to, 16835 by default. Change it if another program uses that port. A typed port is used once you press Enter or leave the box.
 
 ## Split image file names
 

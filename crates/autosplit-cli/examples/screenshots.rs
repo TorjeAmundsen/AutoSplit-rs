@@ -8,7 +8,7 @@ use autosplit::gui::ui::{
     AboutWindow, HotkeyRow, InfoCell, InstructionCard, InstructionsWindow, LogWindow, MainWindow, MakerRow,
     MakerWindow, MessageWindow, SettingsWindow, SimilarityRow, TesterWindow,
 };
-use autosplit::gui::{HOTKEY_ROWS, file_name_parts, transparency_grid};
+use autosplit::gui::{HOTKEY_ROWS, file_name_parts, thumbnail, transparency_grid};
 use slint::platform::software_renderer::{MinimalSoftwareWindow, RepaintBufferType, Rgb565Pixel};
 use slint::platform::{Platform, WindowAdapter};
 use slint::{ComponentHandle, PhysicalSize};
@@ -77,7 +77,11 @@ fn main() {
     main.set_current_image_file("Comparing against 3 images".into());
     main.set_current_image_message("".into());
     save(&window, PhysicalSize::new(786, 516), &folder.join("main-grid.png"));
+    main.invoke_screenshot_saved("003_SplitImage.png".into());
     main.set_tool("Live Tester".into());
+    main.set_running(true);
+    main.set_can_reset(true);
+    main.set_can_skip(true);
     save(&window, PhysicalSize::new(786, 516), &folder.join("main-tester-open.png"));
     main.set_tool("".into());
     main.hide().unwrap();
@@ -110,6 +114,13 @@ fn main() {
     message.set_tertiary(tertiary.into());
     message.show().unwrap();
     save(&window, PhysicalSize::new(380, 120), &folder.join("message.png"));
+    // A long list scrolls, with buttons that say what they do
+    let files: Vec<String> = (0..40).map(|index| format!("{index:02}_Split_(0.95).png")).collect();
+    message.set_message(format!("These split images are replaced:\n{}", files.join("\n")).into());
+    message.set_primary("Delete Old Images".into());
+    message.set_secondary("Keep Old Images".into());
+    message.set_default_button(1);
+    save(&window, PhysicalSize::new(380, 500), &folder.join("message-long.png"));
     message.hide().unwrap();
 
     let tester = TesterWindow::new().unwrap();
@@ -156,23 +167,35 @@ fn main() {
     tester.hide().unwrap();
 
     let maker = MakerWindow::new().unwrap();
-    let presets = ["The Legend of Zelda: Ocarina of Time: No Wrong Warp".into()];
+    let games = ["The Legend of Zelda: Ocarina of Time".into()];
+    maker.set_games(std::rc::Rc::new(slint::VecModel::from(games.to_vec())).into());
+    let presets = ["No Wrong Warp".into()];
     maker.set_presets(std::rc::Rc::new(slint::VecModel::from(presets.to_vec())).into());
-    let row = |file: &str, source: &str, saved: bool| MakerRow {
+    // A grab, half blue and half green
+    let shot = autosplit_core::image::BgraImage::from_raw(
+        64,
+        48,
+        (0..64 * 48).flat_map(|i| if i % 64 < 32 { [200, 120, 60, 255] } else { [60, 160, 60, 255] }).collect(),
+    );
+    let thumb = slint::Image::from_rgba8(thumbnail(shot.view()));
+    let row = |heading: &str, file: &str, source: &str, saved: bool| MakerRow {
+        heading: heading.into(),
         parts: file_name_parts(file),
         file: file.into(),
         source: source.into(),
         saved,
+        thumb: if source.is_empty() { slint::Image::default() } else { thumb.clone() },
+        has_thumb: !source.is_empty(),
     };
     let rows = vec![
-        row("reset_(0.96)_[0.1].png", "000_SplitImage.png", true),
-        row("start_auto_splitter_(0.96)_[10]_{b}.png", "001_SplitImage.png", true),
-        row("02_DekuDummy_(0.94)_[6.5]_{d}.png", "002_SplitImage.png", false),
-        row("03_EnterDeku_(0.92)_[60]_#1000#.png", "", false),
+        row("Reset Image", "reset_(0.96)_[0.1].png", "000_SplitImage.png", true),
+        row("Start Image", "start_auto_splitter_(0.96)_[10]_{b}.png", "grabbed", true),
+        row("DekuDummy", "02_DekuDummy_(0.94)_[6.5]_{d}.png", "002_SplitImage.png", false),
+        row("EnterDeku", "03_EnterDeku_(0.92)_[60]_#1000#.png", "", false),
     ];
     maker.set_rows(std::rc::Rc::new(slint::VecModel::from(rows)).into());
     maker.set_selected(2);
-    maker.set_output_folder("C:/Splits/OoT".into());
+    maker.set_output_folder("G:/AutoSplit segmented practice/VCAM/Portable OBS/AutoSplit/OoT".into());
     // Half the split image is transparent, over the transparency grid
     let half =
         (0..320 * 240).flat_map(|i| if i % 320 < 160 { [60, 90, 200, 255] } else { [0, 0, 0, 0] }).collect::<Vec<u8>>();
@@ -180,7 +203,6 @@ fn main() {
     maker.set_preview_image(slint::Image::from_rgba8(half));
     maker.set_grid_image(transparency_grid(320, 240));
     maker.set_preview_message("".into());
-    maker.set_preview_caption("DekuDummy: split image".into());
     maker.set_status("Saved 2 split images, moved 2 screenshots to the base folder.".into());
     maker.set_can_save_selected(true);
     maker.set_can_save_all(true);
@@ -191,7 +213,17 @@ fn main() {
     maker.set_live_message("".into());
     maker.set_live_image(solid([90, 140, 90]));
     maker.set_can_grab(true);
-    save(&window, PhysicalSize::new(830, 610), &folder.join("maker.png"));
+    save(&window, PhysicalSize::new(828, 672), &folder.join("maker.png"));
+    maker.invoke_split_images_saved();
+    save(&window, PhysicalSize::new(828, 672), &folder.join("maker-saved.png"));
+    // Enough splits to scroll, which puts the scroll bar over the rows' right side
+    let many: Vec<MakerRow> = (0..14)
+        .map(|index| {
+            row("Boss", &format!("{index:02}_Boss_(0.95).png"), if index % 2 == 0 { "grabbed" } else { "" }, true)
+        })
+        .collect();
+    maker.set_rows(std::rc::Rc::new(slint::VecModel::from(many)).into());
+    save(&window, PhysicalSize::new(828, 672), &folder.join("maker-long.png"));
     maker.hide().unwrap();
 
     let instructions = InstructionsWindow::new().unwrap();

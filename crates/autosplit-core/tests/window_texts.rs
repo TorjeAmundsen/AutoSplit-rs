@@ -43,7 +43,7 @@ const NOW: Duration = Duration::from_secs(10);
 #[test_case(Status { reset_similarity: None, ..status() }, true => ["0.412", "0.951", "0.930", "-", "-", "-"]; "before the run")]
 fn similarity_table(status: Status, capture: bool) -> [String; 6] {
     // Act, with the expected value checked by test_case
-    window_texts(&status, NOW, "", capture).table
+    window_texts(&status, NOW, "", capture, true).table
 }
 
 #[test_case(status() => ""; "image shown")]
@@ -53,14 +53,22 @@ fn similarity_table(status: Status, capture: bool) -> [String; 6] {
 #[test_case(Status { showing: Showing::StartDelay { until: NOW + Duration::from_millis(1000) }, ..status() } => "Delayed Before Starting:\n 1.0 second remaining"; "start delay")]
 fn current_message(status: Status) -> String {
     // Act, with the expected value checked by test_case
-    window_texts(&status, NOW, "ready", true).current_message
+    window_texts(&status, NOW, "ready", true, true).current_message
+}
+
+#[test_case(Status { showing: Showing::Pause { until: NOW + Duration::from_millis(9900) }, ..status() } => "None (Paused)."; "pause")]
+#[test_case(Status { showing: Showing::SplitDelay { until: NOW + Duration::from_millis(300) }, ..status() } => "Delayed Split:"; "split delay")]
+#[test_case(Status { showing: Showing::StartDelay { until: NOW + Duration::from_millis(1000) }, ..status() } => "Delayed Before Starting:\n 1.0 second remaining"; "start delay keeps its timer")]
+fn current_message_without_the_pause_timer(status: Status) -> String {
+    // Act, with the expected value checked by test_case
+    window_texts(&status, NOW, "ready", true, false).current_message
 }
 
 #[test_case(status() => "1/2"; "looping image")]
 #[test_case(Status { loop_position: None, ..status() } => "N/A"; "no image")]
 fn image_loop(status: Status) -> String {
     // Act, with the expected value checked by test_case
-    window_texts(&status, NOW, "", true).image_loop
+    window_texts(&status, NOW, "", true, true).image_loop
 }
 
 #[test_case(status() => "05_bottle.png"; "image")]
@@ -69,7 +77,7 @@ fn image_loop(status: Status) -> String {
 #[test_case(Status { current_filename: None, ..grouped() } => "-"; "several images during a split delay")]
 fn current_file(status: Status) -> String {
     // Act, with the expected value checked by test_case
-    window_texts(&status, NOW, "", true).current_file
+    window_texts(&status, NOW, "", true, true).current_file
 }
 
 #[test_case(StartStatus::NotFound => "not found"; "not found")]
@@ -79,7 +87,7 @@ fn current_file(status: Status) -> String {
 #[test_case(StartStatus::NotReady => "not ready"; "not ready")]
 fn start_status(start_status: StartStatus) -> String {
     // Act, with the expected value checked by test_case
-    window_texts(&Status { start_status, ..status() }, NOW, "", true).start_status
+    window_texts(&Status { start_status, ..status() }, NOW, "", true, true).start_status
 }
 
 fn grouped() -> Status {
@@ -92,5 +100,5 @@ fn grouped() -> Status {
 #[test_case(status(), true => [["0.412", "0.951", "0.930"], ["-", "-", "-"], ["-", "-", "-"], ["-", "-", "-"]]; "start image")]
 fn group_rows(status: Status, capture: bool) -> [[String; 3]; 4] {
     // Act, with the expected value checked by test_case
-    window_texts(&status, NOW, "", capture).group_rows
+    window_texts(&status, NOW, "", capture, true).group_rows
 }

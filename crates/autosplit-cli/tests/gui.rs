@@ -7,12 +7,13 @@ use std::rc::Rc;
 
 use autosplit::gui::document::{Document, folder_text, profile_on_open};
 use autosplit::gui::log::{LOG_LINES, LogLines};
-use autosplit::gui::maker_plan::{WritePlan, plan_writes};
+use autosplit::gui::maker_plan::{WritePlan, looks_made, plan_writes};
 use autosplit::gui::messages::{Answer, Buttons, Message, MessageQueue};
 use autosplit::gui::placement::{Area, beside, centered_over};
 use autosplit::gui::recorder::key_code;
-use autosplit::gui::settings_form::{SettingEdit, Shown, apply, pick_first_device};
+use autosplit::gui::settings_form::{SettingEdit, Shown, apply, pick_default_device};
 use autosplit::gui::view::{KeptFrames, Picture, Pixels, Update};
+use autosplit::gui::{THUMB_SIZE, thumbnail};
 use autosplit_capture::DeviceInfo;
 use autosplit_core::commands::{Command, TimerLink};
 use autosplit_core::profile::{TimerConnection, UserProfile, VIDEO_CAPTURE_DEVICE};
@@ -63,7 +64,10 @@ fn profile_on_open_warns_about_misplaced_keys() {
     let (_, _, warnings) = profile_on_open(folder.path()).unwrap();
 
     // Assert
-    assert_eq!(warnings.len(), 1);
+    assert_eq!(
+        warnings,
+        ["'fps_limit' is inside [capture_region], where it's ignored. Move it above the [capture_region] line."]
+    );
 }
 
 #[test]
@@ -141,7 +145,7 @@ fn first_message_shows_at_once() {
     let shown = queue.push(Message::error("first"));
 
     // Assert
-    assert_eq!(shown, Some(("first".to_owned(), Buttons::Ok)));
+    assert_eq!(shown.map(|shown| (shown.text, shown.buttons)), Some(("first".to_owned(), Buttons::Ok)));
 }
 
 #[test]
@@ -168,7 +172,7 @@ fn answering_shows_the_next_message() {
     let (_, next) = queue.answer(Some(0));
 
     // Assert
-    assert_eq!(next, Some(("second".to_owned(), Buttons::Ok)));
+    assert_eq!(next.map(|shown| (shown.text, shown.buttons)), Some(("second".to_owned(), Buttons::Ok)));
 }
 
 #[test]
@@ -182,7 +186,7 @@ fn closing_a_message_shows_the_next_one() {
     let (_, next) = queue.answer(None);
 
     // Assert
-    assert_eq!(next, Some(("second".to_owned(), Buttons::Ok)));
+    assert_eq!(next.map(|shown| (shown.text, shown.buttons)), Some(("second".to_owned(), Buttons::Ok)));
 }
 
 #[test_case(Some(0) => Some(Answer::Yes); "yes")]
@@ -270,12 +274,12 @@ fn picking_a_device_saves_its_name_and_number() {
     );
 }
 
-#[test_case("", -1, VIDEO_CAPTURE_DEVICE => Some(("Webcam".to_owned(), 0)); "no device")]
-#[test_case("", -1, "" => Some(("Webcam".to_owned(), 0)); "no capture method")]
+#[test_case("", -1, VIDEO_CAPTURE_DEVICE => Some(("OBS Virtual Camera".to_owned(), 3)); "no device")]
+#[test_case("", -1, "" => Some(("OBS Virtual Camera".to_owned(), 3)); "no capture method")]
 #[test_case("Elgato", -1, VIDEO_CAPTURE_DEVICE => None; "device not connected")]
 #[test_case("", 3, VIDEO_CAPTURE_DEVICE => None; "device by number")]
 #[test_case("", -1, "BITBLT" => None; "window capture method")]
-fn listing_devices_picks_the_first_for_a_profile_without_one(
+fn listing_devices_picks_obs_for_a_profile_without_one(
     name: &str,
     id: i64,
     capture_method: &str,
@@ -289,10 +293,23 @@ fn listing_devices_picks_the_first_for_a_profile_without_one(
     };
 
     // Act
-    let picked = pick_first_device(&mut profile, &devices());
+    let picked = pick_default_device(&mut profile, &devices());
 
     // Assert, with the expected value checked by test_case
     picked.then_some((profile.capture_device_name, profile.capture_device_id))
+}
+
+#[test]
+fn without_obs_the_first_device_is_picked() {
+    // Arrange
+    let mut profile = UserProfile::default();
+    let devices = [DeviceInfo { index: 0, name: "Webcam".into() }, DeviceInfo { index: 1, name: "Elgato".into() }];
+
+    // Act
+    let picked = pick_default_device(&mut profile, &devices);
+
+    // Assert
+    assert_eq!((picked, profile.capture_device_name.as_str(), profile.capture_device_id), (true, "Webcam", 0));
 }
 
 #[test]
@@ -301,7 +318,7 @@ fn listing_no_devices_picks_none() {
     let mut profile = UserProfile::default();
 
     // Act
-    let picked = pick_first_device(&mut profile, &[]);
+    let picked = pick_default_device(&mut profile, &[]);
 
     // Assert
     assert_eq!((picked, profile), (false, UserProfile::default()));
@@ -387,16 +404,29 @@ fn picking_the_unsupported_method_keeps_the_profiles() {
     assert_eq!(profile.capture_method, "BITBLT");
 }
 
-#[test]
-fn pause_time_keeps_two_decimals() {
+#[test_case(10.004 => 10.0; "rounds down")]
+#[test_case(10.126 => 10.13; "rounds up to two decimals")]
+fn pause_time_keeps_two_decimals(seconds: f64) -> f64 {
     // Arrange
     let mut profile = UserProfile::default();
 
     // Act
-    apply(&mut profile, SettingEdit::DefaultPauseTime(10.004), &devices());
+    apply(&mut profile, SettingEdit::DefaultPauseTime(seconds), &devices());
+
+    // Assert, with the expected value checked by test_case
+    profile.default_pause_time
+}
+
+#[test]
+fn choices_have_their_labels_and_default() {
+    // Arrange
+    let mut queue = MessageQueue::default();
+
+    // Act
+    let shown = queue.push(Message::choice("Delete them?", ["Delete", "Keep", "Cancel"], 1, |_| {})).unwrap();
 
     // Assert
-    assert_eq!(profile.default_pause_time, 10.0);
+    assert_eq!((shown.labels, shown.default), (["Delete", "Keep", "Cancel"], 1));
 }
 
 #[test]
@@ -434,7 +464,7 @@ fn device_placeholder(capture_method: &str, scanning: bool, no_devices: bool) ->
 }
 
 #[test_case(VIDEO_CAPTURE_DEVICE => (vec!["Video Capture Device (see below)".to_owned()], 0); "video capture device")]
-#[test_case("BITBLT" => (vec!["Video Capture Device (see below)".to_owned(), "BitBlt (not supported yet)".to_owned()], 1); "window capture method")]
+#[test_case("BITBLT" => (vec!["Video Capture Device (see below)".to_owned(), "BitBlt (not supported)".to_owned()], 1); "window capture method")]
 fn capture_methods(capture_method: &str) -> (Vec<String>, i32) {
     // Act
     let shown = shown(capture_method, &devices(), false);
@@ -450,6 +480,21 @@ fn selects_the_profiles_device() {
 
     // Assert
     assert_eq!(shown.device_index, 1);
+}
+
+#[test]
+fn missing_device_is_listed_as_not_connected() {
+    // Arrange
+    let webcam = [DeviceInfo { index: 0, name: "Webcam".into() }];
+
+    // Act
+    let shown = shown(VIDEO_CAPTURE_DEVICE, &webcam, false);
+
+    // Assert
+    assert_eq!(
+        (shown.device_names, shown.device_index),
+        (vec!["Webcam".to_owned(), "OBS Virtual Camera (not connected)".to_owned()], 1)
+    );
 }
 
 #[test_case(TimerConnection::Hotkeys => 0; "hotkeys")]
@@ -470,7 +515,10 @@ fn hotkeys_note_when_livesplit_controls_the_timer() {
     let shown = Shown::new(&UserProfile::default(), &[], false, TimerLink::AutoControlled);
 
     // Assert
-    assert!(!shown.hotkeys_note.is_empty());
+    assert_eq!(
+        shown.hotkeys_note,
+        "LiveSplit or LiveSplit One controls the timer, so only the screenshot and auto reset hotkeys are used."
+    );
 }
 
 fn pixels(red: u8) -> Picture {
@@ -593,9 +641,14 @@ fn tester_opens_beside_the_main_window(main: Area) -> (i32, i32) {
 }
 
 fn plan(names: &[&str], existing: &[&str]) -> WritePlan {
+    plan_with_sources(names, existing, &[])
+}
+
+fn plan_with_sources(names: &[&str], existing: &[&str], sources: &[&str]) -> WritePlan {
     let names: Vec<String> = names.iter().map(|name| (*name).to_owned()).collect();
     let existing: Vec<PathBuf> = existing.iter().map(PathBuf::from).collect();
-    plan_writes(&names, &existing)
+    let sources: Vec<PathBuf> = sources.iter().map(PathBuf::from).collect();
+    plan_writes(&names, &existing, &sources)
 }
 
 #[test]
@@ -614,4 +667,65 @@ fn saving_replaces_files_with_the_same_name() {
 fn saving_finds_older_images_of_the_same_splits(names: &[&str], existing: &[&str]) -> Vec<PathBuf> {
     // Act, with the expected value checked by test_case
     plan(names, existing).stale
+}
+
+#[test]
+fn screenshots_saved_from_are_not_older_images() {
+    // Arrange: screenshots count from 001, so 002 looks like split 02's
+    let names = ["01_Deku_(0.95).png", "02_Bottle_(0.93).png"];
+    let existing = ["001_shot.png", "002_shot.png", "02_Bottle_(0.9).png"];
+
+    // Act
+    let plan = plan_with_sources(&names, &existing, &["001_shot.png", "002_shot.png"]);
+
+    // Assert
+    assert_eq!(plan.stale, vec![PathBuf::from("02_Bottle_(0.9).png")]);
+}
+
+#[test_case("002_SplitImage.png"; "screenshot name")]
+#[test_case("002_splitimage.PNG"; "screenshot name in other case")]
+fn screenshots_are_not_older_images(screenshot: &str) {
+    // Act
+    let plan = plan(&["02_Bottle_(0.93).png"], &[screenshot]);
+
+    // Assert
+    assert_eq!(plan.stale, Vec::<PathBuf>::new());
+}
+
+#[test]
+fn thumbnails_are_the_whole_shot_shrunk_and_opaque() {
+    // Arrange: blue on the left, green on the right, half transparent
+    let shot = autosplit_core::image::BgraImage::from_raw(
+        4,
+        2,
+        (0..8).flat_map(|i| if i % 4 < 2 { [255, 0, 0, 128] } else { [0, 255, 0, 128] }).collect(),
+    );
+
+    // Act
+    let thumb = thumbnail(shot.view());
+
+    // Assert: the corners keep their colors, nothing's masked away
+    let pixels = thumb.as_slice();
+    let (width, height) = THUMB_SIZE;
+    let rgba = |index: usize| [pixels[index].r, pixels[index].g, pixels[index].b, pixels[index].a];
+    assert_eq!(
+        ((thumb.width() as usize, thumb.height() as usize), rgba(0), rgba(width * height - 1)),
+        (THUMB_SIZE, [0, 0, 255, 255], [0, 255, 0, 255])
+    );
+}
+
+#[test_case("001_SplitImage.png" => false; "screenshot")]
+#[test_case("013_SplitImage - Kopi.png" => false; "copied screenshot")]
+#[test_case("boss fight.png" => false; "any picture")]
+#[test_case("05_Bottle_(0.93).png" => true; "made split image")]
+#[test_case("reset.png" => true; "reset image")]
+#[test_case("02_Dummy_{d}.png" => true; "flags only")]
+#[test_case("03_EnterDeku.png" => true; "number and name, default threshold")]
+#[test_case("Copy of 004_splitimage.PNG" => false; "screenshot inside a longer name")]
+#[test_case("Copy of 001_SplitImage.png" => false; "copy of a screenshot")]
+#[test_case("Copy of 000_SplitImage(1).png" => false; "numbered copy, which reads as a threshold")]
+#[test_case("000_SplitImage (2) [3].png" => false; "copy with more brackets")]
+fn screenshots_dont_look_like_split_images(name: &str) -> bool {
+    // Act, with the expected value checked by test_case
+    looks_made(name)
 }

@@ -2,7 +2,7 @@
 
 use std::path::{Path, PathBuf};
 
-use autosplit_core::profile::{Region, UserProfile, VIDEO_CAPTURE_DEVICE};
+use autosplit_core::profile::{self, Region, UserProfile, VIDEO_CAPTURE_DEVICE};
 
 pub struct Document {
     /// As in its file: folders aren't resolved, so saving writes them back as they were.
@@ -45,6 +45,11 @@ impl Document {
     /// Where relative folders are read from: the file's folder, or `fallback` for a new profile.
     pub fn folder(&self, fallback: &Path) -> PathBuf {
         self.path.as_deref().and_then(Path::parent).unwrap_or(fallback).to_owned()
+    }
+
+    /// Where one of the profile's folders is, the way the session reads it.
+    pub fn resolve(&self, fallback: &Path, directory: &str) -> PathBuf {
+        profile::resolve_directory(&self.folder(fallback), directory)
     }
 
     /// The profile to write to a file. Only video capture devices can be picked, so a profile

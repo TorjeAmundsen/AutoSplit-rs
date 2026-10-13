@@ -178,10 +178,6 @@ function Build($name) {
             Copy-Item "$($folders[0])/$binaryName" "$output/$binaryName"
         }
     }
-    # The licenses have to ship with the binaries
-    foreach ($file in @("LICENSE", "THIRD_PARTY_NOTICES.txt")) {
-        Copy-Item "$PSScriptRoot/$file" $output
-    }
     # The split image presets and the splits library, which are read from next to the binary
     foreach ($folder in @("presets", "splits")) {
         Copy-Item "$PSScriptRoot/$folder" $output -Recurse

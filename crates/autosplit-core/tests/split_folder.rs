@@ -65,6 +65,8 @@ fn validation_error(names: &[&str], context: ValidationContext) -> Option<Valida
 #[test_case(&["1.png", "boss.png"], GROUPED => Some(ValidationError::NoNumberPrefix("boss.png".into())); "grouped image without a number")]
 #[test_case(&["1.png", "boss.png"], ALL_HOTKEYS => None; "ungrouped images need no number")]
 #[test_case(&["1_a.png", "1_b_@2@.png"], GROUPED => Some(ValidationError::GroupLoopsDiffer("1".into())); "different loop counts in a group")]
+#[test_case(&["1_@1000000000@.png"], ALL_HOTKEYS => Some(ValidationError::TooManySplits(1_000_000_000)); "mistyped loop count")]
+#[test_case(&["1_@50000@.png", "2_@50000@.png"], ALL_HOTKEYS => None; "as many splits as a run can have")]
 #[test_case(&["start_auto_splitter.png", "reset.png", "1.png"], GROUPED => None; "start and reset images need no number")]
 fn folder_validation(names: &[&str], context: ValidationContext) -> Option<ValidationError> {
     // Arrange, Act
@@ -155,9 +157,14 @@ fn ignored_files_are_listed_in_one_message() {
     let message = load_split_folder(directory.path(), &ALL_HOTKEYS).ignored_files_message();
 
     // Assert
-    assert_eq!(message.as_deref(), Some("These files aren't PNG split images and will be ignored:
+    assert_eq!(
+        message.as_deref(),
+        Some(
+            "These files aren't PNG split images and will be ignored:
 2.jpg
-notes"));
+notes"
+        )
+    );
 }
 
 #[test]

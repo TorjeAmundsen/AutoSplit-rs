@@ -19,8 +19,8 @@ fn out_of_range(setting: Setting, value: &str) -> Vec<FilenameWarning> {
 #[test_case("01_(0.9)_[5]_#1000#_@3@_^2^_{b}.png" => Vec::<FilenameWarning>::new(); "valid values")]
 #[test_case("split.png" => Vec::<FilenameWarning>::new(); "no values")]
 #[test_case("x_(0.9a).png" => not_a_number(Setting::Threshold, "0.9a"); "threshold that isn't a number")]
-#[test_case("x_( 0.95 ).png" => not_a_number(Setting::Threshold, " 0.95 "); "threshold with spaces")]
 #[test_case("x_[ten].png" => not_a_number(Setting::PauseTime, "ten"); "pause that isn't a number")]
+#[test_case("x_( 0.95 ).png" => not_a_number(Setting::Threshold, " 0.95 "); "threshold with spaces")]
 #[test_case("x_#1_000#.png" => not_a_number(Setting::DelayTime, "1_000"); "delay with an underscore")]
 #[test_case("x_#1.5#.png" => not_a_number(Setting::DelayTime, "1.5"); "fractional delay")]
 #[test_case("x_@two@.png" => not_a_number(Setting::Loops, "two"); "loops that isn't a number")]
@@ -34,7 +34,9 @@ fn out_of_range(setting: Setting, value: &str) -> Vec<FilenameWarning> {
 #[test_case("x_^5^.png" => vec![FilenameWarning::UnknownComparisonMethod(5)]; "unknown method")]
 #[test_case("x_{dx}.png" => vec![FilenameWarning::InvalidFlag { flags: "dx".into(), invalid: 'x' }]; "invalid flag")]
 #[test_case("x_{dp}.png" => vec![FilenameWarning::DummyAndPause { flags: "dp".into() }]; "dummy and pause")]
-#[test_case("boss #2.png" => Vec::<FilenameWarning>::new(); "unclosed delimiter")]
+#[test_case("boss #2.png" => vec![FilenameWarning::Delimiters { setting: Setting::DelayTime, count: 1 }]; "unclosed delimiter")]
+#[test_case("x_(0.5)_(0.7).png" => vec![FilenameWarning::Delimiters { setting: Setting::Threshold, count: 4 }]; "two thresholds")]
+#[test_case("x_{b}_{d}.png" => vec![FilenameWarning::Delimiters { setting: Setting::Flags, count: 4 }]; "two flag groups")]
 #[test_case("x_(0.9a)_{x}.png" => vec![
     FilenameWarning::NotANumber { setting: Setting::Threshold, value: "0.9a".into() },
     FilenameWarning::InvalidFlag { flags: "x".into(), invalid: 'x' },
@@ -60,6 +62,23 @@ fn delay_with_an_underscore_falls_back_to_the_default() {
 
     // Assert
     assert_eq!(delay, None);
+}
+
+#[test_case("x_#5#_#6#.png"; "two delays")]
+#[test_case("x_#5.png"; "one delimiter")]
+fn delay_with_the_wrong_number_of_delimiters_falls_back_to_the_default(filename: &str) {
+    // Act
+    let delay = delay_time_from_filename(filename);
+
+    // Assert
+    assert_eq!(delay, None);
+}
+
+#[test_case(FilenameWarning::Delimiters { setting: Setting::Threshold, count: 4 } => "'(' and ')' appear 4 times, but the threshold has to be between one of each, so the profile's default is used"; "pair")]
+#[test_case(FilenameWarning::Delimiters { setting: Setting::DelayTime, count: 3 } => "'#' appears 3 times, but the delay time has to be between exactly 2, so the profile's default is used"; "same character")]
+fn delimiter_warning_message(warning: FilenameWarning) -> String {
+    // Act, with the expected value checked by test_case
+    warning.to_string()
 }
 
 #[test]
@@ -131,7 +150,8 @@ fn name_parts_follow_the_parser() {
 #[test_case("Reset_(1.5).png" => vec!["Keyword:Reset", "Text:_", "Threshold!:(1.5)", "Extension:.png"]; "out of range threshold")]
 #[test_case("x_{dp}.png" => vec!["Text:x_", "Flags!:{dp}", "Extension:.png"]; "dummy and pause flags")]
 #[test_case("start_auto_splitter_reset.png" => vec!["Keyword:start_auto_splitter", "Text:_reset", "Extension:.png"]; "start keyword wins")]
-#[test_case("x_(0.5.png" => vec!["Text:x_(0.5", "Extension:.png"]; "unclosed value")]
+#[test_case("x_(0.5.png" => vec!["Text:x_", "Threshold!:(", "Text:0.5", "Extension:.png"]; "unclosed value")]
+#[test_case("x_(0.5)_(0.7).png" => vec!["Text:x_", "Threshold!:(0.5)_(0.7)", "Extension:.png"]; "two values")]
 fn name_parts_mark_what_the_parser_ignores(filename: &str) -> Vec<String> {
     // Act, with the expected value checked by test_case
     parts(filename)

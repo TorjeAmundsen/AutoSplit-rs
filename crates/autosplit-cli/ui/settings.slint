@@ -6,6 +6,7 @@ import { Button, ComboBox, Label, SpinBox, TabFrame, TextField, Theme, Tip, Wind
 export enum Setting {
     fps-limit,
     live-capture-region,
+    display-pause-timer,
     capture-method,
     capture-device,
     open-screenshot,
@@ -39,6 +40,7 @@ export component SettingsWindow inherits Window {
 
     in-out property <float> fps-limit: 60;
     in-out property <bool> live-capture-region: true;
+    in-out property <bool> display-pause-timer: true;
     in property <[string]> capture-methods: ["Video Capture Device"];
     in-out property <int> capture-method-index;
     in property <[string]> capture-devices;
@@ -127,11 +129,21 @@ export component SettingsWindow inherits Window {
             CheckBox {
                 x: 10px;
                 y: 38px;
-                width: 340px;
+                width: 141px;
                 height: 24px;
                 text: "Live Capture Region";
                 checked <=> root.live-capture-region;
                 toggled => { root.changed(Setting.live-capture-region); }
+            }
+
+            CheckBox {
+                x: 160px;
+                y: 38px;
+                width: 131px;
+                height: 24px;
+                text: "Show Pause Timer";
+                checked <=> root.display-pause-timer;
+                toggled => { root.changed(Setting.display-pause-timer); }
             }
 
             Label {
@@ -169,12 +181,27 @@ export component SettingsWindow inherits Window {
             ComboBox {
                 x: 10px;
                 y: 132px;
-                width: 360px;
+                width: 284px;
                 height: 26px;
                 model: root.capture-device-placeholder == "" ? root.capture-devices : [root.capture-device-placeholder];
                 enabled: root.capture-device-placeholder == "";
                 current-index <=> root.capture-device-index;
                 selected => { root.changed(Setting.capture-device); }
+            }
+
+            Button {
+                x: 300px;
+                y: 132px;
+                width: 70px;
+                height: 26px;
+                text: "Refresh";
+                clicked => { root.capture-devices-requested(); }
+
+                Tooltip {
+                    Tip {
+                        text: "List the capture devices again, for one connected or started since";
+                    }
+                }
             }
 
             Label {
@@ -565,6 +592,8 @@ export component SettingsWindow inherits Window {
                 height: 22px;
                 minimum: 1;
                 maximum: 65535;
+                // Each port typed on the way would be listened on
+                live: false;
                 enabled: root.timer-connection == 1 && !root.auto-controlled;
                 value <=> root.livesplit-one-port;
                 edited => { root.changed(Setting.livesplit-one-port); }
@@ -578,7 +607,7 @@ export component SettingsWindow inherits Window {
                 wrap: word-wrap;
                 visible: root.timer-connection-waiting || root.auto-controlled;
                 text: root.auto-controlled
-                    ? "LiveSplit started autosplit, so it controls the timer."
+                    ? "LiveSplit started AutoSplit, so it controls the timer."
                     : "The new timer connection is used once the run ends.";
             }
         }

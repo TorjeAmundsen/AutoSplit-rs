@@ -3,7 +3,19 @@
 
 use std::path::{Path, PathBuf};
 
-use autosplit_core::filename::{RESET_KEYWORD, START_KEYWORD, has_keyword, number_prefix};
+use autosplit_core::filename::{PartKind, RESET_KEYWORD, START_KEYWORD, has_keyword, name_parts, number_prefix};
+
+use crate::screenshot::is_screenshot_name;
+
+/// Whether the file `name` looks like a split image made already, which masking again would ruin:
+/// it has a number, the reset or start keyword, or a setting. Names with a screenshot's
+/// `NNN_SplitImage` in them don't count, copies of screenshots too.
+pub fn looks_made(name: &str) -> bool {
+    let lower = name.to_ascii_lowercase();
+    let screenshot =
+        lower.match_indices("_splitimage").any(|(at, _)| lower[..at].ends_with(|c: char| c.is_ascii_digit()));
+    !screenshot && name_parts(name).iter().any(|part| !matches!(part.kind, PartKind::Text | PartKind::Extension))
+}
 
 /// The files a save replaces, and the older split images of the same splits it leaves behind.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -39,8 +51,10 @@ fn is_png(path: &Path) -> bool {
     path.extension().is_some_and(|extension| extension.eq_ignore_ascii_case("png"))
 }
 
-/// Writing `names` into a folder that has `existing` files.
-pub fn plan_writes(names: &[String], existing: &[PathBuf]) -> WritePlan {
+/// Writing `names` into a folder that has `existing` files. `sources`, the files the split images
+/// are made from, are never stale, and neither are screenshots (`NNN_SplitImage.png`): their
+/// numbers count from 1 where split images count from 0, so they'd look like the next split's.
+pub fn plan_writes(names: &[String], existing: &[PathBuf], sources: &[PathBuf]) -> WritePlan {
     let file_name = |path: &PathBuf| path.file_name().map(|name| name.to_string_lossy().into_owned());
     let same_name = |name: &str, other: &str| name.eq_ignore_ascii_case(other);
     let keys: Vec<SplitKey> = names.iter().filter_map(|name| split_key(name)).collect();
@@ -49,7 +63,10 @@ pub fn plan_writes(names: &[String], existing: &[PathBuf]) -> WritePlan {
         let Some(existing_name) = file_name(path) else { continue };
         if names.iter().any(|name| same_name(name, &existing_name)) {
             plan.overwrites.push(existing_name);
-        } else if split_key(&existing_name).is_some_and(|key| keys.contains(&key)) {
+        } else if !sources.contains(path)
+            && !is_screenshot_name(&existing_name)
+            && split_key(&existing_name).is_some_and(|key| keys.contains(&key))
+        {
             plan.stale.push(path.clone());
         }
     }

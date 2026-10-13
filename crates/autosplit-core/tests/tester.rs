@@ -252,7 +252,7 @@ fn captions_say_what_each_kept_frame_is() {
         (harness.captions(), tester_status(&harness.tester)),
         (
             vec!["Reached: 1.000".to_owned(), "Dropped below: 0.292".to_owned(), "Split +300 ms: 0.292".to_owned()],
-            "Done: the image splits here. Press Start Over to watch for the next match.".to_owned()
+            "Done: this is where it splits. Press Start Over to watch for the next match.".to_owned()
         )
     );
 }

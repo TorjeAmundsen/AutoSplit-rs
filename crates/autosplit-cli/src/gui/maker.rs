@@ -6,15 +6,14 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::Arc;
 
-use autosplit_core::filename::name_parts;
-use autosplit_core::image::BgraImage;
-use autosplit_core::imgproc::ResizeBuffers;
+use autosplit_core::image::{BgraImage, BgraView};
+use autosplit_core::imgproc::{ResizeBuffers, stretch_to_rgba};
 use autosplit_core::mask::{Mask, apply_mask};
 use autosplit_core::preset::{LoadedPreset, load_presets};
 use autosplit_core::split_folder::user_files;
 use slint::{ComponentHandle, ModelRc, Rgba8Pixel, SharedPixelBuffer, SharedString, VecModel};
 
-use super::maker_plan::plan_writes;
+use super::maker_plan::{looks_made, plan_writes};
 use super::messages::{Answer, Message};
 use super::placement::beside;
 use super::ui::{InstructionCard, MakerRow};
@@ -36,7 +35,16 @@ impl Source {
     fn label(&self) -> String {
         match self {
             Self::File(path) => path.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default(),
-            Self::Grabbed(_) => "grabbed from the capture".into(),
+            Self::Grabbed(_) => "grabbed".into(),
+        }
+    }
+
+    /// Whether it's the same screenshot file or the same grab.
+    fn same(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::File(a), Self::File(b)) => a == b,
+            (Self::Grabbed(a), Self::Grabbed(b)) => Arc::ptr_eq(a, b),
+            _ => false,
         }
     }
 
@@ -59,18 +67,73 @@ pub(super) struct Maker {
     sources: Vec<Option<Source>>,
     /// Each split's split image, once it's written.
     saved: Vec<Option<PathBuf>>,
+    /// A small picture of each split's split image, once it's made from its source.
+    thumbs: Vec<Option<slint::Image>>,
     selected: usize,
     /// Masks by path, read once.
     masks: HashMap<PathBuf, Arc<Mask>>,
     /// The selected split's mask at the size of the capture's preview, with that size, for the
     /// live preview of its split image.
     live_mask: Option<((usize, usize), Vec<u8>)>,
+    /// Changes when another preset is chosen, so split images saved for the one before don't
+    /// count for this one.
+    generation: u64,
 }
 
 impl Maker {
     fn loaded(&self) -> Option<&LoadedPreset> {
         self.presets.get(self.preset)
     }
+
+    /// The games of the presets, in the order they're listed.
+    fn games(&self) -> Vec<&str> {
+        let mut games: Vec<&str> = self.presets.iter().map(|loaded| loaded.preset.game.as_str()).collect();
+        games.dedup();
+        games
+    }
+
+    /// The presets of `game`, by index.
+    fn presets_of(&self, game: &str) -> Vec<usize> {
+        (0..self.presets.len()).filter(|&index| self.presets[index].preset.game == game).collect()
+    }
+}
+
+/// `count` things, like "1 split image" or "2 split images".
+fn plural(count: usize, thing: &str) -> String {
+    if count == 1 { format!("1 {thing}") } else { format!("{count} {thing}s") }
+}
+
+/// A path as the file system has it, to compare paths written differently.
+fn canonical(path: &Path) -> PathBuf {
+    std::fs::canonicalize(path).unwrap_or_else(|_| path.to_owned())
+}
+
+/// The size of the split list's pictures of the split images, twice what's shown for sharp
+/// pictures on high resolution screens.
+pub const THUMB_SIZE: (usize, usize) = (96, 72);
+
+/// A small picture of a split's screenshot or grab, unmasked: the mask usually keeps too little
+/// of it to tell at a glance.
+pub fn thumbnail(shot: BgraView) -> Pixels {
+    let (width, height) = THUMB_SIZE;
+    let mut pixels = vec![[0; 4]; width * height];
+    stretch_to_rgba(shot, width, height, &mut pixels);
+    pixels.iter_mut().for_each(|pixel| pixel[3] = 255);
+    Pixels::clone_from_slice(pixels.as_flattened(), width as u32, height as u32)
+}
+
+/// A split's name as the list's heading: the reset and start images by what they are.
+fn split_heading(name: &str) -> String {
+    match name {
+        "reset" => "Reset Image".into(),
+        "start_auto_splitter" => "Start Image".into(),
+        name => name.into(),
+    }
+}
+
+/// A game's name in the list of games.
+fn game_label(game: &str) -> SharedString {
+    if game.is_empty() { "No game".into() } else { game.into() }
 }
 
 /// The transparency grid behind split images: AutoMask's grey squares.
@@ -95,6 +158,9 @@ fn presets_folder() -> PathBuf {
     }
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../presets")
 }
+
+/// The temp folder's folder the savestates are copied to for the clipboard.
+const SAVESTATES_FOLDER: &str = "AutoSplit savestates";
 
 /// A split image to write: what it's made from, its mask and its file.
 struct Job {
@@ -133,7 +199,16 @@ impl Gui {
     pub(super) fn connect_maker(&self) {
         let weak = self.me.clone();
         let maker = &self.windows.maker;
-        on!(weak, maker, on_preset_chosen, (index) gui => gui.choose_preset(index as usize));
+        on!(weak, maker, on_game_chosen, (index) gui => gui.choose_game(index as usize));
+        on!(weak, maker, on_preset_chosen, (index) gui => {
+            let maker = gui.maker.borrow();
+            let game = maker.loaded().map(|loaded| loaded.preset.game.clone()).unwrap_or_default();
+            let chosen = maker.presets_of(&game).get(index as usize).copied();
+            drop(maker);
+            if let Some(chosen) = chosen {
+                gui.choose_preset(chosen);
+            }
+        });
         on!(weak, maker, on_split_chosen, (index) gui => gui.choose_split(index as usize));
         on!(weak, maker, on_grab, () gui => gui.send(UiCommand::Grab));
         on!(weak, maker, on_use_screenshots, () gui => gui.pick_screenshots());
@@ -148,6 +223,8 @@ impl Gui {
         on!(weak, maker, on_test, () gui => gui.test_split_image());
         on!(weak, maker, on_copy_savestates, () gui => gui.copy_savestates());
         on!(weak, maker, on_show_instructions, () gui => gui.show_instructions());
+        on!(weak, maker, on_browse_folder, () gui => gui.browse_folder(gui.windows.maker.window(), |gui| gui.maker_folder_changed()));
+        on!(weak, maker, on_generate_profile, () gui => gui.generate_profile());
         on!(always weak, maker, on_blocked_clicked, () gui => gui.focus_message());
         on!(always weak, maker.window(), on_close_requested, () gui => {
             gui.maker_closed();
@@ -160,22 +237,34 @@ impl Gui {
         if window.is_visible() {
             return self.show_window(window);
         }
-        let (presets, errors) = load_presets(&presets_folder());
-        let names: Vec<SharedString> = presets
-            .iter()
-            .map(|loaded| match loaded.preset.game.as_str() {
-                "" => loaded.preset.name.clone().into(),
-                game => format!("{game}: {}", loaded.preset.name).into(),
-            })
-            .collect();
-        let chosen = self.maker.borrow().preset.min(presets.len().saturating_sub(1));
-        self.maker.borrow_mut().presets = presets;
-        let maker = &self.windows.maker;
-        maker.set_presets(ModelRc::new(VecModel::from(names)));
-        maker.set_preset_index(chosen as i32);
-        maker.set_rows(ModelRc::from(self.maker_rows.clone()));
-        maker.set_grid_image(transparency_grid(320, 240));
-        self.choose_preset(chosen);
+        let folder = presets_folder();
+        let (presets, errors) = load_presets(&folder);
+        let mut maker = self.maker.borrow_mut();
+        let chosen = maker.preset.min(presets.len().saturating_sub(1));
+        // What was grabbed or picked for the same preset is kept, unless its splits changed
+        let same = maker
+            .loaded()
+            .zip(presets.get(chosen))
+            .is_some_and(|(before, now)| before.folder == now.folder && before.preset.splits == now.preset.splits);
+        maker.presets = presets;
+        // Masks are read again, in case they were edited
+        maker.masks.clear();
+        let games: Vec<SharedString> = maker.games().into_iter().map(game_label).collect();
+        let empty = maker.presets.is_empty();
+        drop(maker);
+        let maker_window = &self.windows.maker;
+        maker_window.set_games(ModelRc::new(VecModel::from(games)));
+        maker_window.set_rows(ModelRc::from(self.maker_rows.clone()));
+        maker_window.set_grid_image(transparency_grid(320, 240));
+        maker_window.set_status(SharedString::new());
+        if same {
+            self.show_preset(chosen);
+        } else {
+            self.choose_preset(chosen);
+        }
+        if empty {
+            maker_window.set_status(format!("No presets found in {}.", folder.display()).into());
+        }
         self.place_by_main(window, beside);
         self.show_window(window);
         self.tool_opened(Tool::Maker);
@@ -200,14 +289,46 @@ impl Gui {
         self.maker_visible.store(false, std::sync::atomic::Ordering::Relaxed);
     }
 
+    /// The first preset of the `index`th game.
+    fn choose_game(&self, index: usize) {
+        let maker = self.maker.borrow();
+        let first = maker.games().get(index).and_then(|game| maker.presets_of(game).first().copied());
+        drop(maker);
+        if let Some(first) = first {
+            self.choose_preset(first);
+        }
+    }
+
+    /// Chooses the `index`th preset, and its game with the game's presets in the lists.
     fn choose_preset(&self, index: usize) {
         let mut maker = self.maker.borrow_mut();
         maker.preset = index;
+        maker.generation += 1;
         let count = maker.loaded().map_or(0, |loaded| loaded.preset.splits.len());
         (maker.sources, maker.saved, maker.selected) = (vec![None; count], vec![None; count], 0);
+        maker.thumbs = vec![None; count];
         drop(maker);
         self.windows.maker.set_status(SharedString::new());
-        self.choose_split(0);
+        self.show_preset(index);
+    }
+
+    /// Shows the `index`th preset, its game and the game's presets in the lists, and what's
+    /// been done with its splits.
+    fn show_preset(&self, index: usize) {
+        let mut maker = self.maker.borrow_mut();
+        maker.preset = index;
+        let game = maker.loaded().map(|loaded| loaded.preset.game.clone()).unwrap_or_default();
+        let game_index = maker.games().iter().position(|&each| each == game).unwrap_or(0);
+        let of_game = maker.presets_of(&game);
+        let names: Vec<SharedString> =
+            of_game.iter().map(|&each| maker.presets[each].preset.name.clone().into()).collect();
+        let window = &self.windows.maker;
+        window.set_game_index(game_index as i32);
+        window.set_presets(ModelRc::new(VecModel::from(names)));
+        window.set_preset_index(of_game.iter().position(|&each| each == index).unwrap_or(0) as i32);
+        let selected = maker.selected;
+        drop(maker);
+        self.choose_split(selected);
     }
 
     fn choose_split(&self, index: usize) {
@@ -221,7 +342,7 @@ impl Gui {
     fn split_image_folder(&self) -> Option<PathBuf> {
         let state = self.state.borrow();
         let directory = &state.document.profile.split_image_directory;
-        (!directory.is_empty()).then(|| state.document.folder(&exe_folder()).join(directory))
+        (!directory.is_empty()).then(|| state.document.resolve(&exe_folder(), directory))
     }
 
     /// The preset's file names, with the profile's defaults for what they leave out.
@@ -230,18 +351,38 @@ impl Gui {
         self.maker.borrow().loaded().map(|loaded| loaded.preset.file_names(Some(&defaults))).unwrap_or_default()
     }
 
+    /// Forgets split images saved before that aren't in the split image folder anymore: the
+    /// folder changed, or they were deleted or renamed.
+    fn forget_missing_saves(&self) {
+        let folder = self.split_image_folder().map(|folder| canonical(&folder));
+        let mut maker = self.maker.borrow_mut();
+        for saved in &mut maker.saved {
+            let still_there = saved.as_ref().is_some_and(|path| {
+                path.is_file() && path.parent().map(canonical).is_some_and(|parent| Some(parent) == folder)
+            });
+            if !still_there {
+                *saved = None;
+            }
+        }
+    }
+
     /// Puts the preset's splits, the selected split's split image and the buttons in the window.
     fn show_maker(&self) {
+        self.forget_missing_saves();
         let names = self.maker_file_names();
         let maker = self.maker.borrow();
+        let splits = maker.loaded().map_or(&[][..], |loaded| &loaded.preset.splits[..]);
         let rows: Vec<MakerRow> = names
             .iter()
             .enumerate()
             .map(|(index, name)| MakerRow {
+                heading: splits.get(index).map(|split| split_heading(&split.name)).unwrap_or_default().into(),
                 parts: file_name_parts(name),
                 file: name.into(),
                 source: maker.sources[index].as_ref().map(Source::label).unwrap_or_default().into(),
                 saved: maker.saved[index].is_some(),
+                thumb: maker.thumbs[index].clone().unwrap_or_default(),
+                has_thumb: maker.thumbs[index].is_some(),
             })
             .collect();
         let selected = maker.selected;
@@ -253,10 +394,11 @@ impl Gui {
         self.maker_rows.set_vec(rows);
         let window = &self.windows.maker;
         let folder = self.split_image_folder();
-        window.set_output_folder(match &folder {
-            Some(folder) => folder.display().to_string().into(),
-            None => "no split image folder, set one in the main window".into(),
-        });
+        let folder_text = match &folder {
+            Some(folder) => folder.display().to_string(),
+            None => "no split image folder, pick one with Browse...".into(),
+        };
+        window.set_output_folder(folder_text.into());
         window.set_can_grab(has_splits);
         window.set_can_save_selected(has_source);
         window.set_can_save_all(any_source);
@@ -291,18 +433,19 @@ impl Gui {
         let maker = self.maker.borrow();
         let selected = maker.selected;
         let source = maker.sources.get(selected).cloned().flatten();
-        let split =
-            maker.loaded().and_then(|loaded| loaded.preset.splits.get(selected)).map(|split| split.name.clone());
+        let has_split = maker.loaded().is_some_and(|loaded| selected < loaded.preset.splits.len());
         drop(maker);
         let window = &self.windows.maker;
-        let Some(split) = split else {
-            window.set_preview_caption(SharedString::new());
-            window.set_preview_message("The preset has no splits.".into());
-            return;
-        };
+        if !has_split {
+            let message = if self.maker.borrow().presets.is_empty() {
+                "There are no presets."
+            } else {
+                "The preset has no splits."
+            };
+            return window.set_preview_message(message.into());
+        }
         let Some(source) = source else {
             // The capture's preview fills it in, masked, as frames come
-            window.set_preview_caption(format!("{split}: preview of the capture, nothing grabbed yet").into());
             let message = window.get_live_message();
             window.set_preview_message(message);
             return;
@@ -315,12 +458,8 @@ impl Gui {
             Ok(image) => {
                 window.set_preview_image(slint::Image::from_rgba8(rgba(image.view())));
                 window.set_preview_message(SharedString::new());
-                window.set_preview_caption(format!("{split}: split image").into());
             }
-            Err(error) => {
-                window.set_preview_message(error.into());
-                window.set_preview_caption(split.into());
-            }
+            Err(error) => window.set_preview_message(error.into()),
         }
     }
 
@@ -382,9 +521,11 @@ impl Gui {
         let Some(source) = maker.sources.get_mut(selected) else { return };
         *source = Some(Source::Grabbed(image));
         maker.saved[selected] = None;
+        maker.thumbs[selected] = None;
         drop(maker);
-        self.save_split_images(vec![selected]);
-        if selected + 1 < count {
+        self.make_thumbnails(vec![selected]);
+        // Stays on the split when its image can't be saved, to grab it again once that's fixed
+        if self.save_split_images(vec![selected]) && selected + 1 < count {
             self.choose_split(selected + 1);
         } else {
             self.show_maker();
@@ -400,7 +541,7 @@ impl Gui {
             "" => profile.split_image_directory.clone(),
             screenshots => screenshots.to_owned(),
         };
-        let start = state.document.folder(&exe_folder()).join(folder);
+        let start = state.document.resolve(&exe_folder(), &folder);
         drop(state);
         let dialog = self
             .file_dialog_over("Select Screenshots", self.windows.maker.window())
@@ -424,11 +565,15 @@ impl Gui {
         let mut maker = self.maker.borrow_mut();
         let first = if paths.len() == 1 { maker.selected } else { 0 };
         let count = maker.sources.len();
+        let mut set = Vec::new();
         for (offset, path) in paths.iter().enumerate().filter(|(offset, _)| first + offset < count) {
             maker.sources[first + offset] = Some(Source::File(path.clone()));
             maker.saved[first + offset] = None;
+            maker.thumbs[first + offset] = None;
+            set.push(first + offset);
         }
         drop(maker);
+        self.make_thumbnails(set);
         let status = match paths.len() {
             1 => "Screenshot set for the selected split.".to_owned(),
             n if n == count => format!("{n} screenshots set, one for each split."),
@@ -439,7 +584,7 @@ impl Gui {
         let made: Vec<String> = paths
             .iter()
             .filter_map(|path| path.file_name().map(|name| name.to_string_lossy().into_owned()))
-            .filter(|name| name_parts(name).len() > 2)
+            .filter(|name| looks_made(name))
             .collect();
         if !made.is_empty() {
             self.show_message(Message::warning(format!(
@@ -451,12 +596,13 @@ impl Gui {
     }
 
     /// Writes the split images of `indexes` that have something to make them from, after asking
-    /// about files they replace.
-    fn save_split_images(self: &Rc<Self>, indexes: Vec<usize>) {
+    /// about files they replace. Returns false when they can't be saved.
+    fn save_split_images(self: &Rc<Self>, indexes: Vec<usize>) -> bool {
         let Some(folder) = self.split_image_folder().filter(|folder| folder.is_dir()) else {
-            return self.show_message(Message::error(
-                "Set a split image folder that exists in the main window first: the split images are saved there.",
+            self.show_message(Message::error(
+                "Pick a split image folder that exists with Browse... first: the split images are saved there.",
             ));
+            return false;
         };
         let names = self.maker_file_names();
         let sources: Vec<(usize, Source)> = {
@@ -467,46 +613,67 @@ impl Gui {
         for (index, source) in sources {
             match self.maker_mask(index) {
                 Ok(mask) => jobs.push(Job { index, source, mask, target: folder.join(&names[index]) }),
-                Err(error) => return self.show_message(Message::error(error)),
+                Err(error) => {
+                    self.show_message(Message::error(error));
+                    return false;
+                }
             }
         }
         let written: Vec<String> = jobs.iter().map(|job| names[job.index].clone()).collect();
-        let plan = plan_writes(&written, &user_files(&folder).unwrap_or_default());
+        let existing: Vec<PathBuf> =
+            user_files(&folder).unwrap_or_default().iter().map(|path| canonical(path)).collect();
+        // Every split's screenshot, also of splits not saved now
+        let sources: Vec<PathBuf> = (self.maker.borrow().sources.iter().flatten())
+            .filter_map(|source| match source {
+                Source::File(path) => Some(canonical(path)),
+                Source::Grabbed(_) => None,
+            })
+            .collect();
+        let plan = plan_writes(&written, &existing, &sources);
         if plan.overwrites.is_empty() && plan.stale.is_empty() {
-            return self.write_split_images(folder, jobs, Vec::new());
+            self.write_split_images(folder, jobs, Vec::new());
+            return true;
         }
         let mut text = String::new();
         if !plan.overwrites.is_empty() {
             text += &format!("These split images are replaced:\n{}\n\n", plan.overwrites.join("\n"));
         }
         let file_name = |path: &PathBuf| path.file_name().map(|name| name.to_string_lossy().into_owned());
+        let weak = Rc::downgrade(self);
         if plan.stale.is_empty() {
             text += "Replace them?";
-        } else {
-            let stale: Vec<String> = plan.stale.iter().filter_map(file_name).collect();
-            text += &format!(
-                "These older split images are for the same splits under other names, and would be used too:\n{}\n\n\
-                 Yes deletes them, No keeps them.",
-                stale.join("\n")
-            );
+            self.show_message(Message::choice(text, ["Replace", "", "Cancel"], 0, move |answer| {
+                if let (Some(gui), Answer::Yes) = (weak.upgrade(), answer) {
+                    gui.write_split_images(folder, jobs, Vec::new());
+                }
+            }));
+            return true;
         }
-        let weak = Rc::downgrade(self);
+        let stale: Vec<String> = plan.stale.iter().filter_map(file_name).collect();
+        text += &format!(
+            "These older split images are for the same splits under other names, and the split image folder would \
+             use them too:\n{}\n\nDelete them, or keep them?",
+            stale.join("\n")
+        );
         let stale = plan.stale;
-        let has_stale = !stale.is_empty();
-        self.show_message(Message::question(text, move |answer| {
+        let labels = ["Delete Old Images", "Keep Old Images", "Cancel"];
+        // Enter keeps them: deleting is never the default
+        self.show_message(Message::choice(text, labels, 1, move |answer| {
             let Some(gui) = weak.upgrade() else { return };
             match answer {
                 Answer::Yes => gui.write_split_images(folder, jobs, stale),
-                Answer::No if has_stale => gui.write_split_images(folder, jobs, Vec::new()),
-                _ => {}
+                Answer::No => gui.write_split_images(folder, jobs, Vec::new()),
+                Answer::Cancel => {}
             }
         }));
+        true
     }
 
     /// Writes split images on a thread of their own, deletes `stale` ones, and moves screenshots
     /// out of the split image folder.
     fn write_split_images(&self, folder: PathBuf, jobs: Vec<Job>, stale: Vec<PathBuf>) {
-        self.windows.maker.set_status(format!("Saving {} split images...", jobs.len()).into());
+        self.windows.maker.set_status(format!("Saving {}...", plural(jobs.len(), "split image")).into());
+        let generation = self.maker.borrow().generation;
         let spawned = std::thread::Builder::new().name("split images".into()).spawn(move || {
             let results: Vec<(usize, Result<PathBuf, String>)> =
                 jobs.iter().map(|job| (job.index, job.run().map(|()| job.target.clone()))).collect();
@@ -527,7 +694,7 @@ impl Gui {
                 errors.push(format!("Couldn't move the screenshots to the base folder: {error}"));
                 0
             });
-            with_gui(move |gui| gui.split_images_written(results, moved, errors));
+            with_gui(move |gui| gui.split_images_written(generation, results, moved, errors));
         });
         if let Err(error) = spawned {
             self.show_message(Message::error(format!("Couldn't save the split images: {error}")));
@@ -536,14 +703,18 @@ impl Gui {
 
     fn split_images_written(
         &self,
+        generation: u64,
         results: Vec<(usize, Result<PathBuf, String>)>,
         moved: usize,
         mut errors: Vec<String>,
     ) {
         let mut written = 0;
         let mut maker = self.maker.borrow_mut();
+        // Another preset was chosen meanwhile: its splits aren't the ones saved
+        let same_preset = maker.generation == generation;
         for (index, result) in results {
             match result {
+                Ok(_) if !same_preset => written += 1,
                 Ok(path) => {
                     written += 1;
                     if let Some(saved) = maker.saved.get_mut(index) {
@@ -561,8 +732,15 @@ impl Gui {
             }
         }
         drop(maker);
-        let moved = if moved > 0 { format!(", moved {moved} screenshots to the base folder") } else { String::new() };
-        self.windows.maker.set_status(format!("Saved {written} split images{moved}.").into());
+        let moved = if moved > 0 {
+            format!(", moved {} to the base folder", plural(moved, "screenshot"))
+        } else {
+            String::new()
+        };
+        self.windows.maker.set_status(format!("Saved {}{moved}.", plural(written, "split image")).into());
+        if written > 0 {
+            self.windows.maker.invoke_split_images_saved();
+        }
         self.send(UiCommand::ReloadSplitImages);
         self.show_maker();
         if !errors.is_empty() {
@@ -570,22 +748,25 @@ impl Gui {
         }
     }
 
-    /// Copies the preset's savestates to a folder of their own, named for the emulator, and puts
-    /// them on the clipboard, or opens the folder when the clipboard can't take files.
+    /// Copies the preset's savestates to their folder in the temp folder, named for the emulator,
+    /// and puts them on the clipboard, or opens the folder when the clipboard can't take files.
+    /// The folder is emptied first and kept after closing, so they can still be pasted then.
     fn copy_savestates(&self) {
         let maker = self.maker.borrow();
         let Some(loaded) = maker.loaded() else { return };
         let copies: Vec<(PathBuf, String)> =
             loaded.preset.savestate_copies().into_iter().map(|(path, name)| (loaded.file(path), name)).collect();
         drop(maker);
-        let count = self.savestate_folders.borrow().len();
-        let folder = std::env::temp_dir().join(format!("AutoSplit_savestates_{}_{count}", std::process::id()));
+        let folder = std::env::temp_dir().join(SAVESTATES_FOLDER);
         let mut copied = Vec::new();
         let mut missing = Vec::new();
-        if let Err(error) = std::fs::create_dir_all(&folder) {
-            return self.show_message(Message::error(format!("Couldn't make {}: {error}", folder.display())));
+        let emptied = match std::fs::remove_dir_all(&folder) {
+            Err(error) if error.kind() != std::io::ErrorKind::NotFound => Err(error),
+            _ => std::fs::create_dir_all(&folder),
+        };
+        if let Err(error) = emptied {
+            return self.show_message(Message::error(format!("Couldn't empty {}: {error}", folder.display())));
         }
-        self.savestate_folders.borrow_mut().push(folder.clone());
         for (source, name) in copies {
             let target = folder.join(name);
             match std::fs::copy(&source, &target) {
@@ -641,6 +822,69 @@ impl Gui {
         window.set_cards(ModelRc::new(VecModel::from(cards)));
         window.set_window_title(title.into());
         self.show_window(window.window());
+    }
+
+    /// Makes the list's pictures of the split images of `indexes` on a thread of their own, since
+    /// screenshots are read from their files.
+    fn make_thumbnails(&self, indexes: Vec<usize>) {
+        let maker = self.maker.borrow();
+        let generation = maker.generation;
+        let jobs: Vec<(usize, Source)> =
+            indexes.into_iter().filter_map(|index| Some((index, maker.sources.get(index)?.clone()?))).collect();
+        drop(maker);
+        let spawned = std::thread::Builder::new().name("thumbnails".into()).spawn(move || {
+            let made: Vec<(usize, Source, Pixels)> = jobs
+                .into_iter()
+                .filter_map(|(index, source)| {
+                    let thumb = thumbnail(source.image().ok()?.view());
+                    Some((index, source, thumb))
+                })
+                .collect();
+            with_gui(move |gui| gui.thumbnails_made(generation, made));
+        });
+        if let Err(error) = spawned {
+            self.add_log_line(format!("error: Couldn't make the split images' pictures: {error}"));
+        }
+    }
+
+    /// Shows the pictures that are still of their split's source.
+    fn thumbnails_made(&self, generation: u64, made: Vec<(usize, Source, Pixels)>) {
+        let mut maker = self.maker.borrow_mut();
+        if maker.generation != generation {
+            return;
+        }
+        for (index, source, thumb) in made {
+            if maker.sources.get(index).cloned().flatten().is_some_and(|now| now.same(&source)) {
+                maker.thumbs[index] = Some(slint::Image::from_rgba8(thumb));
+            }
+        }
+        drop(maker);
+        self.show_maker();
+    }
+
+    /// Another split image folder was picked: the split images saved before are in the old one.
+    fn maker_folder_changed(&self) {
+        self.windows.maker.set_status(SharedString::new());
+        self.show_maker();
+    }
+
+    /// Saves the profile as a new file named for the preset, which is loaded from then on like
+    /// Save Profile As does.
+    fn generate_profile(self: &Rc<Self>) {
+        let Some(name) = self.maker.borrow().loaded().map(|loaded| loaded.preset.profile_file_name()) else { return };
+        let folder = self.state.borrow().document.folder(&exe_folder());
+        let dialog = self
+            .file_dialog_over("Generate Profile", self.windows.maker.window())
+            .set_directory(folder)
+            .set_file_name(name)
+            .add_filter("TOML", &["toml"])
+            .save_file();
+        self.when_picked(dialog, |gui, path| {
+            let name = path.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
+            let saved =
+                move |gui: &Rc<Gui>| gui.windows.maker.set_status(format!("Saved the profile as {name}.").into());
+            gui.save_to(path, Some(Box::new(saved)));
+        });
     }
 
     /// Opens the Live Tester on the selected split's split image.

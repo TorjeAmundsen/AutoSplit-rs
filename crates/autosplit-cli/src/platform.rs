@@ -136,16 +136,39 @@ pub fn show_error(message: &str) {
         .show();
 }
 
+/// Opens a file or link with its default app, like AutoSplit's `open_file` (`os.startfile` on
+/// Windows). Paths may have forward slashes, like folders picked in AutoSplit's window.
+#[cfg(windows)]
+pub fn open(target: impl AsRef<std::ffi::OsStr>) -> std::io::Result<()> {
+    use std::os::windows::ffi::OsStrExt;
+
+    use windows::Win32::UI::Shell::ShellExecuteW;
+    use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+    use windows::core::{PCWSTR, w};
+
+    let target = target.as_ref();
+    let link = target.to_string_lossy().contains("://");
+    let wide: Vec<u16> = target
+        .encode_wide()
+        .map(|unit| if !link && unit == u16::from(b'/') { u16::from(b'\\') } else { unit })
+        .chain([0])
+        .collect();
+    // SAFETY: the strings are null-terminated and outlive the call
+    let result = unsafe {
+        ShellExecuteW(None, w!("open"), PCWSTR(wide.as_ptr()), PCWSTR::null(), PCWSTR::null(), SW_SHOWNORMAL)
+    };
+    // Values above 32 mean it worked
+    if result.0 as usize <= 32 {
+        return Err(std::io::Error::last_os_error());
+    }
+    Ok(())
+}
+
 /// Opens a file or link with its default app, like AutoSplit's `open_file`, without waiting
 /// for the app.
+#[cfg(not(windows))]
 pub fn open(target: impl AsRef<std::ffi::OsStr>) -> std::io::Result<()> {
-    let opener = if cfg!(windows) {
-        "explorer"
-    } else if cfg!(target_os = "macos") {
-        "open"
-    } else {
-        "xdg-open"
-    };
+    let opener = if cfg!(target_os = "macos") { "open" } else { "xdg-open" };
     let mut child = std::process::Command::new(opener)
         .arg(target)
         .stdin(std::process::Stdio::null())

@@ -5,6 +5,7 @@ pub mod console;
 pub mod device;
 pub mod gui;
 pub mod hotkeys;
+pub mod licenses;
 pub mod livesplit;
 pub mod livesplit_one;
 #[cfg(target_os = "linux")]

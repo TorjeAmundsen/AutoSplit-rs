@@ -104,6 +104,24 @@ impl Preset {
             .map(|(index, split)| (split.savestate.as_str(), name(index, split)))
             .collect()
     }
+
+    /// The file name of a profile made for this preset: the game's initials, then the preset's
+    /// name in lowercase words joined by `_`, like `tlozoot_no_wrong_warp.toml`.
+    pub fn profile_file_name(&self) -> String {
+        let initials: String = (self.game.split_whitespace())
+            .filter_map(|word| word.chars().find(|c| c.is_alphanumeric()))
+            .flat_map(char::to_lowercase)
+            .collect();
+        let name = self.name.to_lowercase();
+        let words: Vec<&str> = name.split(|c: char| !c.is_alphanumeric()).filter(|word| !word.is_empty()).collect();
+        let stem = match (initials.as_str(), words.join("_")) {
+            ("", words) if words.is_empty() => "settings".to_owned(),
+            ("", words) => words,
+            (initials, words) if words.is_empty() => initials.to_owned(),
+            (initials, words) => format!("{initials}_{words}"),
+        };
+        format!("{stem}.toml")
+    }
 }
 
 /// The ready-made splits of a game.

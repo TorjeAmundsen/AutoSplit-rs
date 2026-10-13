@@ -83,7 +83,7 @@ component LiveReading inherits Rectangle {
         y: 4px;
         text: root.met ? "LIVE, REACHED" : "LIVE";
         font-size: 10px;
-        color: root.met ? Theme.reached : Theme.disabled-text;
+        color: root.met ? Theme.reached : Theme.secondary-text;
     }
 
     Text {
@@ -125,7 +125,7 @@ component LiveReading inherits Rectangle {
                 text: info.name;
                 font-size: 10px;
                 vertical-alignment: center;
-                color: info.met ? Theme.reached : Theme.disabled-text;
+                color: info.met ? Theme.reached : Theme.secondary-text;
             }
 
             Text {
@@ -171,7 +171,7 @@ component Info inherits Rectangle {
         y: 4px;
         text: root.cell.name;
         font-size: 10px;
-        color: Theme.disabled-text;
+        color: Theme.secondary-text;
     }
 
     Label {
@@ -190,7 +190,7 @@ component Info inherits Rectangle {
         height: 13px;
         text: root.cell.note;
         font-size: 10px;
-        color: Theme.disabled-text;
+        color: Theme.secondary-text;
     }
 
     Tooltip {

@@ -7,6 +7,7 @@ screenshot_hotkey = ""
 toggle_auto_reset_image_hotkey = ""
 fps_limit = 144
 live_capture_region = true
+display_pause_timer = true
 capture_method = "VIDEO_CAPTURE_DEVICE"
 capture_device_id = 2
 capture_device_name = "OBS Virtual Camera"

@@ -39,18 +39,50 @@ pub fn number_prefix(filename: &str) -> Option<&str> {
     (digits > 0).then(|| &filename[..digits])
 }
 
-/// The text between the first `open` and the next `close`.
+/// How a value between `open` and `close` is written in a file name, read like AutoSplit 2.3.4:
+/// split at every `open` and `close`, the name has to make 1 part (no value) or 3 (the value in
+/// the middle). Anything else is a mistake that AutoSplit reports, and the value is ignored.
+enum Delimited<'a> {
+    Absent,
+    /// The value, and where its delimiters are.
+    Value(&'a str, usize, usize),
+    /// How many times `open` and `close` appear, and where the first and last are.
+    Invalid(usize, usize, usize),
+}
+
+fn delimited(filename: &str, open: char, close: char) -> Delimited<'_> {
+    let at: Vec<usize> = filename.match_indices([open, close]).map(|(at, _)| at).collect();
+    match at[..] {
+        [] => Delimited::Absent,
+        [first, second] => Delimited::Value(&filename[first + 1..second], first, second),
+        [first, .., last] | [first @ last] => Delimited::Invalid(at.len(), first, last),
+    }
+}
+
+/// The value between `open` and `close`, if it's written right.
 fn raw_value(filename: &str, open: char, close: char) -> Option<&str> {
-    let (_, after) = filename.split_once(open)?;
-    Some(after.split_once(close)?.0)
+    match delimited(filename, open, close) {
+        Delimited::Value(value, ..) => Some(value),
+        Delimited::Absent | Delimited::Invalid(..) => None,
+    }
+}
+
+/// Stricter than Python: no spaces around the number and no underscores in it (see
+/// COMPATIBILITY.md).
+fn parse_float(text: &str) -> Option<f64> {
+    text.parse().ok()
+}
+
+fn parse_int(text: &str) -> Option<i64> {
+    text.parse().ok()
 }
 
 fn float_value(filename: &str, open: char, close: char) -> Option<f64> {
-    raw_value(filename, open, close)?.parse().ok()
+    parse_float(raw_value(filename, open, close)?)
 }
 
 fn int_value(filename: &str, open: char, close: char) -> Option<i64> {
-    raw_value(filename, open, close)?.parse().ok()
+    parse_int(raw_value(filename, open, close)?)
 }
 
 /// `(0.95)`: similarity threshold, only valid within [0, 1].
@@ -107,10 +139,26 @@ fn parse_flags(filename: &str) -> Result<u32, FilenameWarning> {
 /// A filename value that's ignored, the way AutoSplit silently ignores it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum FilenameWarning {
-    NotANumber { setting: Setting, value: String },
-    OutOfRange { setting: Setting, value: String },
-    InvalidFlag { flags: String, invalid: char },
-    DummyAndPause { flags: String },
+    NotANumber {
+        setting: Setting,
+        value: String,
+    },
+    OutOfRange {
+        setting: Setting,
+        value: String,
+    },
+    /// The setting's delimiters appear `count` times, where a value needs exactly 2.
+    Delimiters {
+        setting: Setting,
+        count: usize,
+    },
+    InvalidFlag {
+        flags: String,
+        invalid: char,
+    },
+    DummyAndPause {
+        flags: String,
+    },
     UnknownComparisonMethod(i64),
 }
 
@@ -121,9 +169,22 @@ pub enum Setting {
     DelayTime,
     Loops,
     ComparisonMethod,
+    Flags,
 }
 
 impl Setting {
+    /// The characters around the setting's value.
+    pub fn delimiters(self) -> (char, char) {
+        match self {
+            Self::Threshold => ('(', ')'),
+            Self::PauseTime => ('[', ']'),
+            Self::DelayTime => ('#', '#'),
+            Self::Loops => ('@', '@'),
+            Self::ComparisonMethod => ('^', '^'),
+            Self::Flags => ('{', '}'),
+        }
+    }
+
     fn name(self) -> &'static str {
         match self {
             Self::Threshold => "threshold",
@@ -131,6 +192,7 @@ impl Setting {
             Self::DelayTime => "delay time",
             Self::Loops => "loop count",
             Self::ComparisonMethod => "comparison method",
+            Self::Flags => "flags",
         }
     }
 
@@ -139,12 +201,14 @@ impl Setting {
             Self::Threshold => "between 0 and 1",
             Self::Loops => "1 or more",
             Self::PauseTime | Self::DelayTime | Self::ComparisonMethod => "0 or more",
+            Self::Flags => "d, b, p or m",
         }
     }
 
     fn fallback(self) -> &'static str {
         match self {
             Self::Loops => "the image is used once",
+            Self::Flags => "the image has no flags",
             _ => "the profile's default is used",
         }
     }
@@ -159,6 +223,20 @@ impl fmt::Display for FilenameWarning {
             Self::OutOfRange { setting, value } => {
                 write!(f, "the {} {value} isn't {}, so {}", setting.name(), setting.allowed(), setting.fallback())
             }
+            Self::Delimiters { setting, count } => match setting.delimiters() {
+                (open, close) if open == close => write!(
+                    f,
+                    "'{open}' appears {count} times, but the {} has to be between exactly 2, so {}",
+                    setting.name(),
+                    setting.fallback()
+                ),
+                (open, close) => write!(
+                    f,
+                    "'{open}' and '{close}' appear {count} times, but the {} has to be between one of each, so {}",
+                    setting.name(),
+                    setting.fallback()
+                ),
+            },
             Self::InvalidFlag { flags, invalid } => write!(
                 f,
                 "the flags {{{flags}}} contain '{invalid}', which isn't d, b, p or m, so all of the image's flags are ignored"
@@ -168,7 +246,7 @@ impl fmt::Display for FilenameWarning {
             }
             Self::UnknownComparisonMethod(index) => write!(
                 f,
-                "comparison method {index} doesn't exist (0 is L2 norm, 1 histograms, 2 pHash), so the image never matches"
+                "comparison method {index} doesn't exist (0 is L2 norm, 1 histograms, 2 pHash), so the image compares as 0, which only matches a threshold of 0"
             ),
         }
     }
@@ -177,9 +255,12 @@ impl fmt::Display for FilenameWarning {
 /// Values in `filename` that are ignored.
 pub fn filename_warnings(filename: &str) -> Vec<FilenameWarning> {
     let mut warnings = Vec::new();
-    let mut check = |setting: Setting, open, close, in_range: &dyn Fn(&str) -> Option<bool>| {
-        let Some(raw) = raw_value(filename, open, close) else {
-            return;
+    let mut check = |setting: Setting, in_range: &dyn Fn(&str) -> Option<bool>| {
+        let (open, close) = setting.delimiters();
+        let raw = match delimited(filename, open, close) {
+            Delimited::Absent => return,
+            Delimited::Invalid(count, ..) => return warnings.push(FilenameWarning::Delimiters { setting, count }),
+            Delimited::Value(raw, ..) => raw,
         };
         let value = raw.to_owned();
         match in_range(raw) {
@@ -188,13 +269,14 @@ pub fn filename_warnings(filename: &str) -> Vec<FilenameWarning> {
             Some(true) => {}
         }
     };
-    let float = |text: &str| text.parse::<f64>().ok();
-    let int = |text: &str| text.parse::<i64>().ok();
-    check(Setting::Threshold, '(', ')', &|text| float(text).map(|value| (0.0..=1.0).contains(&value)));
-    check(Setting::PauseTime, '[', ']', &|text| float(text).map(|value| value >= 0.0));
-    check(Setting::DelayTime, '#', '#', &|text| int(text).map(|value| value >= 0));
-    check(Setting::Loops, '@', '@', &|text| int(text).map(|value| value >= 1));
-    check(Setting::ComparisonMethod, '^', '^', &|text| int(text).map(|value| value >= 0));
+    check(Setting::Threshold, &|text| parse_float(text).map(|value| (0.0..=1.0).contains(&value)));
+    check(Setting::PauseTime, &|text| parse_float(text).map(|value| value >= 0.0));
+    check(Setting::DelayTime, &|text| parse_int(text).map(|value| value >= 0));
+    check(Setting::Loops, &|text| parse_int(text).map(|value| value >= 1));
+    check(Setting::ComparisonMethod, &|text| parse_int(text).map(|value| value >= 0));
+    if let Delimited::Invalid(count, ..) = delimited(filename, '{', '}') {
+        warnings.push(FilenameWarning::Delimiters { setting: Setting::Flags, count });
+    }
 
     if let Some(index) =
         comparison_method_from_filename(filename).filter(|index| ComparisonMethod::from_index(*index).is_none())
@@ -238,17 +320,18 @@ pub struct NamePart {
 }
 
 /// `filename` in parts, each value with what it does, read the way the split image loader reads
-/// it: the first `(` to the next `)` and so on. The parts together are `filename`. A value inside
-/// another one is left as part of the other.
+/// it: a `(` and a `)` around a value and so on, or everything from the first delimiter to the last
+/// when they appear more often. The parts together are `filename`. A value inside another one is
+/// left as part of the other.
 pub fn name_parts(filename: &str) -> Vec<NamePart> {
     // ASCII lowercasing keeps every byte where it is
     let lower = filename.to_ascii_lowercase();
     let warnings = filename_warnings(&lower);
     let warning = |setting: Setting| {
         warnings.iter().find(|warning| match warning {
-            FilenameWarning::NotANumber { setting: of, .. } | FilenameWarning::OutOfRange { setting: of, .. } => {
-                *of == setting
-            }
+            FilenameWarning::NotANumber { setting: of, .. }
+            | FilenameWarning::OutOfRange { setting: of, .. }
+            | FilenameWarning::Delimiters { setting: of, .. } => *of == setting,
             FilenameWarning::UnknownComparisonMethod(_) => setting == Setting::ComparisonMethod,
             FilenameWarning::InvalidFlag { .. } | FilenameWarning::DummyAndPause { .. } => false,
         })
@@ -266,31 +349,30 @@ pub fn name_parts(filename: &str) -> Vec<NamePart> {
         spans.push((start, start + keyword.len(), PartKind::Keyword, meaning.to_owned(), false));
     }
     let values = [
-        ('(', ')', PartKind::Threshold, Setting::Threshold),
-        ('[', ']', PartKind::Pause, Setting::PauseTime),
-        ('#', '#', PartKind::Delay, Setting::DelayTime),
-        ('@', '@', PartKind::Loops, Setting::Loops),
-        ('^', '^', PartKind::Method, Setting::ComparisonMethod),
+        (PartKind::Threshold, Setting::Threshold),
+        (PartKind::Pause, Setting::PauseTime),
+        (PartKind::Delay, Setting::DelayTime),
+        (PartKind::Loops, Setting::Loops),
+        (PartKind::Method, Setting::ComparisonMethod),
+        (PartKind::Flags, Setting::Flags),
     ];
-    for (open, close, kind, setting) in values {
-        let Some(start) = lower.find(open) else { continue };
-        let Some(length) = lower[start + 1..].find(close) else { continue };
-        let end = start + 1 + length + 1;
-        let raw = &lower[start + 1..end - 1];
-        let (meaning, ignored) = match warning(setting) {
-            Some(warning) => (format!("ignored: {warning}"), true),
-            None => (value_meaning(kind, raw), false),
+    for (kind, setting) in values {
+        let (open, close) = setting.delimiters();
+        let (start, end, raw) = match delimited(&lower, open, close) {
+            Delimited::Absent => continue,
+            Delimited::Value(raw, first, second) => (first, second + 1, raw),
+            // From the first delimiter to the last, since none of it is read
+            Delimited::Invalid(_, first, last) => (first, last + 1, ""),
+        };
+        let (meaning, ignored) = match (kind, warning(setting)) {
+            (_, Some(warning)) => (format!("ignored: {warning}"), true),
+            (PartKind::Flags, None) => match parse_flags(&lower) {
+                Ok(flags) => (flags_meaning(flags), false),
+                Err(warning) => (format!("ignored: {warning}"), true),
+            },
+            (_, None) => (value_meaning(kind, raw), false),
         };
         spans.push((start, end, kind, meaning, ignored));
-    }
-    if let Some(start) = lower.find('{')
-        && let Some(length) = lower[start..].find('}')
-    {
-        let (meaning, ignored) = match parse_flags(&lower) {
-            Ok(flags) => (flags_meaning(flags), false),
-            Err(warning) => (format!("ignored: {warning}"), true),
-        };
-        spans.push((start, start + length + 1, PartKind::Flags, meaning, ignored));
     }
     if let Some(dot) = lower.rfind('.') {
         spans.push((dot, lower.len(), PartKind::Extension, String::new(), false));

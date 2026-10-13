@@ -1,0 +1,266 @@
+//! The Live Tester window: one split image compared with the capture region like a run would,
+//! outside of a run.
+
+use std::path::{Path, PathBuf};
+use std::rc::Rc;
+use std::sync::atomic::Ordering;
+
+use slint::{ComponentHandle, SharedString};
+
+use super::placement::beside;
+use super::ui::InfoCell;
+use super::view::{KeptFrames, Update};
+use super::{Gui, Tool, exe_folder, file_name_parts, png_images, shown_image};
+use crate::session::UiCommand;
+
+/// What the Live Tester says before it has an image.
+const TESTER_INTRO: &str = "Open a split image to compare it with the capture region, like a run would.";
+impl Gui {
+    pub(super) fn connect_tester(&self) {
+        let weak = self.me.clone();
+        let tester = &self.windows.tester;
+        on!(weak, tester, on_open_image, () gui => gui.pick_tester_image());
+        on!(weak, tester, on_previous_image, () gui => gui.step_tester_image(-1));
+        on!(weak, tester, on_next_image, () gui => gui.step_tester_image(1));
+        on!(weak, tester, on_reload_image, () gui => gui.load_tester_image());
+        on!(weak, tester, on_rearm, () gui => gui.send(UiCommand::RearmTester));
+        on!(weak, tester, on_previous_kept, () gui => gui.show_kept(-1));
+        on!(weak, tester, on_next_kept, () gui => gui.show_kept(1));
+        on!(always weak, tester, on_blocked_clicked, () gui => gui.focus_message());
+        on!(always weak, tester.window(), on_close_requested, () gui => {
+            gui.tool_closed(Tool::Tester);
+        } else slint::CloseRequestResponse::HideWindow);
+    }
+
+    /// Opens the Live Tester beside the main window, with the image it had when it was closed,
+    /// or asks for one.
+    pub(super) fn open_tester(self: &Rc<Self>) {
+        let window = self.windows.tester.window();
+        if window.is_visible() {
+            return self.show_window(window);
+        }
+        self.place_by_main(window, beside);
+        self.show_window(window);
+        self.tool_opened(Tool::Tester);
+        self.update_visibility();
+        if let Some(image) = self.split_folder_image() {
+            self.state.borrow_mut().tester_path = Some(image);
+        }
+        if self.state.borrow().tester_path.is_some() {
+            self.load_tester_image();
+        } else {
+            self.pick_tester_image();
+        }
+    }
+
+    /// The first image of the profile's split image folder, unless the Live Tester's image is
+    /// from that folder already. `None` without a split image folder or images in it.
+    fn split_folder_image(&self) -> Option<PathBuf> {
+        let state = self.state.borrow();
+        let directory = &state.document.profile.split_image_directory;
+        if directory.is_empty() {
+            return None;
+        }
+        let folder = state.document.resolve(&exe_folder(), directory);
+        let current = state.tester_path.as_ref().and_then(|path| path.parent()).map(Path::to_owned);
+        drop(state);
+        // Compared as the system sees them, since the profile's folder can be written another way
+        let same = |a: &Path, b: &Path| {
+            std::fs::canonicalize(a).ok().is_some_and(|a| std::fs::canonicalize(b).ok() == Some(a))
+        };
+        if current.is_some_and(|current| same(&current, &folder)) {
+            return None;
+        }
+        png_images(&folder).into_iter().next()
+    }
+
+    /// The profile's split image folder changed: an open Live Tester switches to its first image.
+    pub(super) fn tester_follows_split_folder(&self) {
+        if !self.windows.tester.window().is_visible() {
+            return;
+        }
+        if let Some(image) = self.split_folder_image() {
+            self.state.borrow_mut().tester_path = Some(image);
+            self.load_tester_image();
+        }
+    }
+
+    /// The main window's Close button.
+    pub(super) fn close_tester(&self) {
+        self.tool_closed(Tool::Tester);
+        let _ = self.windows.tester.hide();
+    }
+
+    /// The Live Tester closes: it stops comparing. See [`Gui::tool_closed`].
+    pub(super) fn tester_closed(&self) {
+        self.send(UiCommand::CloseTester);
+        self.tester_visible.store(false, Ordering::Relaxed);
+        // The session's update saying it has no image is for the image that was closed, which
+        // the window keeps until it opens again
+        self.state.borrow_mut().tester_request += 1;
+    }
+
+    /// Asks for the Live Tester's image, in its folder or the split image folder.
+    fn pick_tester_image(self: &Rc<Self>) {
+        let state = self.state.borrow();
+        let folder = match &state.tester_path {
+            Some(path) => path.parent().map_or_else(exe_folder, Path::to_owned),
+            None => state.document.resolve(&exe_folder(), &state.document.profile.split_image_directory),
+        };
+        drop(state);
+        let dialog = self
+            .file_dialog_over("Select Split Image", self.windows.tester.window())
+            .set_directory(folder)
+            .add_filter("PNG image", &["png"])
+            .pick_file();
+        self.when_picked(dialog, |gui, path| {
+            // Closed while the dialog was open
+            if !gui.windows.tester.window().is_visible() {
+                return;
+            }
+            gui.state.borrow_mut().tester_path = Some(path);
+            gui.load_tester_image();
+        });
+    }
+
+    /// The PNG images in the Live Tester's image's folder, in the split image folder's order.
+    fn tester_folder_images(&self) -> Vec<PathBuf> {
+        let folder = self.state.borrow().tester_path.as_ref().and_then(|path| path.parent()).map(Path::to_owned);
+        folder.map(|folder| png_images(&folder)).unwrap_or_default()
+    }
+
+    /// Opens the image `step` images from the Live Tester's in its folder.
+    fn step_tester_image(&self, step: isize) {
+        let images = self.tester_folder_images();
+        let current = self.state.borrow().tester_path.clone();
+        let Some(index) = images.iter().position(|image| Some(image) == current.as_ref()) else { return };
+        if let Some(image) = index.checked_add_signed(step).and_then(|index| images.get(index)) {
+            self.state.borrow_mut().tester_path = Some(image.clone());
+            self.load_tester_image();
+        }
+    }
+
+    /// Has the session load the Live Tester's image. The window keeps showing the last image and
+    /// the capture until the new one is loaded, so going through a folder doesn't flash.
+    pub(super) fn load_tester_image(&self) {
+        let mut state = self.state.borrow_mut();
+        let Some(path) = state.tester_path.clone() else { return };
+        state.tester_request += 1;
+        let request = state.tester_request;
+        drop(state);
+        let images = self.tester_folder_images();
+        let index = images.iter().position(|image| *image == path);
+        let tester = &self.windows.tester;
+        self.show_tester_file(&path.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default());
+        tester.set_path(path.display().to_string().into());
+        tester.set_can_reload(true);
+        tester.set_can_previous_image(index.is_some_and(|index| index > 0));
+        tester.set_can_next_image(index.is_some_and(|index| index + 1 < images.len()));
+        self.send(UiCommand::OpenTester { path, request });
+    }
+
+    /// Shows the Live Tester's file name, each part colored by what it does.
+    fn show_tester_file(&self, name: &str) {
+        let tester = &self.windows.tester;
+        tester.set_file(name.into());
+        tester.set_file_parts(file_name_parts(name));
+    }
+
+    /// Shows no image in the Live Tester, with `message` saying why.
+    fn clear_tester(&self, message: &str) {
+        let tester = &self.windows.tester;
+        tester.set_has_image(false);
+        tester.set_message(message.into());
+        self.tester_info.clear();
+        tester.set_ignored(SharedString::new());
+        tester.set_status(SharedString::new());
+        tester.set_live("-".into());
+        tester.set_highest("-".into());
+        tester.set_threshold("-".into());
+        tester.set_reached(false);
+        tester.set_highest_reached(false);
+        tester.set_live_value(-1.0);
+        tester.set_highest_value(-1.0);
+        tester.set_live_image(slint::Image::default());
+        tester.set_live_message("Open a split image to start comparing.".into());
+        tester.set_split_image(slint::Image::default());
+        self.take_kept(KeptFrames { cleared: true, added: Vec::new() });
+    }
+
+    /// Frames the Live Tester kept. Shows the newest.
+    fn take_kept(&self, kept: KeptFrames) {
+        if !kept.cleared && kept.added.is_empty() {
+            return;
+        }
+        let mut state = self.state.borrow_mut();
+        if kept.cleared {
+            state.kept.clear();
+        }
+        let added = kept.added.into_iter().map(|(pixels, caption)| {
+            (pixels.map(slint::Image::from_rgba8).unwrap_or_default(), SharedString::from(caption))
+        });
+        state.kept.extend(added);
+        state.kept_index = state.kept.len().saturating_sub(1);
+        drop(state);
+        self.show_kept(0);
+    }
+
+    /// Shows the kept frame `step` frames from the one shown.
+    fn show_kept(&self, step: isize) {
+        let mut state = self.state.borrow_mut();
+        let count = state.kept.len();
+        state.kept_index = state.kept_index.saturating_add_signed(step).min(count.saturating_sub(1));
+        let index = state.kept_index;
+        let (image, caption) = state.kept.get(index).cloned().unwrap_or_default();
+        drop(state);
+        let tester = &self.windows.tester;
+        tester.set_kept_image(image);
+        tester.set_kept_caption(caption);
+        tester.set_kept_position(if count > 1 { format!("{}/{count}", index + 1).into() } else { SharedString::new() });
+        tester.set_can_previous_kept(index > 0);
+        tester.set_can_next_kept(index + 1 < count);
+    }
+
+    /// The Live Tester's part of the session's update.
+    pub(super) fn show_tester_update(&self, update: Update) {
+        // The Live Tester's part is for an image the window has asked to replace
+        if update.tester_request != self.state.borrow().tester_request {
+            return;
+        }
+        let tester = &self.windows.tester;
+        if update.tester_gone {
+            let tried = self.state.borrow().tester_path.is_some();
+            self.clear_tester(if tried { "Couldn't load the image. Fix it, then press Reload." } else { TESTER_INTRO });
+        }
+        if let Some(texts) = update.tester {
+            tester.set_has_image(true);
+            self.show_tester_file(&texts.file);
+            tester.set_path(texts.path.into());
+            let cell = |cell: autosplit_core::text::InfoCell| InfoCell {
+                name: cell.name.into(),
+                value: cell.value.into(),
+                note: cell.note.into(),
+            };
+            self.tester_info.set_vec(texts.info.into_iter().map(cell).collect::<Vec<_>>());
+            tester.set_ignored(texts.ignored.into());
+            tester.set_status(texts.status.into());
+            tester.set_live(texts.live.into());
+            tester.set_highest(texts.highest.into());
+            tester.set_threshold(texts.threshold.into());
+            tester.set_reached(texts.reached);
+            tester.set_highest_reached(texts.highest_reached);
+            let (live, highest, threshold) = texts.meter;
+            tester.set_live_value(live);
+            tester.set_highest_value(highest);
+            tester.set_threshold_value(threshold);
+            tester.set_live_message(texts.live_message.into());
+        }
+        if let Some(live) = shown_image(update.tester_live) {
+            tester.set_live_image(live);
+        }
+        if let Some(split) = shown_image(update.tester_image) {
+            tester.set_split_image(split);
+        }
+        self.take_kept(update.kept);
+    }
+}

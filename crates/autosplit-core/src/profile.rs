@@ -1,6 +1,6 @@
 //! AutoSplit settings profiles (`.toml`), compatible both ways with AutoSplit's files.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Deserializer, Serialize};
 
@@ -17,8 +17,6 @@ pub struct Region {
 }
 
 impl Region {
-    /// The part of a capture device frame AutoSplit compares: the start is kept inside the
-    /// frame, the end is clamped to it.
     /// The pixels AutoSplit compares from a frame of this size: the start is kept inside the
     /// frame, the end is clamped to it.
     pub fn rect(&self, width: usize, height: usize) -> Rect {
@@ -96,6 +94,8 @@ pub struct UserProfile {
     pub toggle_auto_reset_image_hotkey: String,
     pub fps_limit: i64,
     pub live_capture_region: bool,
+    /// Whether pauses and delays show the seconds left. New in AutoSplit 2.3.3.
+    pub display_pause_timer: bool,
     /// AutoSplit's capture method name, like `WINDOWS_GRAPHICS_CAPTURE`. Kept as text so that
     /// a profile made on another OS keeps its value when saved here.
     pub capture_method: String,
@@ -150,6 +150,7 @@ impl Default for UserProfile {
             toggle_auto_reset_image_hotkey: String::new(),
             fps_limit: 60,
             live_capture_region: true,
+            display_pause_timer: true,
             capture_method: String::new(),
             capture_device_id: -1,
             capture_device_name: String::new(),
@@ -185,6 +186,11 @@ pub enum ProfileError {
     Invalid { reason: String },
     #[error("This is a split image preset, not a settings file.")]
     SplitImagePreset,
+}
+
+/// Where a profile's `directory` is: relative folders are read from `base`, the profile's folder.
+pub fn resolve_directory(base: &Path, directory: &str) -> PathBuf {
+    base.join(directory)
 }
 
 /// AutoSplit's names for its capture methods, for the window capture ones a profile can have.
@@ -228,8 +234,8 @@ impl UserProfile {
     /// folder, instead of wherever AutoSplit was started from.
     pub fn resolve_directories(&mut self, base: &Path) {
         for directory in [&mut self.split_image_directory, &mut self.screenshot_directory] {
-            if !directory.is_empty() && Path::new(directory.as_str()).is_relative() {
-                *directory = base.join(directory.as_str()).to_string_lossy().into_owned();
+            if !directory.is_empty() {
+                *directory = resolve_directory(base, directory).to_string_lossy().into_owned();
             }
         }
     }
@@ -247,7 +253,7 @@ impl UserProfile {
         !self.capture_device_name.is_empty() || self.capture_device_id >= 0
     }
 
-    /// The window capture method the profile uses, which isn't supported yet, if it uses one.
+    /// The window capture method the profile uses, which isn't supported, if it uses one.
     pub fn window_capture_method(&self) -> Option<&str> {
         let method = self.capture_method.as_str();
         (!method.is_empty() && method != VIDEO_CAPTURE_DEVICE).then_some(method)

@@ -34,6 +34,26 @@ fn area_matches_the_full_conversion(format: PixelFormat) {
     assert_eq!(image.data(), full.view().crop_rect(area).to_image().data());
 }
 
+/// A 2x2 frame's BGRA pixels, top row first: red, green, then blue, white.
+const EXPECTED: [u8; 16] = [0, 0, 255, 255, 0, 255, 0, 255, 255, 0, 0, 255, 255, 255, 255, 255];
+
+// Each row has a padding byte (9) after its pixels, which must be skipped
+#[test_case(PixelFormat::Bgr24 { bottom_up: false }, 7, &[0, 0, 255, 0, 255, 0, 9, 255, 0, 0, 255, 255, 255, 9]; "bgr24")]
+#[test_case(PixelFormat::Bgr24 { bottom_up: true }, 7, &[255, 0, 0, 255, 255, 255, 9, 0, 0, 255, 0, 255, 0, 9]; "bottom up bgr24")]
+#[test_case(PixelFormat::Rgb24, 7, &[255, 0, 0, 0, 255, 0, 9, 0, 0, 255, 255, 255, 255, 9]; "rgb24")]
+#[test_case(PixelFormat::Bgrx, 9, &[0, 0, 255, 7, 0, 255, 0, 7, 9, 255, 0, 0, 7, 255, 255, 255, 7, 9]; "bgrx ignores x")]
+fn known_pixels_convert_to_bgra(format: PixelFormat, stride: usize, data: &[u8]) {
+    // Arrange
+    let layout = Layout { format, width: 2, height: 2, stride };
+    let mut image = BgraImage::default();
+
+    // Act
+    layout.convert(data, Rect::full(2, 2), &mut image).unwrap();
+
+    // Assert
+    assert_eq!(image.data(), EXPECTED);
+}
+
 #[test]
 fn area_outside_the_frame_converts_everything() {
     // Arrange
