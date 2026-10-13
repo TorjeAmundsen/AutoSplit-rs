@@ -188,6 +188,7 @@ fn main() {
         has_thumb: !source.is_empty(),
         problem: false,
         joined: false,
+        shaded: false,
     };
     let rows = vec![
         row("Reset Image", "reset_(0.96)_[0.1].png", "000_SplitImage.png", true),
@@ -244,6 +245,9 @@ fn main() {
         row("Split1", "04_Split1_(0.95).png", "", false),
     ];
     rows[4].joined = true;
+    for (index, shaded) in [false, true, false, true, true, false].into_iter().enumerate() {
+        rows[index].shaded = shaded;
+    }
     rows[5].problem = true;
     maker.set_rows(std::rc::Rc::new(slint::VecModel::from(rows)).into());
     maker.set_selected(3);

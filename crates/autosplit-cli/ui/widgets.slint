@@ -32,6 +32,10 @@ export global Theme {
     out property <color> error: dark ? #ff7070 : #c42b1c;
     out property <color> tooltip: dark ? #2d2d2d : #ffffdc;
     out property <color> item-hover: dark ? #3d3d3d : #e5e5e5;
+    // Between items in a list, like the splits in Make Split Images
+    out property <color> separator: dark ? #3a3a3a : #e0e0e0;
+    // Every other item in a list, to tell them apart
+    out property <color> stripe: dark ? #333333 : #f4f4f4;
     out property <color> tab: dark ? Palette.background.darker(20%) : Palette.background.darker(10%);
     // The light line inside the current tab and along the top of its page
     out property <color> tab-highlight: dark ? Palette.background.brighter(80%) : #ffffff;

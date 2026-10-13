@@ -125,8 +125,8 @@ fn removing_selects_a_neighbor(splits: &[&str], index: usize) -> Option<(Option<
     draft(splits).remove(index)
 }
 
-#[test_case(1, true => Some((0, ListChange::Swap(1, 0))); "up")]
-#[test_case(1, false => Some((2, ListChange::Swap(1, 2))); "down")]
+#[test_case(1, true => Some((0, ListChange::Rotate { start: 0, end: 2, left: 1 })); "up")]
+#[test_case(1, false => Some((2, ListChange::Rotate { start: 1, end: 3, left: 1 })); "down")]
 #[test_case(0, true => None; "first can't go up")]
 #[test_case(2, false => None; "last can't go down")]
 fn splits_move_one_place(index: usize, up: bool) -> Option<(usize, ListChange)> {
@@ -332,4 +332,88 @@ fn bundled_presets_have_nothing_to_fix() {
 
     // Assert
     assert_eq!((errors.len(), problems), (0, Vec::new()));
+}
+
+/// A draft of splits named `names`, where a `+` in front means compared with the split above.
+fn grouped(names: &[&str]) -> Draft {
+    let mut draft = draft(&names.iter().map(|name| name.trim_start_matches('+')).collect::<Vec<_>>());
+    for (index, name) in names.iter().enumerate() {
+        draft.edit_split(index, SplitEdit::WithPrevious(name.starts_with('+')));
+    }
+    draft
+}
+
+/// The splits' names, with `+` in front of the ones compared with the split above.
+fn grouped_names(draft: &Draft) -> String {
+    let preset = &draft.preset;
+    (preset.splits.iter().enumerate())
+        .map(|(index, split)| format!("{}{}", if preset.joins_previous(index) { "+" } else { "" }, split.name))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+#[test]
+fn removing_the_first_of_a_group_leaves_the_rest_together() {
+    // Arrange
+    let mut draft = grouped(&["X", "A", "+B", "+C"]);
+
+    // Act
+    draft.remove(1);
+
+    // Assert: B isn't compared with X
+    assert_eq!(grouped_names(&draft), "X B +C");
+}
+
+#[test]
+fn added_splits_go_after_the_group() {
+    // Arrange
+    let mut draft = grouped(&["A", "+B", "C"]);
+
+    // Act
+    let added = draft.add(Some(0));
+
+    // Assert
+    assert_eq!((added, grouped_names(&draft)), ((2, ListChange::Insert(2)), "A +B Split1 C".to_owned()));
+}
+
+#[test_case(0 => (2, "A +B A C".to_owned()); "the first is a split of its own")]
+#[test_case(1 => (2, "A +B +B C".to_owned()); "the others join the group")]
+fn copies_go_after_the_group(index: usize) -> (usize, String) {
+    // Arrange
+    let mut draft = grouped(&["A", "+B", "C"]);
+
+    // Act
+    let (at, _) = draft.duplicate(index).unwrap();
+
+    // Assert, with the expected value checked by test_case
+    (at, grouped_names(&draft))
+}
+
+#[test_case(&["X", "A", "+B"], 2, true => (1, "X B +A".to_owned()); "inside the group")]
+#[test_case(&["X", "A", "+B"], 1, false => (2, "X B +A".to_owned()); "the first down inside the group")]
+#[test_case(&["X", "A", "+B"], 1, true => (0, "A +B X".to_owned()); "the group up")]
+#[test_case(&["A", "+B", "X"], 1, false => (2, "X A +B".to_owned()); "the group down")]
+#[test_case(&["X", "A", "+B", "Y"], 0, false => (2, "A +B X Y".to_owned()); "past a group")]
+fn groups_move_together(names: &[&str], index: usize, up: bool) -> (usize, String) {
+    // Arrange
+    let mut draft = grouped(names);
+
+    // Act
+    let (to, _) = draft.move_split(index, up).unwrap();
+
+    // Assert, with the expected value checked by test_case
+    (to, grouped_names(&draft))
+}
+
+#[test]
+fn other_lists_follow_groups_that_move() {
+    // Arrange
+    let mut draft = grouped(&["X", "A", "+B"]);
+    let mut grabbed = vec![Some("x"), Some("a"), None];
+
+    // Act
+    draft.move_split(1, true).unwrap().1.mirror(&mut grabbed);
+
+    // Assert
+    assert_eq!(grabbed, [Some("a"), None, Some("x")]);
 }

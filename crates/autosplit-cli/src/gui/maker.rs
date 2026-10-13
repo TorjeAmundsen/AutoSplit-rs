@@ -476,6 +476,9 @@ impl Gui {
         }
         let summary = self.maker.borrow().loaded().and_then(|loaded| problem_summary(&loaded.preset, &preset_problems));
         let maker = self.maker.borrow();
+        let joined = |index| maker.shown().is_some_and(|preset| preset.joins_previous(index));
+        // Every other split is shaded, splits compared together as one
+        let mut block = 0;
         let rows: Vec<MakerRow> = names
             .iter()
             .enumerate()
@@ -488,7 +491,13 @@ impl Gui {
                 thumb: maker.thumbs[index].clone().unwrap_or_default(),
                 has_thumb: maker.thumbs[index].is_some(),
                 problem: problems.get(index).copied().unwrap_or_default(),
-                joined: maker.shown().is_some_and(|preset| preset.joins_previous(index)),
+                joined: joined(index),
+                shaded: {
+                    if index > 0 && !joined(index) {
+                        block += 1;
+                    }
+                    block % 2 == 1
+                },
             })
             .collect();
         let selected = maker.selected;

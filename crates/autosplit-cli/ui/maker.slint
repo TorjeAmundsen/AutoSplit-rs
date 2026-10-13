@@ -22,6 +22,8 @@ export struct MakerRow {
     problem: bool,
     // Compared for the same split as the row above
     joined: bool,
+    // Every other split, or group of splits compared together, is shaded
+    shaded: bool,
 }
 
 // What the form shows of the selected split besides its fields, while editing.
@@ -302,11 +304,11 @@ export component MakerWindow inherits Window {
                         list := ScrollView {
                             content-height: root.rows.length * root.row-height;
 
-                            for row[index] in root.rows: Rectangle {
+                            for row[index] in root.rows: row-box := Rectangle {
                                 y: index * root.row-height;
                                 height: root.row-height;
                                 width: parent.width;
-                                background: index == root.selected ? Theme.selection.with-alpha(list-keys.has-focus ? 0.35 : 0.2) : transparent;
+                                background: index == root.selected ? Theme.selection.with-alpha(list-keys.has-focus ? 0.35 : 0.2) : row.shaded ? Theme.stripe : transparent;
 
                                 TouchArea {
                                     clicked => {
@@ -315,25 +317,26 @@ export component MakerWindow inherits Window {
                                     }
                                 }
 
-                                // Joins a split to the one above, which it's compared with
-                                if row.joined: Rectangle {
-                                    x: 9px;
+                                // Splits compared together are one block: a line only above the
+                                // first, and a bar down the margin beside all of them
+                                property <bool> joins-next: index + 1 < root.rows.length && root.rows[index + 1].joined;
+
+                                if index > 0 && !row.joined: Rectangle {
                                     y: 0px;
-                                    width: 2px;
-                                    height: root.row-height / 2 + 1px;
-                                    background: Theme.frame;
+                                    height: 1px;
+                                    background: Theme.separator;
                                 }
 
-                                if row.joined: Rectangle {
-                                    x: 9px;
-                                    y: root.row-height / 2 - 1px;
-                                    width: 11px;
-                                    height: 2px;
-                                    background: Theme.frame;
+                                if row.joined || row-box.joins-next: Rectangle {
+                                    x: 4px;
+                                    y: row.joined ? 0px : 5px;
+                                    width: 3px;
+                                    height: root.row-height - self.y - (row-box.joins-next ? 0px : 5px);
+                                    background: Theme.secondary-text;
                                 }
 
                                 HorizontalLayout {
-                                    padding-left: row.joined ? 20px : 4px;
+                                    padding-left: 12px;
                                     // Clear of the scroll bar, 14px wide over the rows when it shows
                                     padding-right: root.rows.length * root.row-height > list.visible-height ? 20px : 6px;
                                     spacing: 8px;

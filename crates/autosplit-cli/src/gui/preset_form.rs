@@ -18,6 +18,13 @@ pub enum ListChange {
     Insert(usize),
     Remove(usize),
     Swap(usize, usize),
+    /// The splits from `start` to before `end` turned left by `left`, like a group of splits
+    /// moved past the split or group before it.
+    Rotate {
+        start: usize,
+        end: usize,
+        left: usize,
+    },
 }
 
 impl ListChange {
@@ -31,6 +38,10 @@ impl ListChange {
             Self::Remove(_) => {}
             Self::Swap(a, b) if a.max(b) < items.len() => items.swap(a, b),
             Self::Swap(..) => {}
+            Self::Rotate { start, end, left } if start + left <= end && end <= items.len() => {
+                items[start..end].rotate_left(left);
+            }
+            Self::Rotate { .. } => {}
         }
     }
 }
@@ -113,9 +124,18 @@ impl Draft {
         }
     }
 
-    /// A new split after `selected`, or at the end. Returns where it is.
+    /// The splits compared together with split `index`, itself too, as the range of their indexes.
+    fn group(&self, index: usize) -> std::ops::Range<usize> {
+        let start = (0..=index).rev().find(|&first| !self.preset.joins_previous(first)).unwrap_or(0);
+        let end = (index + 1..self.preset.splits.len()).find(|&next| !self.preset.joins_previous(next));
+        start..end.unwrap_or(self.preset.splits.len())
+    }
+
+    /// A new split after `selected` and the splits compared together with it, or at the end.
+    /// Returns where it is.
     pub fn add(&mut self, selected: Option<usize>) -> (usize, ListChange) {
-        let at = selected.map_or(self.preset.splits.len(), |index| (index + 1).min(self.preset.splits.len()));
+        let count = self.preset.splits.len();
+        let at = selected.filter(|&index| index < count).map_or(count, |index| self.group(index).end);
         let name = (1..)
             .map(|n| format!("Split{n}"))
             .find(|name| self.preset.splits.iter().all(|split| split.name != *name))
@@ -124,11 +144,14 @@ impl Draft {
         (at, ListChange::Insert(at))
     }
 
-    /// A copy of split `index` after it, with the same mask and savestate.
+    /// A copy of split `index` with the same mask and savestate, after the splits compared
+    /// together with it. A copy of one compared with the split above is compared with them too,
+    /// and a copy of the first is a split of its own.
     pub fn duplicate(&mut self, index: usize) -> Option<(usize, ListChange)> {
         let copy = self.preset.splits.get(index)?.clone();
-        self.preset.splits.insert(index + 1, copy);
-        Some((index + 1, ListChange::Insert(index + 1)))
+        let at = self.group(index).end;
+        self.preset.splits.insert(at, copy);
+        Some((at, ListChange::Insert(at)))
     }
 
     /// Removes split `index`. Returns the split to select after it, if any is left.
@@ -136,19 +159,47 @@ impl Draft {
         if index >= self.preset.splits.len() {
             return None;
         }
+        // The next split compared with it is the first of the ones left, not compared with the
+        // split before them
+        let first = !self.preset.joins_previous(index);
         self.preset.splits.remove(index);
+        if let Some(next) = self.preset.splits.get_mut(index).filter(|_| first) {
+            next.with_previous = false;
+        }
         let left = self.preset.splits.len();
         Some(((left > 0).then(|| index.min(left - 1)), ListChange::Remove(index)))
     }
 
-    /// Moves split `index` one up or down. Returns where it went.
+    /// Moves split `index` one up or down: inside the splits compared together with it, which
+    /// stay together, or with them past the split or splits before or after them. Returns where
+    /// it went.
     pub fn move_split(&mut self, index: usize, up: bool) -> Option<(usize, ListChange)> {
-        let to = if up { index.checked_sub(1)? } else { index + 1 };
-        if to >= self.preset.splits.len() || index >= self.preset.splits.len() {
+        if index >= self.preset.splits.len() {
             return None;
         }
-        self.preset.splits.swap(index, to);
-        Some((to, ListChange::Swap(index, to)))
+        let group = self.group(index);
+        let inside = if up { index > group.start } else { index + 1 < group.end };
+        if inside {
+            let to = if up { index - 1 } else { index + 1 };
+            let splits = &mut self.preset.splits;
+            splits.swap(index, to);
+            // Which one is compared with the split above stays with the place
+            let (a, b) = (splits[index].with_previous, splits[to].with_previous);
+            (splits[index].with_previous, splits[to].with_previous) = (b, a);
+            return Some((to, ListChange::Swap(index, to)));
+        }
+        let (start, end, left, to) = if up {
+            let before = self.group(group.start.checked_sub(1)?);
+            (before.start, group.end, group.start - before.start, index - before.len())
+        } else {
+            if group.end >= self.preset.splits.len() {
+                return None;
+            }
+            let after = self.group(group.end);
+            (group.start, after.end, group.len(), index + after.len())
+        };
+        self.preset.splits[start..end].rotate_left(left);
+        Some((to, ListChange::Rotate { start, end, left }))
     }
 
     /// What has to be fixed before saving, the preset's first, then each split's in order.
