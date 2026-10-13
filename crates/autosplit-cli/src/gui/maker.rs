@@ -83,6 +83,9 @@ pub(super) struct Maker {
     generation: u64,
     /// The preset being edited, which the window shows instead of the chosen one.
     edit: Option<editor::Editing>,
+    /// How many times editing started, which tells each time apart, for a file picked for the
+    /// time before.
+    edits: u64,
     /// Split images being written and pictures being made. Editing waits for them, since going
     /// back from it restores the splits as they were before, which would lose what they bring.
     working: usize,

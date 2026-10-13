@@ -22,6 +22,8 @@ pub(super) struct Editing {
     /// new preset.
     pub(super) source: Option<PathBuf>,
     before: Kept,
+    /// Which time editing started, from `Maker::edits`.
+    id: u64,
 }
 
 /// What `name` shows of a mask or savestate path: its file name.
@@ -107,7 +109,9 @@ impl Gui {
                 (vec![None; count], vec![None; count], vec![None; count], 0);
         }
         let (game, name) = (draft.preset.game.clone(), draft.preset.name.clone());
-        maker.edit = Some(Editing { draft, source, before });
+        maker.edits += 1;
+        let id = maker.edits;
+        maker.edit = Some(Editing { draft, source, before, id });
         let selected = maker.selected;
         drop(maker);
         let window = &self.windows.maker;
@@ -167,6 +171,11 @@ impl Gui {
     /// it elsewhere changes.
     fn edit_split(&self, edit: SplitEdit) {
         let Some(index) = self.selected_split() else { return };
+        self.edit_split_at(index, edit);
+    }
+
+    /// An edit of split `index`'s field.
+    fn edit_split_at(&self, index: usize, edit: SplitEdit) {
         let mask_changed = matches!(edit, SplitEdit::Mask(_));
         if let Some(editing) = self.maker.borrow_mut().edit.as_mut() {
             editing.draft.edit_split(index, edit);
@@ -250,6 +259,8 @@ impl Gui {
     fn choose_split_file(self: &Rc<Self>, savestate: bool) {
         let maker = self.maker.borrow();
         let Some(edit) = &maker.edit else { return };
+        // The split the file is for, while this same editing goes on
+        let (id, index) = (edit.id, maker.selected);
         // Without one yet, the preset's own folder
         let current = edit.draft.preset.splits.get(maker.selected).and_then(|split| {
             let path = if savestate { &split.savestate } else { &split.mask };
@@ -268,12 +279,16 @@ impl Gui {
             picker = picker.add_filter(name, &extensions);
         }
         self.when_picked(picker.pick_file(), move |gui, path| {
+            let same = gui.maker.borrow().edit.as_ref().is_some_and(|edit| edit.id == id);
+            if !same {
+                return;
+            }
             if !savestate && let Err(error) = Mask::open(&path) {
                 let text = format!("{} can't be a mask: {error}", path.display());
                 return gui.show_message(Message::error(text));
             }
             let path = path.display().to_string();
-            gui.edit_split(if savestate { SplitEdit::Savestate(path) } else { SplitEdit::Mask(path) });
+            gui.edit_split_at(index, if savestate { SplitEdit::Savestate(path) } else { SplitEdit::Mask(path) });
         });
     }
 
