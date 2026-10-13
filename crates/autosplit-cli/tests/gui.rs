@@ -7,7 +7,7 @@ use std::rc::Rc;
 
 use autosplit::gui::document::{Document, folder_text, profile_on_open};
 use autosplit::gui::log::{LOG_LINES, LogLines};
-use autosplit::gui::maker_plan::{WritePlan, looks_made, plan_writes};
+use autosplit::gui::maker_plan::{WritePlan, looks_made, plan_writes, saves_in_place};
 use autosplit::gui::messages::{Answer, Buttons, Message, MessageQueue};
 use autosplit::gui::placement::{Area, beside, centered_over};
 use autosplit::gui::recorder::key_code;
@@ -742,4 +742,40 @@ fn thumbnails_are_the_whole_shot_shrunk_and_opaque() {
 fn screenshots_dont_look_like_split_images(name: &str) -> bool {
     // Act, with the expected value checked by test_case
     looks_made(name)
+}
+
+#[test]
+fn saved_marks_come_back_when_a_name_changes_back() {
+    // Arrange: two saved split images
+    let folder = tempfile::tempdir().unwrap();
+    let saved: Vec<Option<PathBuf>> = ["00_A_(0.95).png", "01_B_(0.95).png"]
+        .map(|name| {
+            std::fs::write(folder.path().join(name), "png").unwrap();
+            Some(folder.path().join(name))
+        })
+        .into();
+    let names = |names: [&str; 2]| names.map(String::from).to_vec();
+
+    // Act: a split is added in front, then removed again
+    let added = saves_in_place(&saved, &names(["01_A_(0.95).png", "02_B_(0.95).png"]), Some(folder.path()));
+    let removed = saves_in_place(&saved, &names(["00_A_(0.95).png", "01_B_(0.95).png"]), Some(folder.path()));
+
+    // Assert
+    assert_eq!((added, removed), (vec![false, false], vec![true, true]));
+}
+
+#[test]
+fn saved_marks_only_count_in_the_split_image_folder() {
+    // Arrange
+    let (folder, other) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+    let path = folder.path().join("00_A_(0.95).png");
+    std::fs::write(&path, "png").unwrap();
+    let names = vec!["00_A_(0.95).png".to_owned()];
+
+    // Act
+    let marks = [Some(folder.path()), Some(other.path()), None]
+        .map(|folder| saves_in_place(&[Some(path.clone())], &names, folder));
+
+    // Assert
+    assert_eq!(marks, [vec![true], vec![false], vec![false]]);
 }

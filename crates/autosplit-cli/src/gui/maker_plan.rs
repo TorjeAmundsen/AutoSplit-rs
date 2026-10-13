@@ -75,3 +75,22 @@ pub fn plan_writes(names: &[String], preset: &[String], existing: &[PathBuf], so
     }
     plan
 }
+
+/// Whether each split's saved split image, in `saved`, is in `folder` under the split's file
+/// name in `names`. The saved paths are kept when one isn't, so a name that changes and changes
+/// back, like while editing the preset, counts again.
+pub fn saves_in_place(saved: &[Option<PathBuf>], names: &[String], folder: Option<&Path>) -> Vec<bool> {
+    let canonical = |path: &Path| std::fs::canonicalize(path).unwrap_or_else(|_| path.to_owned());
+    let folder = folder.map(canonical);
+    (saved.iter().enumerate())
+        .map(|(index, saved)| {
+            saved.as_ref().is_some_and(|path| {
+                path.is_file()
+                    && path.parent().map(canonical) == folder
+                    && path
+                        .file_name()
+                        .is_some_and(|name| names.get(index).is_some_and(|wanted| name == wanted.as_str()))
+            })
+        })
+        .collect()
+}

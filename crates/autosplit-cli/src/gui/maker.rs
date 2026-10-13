@@ -13,7 +13,7 @@ use autosplit_core::preset::{LoadedPreset, Preset, PresetError, load_presets};
 use autosplit_core::split_folder::user_files;
 use slint::{ComponentHandle, ModelRc, Rgba8Pixel, SharedPixelBuffer, SharedString, VecModel};
 
-use super::maker_plan::{looks_made, plan_writes};
+use super::maker_plan::{looks_made, plan_writes, saves_in_place};
 use super::messages::{Answer, Message};
 use super::placement::beside;
 use super::preset_form::{Draft, Problem};
@@ -443,30 +443,19 @@ impl Gui {
         self.maker.borrow().shown().map(|preset| preset.file_names(Some(&defaults))).unwrap_or_default()
     }
 
-    /// Forgets split images saved before that aren't in the split image folder anymore under
-    /// their split's file name: the folder changed, they were deleted or renamed, or the split's
-    /// settings changed its name.
-    fn forget_missing_saves(&self, names: &[String]) {
-        let folder = self.split_image_folder().map(|folder| canonical(&folder));
-        let mut maker = self.maker.borrow_mut();
-        for (index, saved) in maker.saved.iter_mut().enumerate() {
-            let still_there = saved.as_ref().is_some_and(|path| {
-                path.is_file()
-                    && path.parent().map(canonical).is_some_and(|parent| Some(parent) == folder)
-                    && path
-                        .file_name()
-                        .is_some_and(|name| names.get(index).is_some_and(|wanted| name == wanted.as_str()))
-            });
-            if !still_there {
-                *saved = None;
-            }
-        }
+    /// Which splits' saved split images are in the split image folder under the split's file
+    /// name in `names`. One that isn't, because the folder changed, the file was deleted or the
+    /// split's settings changed its name, is kept and counts again once it is, like after a
+    /// setting is changed and changed back while editing.
+    fn saves_in_place(&self, names: &[String]) -> Vec<bool> {
+        let folder = self.split_image_folder();
+        saves_in_place(&self.maker.borrow().saved, names, folder.as_deref())
     }
 
     /// Puts the preset's splits, the selected split's split image and the buttons in the window.
     fn show_maker(&self) {
         let names = self.maker_file_names();
-        self.forget_missing_saves(&names);
+        let in_place = self.saves_in_place(&names);
         let mut problems = self.show_editing(&names);
         let preset_problems = self.preset_problems();
         if !self.editing() {
@@ -487,7 +476,7 @@ impl Gui {
                 parts: file_name_parts(name),
                 file: name.into(),
                 source: maker.sources[index].as_ref().map(Source::label).unwrap_or_default().into(),
-                saved: maker.saved[index].is_some(),
+                saved: in_place.get(index).copied().unwrap_or_default(),
                 thumb: maker.thumbs[index].clone().unwrap_or_default(),
                 has_thumb: maker.thumbs[index].is_some(),
                 problem: problems.get(index).copied().unwrap_or_default(),
@@ -503,7 +492,7 @@ impl Gui {
         let selected = maker.selected;
         let has_source = maker.sources.get(selected).is_some_and(Option::is_some);
         let any_source = maker.sources.iter().any(Option::is_some);
-        let saved = maker.saved.get(selected).is_some_and(Option::is_some);
+        let saved = in_place.get(selected).copied().unwrap_or_default();
         let has_splits = !maker.sources.is_empty();
         drop(maker);
         self.maker_rows.set_vec(rows);
