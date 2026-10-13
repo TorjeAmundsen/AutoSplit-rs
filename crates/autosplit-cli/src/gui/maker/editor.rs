@@ -250,7 +250,7 @@ impl Gui {
         };
         window.set_problems(summary.into());
         window.set_has_problems(!problems.is_empty());
-        window.set_can_save_preset(problems.is_empty() && edit.draft.has_changes());
+        window.set_can_save_preset(problems.is_empty() && edit.draft.can_save());
         window.set_can_delete_preset(edit.source.is_some());
         (0..splits.len()).map(|index| problems.iter().any(|problem: &Problem| problem.split == Some(index))).collect()
     }
@@ -303,11 +303,30 @@ impl Gui {
             drop(maker);
             return self.show_message(Message::error(text));
         }
-        let (source, preset) = (edit.source.clone(), edit.draft.preset.clone());
+        let (source, mut preset) = (edit.source.clone(), edit.draft.preset.clone());
+        let in_place = source.as_ref().filter(|_| !as_new);
+        // The other presets of the game, which the Preset list tells apart by name
+        let taken: Vec<String> = (maker.presets.iter())
+            .filter(|loaded| in_place.is_none_or(|folder| canonical(&loaded.folder) != canonical(folder)))
+            .filter(|loaded| loaded.preset.game.trim().to_lowercase() == preset.game.trim().to_lowercase())
+            .map(|loaded| loaded.preset.name.trim().to_lowercase())
+            .collect();
         drop(maker);
-        let target = match &source {
-            Some(folder) if !as_new => folder.clone(),
-            _ => new_preset_folder(&presets_folder(), &preset.name),
+        let is_taken = |name: &str| taken.contains(&name.trim().to_lowercase());
+        if is_taken(&preset.name) {
+            if in_place.is_some() {
+                let text =
+                    format!("Another preset for {} is named {}. Give this one another name.", preset.game, preset.name);
+                return self.show_message(Message::error(text));
+            }
+            // A copy, named like one
+            let base = preset.name.trim().to_owned();
+            preset.name =
+                (2..).map(|n| format!("{base} ({n})")).find(|name| !is_taken(name)).expect("some number is free");
+        }
+        let target = match in_place {
+            Some(folder) => folder.clone(),
+            None => new_preset_folder(&presets_folder(), &preset.name),
         };
         if let Err(error) = save_preset(source.as_deref(), &target, &preset) {
             return self.show_message(Message::error(format!("Couldn't save the preset. {error}")));

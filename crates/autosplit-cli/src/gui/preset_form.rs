@@ -78,7 +78,7 @@ pub struct Problem {
 pub struct Draft {
     pub preset: Preset,
     original: Preset,
-    /// Not saved anywhere yet, so it counts as changed.
+    /// Not saved anywhere yet, so it can be saved unchanged.
     new: bool,
 }
 
@@ -94,8 +94,14 @@ impl Draft {
         Self { original: preset.clone(), preset, new: true }
     }
 
+    /// Whether it changed since editing started, which closing asks about.
     pub fn has_changes(&self) -> bool {
-        self.new || self.preset != self.original
+        self.preset != self.original
+    }
+
+    /// Whether Save does something: it changed, or it's new.
+    pub fn can_save(&self) -> bool {
+        self.new || self.has_changes()
     }
 
     /// Puts an edit of split `index` into the preset.

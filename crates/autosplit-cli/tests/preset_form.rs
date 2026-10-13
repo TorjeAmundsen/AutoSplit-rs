@@ -43,12 +43,12 @@ fn editing_back_to_how_it_was_has_no_changes() {
 }
 
 #[test]
-fn a_new_preset_has_changes_to_save() {
+fn a_new_preset_can_be_saved() {
     // Act
     let draft = Draft::new("Game");
 
     // Assert
-    assert_eq!((draft.has_changes(), names(&draft), draft.preset.game.as_str()), (true, vec!["Split1"], "Game"));
+    assert_eq!((draft.can_save(), names(&draft), draft.preset.game.as_str()), (true, vec!["Split1"], "Game"));
 }
 
 #[test_case(0.95 => None; "default isn't written")]
@@ -417,4 +417,17 @@ fn other_lists_follow_groups_that_move() {
 
     // Assert
     assert_eq!(grabbed, [Some("a"), None, Some("x")]);
+}
+
+#[test]
+fn an_untouched_new_preset_has_no_changes_but_can_be_saved() {
+    // Arrange
+    let mut draft = Draft::new("Game");
+
+    // Act
+    let untouched = (draft.has_changes(), draft.can_save());
+    draft.preset.name = "Any%".into();
+
+    // Assert: closing it doesn't ask, and an edit counts
+    assert_eq!((untouched, draft.has_changes()), ((false, true), true));
 }
