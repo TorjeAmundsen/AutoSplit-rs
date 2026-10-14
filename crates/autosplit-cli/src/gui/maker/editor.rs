@@ -10,6 +10,7 @@ use autosplit_core::preset::{Preset, delete_preset, new_preset_folder, save_pres
 use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
 
 use super::super::Gui;
+use super::super::maker_plan::{DeletedPreset, preset_after_delete};
 use super::super::messages::{Answer, Message};
 use super::super::preset_form::{Draft, Field, ListChange, Problem, SplitEdit, SplitKind, field_value};
 use super::super::recorder::key_character;
@@ -458,7 +459,7 @@ impl Gui {
         }
         self.maker.borrow_mut().edit = None;
         self.windows.maker.set_editing(false);
-        self.reload_presets(Some(&target));
+        self.reload_presets(Some(&target), None);
         self.windows.maker.set_status(format!("Saved the preset {}.", preset.name).into());
     }
 
@@ -468,6 +469,12 @@ impl Gui {
         let Some(Editing { source: Some(folder), .. }) = &maker.edit else { return };
         let folder = folder.clone();
         let name = maker.loaded().map(|loaded| loaded.preset.name.clone()).unwrap_or_default();
+        let game = maker.loaded().map(|loaded| loaded.preset.game.clone()).unwrap_or_default();
+        let deleted = DeletedPreset {
+            place: maker.presets_of(&game).iter().position(|&index| index == maker.preset).unwrap_or(0),
+            game_place: maker.games().iter().position(|&each| each == game).unwrap_or(0),
+            game,
+        };
         drop(maker);
         let text = format!(
             "Delete the preset {name}? Its folder is deleted with its masks and savestates, which can't be undone:\n\n{}",
@@ -481,14 +488,14 @@ impl Gui {
             }
             gui.maker.borrow_mut().edit = None;
             gui.windows.maker.set_editing(false);
-            gui.reload_presets(None);
+            gui.reload_presets(None, Some(&deleted));
             gui.windows.maker.set_status(format!("Deleted the preset {name}.").into());
         }));
     }
 
     /// Reads the presets again after a save or delete, and shows the one in `folder`, keeping
-    /// the splits' grabs, or else the first.
-    fn reload_presets(&self, folder: Option<&Path>) {
+    /// the splits' grabs, or else the one next to a `deleted` one, or else the first.
+    fn reload_presets(&self, folder: Option<&Path>, deleted: Option<&DeletedPreset>) {
         let errors = self.read_presets();
         let mut maker = self.maker.borrow_mut();
         let found = folder.and_then(|folder| {
@@ -497,13 +504,15 @@ impl Gui {
         });
         maker.masks.clear();
         maker.live_mask = None;
+        let games: Vec<&str> = maker.presets.iter().map(|loaded| loaded.preset.game.as_str()).collect();
+        let next = deleted.map_or(0, |deleted| preset_after_delete(&games, deleted));
         drop(maker);
         match found {
             Some(index) => {
                 self.maker.borrow_mut().generation += 1;
                 self.show_preset(index);
             }
-            None => self.choose_preset(0),
+            None => self.choose_preset(next),
         }
         self.show_preset_errors(errors);
     }

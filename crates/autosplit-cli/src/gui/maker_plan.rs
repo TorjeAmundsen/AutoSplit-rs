@@ -94,3 +94,30 @@ pub fn saves_in_place(saved: &[Option<PathBuf>], names: &[String], folder: Optio
         })
         .collect()
 }
+
+/// Where a deleted preset was: its game, its place among the game's presets, and the game's place
+/// among the games, all from 0.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DeletedPreset {
+    pub game: String,
+    pub place: usize,
+    pub game_place: usize,
+}
+
+/// The preset to show after `deleted` is gone, by index into the presets left, whose games are
+/// `games` in list order: the one that took its place in its game, or the game's last, like
+/// deleting from a list. When the game has none left, the first preset of the game that took the
+/// game's place, or of the last game.
+pub fn preset_after_delete(games: &[&str], deleted: &DeletedPreset) -> usize {
+    let same: Vec<usize> = (0..games.len()).filter(|&index| games[index] == deleted.game).collect();
+    if let Some(&index) = same.get(deleted.place).or(same.last()) {
+        return index;
+    }
+    let mut firsts: Vec<usize> = Vec::new();
+    for index in 0..games.len() {
+        if index == 0 || games[index] != games[index - 1] {
+            firsts.push(index);
+        }
+    }
+    firsts.get(deleted.game_place).or(firsts.last()).copied().unwrap_or(0)
+}

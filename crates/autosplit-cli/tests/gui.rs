@@ -7,7 +7,9 @@ use std::rc::Rc;
 
 use autosplit::gui::document::{Document, folder_text, profile_on_open};
 use autosplit::gui::log::{LOG_LINES, LogLines};
-use autosplit::gui::maker_plan::{WritePlan, looks_made, plan_writes, saves_in_place};
+use autosplit::gui::maker_plan::{
+    DeletedPreset, WritePlan, looks_made, plan_writes, preset_after_delete, saves_in_place,
+};
 use autosplit::gui::messages::{Answer, Buttons, Message, MessageQueue};
 use autosplit::gui::placement::{Area, beside, centered_over};
 use autosplit::gui::recorder::key_code;
@@ -778,4 +780,14 @@ fn saved_marks_only_count_in_the_split_image_folder() {
 
     // Assert
     assert_eq!(marks, [vec![true], vec![false], vec![false]]);
+}
+
+#[test_case(&["MM", "OoT", "OoT", "SM"], "OoT", 1, 1 => 2; "the one that took its place")]
+#[test_case(&["MM", "OoT", "OoT", "SM"], "OoT", 2, 1 => 2; "the game's last when it was last")]
+#[test_case(&["MM", "SM", "SM"], "OoT", 0, 1 => 1; "the next game when the game is empty")]
+#[test_case(&["MM", "OoT"], "SM", 0, 2 => 1; "the last game when it was the last game")]
+#[test_case(&[], "OoT", 0, 0 => 0; "nothing left")]
+fn after_a_delete_the_preset_next_to_it_shows(games: &[&str], game: &str, place: usize, game_place: usize) -> usize {
+    // Act, with the expected value checked by test_case
+    preset_after_delete(games, &DeletedPreset { game: game.into(), place, game_place })
 }
