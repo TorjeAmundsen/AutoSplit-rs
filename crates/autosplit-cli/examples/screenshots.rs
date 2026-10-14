@@ -258,6 +258,10 @@ fn main() {
     maker.set_editing(true);
     let kinds: Vec<slint::SharedString> = ["Split", "Start image", "Reset image"].map(Into::into).into();
     maker.set_kinds(std::rc::Rc::new(slint::VecModel::from(kinds)).into());
+    let games: Vec<slint::SharedString> =
+        ["The Legend of Zelda: Ocarina of Time", "New game..."].map(Into::into).into();
+    maker.set_edit_games(std::rc::Rc::new(slint::VecModel::from(games)).into());
+    maker.set_edit_game_index(0);
     maker.set_edit_game("The Legend of Zelda: Ocarina of Time".into());
     maker.set_edit_name("No Wrong Warp".into());
     maker.set_has_split(true);

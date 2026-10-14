@@ -1,8 +1,8 @@
 //! The preset editor's draft: edits, list operations kept in step with other lists, and problems.
 
 use autosplit::gui::preset_form::{
-    Draft, Field, ListChange, Problem, SplitEdit, SplitKind, field_value, problem_flags, problem_list, problem_summary,
-    split_heading,
+    Draft, Field, ListChange, Problem, SplitEdit, SplitKind, field_value, known_game, problem_flags, problem_list,
+    problem_summary, split_heading,
 };
 use autosplit_core::preset::{Preset, PresetSplit};
 use test_case::test_case;
@@ -577,4 +577,12 @@ fn only_the_type_changes_other_fields() {
 
     // Assert
     assert_eq!(flags, [(true, false), (false, false), (false, true)]);
+}
+
+#[test_case("the legend of zelda:  ocarina of time " => Some("The Legend of Zelda: Ocarina of Time"); "other case and spaces")]
+#[test_case("The Legend of Zelda: Majora's Mask" => None; "another game")]
+#[test_case("" => None; "no game")]
+fn typed_games_are_the_known_ones(game: &str) -> Option<&'static str> {
+    // Act, with the expected value checked by test_case
+    known_game(game, &["", "The Legend of Zelda: Ocarina of Time", "Super Mario 64"])
 }

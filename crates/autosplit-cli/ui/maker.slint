@@ -113,6 +113,11 @@ export component MakerWindow inherits Window {
     in property <bool> working;
     // The preset's game and name while editing, set when editing starts
     in-out property <string> edit-game;
+    // While editing: the games to pick from, then New game..., the one picked, and whether a new
+    // game is typed instead
+    in property <[string]> edit-games;
+    in-out property <int> edit-game-index;
+    in-out property <bool> new-game;
     in-out property <string> edit-name;
     // The selected split's fields, set when another split is selected and kept by the fields
     // while they're edited
@@ -154,6 +159,8 @@ export component MakerWindow inherits Window {
     callback edit-preset();
     callback new-preset();
     callback game-edited(string);
+    callback edit-game-chosen(int);
+    callback pick-game();
     callback name-edited(string);
     callback split-edited(SplitField);
     callback choose-mask();
@@ -243,10 +250,36 @@ export component MakerWindow inherits Window {
                         selected => { root.game-chosen(root.game-index); }
                     }
 
-                    if root.editing: TextField {
+                    // A game that has presets is picked, so its name can't be mistyped
+                    if root.editing && !root.new-game: ComboBox {
+                        model: root.edit-games;
+                        current-index <=> root.edit-game-index;
+                        selected => { root.edit-game-chosen(root.edit-game-index); }
+
+                        Tooltip {
+                            Tip {
+                                text: "The game the preset is listed under. New game... types the name of one that has no presets yet.";
+                            }
+                        }
+                    }
+
+                    if root.editing && root.new-game: TextField {
                         text <=> root.edit-game;
-                        placeholder-text: "The game, which presets are listed under";
+                        placeholder-text: "The new game's name";
                         edited(text) => { root.game-edited(text); }
+                    }
+
+                    if root.editing && root.new-game && root.edit-games.length > 1: Button {
+                        width: 60px;
+                        height: 24px;
+                        text: "Games";
+                        clicked => { root.pick-game(); }
+
+                        Tooltip {
+                            Tip {
+                                text: "Pick one of the games that have presets instead";
+                            }
+                        }
                     }
                 }
 

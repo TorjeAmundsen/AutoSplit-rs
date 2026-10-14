@@ -472,3 +472,11 @@ pub fn problem_list(preset: &Preset, problems: &[Problem]) -> String {
 pub fn problem_flags(problems: &[Problem], count: usize) -> Vec<bool> {
     (0..count).map(|index| problems.iter().any(|problem| problem.split == Some(index))).collect()
 }
+
+/// The one of `games` that `game` is, typed in another case or with other spaces, like
+/// `the legend of zelda:  ocarina of time`, so presets of a game stay together.
+pub fn known_game<'a>(game: &str, games: &[&'a str]) -> Option<&'a str> {
+    let plain = |name: &str| name.split_whitespace().collect::<Vec<_>>().join(" ").to_lowercase();
+    let wanted = plain(game);
+    games.iter().copied().find(|&known| !known.is_empty() && plain(known) == wanted)
+}

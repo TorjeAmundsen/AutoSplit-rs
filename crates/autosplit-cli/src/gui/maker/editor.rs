@@ -14,10 +14,10 @@ use super::super::maker_plan::{DeletedPreset, preset_after_delete};
 use super::super::maker_plan::{canonical, file_name_text};
 use super::super::messages::{Answer, Message};
 use super::super::preset_form::{Draft, Field, ListChange, SplitEdit, SplitKind, field_value};
-use super::super::preset_form::{problem_flags, problem_list, problem_summary};
+use super::super::preset_form::{known_game, problem_flags, problem_list, problem_summary};
 use super::super::recorder::key_character;
 use super::super::ui::{SplitField, SplitForm};
-use super::{Kept, presets_folder};
+use super::{Kept, game_label, presets_folder};
 use autosplit_input::Modifiers;
 use slint::winit_030::winit::event::KeyEvent;
 use slint::winit_030::winit::keyboard::{Key, NamedKey};
@@ -61,6 +61,11 @@ impl Gui {
         on!(weak, maker, on_edit_preset, () gui => gui.start_editing(false));
         on!(weak, maker, on_new_preset, () gui => gui.start_editing(true));
         on!(weak, maker, on_game_edited, (text) gui => gui.edit_preset(|preset| preset.game = text.to_string()));
+        on!(weak, maker, on_edit_game_chosen, (index) gui => gui.edit_game_chosen(index as usize));
+        on!(weak, maker, on_pick_game, () gui => {
+            gui.windows.maker.set_new_game(false);
+            gui.edit_game_chosen(gui.windows.maker.get_edit_game_index() as usize);
+        });
         on!(weak, maker, on_name_edited, (text) gui => gui.edit_preset(|preset| preset.name = text.to_string()));
         let kinds: Vec<SharedString> = SplitKind::ALL.iter().map(|kind| kind.label().into()).collect();
         maker.set_kinds(ModelRc::new(VecModel::from(kinds)));
@@ -159,12 +164,44 @@ impl Gui {
         maker.edit = Some(Editing { draft, source, before, id, removed: Vec::new() });
         let selected = maker.selected;
         drop(maker);
+        self.show_edit_games(&game);
         let window = &self.windows.maker;
-        window.set_edit_game(game.into());
         window.set_edit_name(name.into());
         window.set_editing(true);
         window.set_status(SharedString::new());
         self.choose_split(selected);
+    }
+
+    /// Lists the games to pick for the preset being edited, `game` picked, or typed as a new game
+    /// when no preset has it.
+    fn show_edit_games(&self, game: &str) {
+        let maker = self.maker.borrow();
+        let mut games: Vec<SharedString> = maker.games().into_iter().map(game_label).collect();
+        let index = maker.games().iter().position(|&each| each == game);
+        drop(maker);
+        games.push("New game...".into());
+        let window = &self.windows.maker;
+        window.set_edit_games(ModelRc::new(VecModel::from(games)));
+        window.set_edit_game(game.into());
+        window.set_edit_game_index(index.unwrap_or(0) as i32);
+        window.set_new_game(index.is_none());
+    }
+
+    /// A game was picked for the preset, or New game..., the last, to type one.
+    fn edit_game_chosen(&self, index: usize) {
+        let game = self.maker.borrow().games().get(index).map(|&game| game.to_owned());
+        let window = &self.windows.maker;
+        match game {
+            Some(game) => {
+                window.set_edit_game(game.as_str().into());
+                self.edit_preset(|preset| preset.game = game);
+            }
+            None => {
+                window.set_edit_game(SharedString::new());
+                window.set_new_game(true);
+                self.edit_preset(|preset| preset.game.clear());
+            }
+        }
     }
 
     /// Leaves edit mode, the one way out of it. The splits' grabs and screenshots stay with the
@@ -434,6 +471,10 @@ impl Gui {
             return self.show_message(Message::error(text));
         }
         let (source, mut preset) = (edit.source.clone(), edit.draft.to_save());
+        // A new game typed like one that has presets is that game
+        if let Some(game) = known_game(&preset.game, &maker.games()) {
+            preset.game = game.to_owned();
+        }
         let in_place = source.as_ref().filter(|_| !as_new);
         // The other presets of the game, which the Preset list tells apart by name
         let taken: Vec<String> = (maker.presets.iter())
