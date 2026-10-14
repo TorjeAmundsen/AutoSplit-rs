@@ -273,7 +273,9 @@ fn main() {
         savestate_path: "C:/Users/Runner/gz/006 enter deku.gzs".into(),
         mask_copied: false,
         savestate_copied: true,
+        grouping_off: false,
         can_join: true,
+        why_not_joined: "".into(),
     });
     maker.set_problems("Split1: It needs a mask. Choose one.".into());
     maker.set_has_problems(true);

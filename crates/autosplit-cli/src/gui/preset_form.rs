@@ -138,6 +138,25 @@ impl Draft {
         Self { original: preset.clone(), preset, new: true }
     }
 
+    /// Why split `index` can't be compared with the split above, for the greyed out checkbox, or
+    /// `None` when it can.
+    pub fn why_not_joined(&self, index: usize) -> Option<&'static str> {
+        let preset = &self.preset;
+        let split = preset.splits.get(index)?;
+        let previous = index.checked_sub(1).and_then(|previous| preset.splits.get(previous));
+        if split.is_keyword() {
+            Some("Start and reset images aren't splits, so they can't be compared with one.")
+        } else if previous.is_none() {
+            Some("It's the first split, so there's no split above to compare it with.")
+        } else if previous.is_some_and(PresetSplit::is_keyword) {
+            Some("The split above is a start or reset image, which isn't a split to compare it with.")
+        } else if index - self.group(index - 1).start >= MAX_GROUP_SIZE {
+            Some("The splits above are already 4 compared together, the most there can be.")
+        } else {
+            None
+        }
+    }
+
     /// The preset as it's saved: instructions only go with a savestate.
     pub fn to_save(&self) -> Preset {
         let mut preset = self.preset.clone();

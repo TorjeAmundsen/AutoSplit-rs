@@ -40,8 +40,13 @@ export struct SplitForm {
     // Picked from outside the preset's folder, so saving copies it in
     mask-copied: bool,
     savestate-copied: bool,
+    // Compared together with others, or a second reset or start image, which the profile has
+    // turned off
+    grouping-off: bool,
     // There's a split above that it can be compared with
     can-join: bool,
+    // Why not, for the greyed out checkbox's tooltip
+    why-not-joined: string,
 }
 
 // A field's problems under it, lined up with the field and wrapped so all of them show. Also a
@@ -889,7 +894,7 @@ export component MakerWindow inherits Window {
 
                             Tooltip {
                                 Tip {
-                                    text: "Compare it for the same split as the split above, so either one matching splits, like a boss that dies in one of two rooms. They get the same number. Up to 4 splits together. Needs Compare images with the same number for one split, in Settings.";
+                                    text: (root.form.why-not-joined == "" ? "" : root.form.why-not-joined + "\n\n") + "Compare it for the same split as the split above, so either one matching splits, like a boss that dies in one of two rooms. They get the same number. Up to 4 splits together. Needs Compare images with the same number for one split, in Settings.";
                                 }
                             }
                         }
@@ -898,6 +903,12 @@ export component MakerWindow inherits Window {
                     if root.has-split && root.form.group-problem != "": FieldProblem {
                         label-width: root.label-width;
                         text: root.form.group-problem;
+                    }
+
+                    if root.has-split && root.form.group-problem == "" && root.form.grouping-off: FieldProblem {
+                        label-width: root.label-width;
+                        color: Theme.secondary-text;
+                        text: "The profile has comparing several images for one split turned off. Generate Profile..., or Turn It On after saving, turns it on.";
                     }
 
                     if root.has-split: HorizontalLayout {

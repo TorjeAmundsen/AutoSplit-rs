@@ -328,6 +328,7 @@ impl Gui {
     /// What editing shows besides the fields: the form's problems, and whether the preset can be
     /// saved.
     pub(super) fn show_editing(&self) -> Vec<bool> {
+        let grouping = self.state.borrow().document.profile.group_split_images;
         let maker = self.maker.borrow();
         let Some(edit) = &maker.edit else { return Vec::new() };
         let problems = edit.draft.problems();
@@ -346,7 +347,11 @@ impl Gui {
                 savestate_path: shown_path(&maker, &split.savestate).into(),
                 mask_copied: copied_in(edit.source.as_deref(), &split.mask),
                 savestate_copied: copied_in(edit.source.as_deref(), &split.savestate),
-                can_join: edit.draft.preset.can_join_previous(selected),
+                grouping_off: !grouping
+                    && (edit.draft.preset.joins_previous(selected)
+                        || edit.draft.preset.keyword_place(selected).is_some_and(|place| place > 1)),
+                can_join: edit.draft.why_not_joined(selected).is_none(),
+                why_not_joined: edit.draft.why_not_joined(selected).unwrap_or_default().into(),
             });
             // Also when typing the name made it a start or reset image
             let kind = SplitKind::of(split);

@@ -498,3 +498,14 @@ fn savestate_extensions_are_the_presets_own() {
     // Assert
     assert_eq!(extensions, ["abc", "efg"]);
 }
+
+#[test_case(&["Boss", "Door"], 1 => None; "after a split")]
+#[test_case(&["Boss"], 0 => Some("It's the first split, so there's no split above to compare it with."); "first")]
+#[test_case(&["Boss", "reset"], 1 => Some("Start and reset images aren't splits, so they can't be compared with one."); "reset image")]
+#[test_case(&["reset", "Door"], 1 => Some("The split above is a start or reset image, which isn't a split to compare it with."); "after a reset image")]
+#[test_case(&["A", "+B", "+C", "+D", "E"], 4 => Some("The splits above are already 4 compared together, the most there can be."); "after a full group")]
+#[test_case(&["A", "+B", "+C", "D"], 3 => None; "after a group with room")]
+fn the_checkbox_says_why_it_cant_join(names: &[&str], index: usize) -> Option<&'static str> {
+    // Act, with the expected value checked by test_case
+    grouped(names).why_not_joined(index)
+}
