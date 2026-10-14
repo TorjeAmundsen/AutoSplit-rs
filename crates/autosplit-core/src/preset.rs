@@ -176,14 +176,15 @@ impl Preset {
             .collect()
     }
 
-    /// The split above that `index` is compared together with and has the same name as, ignoring
-    /// case like Windows file names do, `Bär` like `BÄR`. They'd share a number, so their split
-    /// images and savestate copies would get the same name.
+    /// The split above that `index` is compared together with and has the same name as, the way
+    /// Windows compares file names: ignoring case, `Bär` like `BÄR`, and dots and spaces at the
+    /// end, which it drops, `Boss.` like `Boss`. They'd share a number, so their split images and
+    /// savestate copies would get the same name.
     pub fn same_name_in_group(&self, index: usize) -> Option<usize> {
-        let split = self.splits.get(index)?;
-        let name = split.name.trim().to_lowercase();
+        let plain = |name: &str| name.trim().trim_end_matches(['.', ' ']).to_lowercase();
+        let name = plain(&self.splits.get(index)?.name);
         let start = (0..=index).rev().find(|&first| !self.joins_previous(first))?;
-        (start..index).find(|&other| self.splits[other].name.trim().to_lowercase() == name)
+        (start..index).find(|&other| plain(&self.splits[other].name) == name)
     }
 
     /// The file name of a profile made for this preset: the game's initials, then the preset's

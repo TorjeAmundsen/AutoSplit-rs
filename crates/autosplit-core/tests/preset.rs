@@ -291,3 +291,14 @@ fn splits_compared_together_with_the_same_name_are_found() {
     // Assert: only the joined one, not the next split with the name
     assert_eq!(same, [None, None, None, Some(1), None]);
 }
+
+#[test_case("Boss." => Some(0); "a dot at the end")]
+#[test_case("Boss .. " => Some(0); "dots and spaces at the end")]
+#[test_case("Boss.2" => None; "a dot inside")]
+fn names_windows_files_would_share_are_the_same(name: &str) -> Option<usize> {
+    // Arrange: an extensionless savestate copy named Boss. would replace the one named Boss
+    let preset = grouped_preset(&["Boss", &format!("+{name}")]);
+
+    // Act
+    preset.same_name_in_group(1)
+}
