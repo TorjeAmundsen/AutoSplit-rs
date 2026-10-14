@@ -705,11 +705,13 @@ export component SpinBox inherits Rectangle {
         }
     }
 
+    // Inside the field's frame, which goes around them too, so it stays whole when it's
+    // focused instead of showing through the arrows' rounded corners
     for arrow[index] in [{ up: true }, { up: false }]: Rectangle {
         x: parent.width - 16px;
-        y: index == 0 ? 0px : parent.height / 2;
-        width: 16px;
-        height: parent.height / 2;
+        y: index == 0 ? 1px : parent.height / 2;
+        width: 15px;
+        height: parent.height / 2 - 1px;
         // Greyed at the end of the range, like Qt's
         property <bool> usable: root.enabled && (arrow.up ? root.value < root.maximum : root.value > root.minimum);
 

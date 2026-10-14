@@ -191,7 +191,8 @@ impl Draft {
                 let threshold = (threshold.clamp(0.0, 1.0) * 100.0).round() / 100.0;
                 split.threshold = (threshold != DEFAULT_THRESHOLD).then_some(threshold);
             }
-            SplitEdit::Pause(pause) => split.pause = pause.map(|pause| pause.max(0.0)),
+            // Two decimals, like the profile's default pause time
+            SplitEdit::Pause(pause) => split.pause = pause.map(|pause| (pause.max(0.0) * 100.0).round() / 100.0),
             SplitEdit::Delay(delay) => split.delay = delay,
             SplitEdit::Dummy(on) => split.dummy = on,
             SplitEdit::Below(on) => split.below = on,
