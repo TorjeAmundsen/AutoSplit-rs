@@ -366,6 +366,29 @@ fn grouped_names(draft: &Draft) -> String {
         .join(" ")
 }
 
+/// A preset whose split `A` is still ticked to be compared with the split above after the split
+/// above, `X`, became a reset image.
+fn ticked_under_a_reset_image() -> Draft {
+    let mut draft = grouped(&["Y", "X", "+A", "B"]);
+    draft.edit_split(1, SplitEdit::Kind(SplitKind::Reset));
+    draft
+}
+
+#[test_case(|draft| draft.move_split(3, true).map(|_| ()) => "Y reset B A".to_owned(); "a split moved above it")]
+#[test_case(|draft| draft.remove(1).map(|_| ()) => "Y A B".to_owned(); "the reset image removed")]
+#[test_case(|draft| Some(draft.add(Some(1))).map(|_| ()) => "Y reset Split1 A B".to_owned(); "a split added above it")]
+#[test_case(|draft| draft.duplicate(2).map(|_| ()) => "Y reset A A B".to_owned(); "a copy of it")]
+fn list_changes_never_compare_a_split_with_another_by_surprise(change: fn(&mut Draft) -> Option<()>) -> String {
+    // Arrange
+    let mut draft = ticked_under_a_reset_image();
+
+    // Act
+    change(&mut draft).unwrap();
+
+    // Assert, with the expected value checked by test_case
+    grouped_names(&draft)
+}
+
 #[test]
 fn removing_the_first_of_a_group_leaves_the_rest_together() {
     // Arrange

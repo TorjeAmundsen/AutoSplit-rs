@@ -268,6 +268,7 @@ impl Draft {
     /// A new split after `selected` and the splits compared together with it, or at the end.
     /// Returns where it is.
     pub fn add(&mut self, selected: Option<usize>) -> (usize, ListChange) {
+        self.drop_unused_joins();
         let count = self.preset.splits.len();
         let at = selected.filter(|&index| index < count).map_or(count, |index| self.group(index).end);
         let name = self.free_split_name();
@@ -279,6 +280,7 @@ impl Draft {
     /// together with it. A copy of one compared with the split above is compared with them too,
     /// and a copy of the first is a split of its own.
     pub fn duplicate(&mut self, index: usize) -> Option<(usize, ListChange)> {
+        self.drop_unused_joins();
         let copy = self.preset.splits.get(index)?.clone();
         let at = self.group(index).end;
         self.preset.splits.insert(at, copy);
@@ -291,6 +293,7 @@ impl Draft {
         if index >= self.preset.splits.len() {
             return None;
         }
+        self.drop_unused_joins();
         // The next split compared with it is the first of the ones left, not compared with the
         // split before them
         let first = !self.preset.joins_previous(index);
@@ -309,6 +312,7 @@ impl Draft {
         if index >= self.preset.splits.len() {
             return None;
         }
+        self.drop_unused_joins();
         let group = self.group(index);
         let inside = if up { index > group.start } else { index + 1 < group.end };
         if inside {
@@ -332,6 +336,17 @@ impl Draft {
         };
         self.preset.splits[start..end].rotate_left(left);
         Some((to, ListChange::Rotate { start, end, left }))
+    }
+
+    /// Unticks Same split as the one above where it doesn't apply, like under a start or reset
+    /// image after the split above became one. Adding, removing or moving splits gives splits
+    /// other neighbors, which would otherwise compare such a split with a split by surprise.
+    fn drop_unused_joins(&mut self) {
+        for index in 0..self.preset.splits.len() {
+            if !self.preset.joins_previous(index) {
+                self.preset.splits[index].with_previous = false;
+            }
+        }
     }
 
     /// What has to be fixed before saving, the preset's first, then each split's in order.
