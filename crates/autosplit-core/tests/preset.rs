@@ -119,12 +119,11 @@ fn bundled_file_names_read_back_as_their_settings(defaults: Option<SplitDefaults
     let (presets, _) = load_presets(&bundled("presets"));
     let reads_back = |split: &PresetSplit, name: &str| {
         let name = name.to_lowercase();
-        let default_delay = defaults.map_or(0, |defaults| defaults.delay_time);
         let flags = flags_from_filename(&name);
         filename_warnings(&name).is_empty()
-            && threshold_from_filename(&name) == Some(split.threshold())
+            && threshold_from_filename(&name) == split.threshold
             && pause_from_filename(&name) == split.pause
-            && delay_time_from_filename(&name).unwrap_or(default_delay) == i64::from(split.delay)
+            && delay_time_from_filename(&name) == split.delay.map(i64::from)
             && (defaults.is_none() || comparison_method_from_filename(&name) == Some(0))
             && (flags & DUMMY_FLAG != 0) == split.dummy
             && (flags & BELOW_FLAG != 0) == split.below
@@ -205,20 +204,13 @@ fn splits_compared_together_share_a_number() {
     // Assert: the second reset image takes no number, so there are 4
     assert_eq!(
         names,
-        [
-            "start_auto_splitter_(0.95).png",
-            "reset_(0.95).png",
-            "reset_2_(0.95).png",
-            "2_Boss_(0.95).png",
-            "2_Boss Alt_(0.95).png",
-            "3_Door_(0.95).png"
-        ]
+        ["start_auto_splitter.png", "reset.png", "reset_2.png", "2_Boss.png", "2_Boss Alt.png", "3_Door.png"]
     );
 }
 
-#[test_case(&["+Boss", "Door"] => vec!["0_Boss_(0.95).png", "1_Door_(0.95).png"]; "first split")]
-#[test_case(&["reset", "+Boss"] => vec!["reset_(0.95).png", "1_Boss_(0.95).png"]; "after a reset image")]
-#[test_case(&["Boss", "+reset"] => vec!["0_Boss_(0.95).png", "reset_(0.95).png"]; "reset image")]
+#[test_case(&["+Boss", "Door"] => vec!["0_Boss.png", "1_Door.png"]; "first split")]
+#[test_case(&["reset", "+Boss"] => vec!["reset.png", "1_Boss.png"]; "after a reset image")]
+#[test_case(&["Boss", "+reset"] => vec!["0_Boss.png", "reset.png"]; "reset image")]
 fn compared_with_the_split_before_needs_a_split_before(names: &[&str]) -> Vec<String> {
     // Act, with the expected value checked by test_case
     grouped_preset(names).file_names(None)

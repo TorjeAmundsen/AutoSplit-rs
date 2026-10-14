@@ -54,11 +54,11 @@ fn a_new_preset_can_be_saved() {
     assert_eq!((draft.can_save(), names(&draft), draft.preset.game.as_str()), (true, vec!["Split1"], "Game"));
 }
 
-#[test_case(0.95 => None; "default isn't written")]
-#[test_case(0.9 => Some(0.9); "own threshold")]
-#[test_case(0.934 => Some(0.93); "rounded like the spin box")]
-#[test_case(1.5 => Some(1.0); "at most 1")]
-fn thresholds_leave_the_default_out(threshold: f64) -> Option<f64> {
+#[test_case(None => None; "the profile's")]
+#[test_case(Some(0.95) => Some(0.95); "its own, also like the profile's")]
+#[test_case(Some(0.934) => Some(0.93); "rounded like the spin box")]
+#[test_case(Some(1.5) => Some(1.0); "at most 1")]
+fn thresholds_are_the_splits_own_or_the_profiles(threshold: Option<f64>) -> Option<f64> {
     // Arrange
     let mut draft = draft(&["Boss"]);
 
@@ -219,7 +219,7 @@ fn a_pause_from_a_field_names_the_file_as_typed() {
     draft.edit_split(0, SplitEdit::Pause(Some(field_value(1.3))));
 
     // Assert
-    assert_eq!(draft.preset.file_names(None), ["0_Boss_(0.95)_[1.3].png"]);
+    assert_eq!(draft.preset.file_names(None), ["0_Boss_[1.3].png"]);
 }
 
 /// The problems of each split, by index, without the preset's.
@@ -553,9 +553,10 @@ fn the_list_has_every_problem_with_its_split() {
     assert_eq!((list.as_str(), flags), ("- Door: It needs a mask. Choose one.", vec![false, true]));
 }
 
-#[test_case(1000.4 => 1000; "rounded")]
-#[test_case(-5.0 => 0; "never below zero")]
-fn delays_are_whole_milliseconds(delay: f64) -> u32 {
+#[test_case(Some(1000.4) => Some(1000); "rounded")]
+#[test_case(Some(-5.0) => Some(0); "never below zero")]
+#[test_case(None => None; "the profile's")]
+fn delays_are_whole_milliseconds(delay: Option<f64>) -> Option<u32> {
     // Arrange
     let mut draft = draft(&["Boss"]);
 

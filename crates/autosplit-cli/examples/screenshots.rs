@@ -266,7 +266,9 @@ fn main() {
     maker.set_edit_name("No Wrong Warp".into());
     maker.set_has_split(true);
     maker.set_split_name("EnterDeku".into());
+    maker.set_has_threshold(true);
     maker.set_threshold(0.92);
+    maker.set_has_delay(true);
     maker.set_delay(1000.0);
     maker.set_has_pause(true);
     maker.set_pause(60.0);
@@ -288,7 +290,7 @@ fn main() {
     maker.set_problems("Split1: It needs a mask. Choose one.".into());
     maker.set_has_problems(true);
     maker.set_can_delete_preset(true);
-    save(&window, PhysicalSize::new(828, 672), &folder.join("maker-edit.png"));
+    save(&window, PhysicalSize::new(828, 730), &folder.join("maker-edit.png"));
     // A long problem wraps under the name
     maker.set_form(SplitForm {
         name_problem: "It has the same name as a split it's compared together with. Give it another name.".into(),
@@ -296,7 +298,7 @@ fn main() {
         mask_problem: "It needs a mask. Choose one.".into(),
         ..maker.get_form()
     });
-    save(&window, PhysicalSize::new(828, 672), &folder.join("maker-edit-problem.png"));
+    save(&window, PhysicalSize::new(828, 730), &folder.join("maker-edit-problem.png"));
     maker.hide().unwrap();
 
     let instructions = InstructionsWindow::new().unwrap();

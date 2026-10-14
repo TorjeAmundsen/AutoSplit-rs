@@ -14,8 +14,6 @@ use crate::split_image::SplitDefaults;
 pub const PRESET_FILE: &str = "preset.toml";
 /// The file a splits library folder has its splits in.
 pub const LIBRARY_FILE: &str = "splits.toml";
-/// The threshold of a split that doesn't set one.
-pub const DEFAULT_THRESHOLD: f64 = 0.95;
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -41,14 +39,15 @@ pub struct PresetSplit {
     /// The mask's PNG, relative to the preset's folder. Where its alpha is 255, the screenshot is
     /// kept.
     pub mask: String,
+    /// Without one, the profile's default similarity threshold applies.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub threshold: Option<f64>,
-    /// Seconds. Without one, AutoSplit's default pause time applies.
+    /// Seconds. Without one, the profile's default pause time applies.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pause: Option<f64>,
-    /// Milliseconds.
-    #[serde(default, skip_serializing_if = "is_default")]
-    pub delay: u32,
+    /// Milliseconds. Without one, the profile's default delay time applies.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub delay: Option<u32>,
     #[serde(default, skip_serializing_if = "is_default")]
     pub dummy: bool,
     /// Splits once the similarity drops back below the threshold, `{b}`.
@@ -64,10 +63,6 @@ pub struct PresetSplit {
 }
 
 impl PresetSplit {
-    pub fn threshold(&self) -> f64 {
-        self.threshold.unwrap_or(DEFAULT_THRESHOLD)
-    }
-
     /// Whether it makes the reset or start image.
     pub fn is_keyword(&self) -> bool {
         self.name == RESET_KEYWORD || self.name == START_KEYWORD
@@ -77,7 +72,7 @@ impl PresetSplit {
     pub fn spec(&self) -> SplitSpec<'_> {
         SplitSpec {
             name: &self.name,
-            threshold: self.threshold(),
+            threshold: self.threshold,
             pause: self.pause,
             delay: self.delay,
             dummy: self.dummy,

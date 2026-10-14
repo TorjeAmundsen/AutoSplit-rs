@@ -2,7 +2,7 @@
 //! window's other per-split lists in step, and what has to be fixed before it can be saved.
 
 use autosplit_core::filename::{RESET_KEYWORD, START_KEYWORD, validate_split_name};
-use autosplit_core::preset::{DEFAULT_THRESHOLD, Preset, PresetSplit};
+use autosplit_core::preset::{Preset, PresetSplit};
 use autosplit_core::split_folder::MAX_GROUP_SIZE;
 
 /// A number field's value as the number it shows: `1.3` stays 1.3 instead of becoming
@@ -84,11 +84,12 @@ pub enum SplitEdit {
     Name(String),
     /// A path relative to the preset's folder, or a picked file's absolute path.
     Mask(String),
-    Threshold(f64),
-    /// Seconds, or `None` for AutoSplit's default pause time.
+    /// `None` for the profile's default similarity threshold.
+    Threshold(Option<f64>),
+    /// Seconds, or `None` for the profile's default pause time.
     Pause(Option<f64>),
-    /// Milliseconds, rounded to whole ones.
-    Delay(f64),
+    /// Milliseconds, rounded to whole ones, or `None` for the profile's default delay time.
+    Delay(Option<f64>),
     Dummy(bool),
     Below(bool),
     /// Compared for the same split as the split before it.
@@ -200,13 +201,12 @@ impl Draft {
             SplitEdit::Name(name) => split.name = name,
             SplitEdit::Mask(mask) => split.mask = mask,
             // The default isn't written, so the preset keeps following it
+            // Two decimals, like the spin boxes and the profile's defaults
             SplitEdit::Threshold(threshold) => {
-                let threshold = (threshold.clamp(0.0, 1.0) * 100.0).round() / 100.0;
-                split.threshold = (threshold != DEFAULT_THRESHOLD).then_some(threshold);
+                split.threshold = threshold.map(|threshold| (threshold.clamp(0.0, 1.0) * 100.0).round() / 100.0);
             }
-            // Two decimals, like the profile's default pause time
             SplitEdit::Pause(pause) => split.pause = pause.map(|pause| (pause.max(0.0) * 100.0).round() / 100.0),
-            SplitEdit::Delay(delay) => split.delay = delay.max(0.0).round() as u32,
+            SplitEdit::Delay(delay) => split.delay = delay.map(|delay| delay.max(0.0).round() as u32),
             SplitEdit::Dummy(on) => split.dummy = on,
             SplitEdit::Below(on) => split.below = on,
             SplitEdit::WithPrevious(on) => split.with_previous = on,

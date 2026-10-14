@@ -434,18 +434,20 @@ fn flags_meaning(flags: u32) -> String {
 pub struct SplitSpec<'a> {
     /// `reset` and `start_auto_splitter` make the reset and start images.
     pub name: &'a str,
-    pub threshold: f64,
-    /// Seconds, or `None` for AutoSplit's default pause time.
+    /// `None` for the profile's default similarity threshold.
+    pub threshold: Option<f64>,
+    /// Seconds, or `None` for the profile's default pause time.
     pub pause: Option<f64>,
-    /// Milliseconds.
-    pub delay: u32,
+    /// Milliseconds, or `None` for the profile's default delay time.
+    pub delay: Option<u32>,
     pub dummy: bool,
     pub below: bool,
 }
 
-/// The file name of split image `index` (from 0) of `count`, like AutoMask names them. With the
-/// profile's `defaults`, it leaves out a delay the profile already has, and asks for L2 Norm,
-/// which presets are made for, when the profile compares another way.
+/// The file name of split image `index` (from 0) of `count`, like AutoMask names them. Only the
+/// settings the split has are in it, so the others are the profile's. With the profile's
+/// `defaults`, it asks for L2 Norm, which presets are made for, when the profile compares another
+/// way.
 ///
 /// `reset_(0.96)_[0.1].png`, `05_Bottle_(0.93)_[35]_#1100#_{b}.png`: the number has as many
 /// digits as `count`, so the images sort in order.
@@ -454,13 +456,14 @@ pub fn build_filename(spec: &SplitSpec, index: usize, count: usize, defaults: Op
         START_KEYWORD | RESET_KEYWORD => spec.name.to_owned(),
         _ => format!("{index:0width$}_{}", spec.name, width = count.to_string().len()),
     };
-    name += &format!("_({})", spec.threshold);
+    if let Some(threshold) = spec.threshold {
+        name += &format!("_({threshold})");
+    }
     if let Some(pause) = spec.pause {
         name += &format!("_[{pause}]");
     }
-    let default_delay = defaults.map_or(0, |defaults| defaults.delay_time);
-    if i64::from(spec.delay) != default_delay {
-        name += &format!("_#{}#", spec.delay);
+    if let Some(delay) = spec.delay {
+        name += &format!("_#{delay}#");
     }
     if defaults.is_some_and(|defaults| defaults.comparison_method != ComparisonMethod::L2Norm.index()) {
         name += "_^0^";

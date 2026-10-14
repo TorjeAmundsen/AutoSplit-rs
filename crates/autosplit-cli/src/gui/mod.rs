@@ -536,6 +536,7 @@ impl Gui {
         let folder = state.document.folder(&exe_folder());
         drop(state);
         self.send(UiCommand::SetProfile { profile, folder, loaded });
+        self.maker_follows_profile();
     }
 
     /// The profile changed in a way the windows show elsewhere too.

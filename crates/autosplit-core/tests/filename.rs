@@ -170,7 +170,7 @@ fn name_parts_keep_the_whole_name() {
 }
 
 const SPEC: SplitSpec =
-    SplitSpec { name: "Bottle", threshold: 0.93, pause: None, delay: 0, dummy: false, below: false };
+    SplitSpec { name: "Bottle", threshold: Some(0.93), pause: None, delay: None, dummy: false, below: false };
 
 fn defaults(delay_time: i64, comparison_method: i64) -> SplitDefaults {
     SplitDefaults { comparison_method, similarity_threshold: 0.9, delay_time, pause_time: 10.0, fps_limit: 60 }
@@ -180,10 +180,12 @@ fn defaults(delay_time: i64, comparison_method: i64) -> SplitDefaults {
 #[test_case(SPEC, 5, 9, None => "5_Bottle_(0.93).png"; "one digit")]
 #[test_case(SplitSpec { name: "reset", pause: Some(0.1), ..SPEC }, 0, 20, None => "reset_(0.93)_[0.1].png"; "reset image without a number")]
 #[test_case(SplitSpec { name: "start_auto_splitter", pause: Some(10.0), below: true, ..SPEC }, 1, 20, None => "start_auto_splitter_(0.93)_[10]_{b}.png"; "start image")]
-#[test_case(SplitSpec { pause: Some(35.0), delay: 1100, below: true, ..SPEC }, 5, 20, None => "05_Bottle_(0.93)_[35]_#1100#_{b}.png"; "every setting")]
+#[test_case(SplitSpec { pause: Some(35.0), delay: Some(1100), below: true, ..SPEC }, 5, 20, None => "05_Bottle_(0.93)_[35]_#1100#_{b}.png"; "every setting")]
+#[test_case(SplitSpec { threshold: None, ..SPEC }, 5, 20, None => "05_Bottle.png"; "the profile's threshold")]
 #[test_case(SplitSpec { dummy: true, below: true, ..SPEC }, 5, 20, None => "05_Bottle_(0.93)_{db}.png"; "flags in one group")]
-#[test_case(SPEC, 5, 20, Some(defaults(500, 0)) => "05_Bottle_(0.93)_#0#.png"; "no delay against the profile's")]
-#[test_case(SplitSpec { delay: 500, ..SPEC }, 5, 20, Some(defaults(500, 0)) => "05_Bottle_(0.93).png"; "the profile's delay")]
+#[test_case(SPEC, 5, 20, Some(defaults(500, 0)) => "05_Bottle_(0.93).png"; "the profile's delay")]
+#[test_case(SplitSpec { delay: Some(500), ..SPEC }, 5, 20, Some(defaults(500, 0)) => "05_Bottle_(0.93)_#500#.png"; "its own delay, like the profile's")]
+#[test_case(SplitSpec { delay: Some(0), ..SPEC }, 5, 20, Some(defaults(500, 0)) => "05_Bottle_(0.93)_#0#.png"; "no delay against the profile's")]
 #[test_case(SPEC, 5, 20, Some(defaults(0, 2)) => "05_Bottle_(0.93)_^0^.png"; "l2 norm against the profile's method")]
 fn builds_file_names_like_automask(
     spec: SplitSpec,

@@ -57,7 +57,10 @@ export component SplitFormPanel inherits VerticalLayout {
     in property <int> form-generation;
     in-out property <string> split-name;
     in-out property <int> split-kind;
+    // Unticked, the profile's default applies, which the value shows
+    in-out property <bool> has-threshold;
     in-out property <float> threshold;
+    in-out property <bool> has-delay;
     in-out property <float> delay;
     in-out property <bool> has-pause;
     in-out property <float> pause;
@@ -140,7 +143,7 @@ export component SplitFormPanel inherits VerticalLayout {
             Label {
                 horizontal-stretch: 1;
                 color: root.form.mask-problem != "" ? Theme.error : root.form.mask == "" ? Theme.secondary-text : Theme.text;
-                text: root.form.mask-problem != "" ? root.form.mask-problem : root.form.mask == "" ? "None yet" : root.form.mask;
+                text: root.form.mask == "" ? "None yet" : root.form.mask;
 
                 Tooltip {
                     Tip {
@@ -158,6 +161,11 @@ export component SplitFormPanel inherits VerticalLayout {
             }
         }
 
+        if root.has-split && root.form.mask-problem != "": FieldProblem {
+            label-width: root.label-width;
+            text: root.form.mask-problem;
+        }
+
         if root.has-split && root.form.mask-copied: FieldProblem {
             label-width: root.label-width;
             color: Theme.secondary-text;
@@ -168,11 +176,20 @@ export component SplitFormPanel inherits VerticalLayout {
             height: 24px;
             spacing: 6px;
 
-            Label {
+            CheckBox {
                 width: root.label-width;
-                text: "Threshold:";
+                text: "Threshold";
+                checked <=> root.has-threshold;
+                toggled => { root.split-edited(SplitField.threshold); }
+
+                Tooltip {
+                    Tip {
+                        text: "How similar the capture has to be to split. Unchecked uses the profile's default similarity threshold.";
+                    }
+                }
             }
 
+            // Editing the value ticks the box, so it's the split's own
             SpinBox {
                 width: 64px;
                 height: 22px;
@@ -182,17 +199,30 @@ export component SplitFormPanel inherits VerticalLayout {
                 decimals: 2;
                 generation: root.form-generation;
                 value <=> root.threshold;
-                edited => { root.split-edited(SplitField.threshold); }
+                edited => {
+                    root.has-threshold = true;
+                    root.split-edited(SplitField.threshold);
+                }
             }
 
-            Label {
-                horizontal-alignment: right;
+            Rectangle {
                 horizontal-stretch: 1;
-                text: "Delay:";
+            }
+        }
+
+        if root.has-split: HorizontalLayout {
+            height: 24px;
+            spacing: 6px;
+
+            CheckBox {
+                width: root.label-width;
+                text: "Delay";
+                checked <=> root.has-delay;
+                toggled => { root.split-edited(SplitField.delay); }
 
                 Tooltip {
                     Tip {
-                        text: "How long to wait after the image matches before splitting";
+                        text: "How long to wait after the image matches before splitting. Unchecked uses the profile's default delay time.";
                     }
                 }
             }
@@ -205,7 +235,10 @@ export component SplitFormPanel inherits VerticalLayout {
                 step: 100;
                 generation: root.form-generation;
                 value <=> root.delay;
-                edited => { root.split-edited(SplitField.delay); }
+                edited => {
+                    root.has-delay = true;
+                    root.split-edited(SplitField.delay);
+                }
             }
 
             Label {
@@ -238,10 +271,12 @@ export component SplitFormPanel inherits VerticalLayout {
                 maximum: 3600;
                 step: 0.5;
                 decimals: 2;
-                enabled: root.has-pause;
                 generation: root.form-generation;
                 value <=> root.pause;
-                edited => { root.split-edited(SplitField.pause); }
+                edited => {
+                    root.has-pause = true;
+                    root.split-edited(SplitField.pause);
+                }
             }
 
             Label {
@@ -359,8 +394,10 @@ export component SplitFormPanel inherits VerticalLayout {
             text: "Saving copies it into the preset's savestates folder.";
         }
 
+        // Always a few lines, however much is above it
         if root.has-split: TextEdit {
             vertical-stretch: 1;
+            min-height: 60px;
             font-size: 12px;
             wrap: word-wrap;
             enabled: root.form.savestate != "";

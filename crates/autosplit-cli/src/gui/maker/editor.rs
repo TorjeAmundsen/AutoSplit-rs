@@ -118,7 +118,8 @@ impl Gui {
                 self.change_splits(|draft| draft.move_split(selected?, up));
             }
             _ if event.repeat => return false,
-            (Key::Named(NamedKey::Escape), held) if held.is_empty() => {
+            // An open dropdown list closes first
+            (Key::Named(NamedKey::Escape), held) if held.is_empty() && !self.windows.maker.get_list_showing() => {
                 self.unless_discarded(|gui| gui.cancel_editing());
             }
             // Otherwise a text field's own undo
@@ -271,8 +272,10 @@ impl Gui {
                 Some(&kind) => SplitEdit::Kind(kind),
                 None => return,
             },
-            SplitField::Threshold => SplitEdit::Threshold(field_value(window.get_threshold())),
-            SplitField::Delay => SplitEdit::Delay(field_value(window.get_delay())),
+            SplitField::Threshold => {
+                SplitEdit::Threshold(window.get_has_threshold().then(|| field_value(window.get_threshold())))
+            }
+            SplitField::Delay => SplitEdit::Delay(window.get_has_delay().then(|| field_value(window.get_delay()))),
             SplitField::Pause => SplitEdit::Pause(window.get_has_pause().then(|| field_value(window.get_pause()))),
             SplitField::Dummy => SplitEdit::Dummy(window.get_dummy()),
             SplitField::Below => SplitEdit::Below(window.get_below()),
@@ -346,7 +349,9 @@ impl Gui {
 
     /// Puts the selected split's fields in the form, when another split is selected.
     pub(super) fn show_form(&self) {
-        let pause_default = self.state.borrow().document.profile.default_pause_time;
+        let profile = &self.state.borrow().document.profile;
+        let defaults = (profile.default_similarity_threshold, profile.default_delay_time, profile.default_pause_time);
+        let (threshold_default, delay_default, pause_default) = defaults;
         let maker = self.maker.borrow();
         let Some(edit) = &maker.edit else { return };
         let Some(split) = edit.draft.preset.splits.get(maker.selected).cloned() else { return };
@@ -356,10 +361,12 @@ impl Gui {
         window.set_split_name(split.name.as_str().into());
         let kind = SplitKind::of(&split);
         window.set_split_kind(SplitKind::ALL.iter().position(|&each| each == kind).unwrap_or_default() as i32);
-        window.set_threshold(split.threshold() as f32);
-        window.set_delay(split.delay as f32);
+        // Unticked, they show the profile's defaults, which ticking or editing starts from
+        window.set_has_threshold(split.threshold.is_some());
+        window.set_threshold(split.threshold.unwrap_or(threshold_default) as f32);
+        window.set_has_delay(split.delay.is_some());
+        window.set_delay(split.delay.map_or(delay_default as f32, |delay| delay as f32));
         window.set_has_pause(split.pause.is_some());
-        // Turning the pause on starts from the profile's default
         window.set_pause(split.pause.unwrap_or(pause_default) as f32);
         window.set_dummy(split.dummy);
         window.set_below(split.below);

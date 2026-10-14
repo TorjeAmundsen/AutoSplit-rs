@@ -656,7 +656,17 @@ impl Gui {
     fn turn_on_grouping(&self) {
         self.state.borrow_mut().document.profile.group_split_images = true;
         self.profile_edited();
+    }
+
+    /// Shows what the profile decides in the window when it changes while the window is open,
+    /// like from Settings or LiveSplit: the file names, the output folder, whether grouping is on
+    /// and the defaults that unticked fields show.
+    pub(super) fn maker_follows_profile(&self) {
+        if !self.windows.maker.window().is_visible() {
+            return;
+        }
         self.show_maker();
+        self.show_form();
     }
 
     /// Opens the Live Tester on the selected split's split image.

@@ -3,7 +3,7 @@
 // the selected split's mask shown on the capture as it's changed.
 
 import { CheckBox, ScrollView } from "std-widgets.slint";
-import { Button, ComboBox, FileName, Label, NamePart, Preview, SavedCheck, TextField, Theme, Tip } from "widgets.slint";
+import { Button, ComboBox, FileName, Label, NamePart, OpenList, Preview, SavedCheck, TextField, Theme, Tip } from "widgets.slint";
 import { SplitField, SplitForm, SplitFormPanel } from "split_form.slint";
 
 export { SplitField, SplitForm }
@@ -35,6 +35,8 @@ export component MakerWindow inherits Window {
     default-font-size: 12px;
 
     in property <[string]> games;
+    // A dropdown's list is showing, which Escape closes first
+    out property <bool> list-showing: OpenList.showing;
     in-out property <int> game-index;
     // The chosen game's presets
     in property <[string]> presets;
@@ -84,8 +86,10 @@ export component MakerWindow inherits Window {
     // What the split is: 0 a split, 1 the start image, 2 a reset image, from kinds
     in-out property <int> split-kind;
     in property <[string]> kinds;
+    in-out property <bool> has-threshold;
     in-out property <float> threshold;
     // Milliseconds
+    in-out property <bool> has-delay;
     in-out property <float> delay;
     in-out property <bool> has-pause;
     // Seconds
@@ -138,7 +142,7 @@ export component MakerWindow inherits Window {
     // The split list's rows: the split's name over its file name, beside a picture
     property <length> row-height: 44px;
     // The form's labels, so the fields line up
-    property <length> label-width: 66px;
+    property <length> label-width: 88px;
 
     // Selects split `index`, scrolled into view
     public function pick(index: int) {
@@ -657,27 +661,38 @@ export component MakerWindow inherits Window {
 
                 // The selected split, in the space of the folder and the capture, which the
                 // output preview below shows masked as it's edited
-                if root.editing: SplitFormPanel {
-                    height: 326px;
-                    label-width: root.label-width;
-                    has-split: root.has-split;
-                    form: root.form;
-                    kinds: root.kinds;
-                    form-generation: root.form-generation;
-                    split-name <=> root.split-name;
-                    split-kind <=> root.split-kind;
-                    threshold <=> root.threshold;
-                    delay <=> root.delay;
-                    has-pause <=> root.has-pause;
-                    pause <=> root.pause;
-                    dummy <=> root.dummy;
-                    below <=> root.below;
-                    with-previous <=> root.with-previous;
-                    instructions <=> root.instructions;
-                    split-edited(field) => { root.split-edited(field); }
-                    choose-mask => { root.choose-mask(); }
-                    choose-savestate => { root.choose-savestate(); }
-                    clear-savestate => { root.clear-savestate(); }
+                // Scrolls when what it shows is taller than its space, like with many problems
+                if root.editing: form-scroll := ScrollView {
+                    height: 384px;
+                    content-height: max(self.visible-height, form-panel.preferred-height);
+                    content-width: self.visible-width;
+
+                    form-panel := SplitFormPanel {
+
+                        width: form-scroll.visible-width;
+                        height: form-scroll.content-height;
+                        label-width: root.label-width;
+                        has-split: root.has-split;
+                        form: root.form;
+                        kinds: root.kinds;
+                        form-generation: root.form-generation;
+                        split-name <=> root.split-name;
+                        split-kind <=> root.split-kind;
+                        has-threshold <=> root.has-threshold;
+                        threshold <=> root.threshold;
+                        has-delay <=> root.has-delay;
+                        delay <=> root.delay;
+                        has-pause <=> root.has-pause;
+                        pause <=> root.pause;
+                        dummy <=> root.dummy;
+                        below <=> root.below;
+                        with-previous <=> root.with-previous;
+                        instructions <=> root.instructions;
+                        split-edited(field) => { root.split-edited(field); }
+                        choose-mask => { root.choose-mask(); }
+                        choose-savestate => { root.choose-savestate(); }
+                        clear-savestate => { root.clear-savestate(); }
+                    }
                 }
 
                 HorizontalLayout {

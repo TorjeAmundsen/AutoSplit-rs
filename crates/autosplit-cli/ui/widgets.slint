@@ -47,6 +47,12 @@ export global WindowFocus {
     in-out property <bool> active: true;
 }
 
+// Whether a ComboBox's list is showing. Escape closes it then, not the window or what the window
+// would cancel with it, which Rust checks here.
+export global OpenList {
+    in-out property <bool> showing;
+}
+
 // A tooltip's content, drawn like Qt's: plain text in a box. Used as `Tooltip { Tip { text: ... } }`.
 // Slint draws tooltips inside the window and cuts off what's past its edge, so long text wraps at
 // a width that fits the narrowest windows that have tooltips, like Settings.
@@ -259,9 +265,14 @@ export component ComboBox inherits Rectangle {
     in-out property <int> current-index;
     in property <bool> enabled: true;
     callback selected(string);
+    property <bool> list-showing: popup.is-open;
     preferred-height: 24px;
     forward-focus: focus;
     accessible-role: combobox;
+
+    changed list-showing => {
+        OpenList.showing = self.list-showing;
+    }
     accessible-value: root.model[root.current-index];
 
     function select(index: int) {
