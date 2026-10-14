@@ -83,7 +83,7 @@ export component MakerWindow inherits Window {
     in-out property <int> preset-index;
     in property <[MakerRow]> rows;
     in-out property <int> selected: 0;
-    // Shown from its end when it's too long, since the end tells folders apart
+    // Shown from its end when it's too long, since the end tells folders apart. Empty for none
     in property <string> output-folder;
     in property <image> live-image;
     in property <string> live-message: "Waiting for capture device...";
@@ -604,6 +604,15 @@ export component MakerWindow inherits Window {
                             width: parent.width - 12px;
                             clip: true;
 
+                            // Short, so none of it is cut off
+                            if root.output-folder == "": Text {
+                                x: 0px;
+                                height: parent.height;
+                                vertical-alignment: center;
+                                color: Theme.secondary-text;
+                                text: "None yet. Use Browse...";
+                            }
+
                             // Too long, it's moved left so its end shows, measured as it's drawn
                             folder-text := Text {
                                 x: min(0px, parent.width - self.preferred-width);
@@ -631,7 +640,7 @@ export component MakerWindow inherits Window {
 
                         Tooltip {
                             Tip {
-                                text: root.output-folder;
+                                text: root.output-folder == "" ? "No split image folder yet. Pick one with Browse..., where the split images are saved." : root.output-folder;
                             }
                         }
                     }

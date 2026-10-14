@@ -484,11 +484,8 @@ impl Gui {
         self.maker_rows.set_vec(rows);
         let window = &self.windows.maker;
         let folder = self.split_image_folder();
-        let folder_text = match &folder {
-            Some(folder) => folder.display().to_string(),
-            None => "no split image folder, pick one with Browse...".into(),
-        };
-        window.set_output_folder(folder_text.into());
+        // Empty without one, which the window says
+        window.set_output_folder(folder.map(|folder| folder.display().to_string()).unwrap_or_default().into());
         // A preset with problems is only for fixing, so nothing's made from it
         let usable = summary.is_none();
         window.set_preset_problem(summary.unwrap_or_default().into());

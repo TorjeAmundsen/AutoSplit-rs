@@ -222,7 +222,11 @@ fn main() {
         "Boss Alt: It has the same name as a split it's compared together with. Give it another name.".into(),
     );
     maker.set_can_grab(false);
+    // And no split image folder yet
+    let output_folder = maker.get_output_folder();
+    maker.set_output_folder("".into());
     save(&window, PhysicalSize::new(828, 672), &folder.join("maker-problem.png"));
+    maker.set_output_folder(output_folder);
     maker.set_preset_problem("".into());
     maker.set_can_grab(true);
     maker.invoke_split_images_saved();
