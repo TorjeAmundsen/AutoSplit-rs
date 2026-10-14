@@ -40,6 +40,9 @@ pub(super) struct Editing {
     id: u64,
     /// The splits removed, the last one last.
     removed: Vec<Removal>,
+    /// How many times splits were added, removed or moved, so a file picked for a split while
+    /// they were, where the file dialog doesn't block the window, isn't given to another.
+    reorders: u64,
 }
 
 /// Whether saving copies a mask or savestate into the preset's folder: it was picked from
@@ -159,7 +162,7 @@ impl Gui {
         let (game, name) = (draft.preset.game.clone(), draft.preset.name.clone());
         maker.edits += 1;
         let id = maker.edits;
-        maker.edit = Some(Editing { draft, source, before, id, removed: Vec::new() });
+        maker.edit = Some(Editing { draft, source, before, id, removed: Vec::new(), reorders: 0 });
         let selected = maker.selected;
         drop(maker);
         self.show_edit_games(&game);
@@ -317,6 +320,7 @@ impl Gui {
         let mut maker = self.maker.borrow_mut();
         let Some(edit) = maker.edit.as_mut() else { return };
         let Some((select, change)) = change(&mut edit.draft) else { return };
+        edit.reorders += 1;
         change.mirror(&mut maker.splits);
         drop(maker);
         self.choose_split(select);
@@ -348,6 +352,7 @@ impl Gui {
         }
         let Some(removal) = edit.removed.pop() else { return false };
         edit.draft.preset = removal.before;
+        edit.reorders += 1;
         maker.restore(removal.kept);
         maker.live_mask = None;
         let selected = maker.selected;
@@ -438,8 +443,8 @@ impl Gui {
     fn choose_split_file(self: &Rc<Self>, savestate: bool) {
         let maker = self.maker.borrow();
         let Some(edit) = &maker.edit else { return };
-        // The split the file is for, while this same editing goes on
-        let (id, index) = (edit.id, maker.selected);
+        // The split the file is for, while this same editing goes on and the splits stay in place
+        let (id, reorders, index) = (edit.id, edit.reorders, maker.selected);
         // Without one yet, the preset's own folder
         let current = edit.draft.preset.splits.get(maker.selected).and_then(|split| {
             let path = if savestate { &split.savestate } else { &split.mask };
@@ -465,9 +470,18 @@ impl Gui {
                 .add_filter("All files", &["*"]);
         }
         self.when_picked(picker.pick_file(), move |gui, path| {
-            let same = gui.maker.borrow().edit.as_ref().is_some_and(|edit| edit.id == id);
+            let (same, in_place) = match &gui.maker.borrow().edit {
+                Some(edit) => (edit.id == id, edit.reorders == reorders),
+                None => (false, false),
+            };
             if !same {
                 return;
+            }
+            if !in_place {
+                let what = if savestate { "savestate" } else { "mask" };
+                let text =
+                    format!("The splits changed while the {what} was picked, so it wasn't used. Choose it again.");
+                return gui.show_message(Message::warning(text));
             }
             if !savestate && let Err(error) = Mask::open(&path) {
                 let text = format!("{} can't be a mask: {error}", path.display());
