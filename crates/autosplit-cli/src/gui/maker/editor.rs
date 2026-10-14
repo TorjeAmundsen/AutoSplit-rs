@@ -62,10 +62,7 @@ impl Gui {
         on!(weak, maker, on_new_preset, () gui => gui.start_editing(true));
         on!(weak, maker, on_game_edited, (text) gui => gui.edit_preset(|preset| preset.game = text.to_string()));
         on!(weak, maker, on_edit_game_chosen, (index) gui => gui.edit_game_chosen(index as usize));
-        on!(weak, maker, on_pick_game, () gui => {
-            gui.windows.maker.set_new_game(false);
-            gui.edit_game_chosen(gui.windows.maker.get_edit_game_index() as usize);
-        });
+        on!(weak, maker, on_pick_game, () gui => gui.pick_game());
         on!(weak, maker, on_name_edited, (text) gui => gui.edit_preset(|preset| preset.name = text.to_string()));
         let kinds: Vec<SharedString> = SplitKind::ALL.iter().map(|kind| kind.label().into()).collect();
         maker.set_kinds(ModelRc::new(VecModel::from(kinds)));
@@ -186,6 +183,20 @@ impl Gui {
         window.set_edit_game(game.into());
         window.set_edit_game_index(index.unwrap_or(0) as i32);
         window.set_new_game(index.is_none());
+    }
+
+    /// Back from typing a new game to the list: the game typed when it has presets, else the
+    /// chosen preset's, else the first. The list still has New game... picked, which is no game.
+    fn pick_game(&self) {
+        let window = &self.windows.maker;
+        let maker = self.maker.borrow();
+        let index = (maker.game_index(&window.get_edit_game()))
+            .or_else(|| maker.loaded().and_then(|loaded| maker.game_index(&loaded.preset.game)))
+            .unwrap_or(0);
+        drop(maker);
+        window.set_new_game(false);
+        window.set_edit_game_index(index as i32);
+        self.edit_game_chosen(index);
     }
 
     /// A game was picked for the preset, or New game..., the last, to type one.
