@@ -122,6 +122,10 @@ export component MakerWindow inherits Window {
     in property <bool> has-split;
     // What has to be fixed before saving, or that it's ready
     in property <string> problems;
+    // Every problem on a line of its own, with the split it's about
+    in property <string> problem-list;
+    // The split the problem line goes to when clicked: the next one with a problem, or -1
+    in property <int> problem-split: -1;
     in property <bool> has-problems;
     in property <bool> can-save-preset;
     // The preset is saved already, so there's a folder to delete
@@ -154,6 +158,7 @@ export component MakerWindow inherits Window {
     callback save-preset();
     callback save-preset-as-new();
     callback cancel-edit();
+    callback show-problems();
     callback delete-preset();
     callback turn-on-grouping();
 
@@ -1067,14 +1072,56 @@ export component MakerWindow inherits Window {
             height: 24px;
             spacing: 6px;
 
+            // Hovering shows every problem, clicking lists them in a message box
+            if root.has-problems: VerticalLayout {
+                alignment: center;
+
+                Rectangle {
+                    width: 16px;
+                    height: 16px;
+                    border-radius: 8px;
+                    background: Theme.error;
+
+                    Text {
+                        text: "!";
+                        color: white;
+                        font-weight: 700;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+
+                    TouchArea {
+                        mouse-cursor: MouseCursor.pointer;
+                        clicked => { root.show-problems(); }
+                    }
+
+                    Tooltip {
+                        Tip {
+                            text: root.problem-list;
+                        }
+                    }
+                }
+            }
+
             Label {
                 horizontal-stretch: 1;
                 color: root.has-problems ? Theme.error : Theme.secondary-text;
                 text: root.problems;
 
+                // Goes to the split with the problem, then the next one each click
+                TouchArea {
+                    enabled: root.problem-split >= 0;
+                    mouse-cursor: self.enabled ? MouseCursor.pointer : MouseCursor.default;
+                    clicked => {
+                        // Like clicking the list: a field being typed in commits first
+                        list-keys.focus();
+                        root.pick(root.problem-split);
+                    }
+                }
+
                 Tooltip {
                     Tip {
-                        text: root.problems;
+                        text: root.problem-list;
                     }
                 }
             }

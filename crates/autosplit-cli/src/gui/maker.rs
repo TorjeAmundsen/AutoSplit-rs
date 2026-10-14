@@ -199,6 +199,18 @@ fn problem_summary(preset: &Preset, problems: &[Problem]) -> Option<String> {
     Some(format!("{at}{}{more}", first.message))
 }
 
+/// Every one of `problems` as a list item with the split it's about, a blank line between them so
+/// a message that wraps reads as one. Empty when there are none.
+fn problem_list(preset: &Preset, problems: &[Problem]) -> String {
+    (problems.iter())
+        .map(|problem| match problem.split {
+            Some(index) => format!("- {}: {}", split_heading(preset, index), problem.message),
+            None => format!("- {}", problem.message),
+        })
+        .collect::<Vec<_>>()
+        .join("\n\n")
+}
+
 /// A game's name in the list of games.
 fn game_label(game: &str) -> SharedString {
     if game.is_empty() { "No game".into() } else { game.into() }

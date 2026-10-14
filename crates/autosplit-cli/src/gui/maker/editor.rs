@@ -12,8 +12,12 @@ use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
 use super::super::Gui;
 use super::super::messages::{Answer, Message};
 use super::super::preset_form::{Draft, Field, ListChange, Problem, SplitEdit, SplitKind, field_value};
+use super::super::recorder::key_character;
 use super::super::ui::SplitForm;
-use super::{Kept, canonical, presets_folder, problem_summary};
+use super::{Kept, canonical, presets_folder, problem_list, problem_summary};
+use autosplit_input::Modifiers;
+use slint::winit_030::winit::event::KeyEvent;
+use slint::winit_030::winit::keyboard::{Key, NamedKey};
 
 /// A preset being edited, with what the window had before, to go back to on Cancel.
 pub(super) struct Editing {
@@ -86,7 +90,46 @@ impl Gui {
         on!(weak, maker, on_save_preset, () gui => gui.save_draft(false));
         on!(weak, maker, on_save_preset_as_new, () gui => gui.save_draft(true));
         on!(weak, maker, on_cancel_edit, () gui => gui.unless_discarded(|gui| gui.stop_editing(true)));
+        on!(weak, maker, on_show_problems, () gui => gui.show_problems());
         on!(weak, maker, on_delete_preset, () gui => gui.ask_delete_preset());
+    }
+
+    /// Every problem of the preset being edited, in a message box.
+    fn show_problems(&self) {
+        let maker = self.maker.borrow();
+        let Some(edit) = &maker.edit else { return };
+        let list = problem_list(&edit.draft.preset, &edit.draft.problems());
+        drop(maker);
+        if !list.is_empty() {
+            self.show_message(Message::warning(format!("Fix these before saving:\n\n{list}")));
+        }
+    }
+
+    /// Escape cancels editing, Ctrl+S saves and Alt+Up and Alt+Down move the selected split, like
+    /// the buttons. Returns whether the key was one of them.
+    pub(in crate::gui) fn editor_shortcut(self: &Rc<Self>, event: &KeyEvent, held: Modifiers) -> bool {
+        if !self.editing() {
+            return false;
+        }
+        let character = key_character(event).map(|c| c.to_ascii_lowercase());
+        match (&event.logical_key, held) {
+            (Key::Named(NamedKey::ArrowUp | NamedKey::ArrowDown), Modifiers::ALT) => {
+                let up = event.logical_key == Key::Named(NamedKey::ArrowUp);
+                let selected = self.selected_split();
+                self.change_splits(|draft| draft.move_split(selected?, up));
+            }
+            _ if event.repeat => return false,
+            (Key::Named(NamedKey::Escape), held) if held.is_empty() => {
+                self.unless_discarded(|gui| gui.stop_editing(true));
+            }
+            (_, Modifiers::CONTROL) if character == Some('s') => {
+                if self.windows.maker.get_can_save_preset() {
+                    self.save_draft(false);
+                }
+            }
+            _ => return false,
+        }
+        true
     }
 
     pub(super) fn editing(&self) -> bool {
@@ -259,6 +302,11 @@ impl Gui {
             None => "No changes yet.".to_owned(),
         };
         window.set_problems(summary.into());
+        window.set_problem_list(problem_list(&edit.draft.preset, &problems).into());
+        // The next split with a problem after the selected one, from the top again after the last
+        let with_problems: Vec<usize> = problems.iter().filter_map(|problem| problem.split).collect();
+        let next = with_problems.iter().find(|&&index| index > selected).or(with_problems.first());
+        window.set_problem_split(next.map_or(-1, |&index| index as i32));
         window.set_has_problems(!problems.is_empty());
         window.set_can_save_preset(problems.is_empty() && edit.draft.can_save());
         window.set_can_delete_preset(edit.source.is_some());
@@ -308,8 +356,7 @@ impl Gui {
         let Some(edit) = &maker.edit else { return };
         let problems = edit.draft.problems();
         if !problems.is_empty() {
-            let list: Vec<&str> = problems.iter().map(|problem| problem.message.as_str()).collect();
-            let text = format!("Fix these before saving:\n\n{}", list.join("\n"));
+            let text = format!("Fix these before saving:\n\n{}", problem_list(&edit.draft.preset, &problems));
             drop(maker);
             return self.show_message(Message::error(text));
         }

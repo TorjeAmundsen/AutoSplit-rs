@@ -807,10 +807,24 @@ impl Gui {
             EventResult::Propagate
         });
 
+        // The preset editor's keys
         let weak = self.me.clone();
-        self.windows.maker.window().on_winit_window_event(move |_, event| match weak.upgrade() {
-            Some(gui) if gui.swallowed_while_blocked(event) => EventResult::PreventDefault,
-            _ => EventResult::Propagate,
+        let mut held = Modifiers::empty();
+        self.windows.maker.window().on_winit_window_event(move |_, event| {
+            let Some(gui) = weak.upgrade() else { return EventResult::Propagate };
+            if gui.swallowed_while_blocked(event) {
+                return EventResult::PreventDefault;
+            }
+            match event {
+                WindowEvent::ModifiersChanged(modifiers) => held = modifiers_held(modifiers.state()),
+                WindowEvent::KeyboardInput { event, .. }
+                    if event.state == ElementState::Pressed && gui.editor_shortcut(event, held) =>
+                {
+                    return EventResult::PreventDefault;
+                }
+                _ => {}
+            }
+            EventResult::Propagate
         });
     }
 
