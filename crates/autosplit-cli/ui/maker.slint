@@ -34,14 +34,22 @@ export struct SplitForm {
     group-problem: string,
     mask: string,
     savestate: string,
+    // Full paths, for the tooltips
+    mask-path: string,
+    savestate-path: string,
+    // Picked from outside the preset's folder, so saving copies it in
+    mask-copied: bool,
+    savestate-copied: bool,
     // There's a split above that it can be compared with
     can-join: bool,
 }
 
-// A field's problems under it, lined up with the field and wrapped so all of them show.
+// A field's problems under it, lined up with the field and wrapped so all of them show. Also a
+// note about the field, in another color.
 component FieldProblem inherits HorizontalLayout {
     in property <length> label-width;
     in property <string> text;
+    in property <color> color: Theme.error;
     spacing: 6px;
 
     Rectangle {
@@ -49,7 +57,7 @@ component FieldProblem inherits HorizontalLayout {
     }
 
     Text {
-        color: Theme.error;
+        color: root.color;
         text: root.text;
         wrap: word-wrap;
     }
@@ -720,7 +728,7 @@ export component MakerWindow inherits Window {
 
                             Tooltip {
                                 Tip {
-                                    text: "The part of the screen that's compared: where the mask is opaque. The output preview shows it on the capture.";
+                                    text: "The part of the screen that's compared: where the mask is opaque. The output preview shows it on the capture." + (root.form.mask-path == "" ? "" : "\n\n" + root.form.mask-path) + (root.form.mask-copied ? "\n\nSaving copies it into the preset's folder." : "");
                                 }
                             }
                         }
@@ -732,6 +740,12 @@ export component MakerWindow inherits Window {
                             primary: root.form.mask == "";
                             clicked => { root.choose-mask(); }
                         }
+                    }
+
+                    if root.has-split && root.form.mask-copied: FieldProblem {
+                        label-width: root.label-width;
+                        color: Theme.secondary-text;
+                        text: "Saving copies it into the preset's folder.";
                     }
 
                     if root.has-split: HorizontalLayout {
@@ -896,7 +910,7 @@ export component MakerWindow inherits Window {
 
                             Tooltip {
                                 Tip {
-                                    text: "A savestate at the split's screen, for taking its screenshot, made with a practice tool that loads savestates on the console, like gz for Ocarina of Time (.gzs). Copy Savestates puts them on the clipboard.";
+                                    text: "A savestate at the split's screen, for taking its screenshot, made with a practice tool that loads savestates on the console, like gz for Ocarina of Time (.gzs). Copy Savestates puts them on the clipboard." + (root.form.savestate-path == "" ? "" : "\n\n" + root.form.savestate-path) + (root.form.savestate-copied ? "\n\nSaving copies it into the preset's savestates folder." : "");
                                 }
                             }
                         }
@@ -915,6 +929,12 @@ export component MakerWindow inherits Window {
                             enabled: root.form.savestate != "";
                             clicked => { root.clear-savestate(); }
                         }
+                    }
+
+                    if root.has-split && root.form.savestate-copied: FieldProblem {
+                        label-width: root.label-width;
+                        color: Theme.secondary-text;
+                        text: "Saving copies it into the preset's savestates folder.";
                     }
 
                     if root.has-split: TextEdit {

@@ -269,6 +269,10 @@ fn main() {
         group_problem: "".into(),
         mask: "006_a_button_flip.png".into(),
         savestate: "006 enter deku.gzs".into(),
+        mask_path: "presets/No_Wrong_Warp/006_a_button_flip.png".into(),
+        savestate_path: "C:/Users/Runner/gz/006 enter deku.gzs".into(),
+        mask_copied: false,
+        savestate_copied: true,
         can_join: true,
     });
     maker.set_problems("Split1: It needs a mask. Choose one.".into());

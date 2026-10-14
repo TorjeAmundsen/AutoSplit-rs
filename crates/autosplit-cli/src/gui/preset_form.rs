@@ -203,6 +203,22 @@ impl Draft {
         }
     }
 
+    /// The extensions of the preset's savestates, in lowercase, each once in the order they come,
+    /// for picking another savestate of the game's practice tool.
+    pub fn savestate_extensions(&self) -> Vec<String> {
+        let mut extensions: Vec<String> = Vec::new();
+        for split in &self.preset.splits {
+            let extension = std::path::Path::new(&split.savestate).extension();
+            let Some(extension) = extension.map(|extension| extension.to_string_lossy().to_lowercase()) else {
+                continue;
+            };
+            if !extensions.contains(&extension) {
+                extensions.push(extension);
+            }
+        }
+        extensions
+    }
+
     /// `Split1`, `Split2` and so on, whichever no split has.
     fn free_split_name(&self) -> String {
         (1..)

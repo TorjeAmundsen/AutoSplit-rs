@@ -35,6 +35,18 @@ fn file_label(path: &str) -> String {
     Path::new(path).file_name().map_or_else(String::new, |name| name.to_string_lossy().into_owned())
 }
 
+/// Whether saving copies a mask or savestate into the preset's folder: it was picked from
+/// somewhere else. Paths in the preset are relative, and picked ones absolute.
+fn copied_in(source: Option<&Path>, path: &str) -> bool {
+    let path = Path::new(path);
+    path.is_absolute() && source.is_none_or(|source| !canonical(path).starts_with(canonical(source)))
+}
+
+/// A mask or savestate's full path, for its tooltip, or empty without one.
+fn shown_path(maker: &super::Maker, path: &str) -> String {
+    if path.is_empty() { String::new() } else { maker.file(path).display().to_string() }
+}
+
 impl Gui {
     pub(super) fn connect_editor(&self) {
         let weak = self.me.clone();
@@ -290,6 +302,10 @@ impl Gui {
                 group_problem: edit.draft.field_problems(selected, Field::Group).into(),
                 mask: file_label(&split.mask).into(),
                 savestate: file_label(&split.savestate).into(),
+                mask_path: shown_path(&maker, &split.mask).into(),
+                savestate_path: shown_path(&maker, &split.savestate).into(),
+                mask_copied: copied_in(edit.source.as_deref(), &split.mask),
+                savestate_copied: copied_in(edit.source.as_deref(), &split.savestate),
                 can_join: edit.draft.preset.can_join_previous(selected),
             });
             // Also when typing the name made it a start or reset image
@@ -329,12 +345,19 @@ impl Gui {
             .filter(|folder| folder.is_dir())
             .or_else(|| edit.source.clone())
             .unwrap_or_else(presets_folder);
+        let extensions = edit.draft.savestate_extensions();
         drop(maker);
-        let (title, dialog) =
-            if savestate { ("Select Savestate", None) } else { ("Select Mask", Some(("PNG image", ["png"]))) };
+        let title = if savestate { "Select Savestate" } else { "Select Mask" };
         let mut picker = self.file_dialog_over(title, self.windows.maker.window()).set_directory(folder);
-        if let Some((name, extensions)) = dialog {
-            picker = picker.add_filter(name, &extensions);
+        if !savestate {
+            picker = picker.add_filter("PNG image", &["png"]);
+        } else if !extensions.is_empty() {
+            // Any game's practice tool has its own kind, so the ones the preset has come first,
+            // and any file can still be picked
+            let patterns: Vec<String> = extensions.iter().map(|extension| format!("*.{extension}")).collect();
+            picker = picker
+                .add_filter(format!("Savestates ({})", patterns.join(", ")), &extensions)
+                .add_filter("All files", &["*"]);
         }
         self.when_picked(picker.pick_file(), move |gui, path| {
             let same = gui.maker.borrow().edit.as_ref().is_some_and(|edit| edit.id == id);

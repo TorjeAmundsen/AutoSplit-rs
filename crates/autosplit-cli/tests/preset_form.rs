@@ -482,3 +482,18 @@ fn a_reset_image_made_a_split_gets_a_name_of_its_own() {
     // Assert
     assert_eq!((names(&draft), SplitKind::of(&draft.preset.splits[0])), (vec!["Split2", "Split1"], SplitKind::Split));
 }
+
+#[test]
+fn savestate_extensions_are_the_presets_own() {
+    // Arrange: two kinds, one twice and in another case, and a split without one
+    let mut draft = draft(&["A", "B", "C", "D"]);
+    for (index, savestate) in ["a.abc", "", "b.EFG", "c.abc"].into_iter().enumerate() {
+        draft.edit_split(index, SplitEdit::Savestate(savestate.into()));
+    }
+
+    // Act
+    let extensions = draft.savestate_extensions();
+
+    // Assert
+    assert_eq!(extensions, ["abc", "efg"]);
+}
