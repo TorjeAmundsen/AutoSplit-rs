@@ -2,8 +2,11 @@
 // AutoSplit reads them, into the split image folder. Edit switches it to editing the preset, with
 // the selected split's mask shown on the capture as it's changed.
 
-import { CheckBox, ScrollView, TextEdit } from "std-widgets.slint";
-import { Button, ComboBox, FileName, Label, NamePart, Preview, SavedCheck, SpinBox, TextField, Theme, Tip } from "widgets.slint";
+import { CheckBox, ScrollView } from "std-widgets.slint";
+import { Button, ComboBox, FileName, Label, NamePart, Preview, SavedCheck, TextField, Theme, Tip } from "widgets.slint";
+import { SplitField, SplitForm, SplitFormPanel } from "split_form.slint";
+
+export { SplitField, SplitForm }
 
 // A split of the preset, with the file name it gets and where its screenshot comes from.
 export struct MakerRow {
@@ -24,51 +27,6 @@ export struct MakerRow {
     joined: bool,
     // Every other split, or group of splits compared together, is shaded
     shaded: bool,
-}
-
-// What the form shows of the selected split besides its fields, while editing.
-// A field of the split form, which says it was edited. Its value is in its property.
-export enum SplitField { name, kind, threshold, delay, pause, dummy, below, with-previous, instructions }
-
-export struct SplitForm {
-    // What has to be fixed in each field, one problem a line, or empty
-    name-problem: string,
-    mask-problem: string,
-    group-problem: string,
-    mask: string,
-    savestate: string,
-    // Full paths, for the tooltips
-    mask-path: string,
-    savestate-path: string,
-    // Picked from outside the preset's folder, so saving copies it in
-    mask-copied: bool,
-    savestate-copied: bool,
-    // Compared together with others, or a second reset or start image, which the profile has
-    // turned off
-    grouping-off: bool,
-    // There's a split above that it can be compared with
-    can-join: bool,
-    // Why not, for the greyed out checkbox's tooltip
-    why-not-joined: string,
-}
-
-// A field's problems under it, lined up with the field and wrapped so all of them show. Also a
-// note about the field, in another color.
-component FieldProblem inherits HorizontalLayout {
-    in property <length> label-width;
-    in property <string> text;
-    in property <color> color: Theme.error;
-    spacing: 6px;
-
-    Rectangle {
-        width: root.label-width;
-    }
-
-    Text {
-        color: root.color;
-        text: root.text;
-        wrap: word-wrap;
-    }
 }
 
 export component MakerWindow inherits Window {
@@ -699,307 +657,27 @@ export component MakerWindow inherits Window {
 
                 // The selected split, in the space of the folder and the capture, which the
                 // output preview below shows masked as it's edited
-                if root.editing: VerticalLayout {
+                if root.editing: SplitFormPanel {
                     height: 326px;
-                    spacing: 6px;
-
-                    if !root.has-split: Label {
-                        vertical-stretch: 1;
-                        horizontal-alignment: center;
-                        color: Theme.secondary-text;
-                        text: "Add a split to edit it.";
-                    }
-
-                    if root.has-split: HorizontalLayout {
-                        height: 24px;
-                        spacing: 6px;
-
-                        Label {
-                            width: root.label-width;
-                            text: "Type:";
-                        }
-
-                        ComboBox {
-                            width: 140px;
-                            model: root.kinds;
-                            current-index <=> root.split-kind;
-                            selected => { root.split-edited(SplitField.kind); }
-
-                            Tooltip {
-                                Tip {
-                                    text: "A split, or the image that starts the timer or resets the run. AutoSplit reads it from the name, start_auto_splitter or reset, which this sets.";
-                                }
-                            }
-                        }
-
-                        Rectangle {
-                            horizontal-stretch: 1;
-                        }
-                    }
-
-                    if root.has-split: HorizontalLayout {
-                        height: 24px;
-                        spacing: 6px;
-
-                        Label {
-                            width: root.label-width;
-                            text: "Name:";
-                        }
-
-                        // A start or reset image's name is what makes it one
-                        TextField {
-                            error: root.form.name-problem != "";
-                            enabled: root.split-kind == 0;
-                            text <=> root.split-name;
-                            edited => { root.split-edited(SplitField.name); }
-                        }
-                    }
-
-                    if root.has-split && root.form.name-problem != "": FieldProblem {
-                        label-width: root.label-width;
-                        text: root.form.name-problem;
-                    }
-
-                    if root.has-split: HorizontalLayout {
-                        height: 24px;
-                        spacing: 6px;
-
-                        Label {
-                            width: root.label-width;
-                            text: "Mask:";
-                        }
-
-                        Label {
-                            horizontal-stretch: 1;
-                            color: root.form.mask-problem != "" ? Theme.error : root.form.mask == "" ? Theme.secondary-text : Theme.text;
-                            text: root.form.mask-problem != "" ? root.form.mask-problem : root.form.mask == "" ? "None yet" : root.form.mask;
-
-                            Tooltip {
-                                Tip {
-                                    text: "The part of the screen that's compared: where the mask is opaque. The output preview shows it on the capture." + (root.form.mask-path == "" ? "" : "\n\n" + root.form.mask-path) + (root.form.mask-copied ? "\n\nSaving copies it into the preset's folder." : "");
-                                }
-                            }
-                        }
-
-                        Button {
-                            width: 80px;
-                            height: 24px;
-                            text: "Choose...";
-                            primary: root.form.mask == "";
-                            clicked => { root.choose-mask(); }
-                        }
-                    }
-
-                    if root.has-split && root.form.mask-copied: FieldProblem {
-                        label-width: root.label-width;
-                        color: Theme.secondary-text;
-                        text: "Saving copies it into the preset's folder.";
-                    }
-
-                    if root.has-split: HorizontalLayout {
-                        height: 24px;
-                        spacing: 6px;
-
-                        Label {
-                            width: root.label-width;
-                            text: "Threshold:";
-                        }
-
-                        SpinBox {
-                            width: 64px;
-                            height: 22px;
-                            minimum: 0;
-                            maximum: 1;
-                            step: 0.01;
-                            decimals: 2;
-                            generation: root.form-generation;
-                            value <=> root.threshold;
-                            edited => { root.split-edited(SplitField.threshold); }
-                        }
-
-                        Label {
-                            horizontal-alignment: right;
-                            horizontal-stretch: 1;
-                            text: "Delay:";
-
-                            Tooltip {
-                                Tip {
-                                    text: "How long to wait after the image matches before splitting";
-                                }
-                            }
-                        }
-
-                        SpinBox {
-                            width: 74px;
-                            height: 22px;
-                            minimum: 0;
-                            maximum: 600000;
-                            step: 100;
-                            generation: root.form-generation;
-                            value <=> root.delay;
-                            edited => { root.split-edited(SplitField.delay); }
-                        }
-
-                        Label {
-                            width: 20px;
-                            text: "ms";
-                        }
-                    }
-
-                    if root.has-split: HorizontalLayout {
-                        height: 24px;
-                        spacing: 6px;
-
-                        CheckBox {
-                            width: root.label-width;
-                            text: "Pause";
-                            checked <=> root.has-pause;
-                            toggled => { root.split-edited(SplitField.pause); }
-
-                            Tooltip {
-                                Tip {
-                                    text: "How long to stop comparing after the split. Unchecked uses the profile's default pause time.";
-                                }
-                            }
-                        }
-
-                        SpinBox {
-                            width: 64px;
-                            height: 22px;
-                            minimum: 0;
-                            maximum: 3600;
-                            step: 0.5;
-                            decimals: 2;
-                            enabled: root.has-pause;
-                            generation: root.form-generation;
-                            value <=> root.pause;
-                            edited => { root.split-edited(SplitField.pause); }
-                        }
-
-                        Label {
-                            color: root.has-pause ? Theme.text : Theme.secondary-text;
-                            text: root.has-pause ? "seconds" : "the profile's default";
-                        }
-                    }
-
-                    if root.has-split: HorizontalLayout {
-                        height: 24px;
-                        spacing: 12px;
-
-                        Rectangle {
-                            width: root.label-width - 6px;
-                        }
-
-                        CheckBox {
-                            text: "Dummy";
-                            checked <=> root.dummy;
-                            toggled => { root.split-edited(SplitField.dummy); }
-
-                            Tooltip {
-                                Tip {
-                                    text: "Matching it moves on to the next image without splitting, for screens that come before the real split";
-                                }
-                            }
-                        }
-
-                        CheckBox {
-                            text: "Split below threshold";
-                            checked <=> root.below;
-                            toggled => { root.split-edited(SplitField.below); }
-
-                            Tooltip {
-                                Tip {
-                                    text: "Split when the similarity drops back below the threshold after reaching it, like when a screen goes away";
-                                }
-                            }
-                        }
-                    }
-
-                    if root.has-split: HorizontalLayout {
-                        height: 24px;
-                        spacing: 12px;
-
-                        Rectangle {
-                            width: root.label-width - 6px;
-                        }
-
-                        CheckBox {
-                            text: "Same split as the one above";
-                            enabled: root.form.can-join || root.with-previous;
-                            checked <=> root.with-previous;
-                            toggled => { root.split-edited(SplitField.with-previous); }
-
-                            Tooltip {
-                                Tip {
-                                    text: (root.form.why-not-joined == "" ? "" : root.form.why-not-joined + "\n\n") + "Compare it for the same split as the split above, so either one matching splits, like a boss that dies in one of two rooms. They get the same number. Up to 4 splits together. Needs Compare images with the same number for one split, in Settings.";
-                                }
-                            }
-                        }
-                    }
-
-                    if root.has-split && root.form.group-problem != "": FieldProblem {
-                        label-width: root.label-width;
-                        text: root.form.group-problem;
-                    }
-
-                    if root.has-split && root.form.group-problem == "" && root.form.grouping-off: FieldProblem {
-                        label-width: root.label-width;
-                        color: Theme.secondary-text;
-                        text: "The profile has comparing several images for one split turned off. Generate Profile..., or Turn It On after saving, turns it on.";
-                    }
-
-                    if root.has-split: HorizontalLayout {
-                        height: 24px;
-                        spacing: 6px;
-
-                        Label {
-                            width: root.label-width;
-                            text: "Savestate:";
-                        }
-
-                        Label {
-                            horizontal-stretch: 1;
-                            color: root.form.savestate == "" ? Theme.secondary-text : Theme.text;
-                            text: root.form.savestate == "" ? "None" : root.form.savestate;
-
-                            Tooltip {
-                                Tip {
-                                    text: "A savestate at the split's screen, for taking its screenshot, made with a practice tool that loads savestates on the console, like gz for Ocarina of Time (.gzs). Copy Savestates puts them on the clipboard." + (root.form.savestate-path == "" ? "" : "\n\n" + root.form.savestate-path) + (root.form.savestate-copied ? "\n\nSaving copies it into the preset's savestates folder." : "");
-                                }
-                            }
-                        }
-
-                        Button {
-                            width: 80px;
-                            height: 24px;
-                            text: "Choose...";
-                            clicked => { root.choose-savestate(); }
-                        }
-
-                        Button {
-                            width: 50px;
-                            height: 24px;
-                            text: "Clear";
-                            enabled: root.form.savestate != "";
-                            clicked => { root.clear-savestate(); }
-                        }
-                    }
-
-                    if root.has-split && root.form.savestate-copied: FieldProblem {
-                        label-width: root.label-width;
-                        color: Theme.secondary-text;
-                        text: "Saving copies it into the preset's savestates folder.";
-                    }
-
-                    if root.has-split: TextEdit {
-                        vertical-stretch: 1;
-                        font-size: 12px;
-                        wrap: word-wrap;
-                        enabled: root.form.savestate != "";
-                        placeholder-text: root.form.savestate == "" ? "Instructions for the savestate, once there is one" : "What to do after loading the savestate, if anything";
-                        text <=> root.instructions;
-                        edited => { root.split-edited(SplitField.instructions); }
-                    }
+                    label-width: root.label-width;
+                    has-split: root.has-split;
+                    form: root.form;
+                    kinds: root.kinds;
+                    form-generation: root.form-generation;
+                    split-name <=> root.split-name;
+                    split-kind <=> root.split-kind;
+                    threshold <=> root.threshold;
+                    delay <=> root.delay;
+                    has-pause <=> root.has-pause;
+                    pause <=> root.pause;
+                    dummy <=> root.dummy;
+                    below <=> root.below;
+                    with-previous <=> root.with-previous;
+                    instructions <=> root.instructions;
+                    split-edited(field) => { root.split-edited(field); }
+                    choose-mask => { root.choose-mask(); }
+                    choose-savestate => { root.choose-savestate(); }
+                    clear-savestate => { root.clear-savestate(); }
                 }
 
                 HorizontalLayout {
