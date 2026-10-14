@@ -549,6 +549,12 @@ export component MakerWindow inherits Window {
                         text: "Remove";
                         enabled: root.has-split;
                         clicked => { root.remove-split(); }
+
+                        Tooltip {
+                            Tip {
+                                text: "Remove the selected split. Ctrl+Z brings it back, with its grab or screenshot.";
+                            }
+                        }
                     }
 
                     Rectangle {

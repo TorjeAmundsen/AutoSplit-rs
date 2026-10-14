@@ -20,6 +20,13 @@ use slint::winit_030::winit::event::KeyEvent;
 use slint::winit_030::winit::keyboard::{Key, NamedKey};
 
 /// A preset being edited, with what the window had before, to go back to on Cancel.
+/// A split that was removed, to bring back with Ctrl+Z while nothing else changed.
+struct Removal {
+    before: Preset,
+    after: Preset,
+    kept: Kept,
+}
+
 pub(super) struct Editing {
     pub(super) draft: Draft,
     /// The folder the preset was read from, which its masks' relative paths are in. None for a
@@ -28,6 +35,8 @@ pub(super) struct Editing {
     before: Kept,
     /// Which time editing started, from `Maker::edits`.
     id: u64,
+    /// The splits removed, the last one last.
+    removed: Vec<Removal>,
 }
 
 /// What `name` shows of a mask or savestate path: its file name.
@@ -75,11 +84,7 @@ impl Gui {
         on!(weak, maker, on_instructions_edited, (text) gui => gui.edit_split(SplitEdit::Instructions(text.into())));
         on!(weak, maker, on_choose_mask, () gui => gui.choose_split_file(false));
         on!(weak, maker, on_choose_savestate, () gui => gui.choose_split_file(true));
-        on!(weak, maker, on_clear_savestate, () gui => {
-            gui.edit_split(SplitEdit::Savestate(String::new()));
-            // Its instructions went with it
-            gui.show_form();
-        });
+        on!(weak, maker, on_clear_savestate, () gui => gui.edit_split(SplitEdit::Savestate(String::new())));
         on!(weak, maker, on_add_split, () gui => {
             let selected = gui.selected_split();
             gui.change_splits(|draft| Some(draft.add(selected)));
@@ -88,13 +93,7 @@ impl Gui {
             let selected = gui.selected_split();
             gui.change_splits(|draft| draft.duplicate(selected?));
         });
-        on!(weak, maker, on_remove_split, () gui => {
-            let selected = gui.selected_split();
-            gui.change_splits(|draft| {
-                let (next, change) = draft.remove(selected?)?;
-                Some((next.unwrap_or(0), change))
-            });
-        });
+        on!(weak, maker, on_remove_split, () gui => gui.remove_split());
         on!(weak, maker, on_move_split, (up) gui => {
             let selected = gui.selected_split();
             gui.change_splits(|draft| draft.move_split(selected?, up));
@@ -117,8 +116,8 @@ impl Gui {
         }
     }
 
-    /// Escape cancels editing, Ctrl+S saves and Alt+Up and Alt+Down move the selected split, like
-    /// the buttons. Returns whether the key was one of them.
+    /// Escape cancels editing, Ctrl+S saves, Ctrl+Z brings back a removed split and Alt+Up and
+    /// Alt+Down move the selected split, like the buttons. Returns whether the key was one of them.
     pub(in crate::gui) fn editor_shortcut(self: &Rc<Self>, event: &KeyEvent, held: Modifiers) -> bool {
         if !self.editing() {
             return false;
@@ -134,6 +133,8 @@ impl Gui {
             (Key::Named(NamedKey::Escape), held) if held.is_empty() => {
                 self.unless_discarded(|gui| gui.stop_editing(true));
             }
+            // Otherwise a text field's own undo
+            (_, Modifiers::CONTROL) if character == Some('z') => return self.undo_remove(),
             (_, Modifiers::CONTROL) if character == Some('s') => {
                 if self.windows.maker.get_can_save_preset() {
                     self.save_draft(false);
@@ -174,7 +175,7 @@ impl Gui {
         let (game, name) = (draft.preset.game.clone(), draft.preset.name.clone());
         maker.edits += 1;
         let id = maker.edits;
-        maker.edit = Some(Editing { draft, source, before, id });
+        maker.edit = Some(Editing { draft, source, before, id, removed: Vec::new() });
         let selected = maker.selected;
         drop(maker);
         let window = &self.windows.maker;
@@ -260,6 +261,45 @@ impl Gui {
         change.mirror(&mut maker.thumbs);
         drop(maker);
         self.choose_split(select);
+    }
+
+    /// Removes the selected split, keeping it and what it had to bring back.
+    fn remove_split(&self) {
+        let Some(selected) = self.selected_split() else { return };
+        let maker = self.maker.borrow();
+        let Some(edit) = &maker.edit else { return };
+        let (before, kept) = (edit.draft.preset.clone(), maker.keep());
+        drop(maker);
+        self.change_splits(|draft| {
+            let (next, change) = draft.remove(selected)?;
+            Some((next.unwrap_or(0), change))
+        });
+        if let Some(edit) = self.maker.borrow_mut().edit.as_mut() {
+            let after = edit.draft.preset.clone();
+            edit.removed.push(Removal { before, after, kept });
+        }
+    }
+
+    /// Brings back the split removed last, with its grab or screenshot, when nothing changed
+    /// since. Returns whether it did.
+    fn undo_remove(&self) -> bool {
+        let mut maker = self.maker.borrow_mut();
+        let Some(edit) = maker.edit.as_mut() else { return false };
+        if edit.removed.last().is_none_or(|removal| removal.after != edit.draft.preset) {
+            // Other changes came after, which bringing it back like this would undo too
+            edit.removed.clear();
+            return false;
+        }
+        let Some(removal) = edit.removed.pop() else { return false };
+        edit.draft.preset = removal.before;
+        maker.restore(removal.kept);
+        maker.live_mask = None;
+        let selected = maker.selected;
+        drop(maker);
+        self.windows.maker.set_selected(selected as i32);
+        self.show_form();
+        self.show_maker();
+        true
     }
 
     /// Puts the selected split's fields in the form, when another split is selected.
@@ -383,7 +423,7 @@ impl Gui {
             drop(maker);
             return self.show_message(Message::error(text));
         }
-        let (source, mut preset) = (edit.source.clone(), edit.draft.preset.clone());
+        let (source, mut preset) = (edit.source.clone(), edit.draft.to_save());
         let in_place = source.as_ref().filter(|_| !as_new);
         // The other presets of the game, which the Preset list tells apart by name
         let taken: Vec<String> = (maker.presets.iter())

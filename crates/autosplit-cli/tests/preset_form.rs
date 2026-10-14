@@ -67,7 +67,7 @@ fn thresholds_leave_the_default_out(threshold: f64) -> Option<f64> {
 }
 
 #[test]
-fn clearing_the_savestate_clears_its_instructions() {
+fn instructions_wait_for_a_savestate_until_saving() {
     // Arrange
     let mut draft = draft(&["Boss"]);
     draft.edit_split(0, SplitEdit::Savestate("boss.gzs".into()));
@@ -76,8 +76,9 @@ fn clearing_the_savestate_clears_its_instructions() {
     // Act
     draft.edit_split(0, SplitEdit::Savestate(String::new()));
 
-    // Assert
-    assert_eq!(draft.preset.splits[0].instructions, "");
+    // Assert: kept for another savestate, but not saved without one
+    let kept = draft.preset.splits[0].instructions.as_str();
+    assert_eq!((kept, draft.to_save().splits[0].instructions.as_str()), ("Advance a frame.", ""));
 }
 
 #[test]

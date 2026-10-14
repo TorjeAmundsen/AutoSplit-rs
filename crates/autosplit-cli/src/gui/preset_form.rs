@@ -93,7 +93,8 @@ pub enum SplitEdit {
     Below(bool),
     /// Compared for the same split as the split before it.
     WithPrevious(bool),
-    /// Like the mask. Empty for none, which also clears the instructions.
+    /// Like the mask. Empty for none. The instructions stay until saving, for a savestate picked
+    /// again.
     Savestate(String),
     Instructions(String),
 }
@@ -137,6 +138,15 @@ impl Draft {
         Self { original: preset.clone(), preset, new: true }
     }
 
+    /// The preset as it's saved: instructions only go with a savestate.
+    pub fn to_save(&self) -> Preset {
+        let mut preset = self.preset.clone();
+        for split in preset.splits.iter_mut().filter(|split| split.savestate.is_empty()) {
+            split.instructions.clear();
+        }
+        preset
+    }
+
     /// Whether it changed since editing started, which closing asks about.
     pub fn has_changes(&self) -> bool {
         self.preset != self.original
@@ -167,12 +177,7 @@ impl Draft {
             SplitEdit::Dummy(on) => split.dummy = on,
             SplitEdit::Below(on) => split.below = on,
             SplitEdit::WithPrevious(on) => split.with_previous = on,
-            SplitEdit::Savestate(savestate) => {
-                if savestate.is_empty() {
-                    split.instructions.clear();
-                }
-                split.savestate = savestate;
-            }
+            SplitEdit::Savestate(savestate) => split.savestate = savestate,
             SplitEdit::Instructions(text) => split.instructions = text,
         }
     }

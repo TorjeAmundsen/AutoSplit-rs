@@ -141,7 +141,7 @@ Some presets come with savestates for a practice tool that loads savestates on t
 
 #### Editing presets
 
-Edit, next to the preset, switches the window to editing it, and New starts a new preset for the same game. The game and the preset's name become fields, and the buttons under the list add, duplicate, remove and move splits. Alt+Up and Alt+Down move the selected split too, Ctrl+S saves and Escape cancels. The right side edits the selected split:
+Edit, next to the preset, switches the window to editing it, and New starts a new preset for the same game. The game and the preset's name become fields, and the buttons under the list add, duplicate, remove and move splits. Alt+Up and Alt+Down move the selected split too, Ctrl+Z brings back a removed split with its grab or screenshot, Ctrl+S saves and Escape cancels. The right side edits the selected split:
 
 - Type: Split, Start image or Reset image. AutoSplit tells them apart by name, so Start image and Reset image name the split `start_auto_splitter` or `reset`, and the Name field can't be changed then. Typing one of those names makes it one too. A preset can have up to 4 of each, any of which matches, and the second one on is named `reset_2`, `reset_3` and so on.
 - Name: the part of the file name between the number and the settings. It can't have `reset` or `start_auto_splitter` in it as a word, or `#@{}()[]^`, which AutoSplit reads as settings. The list shows the file name it makes.
