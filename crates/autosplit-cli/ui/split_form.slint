@@ -108,68 +108,78 @@ export component SplitFormPanel inherits VerticalLayout {
             }
         }
 
-        if root.has-split: HorizontalLayout {
-            height: 24px;
-            spacing: 6px;
+        // The field, then what it says about it, close under it
+        if root.has-split: VerticalLayout {
+            spacing: 2px;
 
-            Label {
-                width: root.label-width;
-                text: "Name:";
-            }
+            HorizontalLayout {
+                height: 24px;
+                spacing: 6px;
 
-            // A start or reset image's name is what makes it one
-            TextField {
-                error: root.form.name-problem != "";
-                enabled: root.split-kind == 0;
-                text <=> root.split-name;
-                edited => { root.split-edited(SplitField.name); }
-            }
-        }
+                Label {
+                    width: root.label-width;
+                    text: "Name:";
+                }
 
-        if root.has-split && root.form.name-problem != "": FieldProblem {
-            label-width: root.label-width;
-            text: root.form.name-problem;
-        }
-
-        if root.has-split: HorizontalLayout {
-            height: 24px;
-            spacing: 6px;
-
-            Label {
-                width: root.label-width;
-                text: "Mask:";
-            }
-
-            Label {
-                horizontal-stretch: 1;
-                color: root.form.mask-problem != "" ? Theme.error : root.form.mask == "" ? Theme.secondary-text : Theme.text;
-                text: root.form.mask == "" ? "None yet" : root.form.mask;
-
-                Tooltip {
-                    Tip {
-                        text: "The part of the screen that's compared: where the mask is opaque. The output preview shows it on the capture." + (root.form.mask-path == "" ? "" : "\n\n" + root.form.mask-path) + (root.form.mask-copied ? "\n\nSaving copies it into the preset's folder." : "");
-                    }
+                // A start or reset image's name is what makes it one
+                TextField {
+                    error: root.form.name-problem != "";
+                    enabled: root.split-kind == 0;
+                    text <=> root.split-name;
+                    edited => { root.split-edited(SplitField.name); }
                 }
             }
 
-            Button {
-                width: 80px;
-                height: 24px;
-                text: "Choose...";
-                primary: root.form.mask == "";
-                clicked => { root.choose-mask(); }
+            if root.form.name-problem != "": FieldProblem {
+                label-width: root.label-width;
+                text: root.form.name-problem;
             }
         }
 
-        if root.has-split && root.form.mask-problem != "": FieldProblem {
-            label-width: root.label-width;
-            text: root.form.mask-problem;
-        }
+        if root.has-split: VerticalLayout {
+            spacing: 2px;
 
-        if root.has-split && root.form.mask-copied: FieldProblem {
-            label-width: root.label-width;
-            color: Theme.secondary-text;
-            text: "Saving copies it into the preset's folder.";
+            HorizontalLayout {
+                height: 24px;
+                spacing: 6px;
+
+                Label {
+                    width: root.label-width;
+                    text: "Mask:";
+                }
+
+                Label {
+                    horizontal-stretch: 1;
+                    color: root.form.mask-problem != "" ? Theme.error : root.form.mask == "" ? Theme.secondary-text : Theme.text;
+                    text: root.form.mask == "" ? "None yet" : root.form.mask;
+
+                    Tooltip {
+                        Tip {
+                            text: "The part of the screen that's compared: where the mask is opaque. The output preview shows it on the capture." + (root.form.mask-path == "" ? "" : "\n\n" + root.form.mask-path) + (root.form.mask-copied ? "\n\nSaving copies it into the preset's folder." : "");
+                        }
+                    }
+                }
+
+                Button {
+                    width: 80px;
+                    height: 24px;
+                    text: "Choose...";
+                    primary: root.form.mask == "";
+                    clicked => { root.choose-mask(); }
+                }
+            }
+
+            if root.form.mask-problem != "": FieldProblem {
+                label-width: root.label-width;
+                text: root.form.mask-problem;
+            }
+
+            if root.form.mask-copied: FieldProblem {
+                label-width: root.label-width;
+                color: Theme.secondary-text;
+                // One line, so the form fits without scrolling; the tooltip says where
+                text: "Copied into the preset when saved.";
+            }
         }
 
         if root.has-split: HorizontalLayout {
@@ -208,21 +218,15 @@ export component SplitFormPanel inherits VerticalLayout {
             Rectangle {
                 horizontal-stretch: 1;
             }
-        }
-
-        if root.has-split: HorizontalLayout {
-            height: 24px;
-            spacing: 6px;
 
             CheckBox {
-                width: root.label-width;
                 text: "Delay";
                 checked <=> root.has-delay;
                 toggled => { root.split-edited(SplitField.delay); }
 
                 Tooltip {
                     Tip {
-                        text: "How long to wait after the image matches before splitting. Unchecked uses the profile's default delay time.";
+                        text: "How long to wait after the image matches before splitting, in milliseconds. Unchecked uses the profile's default delay time.";
                     }
                 }
             }
@@ -239,11 +243,6 @@ export component SplitFormPanel inherits VerticalLayout {
                     root.has-delay = true;
                     root.split-edited(SplitField.delay);
                 }
-            }
-
-            Label {
-                width: 20px;
-                text: "ms";
             }
         }
 
@@ -318,86 +317,94 @@ export component SplitFormPanel inherits VerticalLayout {
             }
         }
 
-        if root.has-split: HorizontalLayout {
-            height: 24px;
-            spacing: 12px;
+        if root.has-split: VerticalLayout {
+            spacing: 2px;
 
-            Rectangle {
-                width: root.label-width - 6px;
-            }
+            HorizontalLayout {
+                height: 24px;
+                spacing: 12px;
 
-            CheckBox {
-                text: "Same split as the one above";
-                enabled: root.form.can-join || root.with-previous;
-                checked <=> root.with-previous;
-                toggled => { root.split-edited(SplitField.with-previous); }
-
-                Tooltip {
-                    Tip {
-                        text: (root.form.why-not-joined == "" ? "" : root.form.why-not-joined + "\n\n") + "Compare it for the same split as the split above, so either one matching splits, like a boss that dies in one of two rooms. They get the same number. Up to 4 splits together. Needs Compare images with the same number for one split, in Settings.";
-                    }
+                Rectangle {
+                    width: root.label-width - 6px;
                 }
-            }
-        }
 
-        if root.has-split && root.form.group-problem != "": FieldProblem {
-            label-width: root.label-width;
-            text: root.form.group-problem;
-        }
+                CheckBox {
+                    text: "Same split as the one above";
+                    enabled: root.form.can-join || root.with-previous;
+                    checked <=> root.with-previous;
+                    toggled => { root.split-edited(SplitField.with-previous); }
 
-        if root.has-split && root.form.group-problem == "" && root.form.grouping-off: FieldProblem {
-            label-width: root.label-width;
-            color: Theme.secondary-text;
-            text: "The profile has comparing several images for one split turned off. Generate Profile..., or Turn It On after saving, turns it on.";
-        }
-
-        if root.has-split: HorizontalLayout {
-            height: 24px;
-            spacing: 6px;
-
-            Label {
-                width: root.label-width;
-                text: "Savestate:";
-            }
-
-            Label {
-                horizontal-stretch: 1;
-                color: root.form.savestate == "" ? Theme.secondary-text : Theme.text;
-                text: root.form.savestate == "" ? "None" : root.form.savestate;
-
-                Tooltip {
-                    Tip {
-                        text: "A savestate at the split's screen, for taking its screenshot, made with a practice tool that loads savestates on the console, like gz for Ocarina of Time (.gzs). Copy Savestates puts them on the clipboard." + (root.form.savestate-path == "" ? "" : "\n\n" + root.form.savestate-path) + (root.form.savestate-copied ? "\n\nSaving copies it into the preset's savestates folder." : "");
+                    Tooltip {
+                        Tip {
+                            text: (root.form.why-not-joined == "" ? "" : root.form.why-not-joined + "\n\n") + "Compare it for the same split as the split above, so either one matching splits, like a boss that dies in one of two rooms. They get the same number. Up to 4 splits together. Needs Compare images with the same number for one split, in Settings.";
+                        }
                     }
                 }
             }
 
-            Button {
-                width: 80px;
-                height: 24px;
-                text: "Choose...";
-                clicked => { root.choose-savestate(); }
+            if root.form.group-problem != "": FieldProblem {
+                label-width: root.label-width;
+                text: root.form.group-problem;
             }
 
-            Button {
-                width: 50px;
-                height: 24px;
-                text: "Clear";
-                enabled: root.form.savestate != "";
-                clicked => { root.clear-savestate(); }
+            if root.form.group-problem == "" && root.form.grouping-off: FieldProblem {
+                label-width: root.label-width;
+                color: Theme.secondary-text;
+                text: "The profile has comparing several images for one split turned off. Generate Profile..., or Turn It On after saving, turns it on.";
             }
         }
 
-        if root.has-split && root.form.savestate-copied: FieldProblem {
-            label-width: root.label-width;
-            color: Theme.secondary-text;
-            text: "Saving copies it into the preset's savestates folder.";
+        if root.has-split: VerticalLayout {
+            spacing: 2px;
+
+            HorizontalLayout {
+                height: 24px;
+                spacing: 6px;
+
+                Label {
+                    width: root.label-width;
+                    text: "Savestate:";
+                }
+
+                Label {
+                    horizontal-stretch: 1;
+                    color: root.form.savestate == "" ? Theme.secondary-text : Theme.text;
+                    text: root.form.savestate == "" ? "None" : root.form.savestate;
+
+                    Tooltip {
+                        Tip {
+                            text: "A savestate at the split's screen, for taking its screenshot, made with a practice tool that loads savestates on the console, like gz for Ocarina of Time (.gzs). Copy Savestates puts them on the clipboard." + (root.form.savestate-path == "" ? "" : "\n\n" + root.form.savestate-path) + (root.form.savestate-copied ? "\n\nSaving copies it into the preset's savestates folder." : "");
+                        }
+                    }
+                }
+
+                Button {
+                    width: 80px;
+                    height: 24px;
+                    text: "Choose...";
+                    clicked => { root.choose-savestate(); }
+                }
+
+                Button {
+                    width: 50px;
+                    height: 24px;
+                    text: "Clear";
+                    enabled: root.form.savestate != "";
+                    clicked => { root.clear-savestate(); }
+                }
+            }
+
+            if root.form.savestate-copied: FieldProblem {
+                label-width: root.label-width;
+                color: Theme.secondary-text;
+                text: "Copied into the preset when saved.";
+            }
         }
 
-        // Always a few lines, however much is above it
+        // Always two lines, however much is above it
         if root.has-split: TextEdit {
             vertical-stretch: 1;
-            min-height: 60px;
+            min-height: 42px;
             font-size: 12px;
             wrap: word-wrap;
             enabled: root.form.savestate != "";

@@ -290,7 +290,15 @@ fn main() {
     maker.set_problems("Split1: It needs a mask. Choose one.".into());
     maker.set_has_problems(true);
     maker.set_can_delete_preset(true);
-    save(&window, PhysicalSize::new(828, 730), &folder.join("maker-edit.png"));
+    save(&window, PhysicalSize::new(828, 672), &folder.join("maker-edit.png"));
+    // Without the savestate note, all of the form fits
+    maker.set_form(SplitForm { savestate_copied: false, ..maker.get_form() });
+    save(&window, PhysicalSize::new(828, 672), &folder.join("maker-edit-plain.png"));
+    maker.set_form(SplitForm { savestate_copied: true, ..maker.get_form() });
+    // A new split's mask and savestate, both copied in on save
+    maker.set_form(SplitForm { mask_copied: true, ..maker.get_form() });
+    save(&window, PhysicalSize::new(828, 672), &folder.join("maker-edit-copied.png"));
+    maker.set_form(SplitForm { mask_copied: false, ..maker.get_form() });
     // A long problem wraps under the name
     maker.set_form(SplitForm {
         name_problem: "It has the same name as a split it's compared together with. Give it another name.".into(),
@@ -298,7 +306,7 @@ fn main() {
         mask_problem: "It needs a mask. Choose one.".into(),
         ..maker.get_form()
     });
-    save(&window, PhysicalSize::new(828, 730), &folder.join("maker-edit-problem.png"));
+    save(&window, PhysicalSize::new(828, 672), &folder.join("maker-edit-problem.png"));
     maker.hide().unwrap();
 
     let instructions = InstructionsWindow::new().unwrap();

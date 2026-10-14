@@ -660,10 +660,10 @@ export component MakerWindow inherits Window {
                 }
 
                 // The selected split, in the space of the folder and the capture, which the
-                // output preview below shows masked as it's edited
-                // Scrolls when what it shows is taller than its space, like with many problems
+                // output preview below shows masked as it's edited. Just as tall, so the window
+                // keeps its size, and it scrolls when problems or notes need more room.
                 if root.editing: form-scroll := ScrollView {
-                    height: 384px;
+                    height: 326px;
                     content-height: max(self.visible-height, form-panel.preferred-height);
                     content-width: self.visible-width;
 
