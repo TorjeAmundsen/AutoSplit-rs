@@ -1,6 +1,9 @@
 //! The preset editor's draft: edits, list operations kept in step with other lists, and problems.
 
-use autosplit::gui::preset_form::{Draft, Field, ListChange, Problem, SplitEdit, SplitKind, field_value};
+use autosplit::gui::preset_form::{
+    Draft, Field, ListChange, Problem, SplitEdit, SplitKind, field_value, problem_flags, problem_list, problem_summary,
+    split_heading,
+};
 use autosplit_core::preset::{Preset, PresetSplit};
 use test_case::test_case;
 
@@ -117,11 +120,11 @@ fn duplicates_go_after_their_split() {
     assert_eq!((duplicated, names(&draft)), (Some((1, ListChange::Insert(1))), vec!["Boss", "Boss", "Door"]));
 }
 
-#[test_case(&["Boss", "Door"], 1 => Some((Some(0), ListChange::Remove(1))); "last selects the one before")]
-#[test_case(&["Boss", "Door"], 0 => Some((Some(0), ListChange::Remove(0))); "first selects the next")]
-#[test_case(&["Boss"], 0 => Some((None, ListChange::Remove(0))); "only split leaves nothing selected")]
+#[test_case(&["Boss", "Door"], 1 => Some((0, ListChange::Remove(1))); "last selects the one before")]
+#[test_case(&["Boss", "Door"], 0 => Some((0, ListChange::Remove(0))); "first selects the next")]
+#[test_case(&["Boss"], 0 => Some((0, ListChange::Remove(0))); "only split selects where the next would be")]
 #[test_case(&["Boss"], 3 => None; "no such split")]
-fn removing_selects_a_neighbor(splits: &[&str], index: usize) -> Option<(Option<usize>, ListChange)> {
+fn removing_selects_a_neighbor(splits: &[&str], index: usize) -> Option<(usize, ListChange)> {
     // Act, with the expected value checked by test_case
     draft(splits).remove(index)
 }
@@ -508,4 +511,70 @@ fn savestate_extensions_are_the_presets_own() {
 fn the_checkbox_says_why_it_cant_join(names: &[&str], index: usize) -> Option<&'static str> {
     // Act, with the expected value checked by test_case
     grouped(names).why_not_joined(index)
+}
+
+#[test_case(0 => "Reset Image"; "a reset image")]
+#[test_case(1 => "Reset Image 2"; "the second reset image")]
+#[test_case(2 => "Start Image"; "the start image")]
+#[test_case(3 => "Boss"; "a split")]
+fn headings_name_reset_and_start_images(index: usize) -> String {
+    // Act, with the expected value checked by test_case
+    split_heading(&draft(&["reset", "reset", "start_auto_splitter", "Boss"]).preset, index)
+}
+
+#[test]
+fn the_summary_names_the_first_problem_and_counts_the_rest() {
+    // Arrange: no mask on either split, and a preset without a name
+    let mut draft = draft(&["Boss", "Door"]);
+    draft.preset.name = String::new();
+    draft.edit_split(0, SplitEdit::Mask(String::new()));
+    draft.edit_split(1, SplitEdit::Mask(String::new()));
+    let problems = draft.problems();
+
+    // Act
+    let summary = problem_summary(&draft.preset, &problems);
+
+    // Assert
+    assert_eq!(summary.as_deref(), Some("The preset needs a name. And 2 more problems."));
+}
+
+#[test]
+fn the_list_has_every_problem_with_its_split() {
+    // Arrange
+    let mut draft = draft(&["Boss", "Door"]);
+    draft.edit_split(1, SplitEdit::Mask(String::new()));
+    let problems = draft.problems();
+
+    // Act
+    let list = problem_list(&draft.preset, &problems);
+    let flags = problem_flags(&problems, 2);
+
+    // Assert
+    assert_eq!((list.as_str(), flags), ("- Door: It needs a mask. Choose one.", vec![false, true]));
+}
+
+#[test_case(1000.4 => 1000; "rounded")]
+#[test_case(-5.0 => 0; "never below zero")]
+fn delays_are_whole_milliseconds(delay: f64) -> u32 {
+    // Arrange
+    let mut draft = draft(&["Boss"]);
+
+    // Act
+    draft.edit_split(0, SplitEdit::Delay(delay));
+
+    // Assert, with the expected value checked by test_case
+    draft.preset.splits[0].delay
+}
+
+#[test]
+fn only_the_type_changes_other_fields() {
+    // Arrange
+    let edits = [SplitEdit::Kind(SplitKind::Reset), SplitEdit::Name("Boss".into()), SplitEdit::Mask("a.png".into())];
+
+    // Act
+    let flags: Vec<(bool, bool)> =
+        edits.iter().map(|edit| (edit.changes_other_fields(), edit.changes_mask())).collect();
+
+    // Assert
+    assert_eq!(flags, [(true, false), (false, false), (false, true)]);
 }

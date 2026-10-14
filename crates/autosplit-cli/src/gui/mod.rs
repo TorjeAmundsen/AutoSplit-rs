@@ -217,8 +217,7 @@ pub fn file_name_parts(name: &str) -> ModelRc<NamePart> {
 
 /// The PNG images in `folder`, in the split image folder's order.
 fn png_images(folder: &Path) -> Vec<PathBuf> {
-    let is_png = |path: &PathBuf| path.extension().is_some_and(|extension| extension.eq_ignore_ascii_case("png"));
-    user_files(folder).unwrap_or_default().into_iter().filter(is_png).collect()
+    user_files(folder).unwrap_or_default().into_iter().filter(|path| maker_plan::is_png(path)).collect()
 }
 
 /// The folder next to the executable, where AutoSplit looks for a profile on open.
@@ -1127,7 +1126,7 @@ impl Gui {
                 self.show_profile();
             }
             Notice::ScreenshotSaved(path) => {
-                let name = path.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
+                let name = maker_plan::file_name_text(&path).unwrap_or_default();
                 self.windows.main.invoke_screenshot_saved(name.into());
             }
             Notice::Grabbed(image) => {

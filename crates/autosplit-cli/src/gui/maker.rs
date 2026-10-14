@@ -13,10 +13,10 @@ use autosplit_core::preset::{LoadedPreset, Preset, PresetError, load_presets};
 use autosplit_core::split_folder::user_files;
 use slint::{ComponentHandle, ModelRc, Rgba8Pixel, SharedPixelBuffer, SharedString, VecModel};
 
-use super::maker_plan::{looks_made, plan_writes, saves_in_place};
+use super::maker_plan::{canonical, file_name_text, looks_made, plan_writes, saves_in_place};
 use super::messages::{Answer, Message};
 use super::placement::beside;
-use super::preset_form::{Draft, Problem};
+use super::preset_form::{Draft, Problem, problem_flags, problem_summary, split_heading};
 use super::ui::{InstructionCard, MakerRow};
 use super::view::{Pixels, rgba};
 use super::{Gui, Tool, exe_folder, file_name_parts, with_gui};
@@ -37,7 +37,7 @@ impl Source {
     /// What the window says the split image is made from.
     fn label(&self) -> String {
         match self {
-            Self::File(path) => path.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default(),
+            Self::File(path) => file_name_text(path).unwrap_or_default(),
             Self::Grabbed(_) => "grabbed".into(),
         }
     }
@@ -66,12 +66,8 @@ impl Source {
 pub(super) struct Maker {
     presets: Vec<LoadedPreset>,
     preset: usize,
-    /// What each split's image is made from.
-    sources: Vec<Option<Source>>,
-    /// Each split's split image, once it's written.
-    saved: Vec<Option<PathBuf>>,
-    /// A small picture of each split's split image, once it's made from its source.
-    thumbs: Vec<Option<slint::Image>>,
+    /// What's been done for each split, in the splits' order.
+    splits: Vec<SplitWork>,
     selected: usize,
     /// Masks by path, read once.
     masks: HashMap<PathBuf, Arc<Mask>>,
@@ -91,11 +87,28 @@ pub(super) struct Maker {
     working: usize,
 }
 
+/// What's been done for a split.
+#[derive(Clone, Default)]
+struct SplitWork {
+    /// What its image is made from.
+    source: Option<Source>,
+    /// Its split image, once it's written.
+    saved: Option<PathBuf>,
+    /// A small picture of its split image, once it's made from its source.
+    thumb: Option<slint::Image>,
+}
+
+impl SplitWork {
+    /// Makes its image from `source` from now on: what was saved or pictured of the one before
+    /// is another image.
+    fn set_source(&mut self, source: Source) {
+        *self = Self { source: Some(source), ..Self::default() };
+    }
+}
+
 /// What the window has for each split, kept while a preset is edited to go back to.
 struct Kept {
-    sources: Vec<Option<Source>>,
-    saved: Vec<Option<PathBuf>>,
-    thumbs: Vec<Option<slint::Image>>,
+    splits: Vec<SplitWork>,
     selected: usize,
 }
 
@@ -122,16 +135,21 @@ impl Maker {
     }
 
     fn keep(&self) -> Kept {
-        Kept {
-            sources: self.sources.clone(),
-            saved: self.saved.clone(),
-            thumbs: self.thumbs.clone(),
-            selected: self.selected,
-        }
+        Kept { splits: self.splits.clone(), selected: self.selected }
     }
 
     fn restore(&mut self, kept: Kept) {
-        (self.sources, self.saved, self.thumbs, self.selected) = (kept.sources, kept.saved, kept.thumbs, kept.selected);
+        (self.splits, self.selected) = (kept.splits, kept.selected);
+    }
+
+    /// Nothing done yet for `count` splits, the first selected.
+    fn start_over(&mut self, count: usize) {
+        (self.splits, self.selected) = (vec![SplitWork::default(); count], 0);
+    }
+
+    /// What split `index`'s image is made from, if anything.
+    fn source(&self, index: usize) -> Option<&Source> {
+        self.splits.get(index)?.source.as_ref()
     }
 
     /// The games of the presets, in the order they're listed.
@@ -152,11 +170,6 @@ fn plural(count: usize, thing: &str) -> String {
     if count == 1 { format!("1 {thing}") } else { format!("{count} {thing}s") }
 }
 
-/// A path as the file system has it, to compare paths written differently.
-fn canonical(path: &Path) -> PathBuf {
-    std::fs::canonicalize(path).unwrap_or_else(|_| path.to_owned())
-}
-
 /// The size of the split list's pictures of the split images, twice what's shown for sharp
 /// pictures on high resolution screens.
 pub const THUMB_SIZE: (usize, usize) = (96, 72);
@@ -169,46 +182,6 @@ pub fn thumbnail(shot: BgraView) -> Pixels {
     stretch_to_rgba(shot, width, height, &mut pixels);
     pixels.iter_mut().for_each(|pixel| pixel[3] = 255);
     Pixels::clone_from_slice(pixels.as_flattened(), width as u32, height as u32)
-}
-
-/// A split's name as the list's heading: the reset and start images by what they are, numbered
-/// from the second.
-fn split_heading(preset: &Preset, index: usize) -> String {
-    let Some(split) = preset.splits.get(index) else { return String::new() };
-    let kind = match split.name.as_str() {
-        "reset" => "Reset Image",
-        "start_auto_splitter" => "Start Image",
-        name => return name.into(),
-    };
-    match preset.keyword_place(index) {
-        Some(place) if place > 1 => format!("{kind} {place}"),
-        _ => kind.into(),
-    }
-}
-
-/// The first of `problems`, with the split it's about, and how many more there are. `None` when
-/// there are none.
-fn problem_summary(preset: &Preset, problems: &[Problem]) -> Option<String> {
-    let first = problems.first()?;
-    let more = match problems.len() - 1 {
-        0 => String::new(),
-        1 => " And 1 more problem.".to_owned(),
-        more => format!(" And {more} more problems."),
-    };
-    let at = first.split.map(|index| format!("{}: ", split_heading(preset, index))).unwrap_or_default();
-    Some(format!("{at}{}{more}", first.message))
-}
-
-/// Every one of `problems` as a list item with the split it's about, a blank line between them so
-/// a message that wraps reads as one. Empty when there are none.
-fn problem_list(preset: &Preset, problems: &[Problem]) -> String {
-    (problems.iter())
-        .map(|problem| match problem.split {
-            Some(index) => format!("- {}: {}", split_heading(preset, index), problem.message),
-            None => format!("- {}", problem.message),
-        })
-        .collect::<Vec<_>>()
-        .join("\n\n")
 }
 
 /// A game's name in the list of games.
@@ -297,7 +270,7 @@ impl Gui {
             gui.save_split_images(vec![selected]);
         });
         on!(weak, maker, on_save_all, () gui => {
-            let all = (0..gui.maker.borrow().sources.len()).collect();
+            let all = (0..gui.maker.borrow().splits.len()).collect();
             gui.save_split_images(all);
         });
         on!(weak, maker, on_test, () gui => gui.test_split_image());
@@ -382,7 +355,7 @@ impl Gui {
             return self.focus_message();
         }
         self.unless_discarded(|gui| {
-            gui.stop_editing(true);
+            gui.cancel_editing();
             gui.maker_closed();
             let _ = gui.windows.maker.hide();
         });
@@ -411,8 +384,7 @@ impl Gui {
         maker.preset = index;
         maker.generation += 1;
         let count = maker.loaded().map_or(0, |loaded| loaded.preset.splits.len());
-        (maker.sources, maker.saved, maker.selected) = (vec![None; count], vec![None; count], 0);
-        maker.thumbs = vec![None; count];
+        maker.start_over(count);
         drop(maker);
         self.windows.maker.set_status(SharedString::new());
         self.show_preset(index);
@@ -464,7 +436,8 @@ impl Gui {
     /// setting is changed and changed back while editing.
     fn saves_in_place(&self, names: &[String]) -> Vec<bool> {
         let folder = self.split_image_folder();
-        saves_in_place(&self.maker.borrow().saved, names, folder.as_deref())
+        let saved: Vec<Option<PathBuf>> = self.maker.borrow().splits.iter().map(|split| split.saved.clone()).collect();
+        saves_in_place(&saved, names, folder.as_deref())
     }
 
     /// Puts the preset's splits, the selected split's split image and the buttons in the window.
@@ -474,9 +447,7 @@ impl Gui {
         let mut problems = self.show_editing();
         let preset_problems = self.preset_problems();
         if !self.editing() {
-            problems = (0..names.len())
-                .map(|index| preset_problems.iter().any(|problem| problem.split == Some(index)))
-                .collect();
+            problems = problem_flags(&preset_problems, names.len());
         }
         let summary = self.maker.borrow().loaded().and_then(|loaded| problem_summary(&loaded.preset, &preset_problems));
         let maker = self.maker.borrow();
@@ -490,10 +461,10 @@ impl Gui {
                 heading: maker.shown().map(|preset| split_heading(preset, index)).unwrap_or_default().into(),
                 parts: file_name_parts(name),
                 file: name.into(),
-                source: maker.sources[index].as_ref().map(Source::label).unwrap_or_default().into(),
+                source: maker.source(index).map(Source::label).unwrap_or_default().into(),
                 saved: in_place.get(index).copied().unwrap_or_default(),
-                thumb: maker.thumbs[index].clone().unwrap_or_default(),
-                has_thumb: maker.thumbs[index].is_some(),
+                thumb: maker.splits[index].thumb.clone().unwrap_or_default(),
+                has_thumb: maker.splits[index].thumb.is_some(),
                 problem: problems.get(index).copied().unwrap_or_default(),
                 joined: joined(index),
                 shaded: {
@@ -505,10 +476,10 @@ impl Gui {
             })
             .collect();
         let selected = maker.selected;
-        let has_source = maker.sources.get(selected).is_some_and(Option::is_some);
-        let any_source = maker.sources.iter().any(Option::is_some);
+        let has_source = maker.source(selected).is_some();
+        let any_source = maker.splits.iter().any(|split| split.source.is_some());
         let saved = in_place.get(selected).copied().unwrap_or_default();
-        let has_splits = !maker.sources.is_empty();
+        let has_splits = !maker.splits.is_empty();
         drop(maker);
         self.maker_rows.set_vec(rows);
         let window = &self.windows.maker;
@@ -580,7 +551,7 @@ impl Gui {
     fn show_maker_preview(&self) {
         let maker = self.maker.borrow();
         let selected = maker.selected;
-        let source = maker.sources.get(selected).cloned().flatten();
+        let source = maker.source(selected).cloned();
         let has_split = maker.shown().is_some_and(|preset| selected < preset.splits.len());
         let (editing, no_presets) = (maker.edit.is_some(), maker.presets.is_empty());
         drop(maker);
@@ -619,7 +590,7 @@ impl Gui {
     /// make it from yet.
     fn previews_capture(&self) -> bool {
         let maker = self.maker.borrow();
-        maker.sources.get(maker.selected).is_some_and(Option::is_none)
+        maker.splits.get(maker.selected).is_some_and(|split| split.source.is_none())
     }
 
     /// A frame of the capture's preview: until something's set to make the selected split's
@@ -676,11 +647,9 @@ impl Gui {
         };
         let mut maker = self.maker.borrow_mut();
         let selected = maker.selected;
-        let count = maker.sources.len();
-        let Some(source) = maker.sources.get_mut(selected) else { return };
-        *source = Some(Source::Grabbed(image));
-        maker.saved[selected] = None;
-        maker.thumbs[selected] = None;
+        let count = maker.splits.len();
+        let Some(split) = maker.splits.get_mut(selected) else { return };
+        split.set_source(Source::Grabbed(image));
         drop(maker);
         self.make_thumbnails(vec![selected]);
         // Stays on the split when its image can't be saved, to grab it again once that's fixed
@@ -726,12 +695,10 @@ impl Gui {
     fn use_screenshots(&self, paths: Vec<PathBuf>) {
         let mut maker = self.maker.borrow_mut();
         let first = if paths.len() == 1 { maker.selected } else { 0 };
-        let count = maker.sources.len();
+        let count = maker.splits.len();
         let mut set = Vec::new();
         for (offset, path) in paths.iter().enumerate().filter(|(offset, _)| first + offset < count) {
-            maker.sources[first + offset] = Some(Source::File(path.clone()));
-            maker.saved[first + offset] = None;
-            maker.thumbs[first + offset] = None;
+            maker.splits[first + offset].set_source(Source::File(path.clone()));
             set.push(first + offset);
         }
         drop(maker);
@@ -743,11 +710,8 @@ impl Gui {
         };
         self.windows.maker.set_status(status.into());
         // Split images picked as screenshots would be masked twice
-        let made: Vec<String> = paths
-            .iter()
-            .filter_map(|path| path.file_name().map(|name| name.to_string_lossy().into_owned()))
-            .filter(|name| looks_made(name))
-            .collect();
+        let made: Vec<String> =
+            paths.iter().filter_map(|path| file_name_text(path)).filter(|name| looks_made(name)).collect();
         if !made.is_empty() {
             self.show_message(Message::warning(format!(
                 "These look like split images already, not screenshots:\n\n{}",
@@ -772,7 +736,7 @@ impl Gui {
         let names = self.maker_file_names();
         let sources: Vec<(usize, Source)> = {
             let maker = self.maker.borrow();
-            indexes.into_iter().filter_map(|index| Some((index, maker.sources.get(index)?.clone()?))).collect()
+            indexes.into_iter().filter_map(|index| Some((index, maker.source(index)?.clone()))).collect()
         };
         let mut jobs = Vec::new();
         for (index, source) in sources {
@@ -788,8 +752,8 @@ impl Gui {
         let existing: Vec<PathBuf> =
             user_files(&folder).unwrap_or_default().iter().map(|path| canonical(path)).collect();
         // Every split's screenshot, also of splits not saved now
-        let sources: Vec<PathBuf> = (self.maker.borrow().sources.iter().flatten())
-            .filter_map(|source| match source {
+        let sources: Vec<PathBuf> = (self.maker.borrow().splits.iter())
+            .filter_map(|split| match split.source.as_ref()? {
                 Source::File(path) => Some(canonical(path)),
                 Source::Grabbed(_) => None,
             })
@@ -803,7 +767,6 @@ impl Gui {
         if !plan.overwrites.is_empty() {
             text += &format!("These split images are replaced:\n{}\n\n", plan.overwrites.join("\n"));
         }
-        let file_name = |path: &PathBuf| path.file_name().map(|name| name.to_string_lossy().into_owned());
         let weak = Rc::downgrade(self);
         if plan.stale.is_empty() {
             text += "Replace them?";
@@ -814,7 +777,7 @@ impl Gui {
             }));
             return true;
         }
-        let stale: Vec<String> = plan.stale.iter().filter_map(file_name).collect();
+        let stale: Vec<String> = plan.stale.iter().filter_map(|path| file_name_text(path)).collect();
         text += &format!(
             "These older split images are for the same splits under other names, and the split image folder would \
              use them too:\n{}\n\nDelete them, or keep them?",
@@ -885,11 +848,10 @@ impl Gui {
                 Ok(_) if !same_preset => written += 1,
                 Ok(path) => {
                     written += 1;
-                    if let Some(saved) = maker.saved.get_mut(index) {
-                        *saved = Some(path);
-                    }
+                    let Some(split) = maker.splits.get_mut(index) else { continue };
+                    split.saved = Some(path);
                     // A screenshot moved to the base folder is read from there
-                    if let Some(Some(Source::File(source))) = maker.sources.get_mut(index)
+                    if let Some(Source::File(source)) = split.source.as_mut()
                         && let (Some(parent), Some(name)) = (source.parent(), source.file_name())
                         && parent.join("base").join(name).is_file()
                     {
@@ -1004,7 +966,7 @@ impl Gui {
         let maker = self.maker.borrow();
         let generation = maker.generation;
         let jobs: Vec<(usize, Source)> =
-            indexes.into_iter().filter_map(|index| Some((index, maker.sources.get(index)?.clone()?))).collect();
+            indexes.into_iter().filter_map(|index| Some((index, maker.source(index)?.clone()))).collect();
         drop(maker);
         self.start_work();
         let spawned = std::thread::Builder::new().name("thumbnails".into()).spawn(move || {
@@ -1043,8 +1005,10 @@ impl Gui {
             return self.show_maker();
         }
         for (index, source, thumb) in made {
-            if maker.sources.get(index).cloned().flatten().is_some_and(|now| now.same(&source)) {
-                maker.thumbs[index] = Some(slint::Image::from_rgba8(thumb));
+            if let Some(split) = maker.splits.get_mut(index)
+                && split.source.as_ref().is_some_and(|now| now.same(&source))
+            {
+                split.thumb = Some(slint::Image::from_rgba8(thumb));
             }
         }
         drop(maker);
@@ -1078,7 +1042,7 @@ impl Gui {
             if needs_grouping {
                 gui.turn_on_grouping();
             }
-            let name = path.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
+            let name = file_name_text(&path).unwrap_or_default();
             let saved =
                 move |gui: &Rc<Gui>| gui.windows.maker.set_status(format!("Saved the profile as {name}.").into());
             gui.save_to(path, Some(Box::new(saved)));
@@ -1099,7 +1063,7 @@ impl Gui {
             return;
         }
         let maker = self.maker.borrow();
-        let Some(path) = maker.saved.get(maker.selected).cloned().flatten() else { return };
+        let Some(path) = maker.splits.get(maker.selected).and_then(|split| split.saved.clone()) else { return };
         drop(maker);
         self.state.borrow_mut().tester_path = Some(path);
         if self.windows.tester.window().is_visible() {

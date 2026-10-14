@@ -87,8 +87,8 @@ pub enum SplitEdit {
     Threshold(f64),
     /// Seconds, or `None` for AutoSplit's default pause time.
     Pause(Option<f64>),
-    /// Milliseconds.
-    Delay(u32),
+    /// Milliseconds, rounded to whole ones.
+    Delay(f64),
     Dummy(bool),
     Below(bool),
     /// Compared for the same split as the split before it.
@@ -106,6 +106,19 @@ pub enum Field {
     Mask,
     /// Same split as the one above.
     Group,
+}
+
+impl SplitEdit {
+    /// Whether it changes other fields than its own, which the form shows again then: the type
+    /// sets the name and Same split as the one above.
+    pub fn changes_other_fields(&self) -> bool {
+        matches!(self, Self::Kind(_))
+    }
+
+    /// Whether the split's mask is another one, so what's shown of the old one goes.
+    pub fn changes_mask(&self) -> bool {
+        matches!(self, Self::Mask(_))
+    }
 }
 
 /// Something to fix before saving, of one split or of the preset.
@@ -193,7 +206,7 @@ impl Draft {
             }
             // Two decimals, like the profile's default pause time
             SplitEdit::Pause(pause) => split.pause = pause.map(|pause| (pause.max(0.0) * 100.0).round() / 100.0),
-            SplitEdit::Delay(delay) => split.delay = delay,
+            SplitEdit::Delay(delay) => split.delay = delay.max(0.0).round() as u32,
             SplitEdit::Dummy(on) => split.dummy = on,
             SplitEdit::Below(on) => split.below = on,
             SplitEdit::WithPrevious(on) => split.with_previous = on,
@@ -272,8 +285,9 @@ impl Draft {
         Some((at, ListChange::Insert(at)))
     }
 
-    /// Removes split `index`. Returns the split to select after it, if any is left.
-    pub fn remove(&mut self, index: usize) -> Option<(Option<usize>, ListChange)> {
+    /// Removes split `index`. Returns the split to select after it, the one that took its place or
+    /// the one before, and 0 when none is left.
+    pub fn remove(&mut self, index: usize) -> Option<(usize, ListChange)> {
         if index >= self.preset.splits.len() {
             return None;
         }
@@ -285,7 +299,7 @@ impl Draft {
             next.with_previous = false;
         }
         let left = self.preset.splits.len();
-        Some(((left > 0).then(|| index.min(left - 1)), ListChange::Remove(index)))
+        Some((index.min(left.saturating_sub(1)), ListChange::Remove(index)))
     }
 
     /// Moves split `index` one up or down: inside the splits compared together with it, which
@@ -412,4 +426,49 @@ fn split_problems(split: &PresetSplit) -> Vec<(Field, String)> {
         problems.push((Field::Mask, "It needs a mask. Choose one.".to_owned()));
     }
     problems
+}
+
+/// A split's name as the list's heading: the reset and start images by what they are, numbered
+/// from the second.
+pub fn split_heading(preset: &Preset, index: usize) -> String {
+    let Some(split) = preset.splits.get(index) else { return String::new() };
+    let kind = match SplitKind::of(split) {
+        SplitKind::Reset => "Reset Image",
+        SplitKind::Start => "Start Image",
+        SplitKind::Split => return split.name.clone(),
+    };
+    match preset.keyword_place(index) {
+        Some(place) if place > 1 => format!("{kind} {place}"),
+        _ => kind.into(),
+    }
+}
+
+/// The first of `problems`, with the split it's about, and how many more there are. `None` when
+/// there are none.
+pub fn problem_summary(preset: &Preset, problems: &[Problem]) -> Option<String> {
+    let first = problems.first()?;
+    let more = match problems.len() - 1 {
+        0 => String::new(),
+        1 => " And 1 more problem.".to_owned(),
+        more => format!(" And {more} more problems."),
+    };
+    let at = first.split.map(|index| format!("{}: ", split_heading(preset, index))).unwrap_or_default();
+    Some(format!("{at}{}{more}", first.message))
+}
+
+/// Every one of `problems` as a list item with the split it's about, a blank line between them so
+/// a message that wraps reads as one. Empty when there are none.
+pub fn problem_list(preset: &Preset, problems: &[Problem]) -> String {
+    (problems.iter())
+        .map(|problem| match problem.split {
+            Some(index) => format!("- {}: {}", split_heading(preset, index), problem.message),
+            None => format!("- {}", problem.message),
+        })
+        .collect::<Vec<_>>()
+        .join("\n\n")
+}
+
+/// Which of `count` splits have one of `problems`, for their names in the list.
+pub fn problem_flags(problems: &[Problem], count: usize) -> Vec<bool> {
+    (0..count).map(|index| problems.iter().any(|problem| problem.split == Some(index))).collect()
 }

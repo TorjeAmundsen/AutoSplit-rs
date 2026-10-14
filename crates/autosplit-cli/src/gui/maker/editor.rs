@@ -11,11 +11,13 @@ use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
 
 use super::super::Gui;
 use super::super::maker_plan::{DeletedPreset, preset_after_delete};
+use super::super::maker_plan::{canonical, file_name_text};
 use super::super::messages::{Answer, Message};
-use super::super::preset_form::{Draft, Field, ListChange, Problem, SplitEdit, SplitKind, field_value};
+use super::super::preset_form::{Draft, Field, ListChange, SplitEdit, SplitKind, field_value};
+use super::super::preset_form::{problem_flags, problem_list, problem_summary};
 use super::super::recorder::key_character;
-use super::super::ui::SplitForm;
-use super::{Kept, canonical, presets_folder, problem_list, problem_summary};
+use super::super::ui::{SplitField, SplitForm};
+use super::{Kept, presets_folder};
 use autosplit_input::Modifiers;
 use slint::winit_030::winit::event::KeyEvent;
 use slint::winit_030::winit::keyboard::{Key, NamedKey};
@@ -40,11 +42,6 @@ pub(super) struct Editing {
     removed: Vec<Removal>,
 }
 
-/// What `name` shows of a mask or savestate path: its file name.
-fn file_label(path: &str) -> String {
-    Path::new(path).file_name().map_or_else(String::new, |name| name.to_string_lossy().into_owned())
-}
-
 /// Whether saving copies a mask or savestate into the preset's folder: it was picked from
 /// somewhere else. Paths in the preset are relative, and picked ones absolute.
 fn copied_in(source: Option<&Path>, path: &str) -> bool {
@@ -65,24 +62,9 @@ impl Gui {
         on!(weak, maker, on_new_preset, () gui => gui.start_editing(true));
         on!(weak, maker, on_game_edited, (text) gui => gui.edit_preset(|preset| preset.game = text.to_string()));
         on!(weak, maker, on_name_edited, (text) gui => gui.edit_preset(|preset| preset.name = text.to_string()));
-        on!(weak, maker, on_split_name_edited, (text) gui => gui.edit_split(SplitEdit::Name(text.into())));
         let kinds: Vec<SharedString> = SplitKind::ALL.iter().map(|kind| kind.label().into()).collect();
         maker.set_kinds(ModelRc::new(VecModel::from(kinds)));
-        on!(weak, maker, on_kind_edited, (index) gui => {
-            let Some(&kind) = SplitKind::ALL.get(index as usize) else { return };
-            gui.edit_split(SplitEdit::Kind(kind));
-            // The name and Same split as the one above follow it
-            gui.show_form();
-        });
-        on!(weak, maker, on_threshold_edited, (value) gui => gui.edit_split(SplitEdit::Threshold(field_value(value))));
-        on!(weak, maker, on_delay_edited, (value) gui => gui.edit_split(SplitEdit::Delay(value.max(0.0).round() as u32)));
-        on!(weak, maker, on_pause_edited, (on, value) gui => {
-            gui.edit_split(SplitEdit::Pause(on.then_some(field_value(value))));
-        });
-        on!(weak, maker, on_dummy_edited, (on) gui => gui.edit_split(SplitEdit::Dummy(on)));
-        on!(weak, maker, on_below_edited, (on) gui => gui.edit_split(SplitEdit::Below(on)));
-        on!(weak, maker, on_with_previous_edited, (on) gui => gui.edit_split(SplitEdit::WithPrevious(on)));
-        on!(weak, maker, on_instructions_edited, (text) gui => gui.edit_split(SplitEdit::Instructions(text.into())));
+        on!(weak, maker, on_split_edited, (field) gui => gui.split_field_edited(field));
         on!(weak, maker, on_choose_mask, () gui => gui.choose_split_file(false));
         on!(weak, maker, on_choose_savestate, () gui => gui.choose_split_file(true));
         on!(weak, maker, on_clear_savestate, () gui => gui.edit_split(SplitEdit::Savestate(String::new())));
@@ -101,7 +83,7 @@ impl Gui {
         });
         on!(weak, maker, on_save_preset, () gui => gui.save_draft(false));
         on!(weak, maker, on_save_preset_as_new, () gui => gui.save_draft(true));
-        on!(weak, maker, on_cancel_edit, () gui => gui.unless_discarded(|gui| gui.stop_editing(true)));
+        on!(weak, maker, on_cancel_edit, () gui => gui.unless_discarded(|gui| gui.cancel_editing()));
         on!(weak, maker, on_show_problems, () gui => gui.show_problems());
         on!(weak, maker, on_delete_preset, () gui => gui.ask_delete_preset());
     }
@@ -132,7 +114,7 @@ impl Gui {
             }
             _ if event.repeat => return false,
             (Key::Named(NamedKey::Escape), held) if held.is_empty() => {
-                self.unless_discarded(|gui| gui.stop_editing(true));
+                self.unless_discarded(|gui| gui.cancel_editing());
             }
             // Otherwise a text field's own undo
             (_, Modifiers::CONTROL) if character == Some('z') => return self.undo_remove(),
@@ -169,9 +151,7 @@ impl Gui {
             (true, loaded) => (Draft::new(&loaded.map(|loaded| loaded.preset.game).unwrap_or_default()), None),
         };
         if new {
-            let count = draft.preset.splits.len();
-            (maker.sources, maker.saved, maker.thumbs, maker.selected) =
-                (vec![None; count], vec![None; count], vec![None; count], 0);
+            maker.start_over(draft.preset.splits.len());
         }
         let (game, name) = (draft.preset.game.clone(), draft.preset.name.clone());
         maker.edits += 1;
@@ -187,18 +167,24 @@ impl Gui {
         self.choose_split(selected);
     }
 
-    /// Leaves edit mode, back to how the window was before when `restore`. Otherwise the splits'
-    /// grabs and screenshots stay with the splits as they were edited.
-    pub(super) fn stop_editing(&self, restore: bool) {
+    /// Leaves edit mode, the one way out of it. The splits' grabs and screenshots stay with the
+    /// splits as they were edited. Returns what editing had.
+    fn leave_editing(&self) -> Option<Editing> {
         let mut maker = self.maker.borrow_mut();
-        let Some(edit) = maker.edit.take() else { return };
-        if restore {
-            maker.restore(edit.before);
-        }
+        let edit = maker.edit.take()?;
         maker.live_mask = None;
-        let (preset, selected) = (maker.preset, maker.selected);
         drop(maker);
         self.windows.maker.set_editing(false);
+        Some(edit)
+    }
+
+    /// Cancels editing: the window goes back to how it was before.
+    pub(super) fn cancel_editing(&self) {
+        let Some(edit) = self.leave_editing() else { return };
+        let mut maker = self.maker.borrow_mut();
+        maker.restore(edit.before);
+        let (preset, selected) = (maker.preset, maker.selected);
+        drop(maker);
         self.show_preset(preset);
         self.choose_split(selected);
     }
@@ -239,14 +225,37 @@ impl Gui {
         self.edit_split_at(index, edit);
     }
 
+    /// A field of the split form was edited: its value goes into the selected split.
+    fn split_field_edited(&self, field: SplitField) {
+        let window = &self.windows.maker;
+        let edit = match field {
+            SplitField::Name => SplitEdit::Name(window.get_split_name().into()),
+            SplitField::Kind => match SplitKind::ALL.get(window.get_split_kind() as usize) {
+                Some(&kind) => SplitEdit::Kind(kind),
+                None => return,
+            },
+            SplitField::Threshold => SplitEdit::Threshold(field_value(window.get_threshold())),
+            SplitField::Delay => SplitEdit::Delay(field_value(window.get_delay())),
+            SplitField::Pause => SplitEdit::Pause(window.get_has_pause().then(|| field_value(window.get_pause()))),
+            SplitField::Dummy => SplitEdit::Dummy(window.get_dummy()),
+            SplitField::Below => SplitEdit::Below(window.get_below()),
+            SplitField::WithPrevious => SplitEdit::WithPrevious(window.get_with_previous()),
+            SplitField::Instructions => SplitEdit::Instructions(window.get_instructions().into()),
+        };
+        self.edit_split(edit);
+    }
+
     /// An edit of split `index`'s field.
     fn edit_split_at(&self, index: usize, edit: SplitEdit) {
-        let mask_changed = matches!(edit, SplitEdit::Mask(_));
+        let (refill, mask_changed) = (edit.changes_other_fields(), edit.changes_mask());
         if let Some(editing) = self.maker.borrow_mut().edit.as_mut() {
             editing.draft.edit_split(index, edit);
         }
         if mask_changed {
             self.maker.borrow_mut().live_mask = None;
+        }
+        if refill {
+            self.show_form();
         }
         self.show_maker();
     }
@@ -257,9 +266,7 @@ impl Gui {
         let mut maker = self.maker.borrow_mut();
         let Some(edit) = maker.edit.as_mut() else { return };
         let Some((select, change)) = change(&mut edit.draft) else { return };
-        change.mirror(&mut maker.sources);
-        change.mirror(&mut maker.saved);
-        change.mirror(&mut maker.thumbs);
+        change.mirror(&mut maker.splits);
         drop(maker);
         self.choose_split(select);
     }
@@ -271,10 +278,7 @@ impl Gui {
         let Some(edit) = &maker.edit else { return };
         let (before, kept) = (edit.draft.preset.clone(), maker.keep());
         drop(maker);
-        self.change_splits(|draft| {
-            let (next, change) = draft.remove(selected)?;
-            Some((next.unwrap_or(0), change))
-        });
+        self.change_splits(|draft| draft.remove(selected));
         if let Some(edit) = self.maker.borrow_mut().edit.as_mut() {
             let after = edit.draft.preset.clone();
             edit.removed.push(Removal { before, after, kept });
@@ -342,8 +346,8 @@ impl Gui {
                 name_problem: edit.draft.field_problems(selected, Field::Name).into(),
                 mask_problem: edit.draft.field_problems(selected, Field::Mask).into(),
                 group_problem: edit.draft.field_problems(selected, Field::Group).into(),
-                mask: file_label(&split.mask).into(),
-                savestate: file_label(&split.savestate).into(),
+                mask: file_name_text(Path::new(&split.mask)).unwrap_or_default().into(),
+                savestate: file_name_text(Path::new(&split.savestate)).unwrap_or_default().into(),
                 mask_path: shown_path(&maker, &split.mask).into(),
                 savestate_path: shown_path(&maker, &split.savestate).into(),
                 mask_copied: copied_in(edit.source.as_deref(), &split.mask),
@@ -372,7 +376,7 @@ impl Gui {
         window.set_has_problems(!problems.is_empty());
         window.set_can_save_preset(problems.is_empty() && edit.draft.can_save());
         window.set_can_delete_preset(edit.source.is_some());
-        (0..splits.len()).map(|index| problems.iter().any(|problem: &Problem| problem.split == Some(index))).collect()
+        problem_flags(&problems, splits.len())
     }
 
     /// Asks for a mask or savestate for the selected split. A mask has to read as one.
@@ -457,8 +461,7 @@ impl Gui {
         if let Err(error) = save_preset(source.as_deref(), &target, &preset) {
             return self.show_message(Message::error(format!("Couldn't save the preset. {error}")));
         }
-        self.maker.borrow_mut().edit = None;
-        self.windows.maker.set_editing(false);
+        self.leave_editing();
         self.reload_presets(Some(&target), None);
         self.windows.maker.set_status(format!("Saved the preset {}.", preset.name).into());
     }
@@ -486,8 +489,7 @@ impl Gui {
             if let Err(error) = delete_preset(&folder) {
                 return gui.show_message(Message::error(format!("Couldn't delete the preset. {error}")));
             }
-            gui.maker.borrow_mut().edit = None;
-            gui.windows.maker.set_editing(false);
+            gui.leave_editing();
             gui.reload_presets(None, Some(&deleted));
             gui.windows.maker.set_status(format!("Deleted the preset {name}.").into());
         }));

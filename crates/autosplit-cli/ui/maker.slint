@@ -27,6 +27,9 @@ export struct MakerRow {
 }
 
 // What the form shows of the selected split besides its fields, while editing.
+// A field of the split form, which says it was edited. Its value is in its property.
+export enum SplitField { name, kind, threshold, delay, pause, dummy, below, with-previous, instructions }
+
 export struct SplitForm {
     // What has to be fixed in each field, one problem a line, or empty
     name-problem: string,
@@ -152,15 +155,7 @@ export component MakerWindow inherits Window {
     callback new-preset();
     callback game-edited(string);
     callback name-edited(string);
-    callback split-name-edited(string);
-    callback kind-edited(int);
-    callback threshold-edited(float);
-    callback delay-edited(float);
-    callback pause-edited(bool, float);
-    callback dummy-edited(bool);
-    callback below-edited(bool);
-    callback with-previous-edited(bool);
-    callback instructions-edited(string);
+    callback split-edited(SplitField);
     callback choose-mask();
     callback choose-savestate();
     callback clear-savestate();
@@ -686,7 +681,7 @@ export component MakerWindow inherits Window {
                             width: 140px;
                             model: root.kinds;
                             current-index <=> root.split-kind;
-                            selected => { root.kind-edited(root.split-kind); }
+                            selected => { root.split-edited(SplitField.kind); }
 
                             Tooltip {
                                 Tip {
@@ -714,7 +709,7 @@ export component MakerWindow inherits Window {
                             error: root.form.name-problem != "";
                             enabled: root.split-kind == 0;
                             text <=> root.split-name;
-                            edited(text) => { root.split-name-edited(text); }
+                            edited => { root.split-edited(SplitField.name); }
                         }
                     }
 
@@ -777,7 +772,7 @@ export component MakerWindow inherits Window {
                             decimals: 2;
                             generation: root.form-generation;
                             value <=> root.threshold;
-                            edited(value) => { root.threshold-edited(value); }
+                            edited => { root.split-edited(SplitField.threshold); }
                         }
 
                         Label {
@@ -800,7 +795,7 @@ export component MakerWindow inherits Window {
                             step: 100;
                             generation: root.form-generation;
                             value <=> root.delay;
-                            edited(value) => { root.delay-edited(value); }
+                            edited => { root.split-edited(SplitField.delay); }
                         }
 
                         Label {
@@ -817,7 +812,7 @@ export component MakerWindow inherits Window {
                             width: root.label-width;
                             text: "Pause";
                             checked <=> root.has-pause;
-                            toggled => { root.pause-edited(self.checked, root.pause); }
+                            toggled => { root.split-edited(SplitField.pause); }
 
                             Tooltip {
                                 Tip {
@@ -836,7 +831,7 @@ export component MakerWindow inherits Window {
                             enabled: root.has-pause;
                             generation: root.form-generation;
                             value <=> root.pause;
-                            edited(value) => { root.pause-edited(true, value); }
+                            edited => { root.split-edited(SplitField.pause); }
                         }
 
                         Label {
@@ -856,7 +851,7 @@ export component MakerWindow inherits Window {
                         CheckBox {
                             text: "Dummy";
                             checked <=> root.dummy;
-                            toggled => { root.dummy-edited(self.checked); }
+                            toggled => { root.split-edited(SplitField.dummy); }
 
                             Tooltip {
                                 Tip {
@@ -868,7 +863,7 @@ export component MakerWindow inherits Window {
                         CheckBox {
                             text: "Split below threshold";
                             checked <=> root.below;
-                            toggled => { root.below-edited(self.checked); }
+                            toggled => { root.split-edited(SplitField.below); }
 
                             Tooltip {
                                 Tip {
@@ -890,7 +885,7 @@ export component MakerWindow inherits Window {
                             text: "Same split as the one above";
                             enabled: root.form.can-join || root.with-previous;
                             checked <=> root.with-previous;
-                            toggled => { root.with-previous-edited(self.checked); }
+                            toggled => { root.split-edited(SplitField.with-previous); }
 
                             Tooltip {
                                 Tip {
@@ -961,7 +956,7 @@ export component MakerWindow inherits Window {
                         enabled: root.form.savestate != "";
                         placeholder-text: root.form.savestate == "" ? "Instructions for the savestate, once there is one" : "What to do after loading the savestate, if anything";
                         text <=> root.instructions;
-                        edited(text) => { root.instructions-edited(text); }
+                        edited => { root.split-edited(SplitField.instructions); }
                     }
                 }
 

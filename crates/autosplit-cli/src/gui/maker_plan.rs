@@ -47,8 +47,19 @@ fn split_key(name: &str) -> Option<SplitKey> {
     number_prefix(&name)?.parse().ok().map(SplitKey::Number)
 }
 
-fn is_png(path: &Path) -> bool {
+pub(crate) fn is_png(path: &Path) -> bool {
     path.extension().is_some_and(|extension| extension.eq_ignore_ascii_case("png"))
+}
+
+/// A path's last part as text, or `None` for a path without one, like `..`.
+pub(crate) fn file_name_text(path: &Path) -> Option<String> {
+    path.file_name().map(|name| name.to_string_lossy().into_owned())
+}
+
+/// The path with links and `..` resolved, to compare paths written in different ways, or the
+/// path itself when it doesn't exist.
+pub(crate) fn canonical(path: &Path) -> PathBuf {
+    std::fs::canonicalize(path).unwrap_or_else(|_| path.to_owned())
 }
 
 /// Writing `names` into a folder that has `existing` files. The split images of the preset, all
@@ -57,12 +68,11 @@ fn is_png(path: &Path) -> bool {
 /// screenshots (`NNN_SplitImage.png`): their numbers count from 1 where split images count from
 /// 0, so they'd look like the next split's.
 pub fn plan_writes(names: &[String], preset: &[String], existing: &[PathBuf], sources: &[PathBuf]) -> WritePlan {
-    let file_name = |path: &PathBuf| path.file_name().map(|name| name.to_string_lossy().into_owned());
     let same_name = |name: &str, other: &str| name.eq_ignore_ascii_case(other);
     let keys: Vec<SplitKey> = names.iter().filter_map(|name| split_key(name)).collect();
     let mut plan = WritePlan::default();
     for path in existing.iter().filter(|path| is_png(path)) {
-        let Some(existing_name) = file_name(path) else { continue };
+        let Some(existing_name) = file_name_text(path) else { continue };
         if names.iter().any(|name| same_name(name, &existing_name)) {
             plan.overwrites.push(existing_name);
         } else if !sources.contains(path)
@@ -80,7 +90,6 @@ pub fn plan_writes(names: &[String], preset: &[String], existing: &[PathBuf], so
 /// name in `names`. The saved paths are kept when one isn't, so a name that changes and changes
 /// back, like while editing the preset, counts again.
 pub fn saves_in_place(saved: &[Option<PathBuf>], names: &[String], folder: Option<&Path>) -> Vec<bool> {
-    let canonical = |path: &Path| std::fs::canonicalize(path).unwrap_or_else(|_| path.to_owned());
     let folder = folder.map(canonical);
     (saved.iter().enumerate())
         .map(|(index, saved)| {

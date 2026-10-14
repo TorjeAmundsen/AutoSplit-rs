@@ -151,7 +151,7 @@ impl Gui {
         let images = self.tester_folder_images();
         let index = images.iter().position(|image| *image == path);
         let tester = &self.windows.tester;
-        self.show_tester_file(&path.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default());
+        self.show_tester_file(&super::maker_plan::file_name_text(&path).unwrap_or_default());
         tester.set_path(path.display().to_string().into());
         tester.set_can_reload(true);
         tester.set_can_previous_image(index.is_some_and(|index| index > 0));
