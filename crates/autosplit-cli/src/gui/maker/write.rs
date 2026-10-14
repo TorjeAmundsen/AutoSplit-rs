@@ -11,20 +11,11 @@ pub(super) struct Job {
     target: PathBuf,
 }
 
-/// Moves screenshots that are in the split image folder into its `base` folder, where the
-/// split image loader doesn't look. Returns how many it moved.
-fn move_to_base(folder: &Path, sources: &[PathBuf]) -> Result<usize, String> {
-    let folder = std::fs::canonicalize(folder).map_err(|error| error.to_string())?;
-    let mut moved = 0;
-    for source in sources {
-        let in_folder = source.parent().and_then(|parent| std::fs::canonicalize(parent).ok()) == Some(folder.clone());
-        let Some(name) = source.file_name().filter(|_| in_folder && source.is_file()) else { continue };
-        let base = folder.join("base");
-        std::fs::create_dir_all(&base).map_err(|error| error.to_string())?;
-        std::fs::rename(source, base.join(name)).map_err(|error| error.to_string())?;
-        moved += 1;
-    }
-    Ok(moved)
+/// A split image the thread wrote, or couldn't: for split `index`, made from `source`.
+pub(super) struct Written {
+    index: usize,
+    source: Source,
+    result: Result<PathBuf, String>,
 }
 
 impl Job {
@@ -42,6 +33,9 @@ impl Gui {
     pub(super) fn save_split_images(self: &Rc<Self>, indexes: Vec<usize>) -> bool {
         if self.refused_for_problems() {
             return false;
+        }
+        if self.queued_behind_saving(&indexes) {
+            return true;
         }
         let Some(folder) = self.split_image_folder().filter(|folder| folder.is_dir()) else {
             self.show_message(Message::error(
@@ -113,75 +107,122 @@ impl Gui {
         true
     }
 
-    /// Writes split images on a thread of their own, deletes `stale` ones, and moves screenshots
-    /// out of the split image folder.
-    pub(super) fn write_split_images(&self, folder: PathBuf, jobs: Vec<Job>, stale: Vec<PathBuf>) {
+    /// While split images are being saved, saves `indexes` after them instead, since two saves
+    /// at once could write the same files or move the same screenshots. Returns whether it did.
+    fn queued_behind_saving(&self, indexes: &[usize]) -> bool {
+        let mut maker = self.maker.borrow_mut();
+        if !maker.saving {
+            return false;
+        }
+        let generation = maker.generation;
+        let queued = maker.queued.get_or_insert_with(|| (generation, Vec::new()));
+        // Ones queued for a preset chosen before don't count
+        if queued.0 != generation {
+            *queued = (generation, Vec::new());
+        }
+        for &index in indexes {
+            if !queued.1.contains(&index) {
+                queued.1.push(index);
+            }
+        }
+        drop(maker);
+        self.windows.maker.set_status("Saves once the split images being saved are.".into());
+        true
+    }
+
+    /// Writes split images on a thread of their own, then deletes the `stale` ones of the splits
+    /// written and moves their screenshots out of the split image folder.
+    pub(super) fn write_split_images(self: &Rc<Self>, folder: PathBuf, jobs: Vec<Job>, stale: Vec<PathBuf>) {
+        // Asked about while another save started
+        let indexes: Vec<usize> = jobs.iter().map(|job| job.index).collect();
+        if self.queued_behind_saving(&indexes) {
+            return;
+        }
         self.windows.maker.set_status(format!("Saving {}...", plural(jobs.len(), "split image")).into());
+        // The preset's split images, which aren't moved when one is picked as a screenshot
+        let keep: Vec<PathBuf> = self.maker_file_names().iter().map(|name| folder.join(name)).collect();
         let generation = self.maker.borrow().generation;
+        self.maker.borrow_mut().saving = true;
         self.start_work();
         let spawned = std::thread::Builder::new().name("split images".into()).spawn(move || {
-            let results: Vec<(usize, Result<PathBuf, String>)> =
-                jobs.iter().map(|job| (job.index, job.run().map(|()| job.target.clone()))).collect();
+            let results: Vec<Written> = (jobs.iter())
+                .map(|job| Written {
+                    index: job.index,
+                    source: job.source.clone(),
+                    result: job.run().map(|()| job.target.clone()),
+                })
+                .collect();
+            let file = |written: &Written| match &written.source {
+                Source::File(path) => Some(path.clone()),
+                Source::Grabbed(_) => None,
+            };
+            let done: Vec<PathBuf> = results.iter().filter(|written| written.result.is_ok()).filter_map(file).collect();
+            let failed: Vec<PathBuf> =
+                results.iter().filter(|written| written.result.is_err()).filter_map(file).collect();
+            let names: Vec<String> = (results.iter())
+                .filter_map(|written| written.result.as_ref().ok().and_then(|path| file_name_text(path)))
+                .collect();
             let mut errors: Vec<String> = Vec::new();
-            for path in &stale {
-                if let Err(error) = std::fs::remove_file(path) {
+            for path in stale_to_delete(&stale, &names) {
+                if let Err(error) = std::fs::remove_file(&path) {
                     errors.push(format!("Couldn't delete {}: {error}", path.display()));
                 }
             }
-            let files: Vec<PathBuf> = jobs
-                .iter()
-                .filter_map(|job| match &job.source {
-                    Source::File(path) => Some(path.clone()),
-                    Source::Grabbed(_) => None,
-                })
-                .collect();
-            let moved = move_to_base(&folder, &files).unwrap_or_else(|error| {
-                errors.push(format!("Couldn't move the screenshots to the base folder: {error}"));
-                0
-            });
-            with_gui(move |gui| gui.split_images_written(generation, results, moved, errors));
+            let (moves, error) = move_to_base(&folder, &screenshots_to_move(&done, &failed, &keep));
+            errors.extend(error);
+            with_gui(move |gui| gui.split_images_written(generation, results, moves, errors));
         });
         if let Err(error) = spawned {
+            self.maker.borrow_mut().saving = false;
             self.end_work();
+            self.show_maker();
             self.show_message(Message::error(format!("Couldn't save the split images: {error}")));
         }
     }
 
+    /// Marks the splits written as saved, unless their source changed meanwhile, points the
+    /// splits whose screenshots moved to where they are now, then saves what was queued.
     pub(super) fn split_images_written(
-        &self,
+        self: &Rc<Self>,
         generation: u64,
-        results: Vec<(usize, Result<PathBuf, String>)>,
-        moved: usize,
+        results: Vec<Written>,
+        moves: Vec<(PathBuf, PathBuf)>,
         mut errors: Vec<String>,
     ) {
         self.end_work();
         let mut written = 0;
         let mut maker = self.maker.borrow_mut();
+        maker.saving = false;
         // Another preset was chosen meanwhile: its splits aren't the ones saved
         let same_preset = maker.generation == generation;
-        for (index, result) in results {
+        for Written { index, source, result } in results {
             match result {
-                Ok(_) if !same_preset => written += 1,
                 Ok(path) => {
                     written += 1;
-                    let Some(split) = maker.splits.get_mut(index) else { continue };
-                    split.saved = Some(path);
-                    // A screenshot moved to the base folder is read from there
-                    if let Some(Source::File(source)) = split.source.as_mut()
-                        && let (Some(parent), Some(name)) = (source.parent(), source.file_name())
-                        && parent.join("base").join(name).is_file()
+                    if let Some(split) = maker.splits.get_mut(index).filter(|_| same_preset)
+                        && split.source.as_ref().is_some_and(|now| now.same(&source))
                     {
-                        *source = parent.join("base").join(name);
+                        split.saved = Some(path);
                     }
                 }
                 Err(error) => errors.push(error),
             }
         }
+        // Every split made from a moved screenshot reads it from its new place
+        for split in maker.splits.iter_mut().filter(|_| same_preset) {
+            if let Some(Source::File(path)) = split.source.as_mut()
+                && let Some((_, to)) = moves.iter().find(|(from, _)| from == path)
+            {
+                *path = to.clone();
+            }
+        }
+        let generation_now = maker.generation;
+        let queued = maker.queued.take().filter(|(queued, _)| *queued == generation_now);
         drop(maker);
-        let moved = if moved > 0 {
-            format!(", moved {} to the base folder", plural(moved, "screenshot"))
-        } else {
+        let moved = if moves.is_empty() {
             String::new()
+        } else {
+            format!(", moved {} to the base folder", plural(moves.len(), "screenshot"))
         };
         self.windows.maker.set_status(format!("Saved {}{moved}.", plural(written, "split image")).into());
         if written > 0 {
@@ -191,6 +232,9 @@ impl Gui {
         self.show_maker();
         if !errors.is_empty() {
             self.show_message(Message::error(errors.join("\n\n")));
+        }
+        if let Some((_, indexes)) = queued {
+            self.save_split_images(indexes);
         }
     }
 

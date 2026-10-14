@@ -1,5 +1,5 @@
-//! What saving a preset's split images does to the split image folder, worked out before any
-//! file is written, so it can be asked about first.
+//! What saving a preset's split images does to the split image folder: worked out before any
+//! file is written, so it can be asked about first, and the screenshots moved out after.
 
 use std::path::{Path, PathBuf};
 
@@ -84,6 +84,56 @@ pub fn plan_writes(names: &[String], preset: &[String], existing: &[PathBuf], so
         }
     }
     plan
+}
+
+/// The `stale` images to delete once the split images `written` are: only those of a split whose
+/// new image was written, so a split whose image failed keeps its old one.
+pub fn stale_to_delete(stale: &[PathBuf], written: &[String]) -> Vec<PathBuf> {
+    let keys: Vec<SplitKey> = written.iter().filter_map(|name| split_key(name)).collect();
+    (stale.iter())
+        .filter(|path| file_name_text(path).and_then(|name| split_key(&name)).is_some_and(|key| keys.contains(&key)))
+        .cloned()
+        .collect()
+}
+
+/// The screenshots to move out of the split image folder after a save: those of the split images
+/// `done`, but not one a split image that `failed` is still made from, which saving again needs,
+/// and not one of the preset's split images, in `keep`, picked as a screenshot.
+pub fn screenshots_to_move(done: &[PathBuf], failed: &[PathBuf], keep: &[PathBuf]) -> Vec<PathBuf> {
+    let failed: Vec<PathBuf> = failed.iter().map(|path| canonical(path)).collect();
+    let keep: Vec<PathBuf> = keep.iter().map(|path| canonical(path)).collect();
+    let mut moving: Vec<PathBuf> = Vec::new();
+    for path in done {
+        let real = canonical(path);
+        if !failed.contains(&real) && !keep.contains(&real) && !moving.iter().any(|path| canonical(path) == real) {
+            moving.push(path.clone());
+        }
+    }
+    moving
+}
+
+/// Moves screenshots that are in the split image folder into its `base` folder, where the
+/// split image loader doesn't look. A screenshot whose name is taken there gets a free one, like
+/// `001_SplitImage (1).png`, since screenshot numbers are used again once theirs moved. Returns
+/// where each went, also when one couldn't be moved, with why.
+pub fn move_to_base(folder: &Path, sources: &[PathBuf]) -> (Vec<(PathBuf, PathBuf)>, Option<String>) {
+    let mut moves = Vec::new();
+    let Ok(real_folder) = std::fs::canonicalize(folder) else { return (moves, None) };
+    for source in sources {
+        let in_folder = source.parent().map(canonical).as_ref() == Some(&real_folder);
+        let (Some(parent), Some(name)) = (source.parent(), file_name_text(source)) else { continue };
+        if !in_folder || !source.is_file() {
+            continue;
+        }
+        let base = parent.join("base");
+        let target = base.join(autosplit_core::preset::unique_file_name(&name, |name| base.join(name).exists()));
+        let result = std::fs::create_dir_all(&base).and_then(|()| std::fs::rename(source, &target));
+        if let Err(error) = result {
+            return (moves, Some(format!("Couldn't move {} to the base folder: {error}", source.display())));
+        }
+        moves.push((source.clone(), target));
+    }
+    (moves, None)
 }
 
 /// Whether each split's saved split image, in `saved`, is in `folder` under the split's file

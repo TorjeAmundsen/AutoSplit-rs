@@ -8,7 +8,8 @@ use std::rc::Rc;
 use autosplit::gui::document::{Document, folder_text, profile_on_open};
 use autosplit::gui::log::{LOG_LINES, LogLines};
 use autosplit::gui::maker_plan::{
-    DeletedPreset, WritePlan, looks_made, plan_writes, preset_after_delete, saves_in_place,
+    DeletedPreset, WritePlan, looks_made, move_to_base, plan_writes, preset_after_delete, saves_in_place,
+    screenshots_to_move, stale_to_delete,
 };
 use autosplit::gui::messages::{Answer, Buttons, Message, MessageQueue};
 use autosplit::gui::placement::{Area, beside, centered_over};
@@ -683,6 +684,65 @@ fn saving_replaces_files_with_the_same_name() {
 fn saving_finds_older_images_of_the_same_splits(names: &[&str], existing: &[&str]) -> Vec<PathBuf> {
     // Act, with the expected value checked by test_case
     plan(names, existing).stale
+}
+
+#[test_case(&["05_Bottle_(0.93).png"] => vec![PathBuf::from("05_Bottle_(0.9).png")]; "its new image was written")]
+#[test_case(&["06_Boss_(0.9).png"] => Vec::<PathBuf>::new(); "only another split's was")]
+#[test_case(&[] => Vec::<PathBuf>::new(); "none was")]
+fn only_written_splits_lose_their_older_images(written: &[&str]) -> Vec<PathBuf> {
+    // Arrange
+    let stale = [PathBuf::from("05_Bottle_(0.9).png")];
+    let written: Vec<String> = written.iter().map(|name| (*name).to_owned()).collect();
+
+    // Act
+    stale_to_delete(&stale, &written)
+}
+
+#[test_case(&["001.png"], &[], &[] => vec![PathBuf::from("001.png")]; "written from")]
+#[test_case(&["001.png"], &["001.png"], &[] => Vec::<PathBuf>::new(); "also a failed one's")]
+#[test_case(&["05_Boss.png"], &[], &["05_Boss.png"] => Vec::<PathBuf>::new(); "a split image of the preset")]
+#[test_case(&["001.png", "001.png"], &[], &[] => vec![PathBuf::from("001.png")]; "once for two splits")]
+fn moves_screenshots_only_of_written_split_images(done: &[&str], failed: &[&str], keep: &[&str]) -> Vec<PathBuf> {
+    // Arrange
+    let paths = |names: &[&str]| names.iter().map(PathBuf::from).collect::<Vec<_>>();
+
+    // Act
+    screenshots_to_move(&paths(done), &paths(failed), &paths(keep))
+}
+
+#[test]
+fn moving_to_base_keeps_screenshots_already_there() {
+    // Arrange: a screenshot number used again after the first one moved
+    let folder = tempfile::tempdir().unwrap();
+    std::fs::create_dir(folder.path().join("base")).unwrap();
+    std::fs::write(folder.path().join("base").join("001_SplitImage.png"), "first").unwrap();
+    let shot = folder.path().join("001_SplitImage.png");
+    std::fs::write(&shot, "second").unwrap();
+
+    // Act
+    let (moves, error) = move_to_base(folder.path(), std::slice::from_ref(&shot));
+
+    // Assert
+    let moved_to = folder.path().join("base").join("001_SplitImage (1).png");
+    assert_eq!((moves, error), (vec![(shot, moved_to.clone())], None));
+    assert_eq!(std::fs::read_to_string(folder.path().join("base").join("001_SplitImage.png")).unwrap(), "first");
+    assert_eq!(std::fs::read_to_string(moved_to).unwrap(), "second");
+}
+
+#[test]
+fn moving_to_base_leaves_screenshots_from_other_folders() {
+    // Arrange
+    let folder = tempfile::tempdir().unwrap();
+    let elsewhere = tempfile::tempdir().unwrap();
+    let shot = elsewhere.path().join("001_SplitImage.png");
+    std::fs::write(&shot, "shot").unwrap();
+
+    // Act
+    let (moves, error) = move_to_base(folder.path(), std::slice::from_ref(&shot));
+
+    // Assert
+    assert_eq!((moves, error), (Vec::new(), None));
+    assert!(shot.is_file());
 }
 
 #[test]

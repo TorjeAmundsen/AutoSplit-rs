@@ -13,7 +13,10 @@ use autosplit_core::preset::{LoadedPreset, Preset, PresetError, load_presets};
 use autosplit_core::split_folder::user_files;
 use slint::{ComponentHandle, ModelRc, Rgba8Pixel, SharedPixelBuffer, SharedString, VecModel};
 
-use super::maker_plan::{canonical, file_name_text, looks_made, plan_writes, saves_in_place};
+use super::maker_plan::{
+    canonical, file_name_text, looks_made, move_to_base, plan_writes, saves_in_place, screenshots_to_move,
+    stale_to_delete,
+};
 use super::messages::{Answer, Message};
 use super::placement::beside;
 use super::preset_form::{Draft, Problem, problem_flags, problem_summary, split_heading};
@@ -88,6 +91,10 @@ pub(super) struct Maker {
     /// Split images being written and pictures being made. Editing waits for them, since going
     /// back from it restores the splits as they were before, which would lose what they bring.
     working: usize,
+    /// Split images are being written, which other saves wait for.
+    saving: bool,
+    /// Splits to save once the ones being saved are, for the preset of that generation.
+    queued: Option<(u64, Vec<usize>)>,
 }
 
 /// What's been done for a split.
