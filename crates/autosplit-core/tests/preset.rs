@@ -7,7 +7,7 @@ use autosplit_core::filename::{
     flags_from_filename, pause_from_filename, threshold_from_filename,
 };
 use autosplit_core::image::BgraImage;
-use autosplit_core::preset::{PRESET_FILE, Preset, PresetError, PresetSplit, load_libraries, load_presets};
+use autosplit_core::preset::{PRESET_FILE, Preset, PresetError, PresetSplit, game_key, load_libraries, load_presets};
 use autosplit_core::profile::{ProfileError, UserProfile};
 use autosplit_core::split_folder::{ValidationContext, load_split_folder};
 use autosplit_core::split_image::SplitDefaults;
@@ -70,6 +70,31 @@ fn presets_are_sorted_by_game_then_name() {
     // Assert
     let names: Vec<&str> = presets.iter().map(|loaded| loaded.preset.name.as_str()).collect();
     assert_eq!(names, ["c", "A", "b"]);
+}
+
+#[test]
+fn presets_of_a_game_spelled_differently_are_listed_together() {
+    // Arrange: names that would sort between the spellings if they counted as other games
+    let folder = tempfile::tempdir().unwrap();
+    for (name, game) in [("a", "Zelda  "), ("b", "zelda"), ("c", "Zelda"), ("d", "Mario")] {
+        std::fs::create_dir(folder.path().join(name)).unwrap();
+        let text = format!("name = \"{name}\"\ngame = \"{game}\"\n\n[[split]]\nname = \"x\"\nmask = \"x.png\"\n");
+        std::fs::write(folder.path().join(name).join("preset.toml"), text).unwrap();
+    }
+
+    // Act
+    let (presets, _) = load_presets(folder.path());
+
+    // Assert
+    let names: Vec<&str> = presets.iter().map(|loaded| loaded.preset.name.as_str()).collect();
+    assert_eq!(names, ["d", "a", "b", "c"]);
+}
+
+#[test_case("The Legend of Zelda: Ocarina of Time", "the legend of zelda:  ocarina of time " => true; "case and spaces")]
+#[test_case("Zelda", "Mario" => false; "another game")]
+fn games_are_the_same_ignoring_case_and_spaces(game: &str, other: &str) -> bool {
+    // Act, with the expected value checked by test_case
+    game_key(game) == game_key(other)
 }
 
 #[test]

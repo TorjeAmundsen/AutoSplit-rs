@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use autosplit_core::mask::Mask;
-use autosplit_core::preset::{Preset, delete_preset, new_preset_folder, save_preset};
+use autosplit_core::preset::{Preset, delete_preset, game_key, new_preset_folder, save_preset};
 use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
 
 use super::super::Gui;
@@ -178,7 +178,7 @@ impl Gui {
     fn show_edit_games(&self, game: &str) {
         let maker = self.maker.borrow();
         let mut games: Vec<SharedString> = maker.games().into_iter().map(game_label).collect();
-        let index = maker.games().iter().position(|&each| each == game);
+        let index = maker.game_index(game);
         drop(maker);
         games.push("New game...".into());
         let window = &self.windows.maker;
@@ -486,7 +486,7 @@ impl Gui {
         // The other presets of the game, which the Preset list tells apart by name
         let taken: Vec<String> = (maker.presets.iter())
             .filter(|loaded| in_place.is_none_or(|folder| canonical(&loaded.folder) != canonical(folder)))
-            .filter(|loaded| loaded.preset.game.trim().to_lowercase() == preset.game.trim().to_lowercase())
+            .filter(|loaded| game_key(&loaded.preset.game) == game_key(&preset.game))
             .map(|loaded| loaded.preset.name.trim().to_lowercase())
             .collect();
         drop(maker);
@@ -523,7 +523,7 @@ impl Gui {
         let game = maker.loaded().map(|loaded| loaded.preset.game.clone()).unwrap_or_default();
         let deleted = DeletedPreset {
             place: maker.presets_of(&game).iter().position(|&index| index == maker.preset).unwrap_or(0),
-            game_place: maker.games().iter().position(|&each| each == game).unwrap_or(0),
+            game_place: maker.game_index(&game).unwrap_or(0),
             game,
         };
         drop(maker);
@@ -554,8 +554,10 @@ impl Gui {
         });
         maker.masks.clear();
         maker.live_mask = None;
-        let games: Vec<&str> = maker.presets.iter().map(|loaded| loaded.preset.game.as_str()).collect();
-        let next = deleted.map_or(0, |deleted| preset_after_delete(&games, deleted));
+        let games: Vec<String> = maker.presets.iter().map(|loaded| game_key(&loaded.preset.game)).collect();
+        let games: Vec<&str> = games.iter().map(String::as_str).collect();
+        let deleted = deleted.map(|deleted| DeletedPreset { game: game_key(&deleted.game), ..deleted.clone() });
+        let next = deleted.map_or(0, |deleted| preset_after_delete(&games, &deleted));
         drop(maker);
         match found {
             Some(index) => {

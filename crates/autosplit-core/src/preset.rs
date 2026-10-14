@@ -314,7 +314,14 @@ fn folders_with(directory: &Path, file: &str) -> Vec<PathBuf> {
 
 /// Sorted by game, then name, ignoring case, like they're listed.
 fn by_game_and_name(game: &str, name: &str) -> (String, String) {
-    (game.to_lowercase(), name.to_lowercase())
+    (game_key(game), name.to_lowercase())
+}
+
+/// What tells games apart: their names ignoring case and extra spaces, so
+/// `the legend of zelda:  ocarina of time` is the same game as `The Legend of Zelda: Ocarina of
+/// Time`, and their presets are listed together.
+pub fn game_key(game: &str) -> String {
+    game.split_whitespace().collect::<Vec<_>>().join(" ").to_lowercase()
 }
 
 /// The presets in `directory`'s folders, sorted by game and name, and the ones that couldn't be

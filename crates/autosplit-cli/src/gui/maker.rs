@@ -9,7 +9,7 @@ use std::sync::Arc;
 use autosplit_core::image::{BgraImage, BgraView};
 use autosplit_core::imgproc::{ResizeBuffers, stretch_to_rgba};
 use autosplit_core::mask::{Mask, apply_mask};
-use autosplit_core::preset::{LoadedPreset, Preset, PresetError, load_presets};
+use autosplit_core::preset::{LoadedPreset, Preset, PresetError, game_key, load_presets};
 use autosplit_core::split_folder::user_files;
 use slint::{ComponentHandle, ModelRc, Rgba8Pixel, SharedPixelBuffer, SharedString, VecModel};
 
@@ -162,16 +162,24 @@ impl Maker {
         self.splits.get(index)?.source.as_ref()
     }
 
-    /// The games of the presets, in the order they're listed.
+    /// The games of the presets, in the order they're listed, each as its first preset spells it.
     fn games(&self) -> Vec<&str> {
         let mut games: Vec<&str> = self.presets.iter().map(|loaded| loaded.preset.game.as_str()).collect();
-        games.dedup();
+        // Sorted by game_key, so the presets of a game are next to each other
+        games.dedup_by(|game, before| game_key(game) == game_key(before));
         games
     }
 
-    /// The presets of `game`, by index.
+    /// Where `game` is among the games, however it's spelled.
+    fn game_index(&self, game: &str) -> Option<usize> {
+        let key = game_key(game);
+        self.games().iter().position(|&each| game_key(each) == key)
+    }
+
+    /// The presets of `game`, however it's spelled, by index.
     fn presets_of(&self, game: &str) -> Vec<usize> {
-        (0..self.presets.len()).filter(|&index| self.presets[index].preset.game == game).collect()
+        let key = game_key(game);
+        (0..self.presets.len()).filter(|&index| game_key(&self.presets[index].preset.game) == key).collect()
     }
 }
 
@@ -343,11 +351,17 @@ impl Gui {
         let before = self.maker.borrow().loaded().cloned();
         let errors = self.read_presets();
         let mut maker = self.maker.borrow_mut();
-        let chosen = maker.preset.min(maker.presets.len().saturating_sub(1));
+        // The preset from before, which presets added or removed meanwhile may have moved
+        let found = before.as_ref().and_then(|before| {
+            let folder = canonical(&before.folder);
+            maker.presets.iter().position(|loaded| canonical(&loaded.folder) == folder)
+        });
+        let chosen = found.unwrap_or(maker.preset.min(maker.presets.len().saturating_sub(1)));
         // What was grabbed or picked for the same preset is kept, unless its splits changed
-        let same = before
-            .zip(maker.presets.get(chosen))
-            .is_some_and(|(before, now)| before.folder == now.folder && before.preset.splits == now.preset.splits);
+        let same = found.is_some()
+            && before
+                .zip(maker.presets.get(chosen))
+                .is_some_and(|(before, now)| before.preset.splits == now.preset.splits);
         // Masks are read again, in case they were edited
         maker.masks.clear();
         let empty = maker.presets.is_empty();
@@ -439,7 +453,7 @@ impl Gui {
         let mut maker = self.maker.borrow_mut();
         maker.preset = index;
         let game = maker.loaded().map(|loaded| loaded.preset.game.clone()).unwrap_or_default();
-        let game_index = maker.games().iter().position(|&each| each == game).unwrap_or(0);
+        let game_index = maker.game_index(&game).unwrap_or(0);
         let of_game = maker.presets_of(&game);
         let names: Vec<SharedString> =
             of_game.iter().map(|&each| maker.presets[each].preset.name.clone().into()).collect();

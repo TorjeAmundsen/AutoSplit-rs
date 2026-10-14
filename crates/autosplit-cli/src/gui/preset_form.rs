@@ -2,7 +2,7 @@
 //! window's other per-split lists in step, and what has to be fixed before it can be saved.
 
 use autosplit_core::filename::{RESET_KEYWORD, START_KEYWORD, validate_split_name};
-use autosplit_core::preset::{Preset, PresetSplit};
+use autosplit_core::preset::{Preset, PresetSplit, game_key};
 use autosplit_core::split_folder::MAX_GROUP_SIZE;
 
 /// A number field's value as the number it shows: `1.3` stays 1.3 instead of becoming
@@ -476,7 +476,6 @@ pub fn problem_flags(problems: &[Problem], count: usize) -> Vec<bool> {
 /// The one of `games` that `game` is, typed in another case or with other spaces, like
 /// `the legend of zelda:  ocarina of time`, so presets of a game stay together.
 pub fn known_game<'a>(game: &str, games: &[&'a str]) -> Option<&'a str> {
-    let plain = |name: &str| name.split_whitespace().collect::<Vec<_>>().join(" ").to_lowercase();
-    let wanted = plain(game);
-    games.iter().copied().find(|&known| !known.is_empty() && plain(known) == wanted)
+    let wanted = game_key(game);
+    games.iter().copied().find(|&known| !known.is_empty() && game_key(known) == wanted)
 }
