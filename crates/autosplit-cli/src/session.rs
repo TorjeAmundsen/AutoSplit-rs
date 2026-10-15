@@ -15,7 +15,7 @@ use autosplit_core::auto_controlled::parse_control_line;
 use autosplit_core::commands::{Command, ControlRequest, Output, TimerLink, TimerReport, outputs_for};
 use autosplit_core::hotkeys::HotkeyAction;
 use autosplit_core::image::BgraImage;
-use autosplit_core::profile::{UserProfile, capture_method_name};
+use autosplit_core::profile::{Region, UserProfile, capture_method_name};
 use autosplit_core::runner::{Captured, Effect, Runner, RunnerSettings, Status};
 use autosplit_core::split_folder::{
     FolderLoad, SplitSet, ValidationError, load_profile_folder, load_profile_folder_to_start,
@@ -99,6 +99,8 @@ pub enum UiCommand {
     SetMakerOpen(bool),
     /// Make Split Images wants the capture region for a split image.
     Grab,
+    /// The capture region becomes the 4:3 picture in the middle of the capture's frames.
+    CropTo4x3,
 }
 
 /// What the session tells the window, besides what [`View::update`] shows.
@@ -116,6 +118,11 @@ pub enum Notice {
     TimerLinkChanged(TimerLink),
     /// A screenshot was saved to this file.
     ScreenshotSaved(PathBuf),
+    /// The capture region became OBS Virtual Camera's whole frame, since the profile's was still a
+    /// new profile's.
+    FullFrameRegion(Region),
+    /// The capture region was cropped to the 4:3 picture in the middle of the frames.
+    CroppedRegion(Region),
 }
 
 /// What a [`View`] shows of the session.
@@ -544,6 +551,15 @@ impl Session {
                 let _ = events.send(Event::DeviceOpened(generation, device::open(&name, index)));
             });
         });
+        if self.device.receiving()
+            && let Some(frame) = self.device.latest()
+            && let Some(region) = self.profile.obs_full_frame_region(frame.frame_size())
+        {
+            self.profile.capture_region = region;
+            let (width, height) = (region.width, region.height);
+            self.console.log(format_args!("Capture region set to OBS Virtual Camera's whole {width}x{height} frame"));
+            self.notify(Notice::FullFrameRegion(region));
+        }
     }
 
     fn handle(&mut self, event: Event) {
@@ -594,6 +610,7 @@ impl Session {
             UiCommand::NextImage => self.runner.skip(now, true),
             UiCommand::PreviousImage => self.runner.undo(now, true),
             UiCommand::Screenshot => self.screenshot(),
+            UiCommand::CropTo4x3 => self.crop_to_4x3(),
             UiCommand::ReloadSplitImages => {
                 if !self.runner.is_running() {
                     self.logged_folder_messages.clear();
@@ -932,6 +949,19 @@ impl Session {
             },
         };
         self.notify(Notice::Grabbed(image));
+    }
+
+    /// Sets the capture region to the 4:3 picture in the middle of the newest frame.
+    fn crop_to_4x3(&mut self) {
+        let Some(frame) = self.device.latest().filter(|_| self.device.receiving()) else {
+            return self.dialog("There's no capture to crop. Check the capture device in Settings (Ctrl+,).");
+        };
+        let (width, height) = frame.frame_size();
+        let region = Region::centered_4_3(width, height);
+        self.profile.capture_region = region;
+        let Region { x, y, width, height } = region;
+        self.console.log(format_args!("Capture region cropped to 4:3: X {x}, Y {y}, {width}x{height}"));
+        self.notify(Notice::CroppedRegion(region));
     }
 
     fn screenshot(&mut self) {

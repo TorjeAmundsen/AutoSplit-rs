@@ -83,6 +83,10 @@ Take Screenshot saves the capture region as the next free `NNN_SplitImage.png` i
 
 The part of the capture device's picture that split images are compared with, usually the whole game screen. X and Y are where it starts, in pixels of the device's frames, and Width and Height its size. The arrow keys change the number in a box by 1.
 
+A new profile starts with 640x480 at the top left, like AutoSplit. With OBS Virtual Camera, whose frames are the whole OBS canvas, usually 1920x1080, that region becomes the whole frame once frames arrive. A region you set yourself is never changed.
+
+Crop to 4:3 sets the region to the 4:3 picture in the middle of the capture, which is how OBS shows a 4:3 game in a 16:9 canvas: X 240, Y 0, Width 1440 and Height 1080 in 1920x1080.
+
 Once the region is right, you can turn off Live Capture Region in the settings to stop the preview and save a little CPU.
 
 ### Current image

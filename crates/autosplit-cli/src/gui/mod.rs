@@ -539,6 +539,14 @@ impl Gui {
         self.maker_follows_profile();
     }
 
+    /// The capture region was set by something other than its fields, which show it even while
+    /// one is being typed in.
+    fn region_set_for_user(&self) {
+        let main = &self.windows.main;
+        main.set_region_generation(main.get_region_generation().wrapping_add(1));
+        self.profile_edited();
+    }
+
     /// The profile changed in a way the windows show elsewhere too.
     fn profile_edited(&self) {
         self.send_profile(false);
@@ -627,6 +635,7 @@ impl Gui {
             gui.send_profile(false);
         });
         on!(main weak, main, on_take_screenshot, () gui => gui.send(UiCommand::Screenshot));
+        on!(main weak, main, on_crop_to_4x3, () gui => gui.send(UiCommand::CropTo4x3));
         on!(main weak, main, on_start_auto_splitter, () gui => gui.send(UiCommand::StartAutoSplitter));
         // A run goes on while a tool window is open, so these stay usable from its overlay
         on!(weak, main, on_reset, () gui => gui.send(UiCommand::Reset));
@@ -798,7 +807,7 @@ impl Gui {
             match event {
                 WindowEvent::ModifiersChanged(modifiers) => held = modifiers_held(modifiers.state()),
                 WindowEvent::KeyboardInput { event, .. }
-                    if event.state == ElementState::Pressed && gui.tool_shortcut(event, held) =>
+                    if event.state == ElementState::Pressed && gui.tool_shortcut(Tool::Tester, event, held) =>
                 {
                     return EventResult::PreventDefault;
                 }
@@ -827,7 +836,7 @@ impl Gui {
                 WindowEvent::ModifiersChanged(modifiers) => held = modifiers_held(modifiers.state()),
                 WindowEvent::KeyboardInput { event, .. }
                     if event.state == ElementState::Pressed
-                        && (gui.editor_shortcut(event, held) || gui.tool_shortcut(event, held)) =>
+                        && (gui.editor_shortcut(event, held) || gui.tool_shortcut(Tool::Maker, event, held)) =>
                 {
                     return EventResult::PreventDefault;
                 }
@@ -898,14 +907,24 @@ impl Gui {
         true
     }
 
-    /// The shortcuts of the main window that work in a tool window too: Ctrl+, for Settings,
-    /// which can be open beside it. Returns whether the key was one.
-    fn tool_shortcut(&self, event: &KeyEvent, held: Modifiers) -> bool {
-        let comma = key_character(event) == Some(',');
-        if self.blocked() || held != Modifiers::CONTROL || !comma {
+    /// The keys of tool window `tool`: Ctrl+, for Settings and F1 for Help, which can be open
+    /// beside it, and Escape to close it, like the other windows. Escape closes an open dropdown
+    /// list first. Returns whether the key was one.
+    fn tool_shortcut(self: &Rc<Self>, tool: Tool, event: &KeyEvent, held: Modifiers) -> bool {
+        if self.blocked() || event.repeat {
             return false;
         }
-        self.open_settings();
+        let comma = key_character(event) == Some(',');
+        match (&event.logical_key, held) {
+            (_, Modifiers::CONTROL) if comma => self.open_settings(),
+            (Key::Named(NamedKey::F1), held) if held.is_empty() => self.open(TUTORIAL_URL),
+            (Key::Named(NamedKey::Escape), held) if held.is_empty() => match tool {
+                Tool::Tester => self.close_tester(),
+                Tool::Maker if self.windows.maker.get_list_showing() => return false,
+                Tool::Maker => self.close_maker(),
+            },
+            _ => return false,
+        }
         true
     }
 
@@ -1154,6 +1173,20 @@ impl Gui {
                 if let Some(gui) = self.me.upgrade() {
                     gui.grabbed(image);
                 }
+            }
+            Notice::CroppedRegion(region) => {
+                self.state.borrow_mut().document.profile.capture_region = region;
+                self.region_set_for_user();
+            }
+            Notice::FullFrameRegion(region) => {
+                // Unless the region was set meanwhile, which the session gets back either way
+                let mut state = self.state.borrow_mut();
+                let profile = &mut state.document.profile;
+                if profile.region_untouched() {
+                    profile.capture_region = region;
+                }
+                drop(state);
+                self.region_set_for_user();
             }
             Notice::ProfileLoaded { path, profile } => {
                 self.state.borrow_mut().document = Document::new(*profile, Some(path));

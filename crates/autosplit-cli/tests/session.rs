@@ -71,6 +71,8 @@ impl View for FakeView {
             Notice::TimerLinkChanged(link) => format!("timer link {link:?}"),
             Notice::Grabbed(image) => format!("grabbed {:?}", image.map(|image| image.width())),
             Notice::ScreenshotSaved(path) => format!("screenshot {}", path.display()),
+            Notice::FullFrameRegion(region) => format!("full frame {}x{}", region.width, region.height),
+            Notice::CroppedRegion(region) => format!("cropped {}x{}", region.width, region.height),
         };
         self.0.notices.lock().unwrap().push(text);
     }

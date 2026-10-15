@@ -2,7 +2,7 @@
 
 use std::path::{Path, PathBuf};
 
-use autosplit_core::profile::{self, Region, UserProfile, VIDEO_CAPTURE_DEVICE};
+use autosplit_core::profile::{self, NEW_PROFILE_REGION, UserProfile, VIDEO_CAPTURE_DEVICE};
 
 pub struct Document {
     /// As in its file: folders aren't resolved, so saving writes them back as they were.
@@ -23,7 +23,7 @@ impl Document {
         Self::new(
             UserProfile {
                 capture_method: VIDEO_CAPTURE_DEVICE.into(),
-                capture_region: Region { x: 0, y: 0, width: 640, height: 480 },
+                capture_region: NEW_PROFILE_REGION,
                 ..UserProfile::default()
             },
             None,

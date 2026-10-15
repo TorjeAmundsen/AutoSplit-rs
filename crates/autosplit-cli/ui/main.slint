@@ -122,6 +122,9 @@ export component MainWindow inherits Window {
     in property <string> split-image-folder: "No Folder Selected";
     in property <bool> running;
     in property <string> device-name: "-";
+    // Changes when the region is set for the user, like by Crop to 4:3: what was being typed in
+    // its fields is dropped, and they show the new region
+    in property <int> region-generation;
     in-out property <float> region-x;
     in-out property <float> region-y;
     in-out property <float> region-width;
@@ -177,6 +180,7 @@ export component MainWindow inherits Window {
     callback blocked-clicked();
     callback open-maker();
     callback close-tool();
+    callback crop-to-4x3();
 
     // The last screenshot's file name, shown under Take Screenshot for a few seconds
     property <string> saved-screenshot;
@@ -384,6 +388,7 @@ export component MainWindow inherits Window {
                 width: 51px;
                 height: 24px;
                 maximum: 999999999;
+                generation: root.region-generation;
                 value <=> root.region-x;
                 edited => { root.region-changed(); }
             }
@@ -394,6 +399,7 @@ export component MainWindow inherits Window {
                 width: 51px;
                 height: 24px;
                 maximum: 999999999;
+                generation: root.region-generation;
                 value <=> root.region-y;
                 edited => { root.region-changed(); }
             }
@@ -423,6 +429,7 @@ export component MainWindow inherits Window {
                 height: 24px;
                 minimum: 1;
                 maximum: 10000;
+                generation: root.region-generation;
                 value <=> root.region-width;
                 edited => { root.region-changed(); }
             }
@@ -434,6 +441,7 @@ export component MainWindow inherits Window {
                 height: 24px;
                 minimum: 1;
                 maximum: 10000;
+                generation: root.region-generation;
                 value <=> root.region-height;
                 edited => { root.region-changed(); }
             }
@@ -443,13 +451,32 @@ export component MainWindow inherits Window {
                 y: 162px;
                 width: 107px;
                 height: 24px;
+                text: "Crop to 4:3";
+                clicked => {
+                    // Like other buttons, out of the field being typed in
+                    self.focus();
+                    root.crop-to-4x3();
+                }
+
+                Tooltip {
+                    Tip {
+                        text: "Set the region to the 4:3 picture in the middle of the capture, like a 4:3 game in OBS's 16:9 canvas: X 240, Width 1440 in 1920x1080";
+                    }
+                }
+            }
+
+            Button {
+                x: 10px;
+                y: 192px;
+                width: 107px;
+                height: 24px;
                 text: "Take Screenshot";
                 clicked => { root.take-screenshot(); }
             }
 
             Text {
                 x: 10px;
-                y: 190px;
+                y: 220px;
                 width: 107px;
                 wrap: word-wrap;
                 font-size: 11px;
