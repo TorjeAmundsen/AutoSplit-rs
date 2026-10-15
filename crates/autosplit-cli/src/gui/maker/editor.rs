@@ -75,6 +75,7 @@ impl Gui {
         maker.set_kinds(ModelRc::new(VecModel::from(kinds)));
         on!(weak, maker, on_split_edited, (field) gui => gui.split_field_edited(field));
         on!(weak, maker, on_choose_mask, () gui => gui.choose_split_file(false));
+        on!(weak, maker, on_preview_toggled, () gui => gui.show_maker_preview());
         on!(weak, maker, on_choose_savestate, () gui => gui.choose_split_file(true));
         on!(weak, maker, on_clear_savestate, () gui => gui.edit_split(SplitEdit::Savestate(String::new())));
         on!(weak, maker, on_add_split, () gui => {

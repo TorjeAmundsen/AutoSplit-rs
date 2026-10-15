@@ -2,8 +2,8 @@
 // AutoSplit reads them, into the split image folder. Edit switches it to editing the preset, with
 // the selected split's mask shown on the capture as it's changed.
 
-import { CheckBox, ScrollView } from "std-widgets.slint";
-import { Button, ClickAway, ComboBox, FileName, Keys, Label, NamePart, OpenList, Preview, SavedCheck, TextField, Theme, Tip } from "widgets.slint";
+import { ScrollView } from "std-widgets.slint";
+import { Button, ClickAway, ComboBox, FileName, GridIcon, IconToggle, Keys, Label, LiveIcon, MaskIcon, NamePart, OpenList, Preview, SavedCheck, TextField, Theme, Tip } from "widgets.slint";
 import { InlineMessage, MessageOverlay } from "message.slint";
 import { SplitField, SplitForm, SplitFormPanel, SplitValues } from "split_form.slint";
 
@@ -57,6 +57,11 @@ export component MakerWindow inherits Window {
     // Behind the split image, so its transparent parts show
     in property <image> grid-image;
     in-out property <bool> show-grid: true;
+    // While editing, whether the Output Preview applies the mask, and whether it shows the live
+    // capture instead of the split's grab or screenshot
+    in-out property <bool> preview-mask: true;
+    in-out property <bool> preview-live: true;
+    callback preview-toggled();
     property <image> no-image;
     in property <string> status;
     in property <bool> can-save-selected;
@@ -641,12 +646,37 @@ export component MakerWindow inherits Window {
 
                     Label {
                         horizontal-stretch: 1;
-                        text: root.editing ? "Output Preview, with the mask" : "Output Preview";
+                        text: "Output Preview";
                     }
 
-                    CheckBox {
-                        text: "Transparency grid";
-                        checked <=> root.show-grid;
+                    HorizontalLayout {
+                        spacing: 3px;
+
+                        if root.editing: IconToggle {
+                            checked <=> root.preview-mask;
+                            label: "Mask";
+                            tip: "Apply the mask. Off shows the picture as it is.";
+                            toggled => { root.preview-toggled(); }
+
+                            MaskIcon { }
+                        }
+
+                        if root.editing: IconToggle {
+                            checked <=> root.preview-live;
+                            label: "Live capture";
+                            tip: "Show the live capture. Off shows the split's grab or screenshot, or the mask itself when it has neither.";
+                            toggled => { root.preview-toggled(); }
+
+                            LiveIcon { }
+                        }
+
+                        IconToggle {
+                            checked <=> root.show-grid;
+                            label: "Transparency grid";
+                            tip: "Show what the mask removes as a checkerboard. Clicking the Output Preview does this too.";
+
+                            GridIcon { }
+                        }
                     }
                 }
 

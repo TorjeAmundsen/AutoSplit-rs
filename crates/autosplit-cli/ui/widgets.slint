@@ -304,6 +304,104 @@ export component Button inherits Rectangle {
     }
 }
 
+// A small button that stays pressed while it's on, drawn like Button, with an icon its children
+// draw in the middle, like the Output Preview's toggles.
+export component IconToggle inherits Rectangle {
+    in-out property <bool> checked;
+    // What it toggles, for screen readers
+    in property <string> label;
+    // Its tooltip, or none when empty
+    in property <string> tip;
+    callback toggled();
+    width: 24px;
+    height: 20px;
+    forward-focus: focus;
+    accessible-role: checkbox;
+    accessible-checked: root.checked;
+    accessible-label: root.label;
+
+    function toggle() {
+        root.checked = !root.checked;
+        root.toggled();
+    }
+
+    Face {
+        width: 100%;
+        height: 100%;
+        pressed: root.checked || touch.pressed;
+        hovered: touch.has-hover;
+        outline-color: focus.has-focus ? Theme.focus : Theme.outline;
+        tint: root.checked ? Theme.focus.with-alpha(0.25) : transparent;
+    }
+
+    @children
+
+    touch := TouchArea {
+        mouse-cursor: default;
+        clicked => {
+            root.toggle();
+        }
+    }
+
+    // Zero width, so a click reaches the touch area instead of taking the focus first
+    focus := FocusScope {
+        x: 0;
+        width: 0px;
+        focus-on-click: false;
+        key-pressed(event) => {
+            if (event.text == " " || event.text == "\n") {
+                root.toggle();
+                return accept;
+            }
+            reject
+        }
+    }
+
+    if root.tip != "": Tooltip {
+        Tip {
+            text: root.tip;
+        }
+    }
+}
+
+// A checkerboard, for the transparency grid's toggle
+export component GridIcon inherits Rectangle {
+    width: 12px;
+    height: 12px;
+    border-width: 1px;
+    border-color: Theme.arrow;
+
+    for cell in [0, 2, 4, 6, 8]: Rectangle {
+        x: mod(cell, 3) * 4px;
+        y: floor(cell / 3) * 4px;
+        width: 4px;
+        height: 4px;
+        background: Theme.arrow;
+    }
+}
+
+// A dark tile with a light hole, like a mask that keeps the middle, for the mask's toggle
+export component MaskIcon inherits Rectangle {
+    width: 14px;
+    height: 12px;
+    background: Theme.arrow;
+
+    Rectangle {
+        width: 8px;
+        height: 8px;
+        border-radius: 4px;
+        background: Theme.field;
+    }
+}
+
+// A red dot, like a camera's live light, for the live capture's toggle
+export component LiveIcon inherits Rectangle {
+    width: 9px;
+    height: 9px;
+    border-radius: 4.5px;
+    background: Theme.dark ? #ff5a52 : #d93025;
+}
+
 // A drop-down list drawn like Fusion's: a button face with the current item and an arrow, and a
 // plain list below it. Up and Down pick the next item without opening it, like Qt.
 export component ComboBox inherits Rectangle {
