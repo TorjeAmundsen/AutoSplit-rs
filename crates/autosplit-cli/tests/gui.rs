@@ -9,7 +9,7 @@ use autosplit::gui::document::{Document, folder_text, profile_on_open};
 use autosplit::gui::log::{LOG_LINES, LogLines};
 use autosplit::gui::maker_plan::{
     DeletedPreset, PresetList, WritePlan, looks_made, move_to_base, plan_writes, preset_after_delete, saves_in_place,
-    screenshots_to_move, stale_to_delete,
+    screenshots_to_move, stale_to_delete, writes_over,
 };
 use autosplit::gui::messages::{Answer, Buttons, Message, MessageQueue};
 use autosplit::gui::placement::{Area, beside, centered_over};
@@ -652,7 +652,11 @@ fn plan_with_sources(names: &[&str], existing: &[&str], sources: &[&str]) -> Wri
     let names: Vec<String> = names.iter().map(|name| (*name).to_owned()).collect();
     let existing: Vec<PathBuf> = existing.iter().map(PathBuf::from).collect();
     let sources: Vec<PathBuf> = sources.iter().map(PathBuf::from).collect();
-    plan_writes(&names, &names, &existing, &sources)
+    plan_writes(&names, &names, &existing, &sources, same_name)
+}
+
+fn same_name(name: &str, path: &Path) -> bool {
+    path.file_name().is_some_and(|file_name| file_name == name)
 }
 
 #[test]
@@ -663,7 +667,7 @@ fn other_split_images_compared_for_the_same_split_arent_stale() {
     let existing: Vec<PathBuf> = preset.iter().map(PathBuf::from).collect();
 
     // Act: saving only the first of each
-    let plan = plan_writes(&[preset[0].clone(), preset[2].clone()], &preset, &existing, &[]);
+    let plan = plan_writes(&[preset[0].clone(), preset[2].clone()], &preset, &existing, &[], same_name);
 
     // Assert
     assert_eq!(plan.stale, Vec::<PathBuf>::new());
@@ -693,10 +697,51 @@ fn saving_finds_older_images_of_the_same_splits(names: &[&str], existing: &[&str
 fn only_written_splits_lose_their_older_images(written: &[&str]) -> Vec<PathBuf> {
     // Arrange
     let stale = [PathBuf::from("05_Bottle_(0.9).png")];
-    let written: Vec<String> = written.iter().map(|name| (*name).to_owned()).collect();
+    let written: Vec<PathBuf> = written.iter().map(PathBuf::from).collect();
 
     // Act
     stale_to_delete(&stale, &written)
+}
+
+#[test]
+fn a_name_differing_only_in_case_is_replaced_or_stale_as_the_file_system_has_it() {
+    // Arrange: an older image whose name only differs in the case of an accented letter
+    let folder = tempfile::tempdir().unwrap();
+    let old = folder.path().join("05_BOSSÉ_(0.9).png");
+    std::fs::write(&old, b"old").unwrap();
+    let name = "05_Bossé_(0.9).png";
+    // Windows and macOS treat the names as one file, Linux usually as two
+    let one_file = folder.path().join(name).exists();
+
+    // Act
+    let names = [name.to_owned()];
+    let plan = plan_writes(&names, &names, std::slice::from_ref(&old), &[], |name, path| {
+        writes_over(folder.path(), name, path)
+    });
+
+    // Assert
+    if one_file {
+        assert_eq!(plan, WritePlan { overwrites: vec!["05_BOSSÉ_(0.9).png".into()], stale: vec![] });
+    } else {
+        assert_eq!(plan, WritePlan { overwrites: vec![], stale: vec![old] });
+    }
+}
+
+#[test]
+fn the_image_written_is_never_deleted_as_stale() {
+    // Arrange: written under a name the file system treats as the stale image's, or the same
+    let folder = tempfile::tempdir().unwrap();
+    let stale = folder.path().join("05_BOSSÉ_(0.9).png");
+    std::fs::write(&stale, b"old").unwrap();
+    std::fs::write(folder.path().join("05_Bossé_(0.9).png"), b"new").unwrap();
+    let one_file = std::fs::read(&stale).unwrap() == b"new";
+    let written = [folder.path().join("05_Bossé_(0.9).png")];
+
+    // Act
+    let deleted = stale_to_delete(std::slice::from_ref(&stale), &written);
+
+    // Assert: deleted only when it's another file
+    assert_eq!(deleted, if one_file { vec![] } else { vec![stale] });
 }
 
 #[test_case(&["001.png"], &[], &[] => vec![PathBuf::from("001.png")]; "written from")]

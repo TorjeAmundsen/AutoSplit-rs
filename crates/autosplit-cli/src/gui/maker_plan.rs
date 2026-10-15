@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 
 use autosplit_core::filename::{PartKind, RESET_KEYWORD, START_KEYWORD, has_keyword, name_parts, number_prefix};
 use autosplit_core::preset::{LoadedPreset, game_key};
+use same_file::is_same_file;
 
 use super::paths::{canonical, file_name_text, is_png};
 use crate::screenshot::is_screenshot_name;
@@ -49,21 +50,35 @@ fn split_key(name: &str) -> Option<SplitKey> {
     number_prefix(&name)?.parse().ok().map(SplitKey::Number)
 }
 
-/// Writing `names` into a folder that has `existing` files. The split images of the preset, all
-/// its file names in `preset`, are never stale, like the ones compared for the same split.
-/// `sources`, the files the split images are made from, aren't either, and neither are
+/// Whether writing the file `name` into `folder` writes over `path`: when it has that name, or
+/// when the file system treats both names as one file. Windows and macOS do for names that only
+/// differ in letter case, like `Bossé` and `BOSSÉ`, and macOS also for two Unicode forms of `é`.
+/// Linux usually doesn't, so there they're two files, which both count for the split.
+pub fn writes_over(folder: &Path, name: &str, path: &Path) -> bool {
+    file_name_text(path).as_deref() == Some(name) || is_same_file(folder.join(name), path).unwrap_or(false)
+}
+
+/// Writing `names` into a folder that has `existing` files, where `writes_over` says whether
+/// writing a name writes over an existing file, like [`writes_over`] does. The split images of the
+/// preset, all its file names in `preset`, are never stale, like the ones compared for the same
+/// split. `sources`, the files the split images are made from, aren't either, and neither are
 /// screenshots (`NNN_SplitImage.png`): their numbers count from 1 where split images count from
 /// 0, so they'd look like the next split's.
-pub fn plan_writes(names: &[String], preset: &[String], existing: &[PathBuf], sources: &[PathBuf]) -> WritePlan {
-    let same_name = |name: &str, other: &str| name.eq_ignore_ascii_case(other);
+pub fn plan_writes(
+    names: &[String],
+    preset: &[String],
+    existing: &[PathBuf],
+    sources: &[PathBuf],
+    writes_over: impl Fn(&str, &Path) -> bool,
+) -> WritePlan {
     let keys: Vec<SplitKey> = names.iter().filter_map(|name| split_key(name)).collect();
     let mut plan = WritePlan::default();
     for path in existing.iter().filter(|path| is_png(path)) {
         let Some(existing_name) = file_name_text(path) else { continue };
-        if names.iter().any(|name| same_name(name, &existing_name)) {
+        if names.iter().any(|name| writes_over(name, path)) {
             plan.overwrites.push(existing_name);
         } else if !sources.contains(path)
-            && !preset.iter().any(|name| same_name(name, &existing_name))
+            && !preset.iter().any(|name| writes_over(name, path))
             && !is_screenshot_name(&existing_name)
             && split_key(&existing_name).is_some_and(|key| keys.contains(&key))
         {
@@ -74,11 +89,14 @@ pub fn plan_writes(names: &[String], preset: &[String], existing: &[PathBuf], so
 }
 
 /// The `stale` images to delete once the split images `written` are: only those of a split whose
-/// new image was written, so a split whose image failed keeps its old one.
-pub fn stale_to_delete(stale: &[PathBuf], written: &[String]) -> Vec<PathBuf> {
-    let keys: Vec<SplitKey> = written.iter().filter_map(|name| split_key(name)).collect();
+/// new image was written, so a split whose image failed keeps its old one. Never one of the
+/// images written, in case the file system treats its old name as the new one.
+pub fn stale_to_delete(stale: &[PathBuf], written: &[PathBuf]) -> Vec<PathBuf> {
+    let keys: Vec<SplitKey> =
+        written.iter().filter_map(|path| file_name_text(path)).filter_map(|name| split_key(&name)).collect();
     (stale.iter())
         .filter(|path| file_name_text(path).and_then(|name| split_key(&name)).is_some_and(|key| keys.contains(&key)))
+        .filter(|path| !written.iter().any(|written| is_same_file(written, path).unwrap_or(false)))
         .cloned()
         .collect()
 }

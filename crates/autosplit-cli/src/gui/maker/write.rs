@@ -68,7 +68,7 @@ impl Gui {
                 Source::Grabbed(_) => None,
             })
             .collect();
-        let plan = plan_writes(&written, &names, &existing, &sources);
+        let plan = plan_writes(&written, &names, &existing, &sources, |name, path| writes_over(&folder, name, path));
         if plan.overwrites.is_empty() && plan.stale.is_empty() {
             self.write_split_images(folder, jobs, Vec::new());
             return true;
@@ -159,11 +159,10 @@ impl Gui {
             let done: Vec<PathBuf> = results.iter().filter(|written| written.result.is_ok()).filter_map(file).collect();
             let failed: Vec<PathBuf> =
                 results.iter().filter(|written| written.result.is_err()).filter_map(file).collect();
-            let names: Vec<String> = (results.iter())
-                .filter_map(|written| written.result.as_ref().ok().and_then(|path| file_name_text(path)))
-                .collect();
+            let written: Vec<PathBuf> =
+                results.iter().filter_map(|written| written.result.as_ref().ok().cloned()).collect();
             let mut errors: Vec<String> = Vec::new();
-            for path in stale_to_delete(&stale, &names) {
+            for path in stale_to_delete(&stale, &written) {
                 if let Err(error) = std::fs::remove_file(&path) {
                     errors.push(format!("Couldn't delete {}: {error}", path.display()));
                 }

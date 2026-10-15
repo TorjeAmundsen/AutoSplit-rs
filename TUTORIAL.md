@@ -343,7 +343,7 @@ Molok is a Linux timer controlled with POSIX signals. Choose Molok (POSIX signal
 ## Linux
 
 - The window works under X11 and Wayland. Under Wayland, a program can't place its windows or keep them on top, so tool windows open wherever the desktop puts them, and message boxes are drawn inside the windows they block. To get X11's behavior under Wayland, start it through XWayland with `WAYLAND_DISPLAY= ./autosplit`.
-- File pickers use xdg-desktop-portal, which desktops usually have, or zenity when there's no portal. Without either, Browse... and the profile pickers do nothing. When `autosplit` can't start, it shows why in a zenity box, so without zenity, start it from a terminal to see the error.
+- File pickers use xdg-desktop-portal, which desktops usually have, or zenity when there's no portal. Without either, Browse... and the profile pickers do nothing. When `autosplit` can't start, it says why in the terminal it was started from, or otherwise in a zenity box.
 - Under X11, the window needs libxkbcommon-x11 (`libxkbcommon-x11-0` on Debian and Ubuntu), which most desktops have.
 - OBS Virtual Camera needs the v4l2loopback kernel module: `sudo apt install v4l2loopback-dkms` on Debian and Ubuntu, `sudo dnf install v4l2loopback` on Fedora (from RPM Fusion) or `sudo pacman -S v4l2loopback-dkms` on Arch. OBS loads it when the Virtual Camera starts. Start the Virtual Camera before opening Settings, since the device isn't listed until then. Refresh lists it again.
 

@@ -17,6 +17,8 @@ autosplit-input = { version = "0.1.0", path = "../autosplit-input" }
 clap = { version = "4.6.7", features = ["derive"] }
 ctrlc = "3.5.2"
 rfd = "0.17.2"
+# Whether two names in the split image folder are one file, which depends on its file system
+same-file = "1.0.6"
 slint = { version = "1.18.1", default-features = false, features = ["std", "backend-winit", "backend-winit-x11", "backend-winit-wayland", "renderer-software", "compat-1-2", "raw-window-handle-06", "unstable-winit-030"] }
 tungstenite = { version = "0.30.0", default-features = false, features = ["handshake"] }
 unicode-width = "0.2.2"

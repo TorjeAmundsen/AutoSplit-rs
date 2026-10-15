@@ -144,7 +144,9 @@ impl std::error::Error for Reported {}
 fn main() -> ExitCode {
     // Commands write to the terminal they were started from
     let auto_controlled = std::env::args_os().any(|argument| argument == "--auto-controlled");
-    let terminal = std::env::args_os().len() > 1 && !auto_controlled && platform::attach_console();
+    // Opening the window from a terminal attaches none on Windows, where it would keep the
+    // terminal's console. Elsewhere, checking has no side effects, so errors go to the terminal.
+    let terminal = (std::env::args_os().len() > 1 || !cfg!(windows)) && !auto_controlled && platform::attach_console();
     match run_command() {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) if error.downcast_ref::<Reported>().is_some() => ExitCode::FAILURE,

@@ -17,6 +17,7 @@ use slint::{ComponentHandle, ModelRc, Rgba8Pixel, SharedPixelBuffer, SharedStrin
 use super::document::Document;
 use super::maker_plan::{
     PresetList, looks_made, move_to_base, plan_writes, saves_in_place, screenshots_to_move, stale_to_delete,
+    writes_over,
 };
 use super::messages::{Answer, Message};
 use super::paths::{canonical, file_name_text};
