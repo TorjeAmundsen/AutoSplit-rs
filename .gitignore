@@ -1,3 +1,5 @@
 /target
 /.golden-venv
 /build
+# Screenshots the screenshots example writes when run without a folder from the crate
+/crates/autosplit-cli/*.png
