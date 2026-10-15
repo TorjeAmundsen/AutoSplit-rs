@@ -204,12 +204,7 @@ export component SettingsWindow inherits Window {
                 height: 26px;
                 text: "Refresh";
                 clicked => { root.capture-devices-requested(); }
-
-                Tooltip {
-                    Tip {
-                        text: "List the capture devices again, for one connected or started since";
-                    }
-                }
+                tip: "List the capture devices again, for one connected or started since";
             }
 
             Label {

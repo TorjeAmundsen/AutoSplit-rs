@@ -16,7 +16,7 @@ use super::super::paths::{canonical, file_name_text};
 use super::super::preset_form::{Draft, Field, ListChange, SplitEdit, SplitKind, field_problems, field_value};
 use super::super::preset_form::{known_game, problem_flags, problem_list, problem_summary, saved_preset_name};
 use super::super::recorder::key_character;
-use super::super::ui::{SplitField, SplitForm};
+use super::super::ui::{SplitField, SplitForm, SplitValues};
 use super::{Kept, game_label, presets_folder};
 use autosplit_input::Modifiers;
 use slint::winit_030::winit::event::KeyEvent;
@@ -286,22 +286,22 @@ impl Gui {
 
     /// A field of the split form was edited: its value goes into the selected split.
     fn split_field_edited(&self, field: SplitField) {
-        let window = &self.windows.maker;
+        let values = self.windows.maker.global::<SplitValues>();
         let edit = match field {
-            SplitField::Name => SplitEdit::Name(window.get_split_name().into()),
-            SplitField::Kind => match SplitKind::ALL.get(window.get_split_kind() as usize) {
+            SplitField::Name => SplitEdit::Name(values.get_name().into()),
+            SplitField::Kind => match SplitKind::ALL.get(values.get_kind() as usize) {
                 Some(&kind) => SplitEdit::Kind(kind),
                 None => return,
             },
             SplitField::Threshold => {
-                SplitEdit::Threshold(window.get_has_threshold().then(|| field_value(window.get_threshold())))
+                SplitEdit::Threshold(values.get_has_threshold().then(|| field_value(values.get_threshold())))
             }
-            SplitField::Delay => SplitEdit::Delay(window.get_has_delay().then(|| field_value(window.get_delay()))),
-            SplitField::Pause => SplitEdit::Pause(window.get_has_pause().then(|| field_value(window.get_pause()))),
-            SplitField::Dummy => SplitEdit::Dummy(window.get_dummy()),
-            SplitField::Below => SplitEdit::Below(window.get_below()),
-            SplitField::WithPrevious => SplitEdit::WithPrevious(window.get_with_previous()),
-            SplitField::Instructions => SplitEdit::Instructions(window.get_instructions().into()),
+            SplitField::Delay => SplitEdit::Delay(values.get_has_delay().then(|| field_value(values.get_delay()))),
+            SplitField::Pause => SplitEdit::Pause(values.get_has_pause().then(|| field_value(values.get_pause()))),
+            SplitField::Dummy => SplitEdit::Dummy(values.get_dummy()),
+            SplitField::Below => SplitEdit::Below(values.get_below()),
+            SplitField::WithPrevious => SplitEdit::WithPrevious(values.get_with_previous()),
+            SplitField::Instructions => SplitEdit::Instructions(values.get_instructions().into()),
         };
         self.edit_split(edit);
     }
@@ -379,22 +379,21 @@ impl Gui {
         let Some(edit) = &maker.edit else { return };
         let Some(split) = edit.draft.preset.splits.get(maker.selected).cloned() else { return };
         drop(maker);
-        let window = &self.windows.maker;
-        window.set_form_generation(window.get_form_generation().wrapping_add(1));
-        window.set_split_name(split.name.as_str().into());
-        let kind = SplitKind::of(&split);
-        window.set_split_kind(kind.index() as i32);
+        let values = self.windows.maker.global::<SplitValues>();
+        values.set_generation(values.get_generation().wrapping_add(1));
+        values.set_name(split.name.as_str().into());
+        values.set_kind(SplitKind::of(&split).index() as i32);
         // Unticked, they show the profile's defaults, which ticking or editing starts from
-        window.set_has_threshold(split.threshold.is_some());
-        window.set_threshold(split.threshold.unwrap_or(threshold_default) as f32);
-        window.set_has_delay(split.delay.is_some());
-        window.set_delay(split.delay.map_or(delay_default as f32, |delay| delay as f32));
-        window.set_has_pause(split.pause.is_some());
-        window.set_pause(split.pause.unwrap_or(pause_default) as f32);
-        window.set_dummy(split.dummy);
-        window.set_below(split.below);
-        window.set_with_previous(split.with_previous);
-        window.set_instructions(split.instructions.as_str().into());
+        values.set_has_threshold(split.threshold.is_some());
+        values.set_threshold(split.threshold.unwrap_or(threshold_default) as f32);
+        values.set_has_delay(split.delay.is_some());
+        values.set_delay(split.delay.map_or(delay_default as f32, |delay| delay as f32));
+        values.set_has_pause(split.pause.is_some());
+        values.set_pause(split.pause.unwrap_or(pause_default) as f32);
+        values.set_dummy(split.dummy);
+        values.set_below(split.below);
+        values.set_with_previous(split.with_previous);
+        values.set_instructions(split.instructions.as_str().into());
     }
 
     /// What editing shows besides the fields: the form's problems, and whether the preset can be
@@ -428,8 +427,7 @@ impl Gui {
                 why_not_joined: why_not_joined.unwrap_or_default().into(),
             });
             // Also when typing the name made it a start or reset image
-            let kind = SplitKind::of(split);
-            window.set_split_kind(kind.index() as i32);
+            window.global::<SplitValues>().set_kind(SplitKind::of(split).index() as i32);
         }
         let summary = match problem_summary(&edit.draft.preset, &problems) {
             Some(summary) => summary,

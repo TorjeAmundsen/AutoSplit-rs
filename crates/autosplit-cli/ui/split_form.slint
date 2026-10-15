@@ -51,39 +51,51 @@ component FieldProblem inherits HorizontalLayout {
     }
 }
 
-export component SplitFormPanel inherits VerticalLayout {
-    in property <length> label-width;
-    in property <bool> has-split;
-    in property <SplitForm> form;
-    in property <[string]> kinds;
-    in property <int> form-generation;
-    in-out property <string> split-name;
-    in-out property <int> split-kind;
+// The selected split's values in the form, which Rust fills and reads. The form binds to them
+// directly, so the window doesn't pass each one on.
+export global SplitValues {
+    // Changes when the form is filled with another split's values, which drops what was typed
+    in-out property <int> generation;
+    in-out property <string> name;
+    in-out property <int> kind;
     // Unticked, the profile's default applies, which the value shows
     in-out property <bool> has-threshold;
     in-out property <float> threshold;
     in-out property <bool> has-delay;
+    // Milliseconds
     in-out property <float> delay;
     in-out property <bool> has-pause;
+    // Seconds
     in-out property <float> pause;
     in-out property <bool> dummy;
     in-out property <bool> below;
     in-out property <bool> with-previous;
     in-out property <string> instructions;
+}
+
+export component SplitFormPanel inherits VerticalLayout {
+    in property <length> label-width;
+    in property <bool> has-split;
+    in property <SplitForm> form;
+    in property <[string]> kinds;
     callback split-edited(SplitField);
     callback choose-mask();
     callback choose-savestate();
     callback clear-savestate();
     spacing: 6px;
 
-        if !root.has-split: Label {
-            vertical-stretch: 1;
-            horizontal-alignment: center;
-            color: Theme.secondary-text;
-            text: "Add a split to edit it.";
-        }
+    if !root.has-split: Label {
+        vertical-stretch: 1;
+        horizontal-alignment: center;
+        color: Theme.secondary-text;
+        text: "Add a split to edit it.";
+    }
 
-        if root.has-split: HorizontalLayout {
+    if root.has-split: VerticalLayout {
+        vertical-stretch: 1;
+        spacing: 6px;
+
+        HorizontalLayout {
             height: 24px;
             spacing: 6px;
 
@@ -95,7 +107,7 @@ export component SplitFormPanel inherits VerticalLayout {
             ComboBox {
                 width: 140px;
                 model: root.kinds;
-                current-index <=> root.split-kind;
+                current-index <=> SplitValues.kind;
                 selected => { root.split-edited(SplitField.kind); }
 
                 Tooltip {
@@ -111,7 +123,7 @@ export component SplitFormPanel inherits VerticalLayout {
         }
 
         // The field, then what it says about it, close under it
-        if root.has-split: VerticalLayout {
+        VerticalLayout {
             spacing: 2px;
 
             HorizontalLayout {
@@ -127,7 +139,7 @@ export component SplitFormPanel inherits VerticalLayout {
                 TextField {
                     error: root.form.name-problem != "";
                     enabled: root.form.named;
-                    text <=> root.split-name;
+                    text <=> SplitValues.name;
                     edited => { root.split-edited(SplitField.name); }
 
                     Tooltip {
@@ -144,7 +156,7 @@ export component SplitFormPanel inherits VerticalLayout {
             }
         }
 
-        if root.has-split: VerticalLayout {
+        VerticalLayout {
             spacing: 2px;
 
             HorizontalLayout {
@@ -170,7 +182,6 @@ export component SplitFormPanel inherits VerticalLayout {
 
                 Button {
                     width: 80px;
-                    height: 24px;
                     text: "Choose...";
                     suggested: root.form.mask == "";
                     clicked => { root.choose-mask(); }
@@ -190,14 +201,14 @@ export component SplitFormPanel inherits VerticalLayout {
             }
         }
 
-        if root.has-split: HorizontalLayout {
+        HorizontalLayout {
             height: 24px;
             spacing: 6px;
 
             CheckBox {
                 width: root.label-width;
                 text: "Threshold";
-                checked <=> root.has-threshold;
+                checked <=> SplitValues.has-threshold;
                 toggled => { root.split-edited(SplitField.threshold); }
 
                 Tooltip {
@@ -215,10 +226,10 @@ export component SplitFormPanel inherits VerticalLayout {
                 maximum: 1;
                 step: 0.01;
                 decimals: 2;
-                generation: root.form-generation;
-                value <=> root.threshold;
+                generation: SplitValues.generation;
+                value <=> SplitValues.threshold;
                 edited => {
-                    root.has-threshold = true;
+                    SplitValues.has-threshold = true;
                     root.split-edited(SplitField.threshold);
                 }
             }
@@ -229,7 +240,7 @@ export component SplitFormPanel inherits VerticalLayout {
 
             CheckBox {
                 text: "Delay";
-                checked <=> root.has-delay;
+                checked <=> SplitValues.has-delay;
                 toggled => { root.split-edited(SplitField.delay); }
 
                 Tooltip {
@@ -245,23 +256,23 @@ export component SplitFormPanel inherits VerticalLayout {
                 minimum: 0;
                 maximum: 600000;
                 step: 100;
-                generation: root.form-generation;
-                value <=> root.delay;
+                generation: SplitValues.generation;
+                value <=> SplitValues.delay;
                 edited => {
-                    root.has-delay = true;
+                    SplitValues.has-delay = true;
                     root.split-edited(SplitField.delay);
                 }
             }
         }
 
-        if root.has-split: HorizontalLayout {
+        HorizontalLayout {
             height: 24px;
             spacing: 6px;
 
             CheckBox {
                 width: root.label-width;
                 text: "Pause";
-                checked <=> root.has-pause;
+                checked <=> SplitValues.has-pause;
                 toggled => { root.split-edited(SplitField.pause); }
 
                 Tooltip {
@@ -278,22 +289,22 @@ export component SplitFormPanel inherits VerticalLayout {
                 maximum: 3600;
                 step: 0.5;
                 decimals: 2;
-                generation: root.form-generation;
-                value <=> root.pause;
+                generation: SplitValues.generation;
+                value <=> SplitValues.pause;
                 edited => {
-                    root.has-pause = true;
+                    SplitValues.has-pause = true;
                     root.split-edited(SplitField.pause);
                 }
             }
 
             // Unticked, the value is the profile's default, like Threshold and Delay show theirs
             Label {
-                color: root.has-pause ? Theme.text : Theme.secondary-text;
+                color: SplitValues.has-pause ? Theme.text : Theme.secondary-text;
                 text: "seconds";
             }
         }
 
-        if root.has-split: HorizontalLayout {
+        HorizontalLayout {
             height: 24px;
             spacing: 12px;
 
@@ -303,7 +314,7 @@ export component SplitFormPanel inherits VerticalLayout {
 
             CheckBox {
                 text: "Dummy";
-                checked <=> root.dummy;
+                checked <=> SplitValues.dummy;
                 toggled => { root.split-edited(SplitField.dummy); }
 
                 Tooltip {
@@ -315,7 +326,7 @@ export component SplitFormPanel inherits VerticalLayout {
 
             CheckBox {
                 text: "Split below threshold";
-                checked <=> root.below;
+                checked <=> SplitValues.below;
                 toggled => { root.split-edited(SplitField.below); }
 
                 Tooltip {
@@ -326,7 +337,7 @@ export component SplitFormPanel inherits VerticalLayout {
             }
         }
 
-        if root.has-split: VerticalLayout {
+        VerticalLayout {
             spacing: 2px;
 
             HorizontalLayout {
@@ -339,8 +350,8 @@ export component SplitFormPanel inherits VerticalLayout {
 
                 CheckBox {
                     text: "Same split as the one above";
-                    enabled: root.form.can-join || root.with-previous;
-                    checked <=> root.with-previous;
+                    enabled: root.form.can-join || SplitValues.with-previous;
+                    checked <=> SplitValues.with-previous;
                     toggled => { root.split-edited(SplitField.with-previous); }
 
                     Tooltip {
@@ -363,7 +374,7 @@ export component SplitFormPanel inherits VerticalLayout {
             }
         }
 
-        if root.has-split: VerticalLayout {
+        VerticalLayout {
             spacing: 2px;
 
             HorizontalLayout {
@@ -389,14 +400,12 @@ export component SplitFormPanel inherits VerticalLayout {
 
                 Button {
                     width: 80px;
-                    height: 24px;
                     text: "Choose...";
                     clicked => { root.choose-savestate(); }
                 }
 
                 Button {
                     width: 50px;
-                    height: 24px;
                     text: "Clear";
                     enabled: root.form.savestate != "";
                     clicked => { root.clear-savestate(); }
@@ -411,14 +420,15 @@ export component SplitFormPanel inherits VerticalLayout {
         }
 
         // Always two lines, however much is above it
-        if root.has-split: TextEdit {
+        TextEdit {
             vertical-stretch: 1;
             min-height: 42px;
             font-size: 12px;
             wrap: word-wrap;
             enabled: root.form.savestate != "";
             placeholder-text: root.form.savestate == "" ? "Instructions for the savestate, once there is one" : "What to do after loading the savestate, if anything";
-            text <=> root.instructions;
+            text <=> SplitValues.instructions;
             edited => { root.split-edited(SplitField.instructions); }
         }
+    }
 }

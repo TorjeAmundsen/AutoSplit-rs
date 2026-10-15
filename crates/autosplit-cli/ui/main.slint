@@ -6,11 +6,11 @@ import { AboutWindow } from "about.slint";
 import { LogWindow } from "log.slint";
 import { MessageWindow } from "message.slint";
 import { InfoCell, TesterReading, TesterWindow } from "tester.slint";
-import { MakerRow, MakerWindow, SplitField, SplitForm } from "maker.slint";
+import { MakerRow, MakerWindow, SplitField, SplitForm, SplitValues } from "maker.slint";
 import { InstructionCard, InstructionsWindow } from "instructions.slint";
 import { Button, ClickAway, Label, NameKind, NamePart, Preview, SpinBox, TextField, Theme, Tip, WindowFocus } from "widgets.slint";
 
-export { SettingsWindow, HotkeyRow, Setting, AboutWindow, LogWindow, MessageWindow, InfoCell, NameKind, NamePart, TesterReading, TesterWindow, MakerRow, MakerWindow, SplitField, SplitForm, InstructionCard, InstructionsWindow, WindowFocus }
+export { SettingsWindow, HotkeyRow, Setting, AboutWindow, LogWindow, MessageWindow, InfoCell, NameKind, NamePart, TesterReading, TesterWindow, MakerRow, MakerWindow, SplitField, SplitForm, SplitValues, InstructionCard, InstructionsWindow, WindowFocus }
 
 export struct SimilarityRow {
     live: string,
@@ -333,12 +333,7 @@ export component MainWindow inherits Window {
                 text: "<";
                 enabled: root.can-previous;
                 clicked => { root.previous-image(); }
-
-                Tooltip {
-                    Tip {
-                        text: "Previous image";
-                    }
-                }
+                tip: "Previous image";
             }
 
             Label {
@@ -358,12 +353,7 @@ export component MainWindow inherits Window {
                 text: ">";
                 enabled: root.can-next;
                 clicked => { root.next-image(); }
-
-                Tooltip {
-                    Tip {
-                        text: "Next image";
-                    }
-                }
+                tip: "Next image";
             }
 
             Label {
@@ -459,12 +449,7 @@ export component MainWindow inherits Window {
                     click-away.focus();
                     root.crop-to-4x3();
                 }
-
-                Tooltip {
-                    Tip {
-                        text: "Set the region to the 4:3 picture in the middle of the capture, like a 4:3 game in OBS's 16:9 canvas: X 240, Width 1440 in 1920x1080";
-                    }
-                }
+                tip: "Set the region to the 4:3 picture in the middle of the capture, like a 4:3 game in OBS's 16:9 canvas: X 240, Width 1440 in 1920x1080";
             }
 
             Button {
@@ -673,12 +658,7 @@ export component MainWindow inherits Window {
                                 text: "Settings";
                                 enabled: !root.blocked;
                                 clicked => { root.open-settings(); }
-
-                                Tooltip {
-                                    Tip {
-                                        text: "Open Settings beside the tool window, like File > Settings and Ctrl+, do";
-                                    }
-                                }
+                                tip: "Open Settings beside the tool window, like File > Settings and Ctrl+, do";
                             }
                         }
 

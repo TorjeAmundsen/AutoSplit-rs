@@ -230,6 +230,8 @@ export component Button inherits Rectangle {
     // The likely next step, like Grab, tinted with the focus color but outlined like the others,
     // so only the focus has its outline
     in property <bool> suggested;
+    // Its tooltip, or none when empty
+    in property <string> tip;
     callback clicked();
     preferred-width: max(75px, label.preferred-width + 20px);
     preferred-height: 24px;
@@ -280,6 +282,12 @@ export component Button inherits Rectangle {
                 return accept;
             }
             reject
+        }
+    }
+
+    if root.tip != "": Tooltip {
+        Tip {
+            text: root.tip;
         }
     }
 }

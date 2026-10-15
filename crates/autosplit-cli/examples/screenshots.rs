@@ -6,7 +6,7 @@ use std::rc::Rc;
 use autosplit::gui::messages::Buttons;
 use autosplit::gui::ui::{
     AboutWindow, HotkeyRow, InfoCell, InstructionCard, InstructionsWindow, LogWindow, MainWindow, MakerRow,
-    MakerWindow, MessageWindow, SettingsWindow, SimilarityRow, SplitForm, TesterReading, TesterWindow,
+    MakerWindow, MessageWindow, SettingsWindow, SimilarityRow, SplitForm, SplitValues, TesterReading, TesterWindow,
 };
 use autosplit::gui::{HOTKEY_ROWS, file_name_parts, thumbnail, transparency_grid};
 use slint::platform::software_renderer::{MinimalSoftwareWindow, RepaintBufferType, Rgb565Pixel};
@@ -275,14 +275,15 @@ fn main() {
     maker.set_edit_game("The Legend of Zelda: Ocarina of Time".into());
     maker.set_edit_name("No Wrong Warp".into());
     maker.set_has_split(true);
-    maker.set_split_name("EnterDeku".into());
-    maker.set_has_threshold(true);
-    maker.set_threshold(0.92);
-    maker.set_has_delay(true);
-    maker.set_delay(1000.0);
-    maker.set_has_pause(true);
-    maker.set_pause(60.0);
-    maker.set_instructions("After loading, advance 1 frame before taking your screenshot.".into());
+    let values = maker.global::<SplitValues>();
+    values.set_name("EnterDeku".into());
+    values.set_has_threshold(true);
+    values.set_threshold(0.92);
+    values.set_has_delay(true);
+    values.set_delay(1000.0);
+    values.set_has_pause(true);
+    values.set_pause(60.0);
+    values.set_instructions("After loading, advance 1 frame before taking your screenshot.".into());
     maker.set_form(SplitForm {
         named: true,
         name_problem: "".into(),
@@ -306,10 +307,10 @@ fn main() {
     maker.set_form(SplitForm { savestate_copied: false, ..maker.get_form() });
     save(&window, PhysicalSize::new(828, 672), &folder.join("maker-edit-plain.png"));
     // Compared with the split above while the profile has grouping off
-    maker.set_with_previous(true);
+    values.set_with_previous(true);
     maker.set_form(SplitForm { grouping_off: true, ..maker.get_form() });
     save(&window, PhysicalSize::new(828, 672), &folder.join("maker-edit-grouping.png"));
-    maker.set_with_previous(false);
+    values.set_with_previous(false);
     maker.set_form(SplitForm { grouping_off: false, ..maker.get_form() });
     maker.set_form(SplitForm { savestate_copied: true, ..maker.get_form() });
     // A new split's mask and savestate, both copied in on save

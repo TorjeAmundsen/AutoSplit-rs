@@ -4,9 +4,9 @@
 
 import { CheckBox, ScrollView } from "std-widgets.slint";
 import { Button, ClickAway, ComboBox, FileName, Label, NamePart, OpenList, Preview, SavedCheck, TextField, Theme, Tip } from "widgets.slint";
-import { SplitField, SplitForm, SplitFormPanel } from "split_form.slint";
+import { SplitField, SplitForm, SplitFormPanel, SplitValues } from "split_form.slint";
 
-export { SplitField, SplitForm }
+export { SplitField, SplitForm, SplitValues }
 
 // A split of the preset, with the file name it gets and where its screenshot comes from.
 export struct MakerRow {
@@ -81,28 +81,10 @@ export component MakerWindow inherits Window {
     in-out property <int> edit-game-index;
     in-out property <bool> new-game;
     in-out property <string> edit-name;
-    // The selected split's fields, set when another split is selected and kept by the fields
-    // while they're edited
+    // What the form shows of the selected split besides its values, which are in SplitValues
     in property <SplitForm> form;
-    in-out property <string> split-name;
-    // What the split is: 0 a split, 1 the start image, 2 a reset image, from kinds
-    in-out property <int> split-kind;
+    // The Type list: a split, the start image, a reset image, in SplitKind::ALL's order
     in property <[string]> kinds;
-    in-out property <bool> has-threshold;
-    in-out property <float> threshold;
-    // Milliseconds
-    in-out property <bool> has-delay;
-    in-out property <float> delay;
-    in-out property <bool> has-pause;
-    // Seconds
-    in-out property <float> pause;
-    in-out property <bool> dummy;
-    in-out property <bool> below;
-    in-out property <bool> with-previous;
-    in-out property <string> instructions;
-    // Changes when the form is filled with a split, so number fields drop what was typed for the
-    // split before
-    in property <int> form-generation;
     // Whether a split is selected to edit
     in property <bool> has-split;
     // What has to be fixed before saving, or that it's ready
@@ -247,15 +229,9 @@ export component MakerWindow inherits Window {
 
                     if root.editing && root.new-game && root.edit-games.length > 1: Button {
                         width: 60px;
-                        height: 24px;
                         text: "Games";
                         clicked => { root.pick-game(); }
-
-                        Tooltip {
-                            Tip {
-                                text: "Pick one of the games that have presets instead";
-                            }
-                        }
+                        tip: "Pick one of the games that have presets instead";
                     }
                 }
 
@@ -276,30 +252,18 @@ export component MakerWindow inherits Window {
 
                     if !root.editing: Button {
                         width: 60px;
-                        height: 24px;
                         text: "Edit";
                         enabled: root.presets.length > 0 && !root.working;
                         clicked => { root.edit-preset(); }
-
-                        Tooltip {
-                            Tip {
-                                text: "Change this preset's splits, masks and settings";
-                            }
-                        }
+                        tip: "Change this preset's splits, masks and settings";
                     }
 
                     if !root.editing: Button {
                         width: 60px;
-                        height: 24px;
                         text: "New";
                         enabled: !root.working;
                         clicked => { root.new-preset(); }
-
-                        Tooltip {
-                            Tip {
-                                text: "Make a new preset for this game";
-                            }
-                        }
+                        tip: "Make a new preset for this game";
                     }
 
                     if root.editing: TextField {
@@ -458,31 +422,19 @@ export component MakerWindow inherits Window {
 
                     Button {
                         width: 90px;
-                        height: 24px;
                         text: "Grab";
                         suggested: true;
                         enabled: root.can-grab;
                         clicked => { root.grab(); }
-
-                        Tooltip {
-                            Tip {
-                                text: root.grab-blocker != "" ? root.grab-blocker : "Make the selected split's image from the capture now, save it into the split image folder, and go to the next split. The screenshot hotkey does the same while this window is open.";
-                            }
-                        }
+                        tip: root.grab-blocker != "" ? root.grab-blocker : "Make the selected split's image from the capture now, save it into the split image folder, and go to the next split. The screenshot hotkey does the same while this window is open.";
                     }
 
                     Button {
                         width: 120px;
-                        height: 24px;
                         text: "Use Screenshots...";
                         enabled: root.preset-problem == "";
                         clicked => { root.use-screenshots(); }
-
-                        Tooltip {
-                            Tip {
-                                text: "Make split images from screenshot files instead: one for the selected split, or several for the splits in order from the first";
-                            }
-                        }
+                        tip: "Make split images from screenshot files instead: one for the selected split, or several for the splits in order from the first";
                     }
 
                     Rectangle {
@@ -491,44 +443,26 @@ export component MakerWindow inherits Window {
 
                     Button {
                         width: 60px;
-                        height: 24px;
                         text: "Test";
                         enabled: root.can-test;
                         clicked => { root.test(); }
-
-                        Tooltip {
-                            Tip {
-                                text: "Open the selected split's saved split image in the Live Tester";
-                            }
-                        }
+                        tip: "Open the selected split's saved split image in the Live Tester";
                     }
 
                     Button {
                         width: 100px;
-                        height: 24px;
                         text: "Save Selected";
                         enabled: root.can-save-selected;
                         clicked => { root.save-selected(); }
-
-                        Tooltip {
-                            Tip {
-                                text: "Write the selected split's split image into the split image folder, from its grab or screenshot";
-                            }
-                        }
+                        tip: "Write the selected split's split image into the split image folder, from its grab or screenshot";
                     }
 
                     Button {
                         width: 80px;
-                        height: 24px;
                         text: "Save All";
                         enabled: root.can-save-all;
                         clicked => { root.save-all(); }
-
-                        Tooltip {
-                            Tip {
-                                text: "Write the split images of every split with a grab or screenshot into the split image folder";
-                            }
-                        }
+                        tip: "Write the split images of every split with a grab or screenshot into the split image folder";
                     }
                 }
 
@@ -539,43 +473,25 @@ export component MakerWindow inherits Window {
 
                     Button {
                         width: 70px;
-                        height: 24px;
                         text: "Add";
                         clicked => { root.add-split(); }
-
-                        Tooltip {
-                            Tip {
-                                text: "Add a split after the selected one";
-                            }
-                        }
+                        tip: "Add a split after the selected one";
                     }
 
                     Button {
                         width: 80px;
-                        height: 24px;
                         text: "Duplicate";
                         enabled: root.has-split;
                         clicked => { root.duplicate-split(); }
-
-                        Tooltip {
-                            Tip {
-                                text: "Add a copy of the selected split after it, with the same mask";
-                            }
-                        }
+                        tip: "Add a copy of the selected split after it, with the same mask";
                     }
 
                     Button {
                         width: 70px;
-                        height: 24px;
                         text: "Remove";
                         enabled: root.has-split;
                         clicked => { root.remove-split(); }
-
-                        Tooltip {
-                            Tip {
-                                text: "Remove the selected split. Ctrl+Z brings it back, with its grab or screenshot, until something else is changed.";
-                            }
-                        }
+                        tip: "Remove the selected split. Ctrl+Z brings it back, with its grab or screenshot, until something else is changed.";
                     }
 
                     Rectangle {
@@ -584,30 +500,18 @@ export component MakerWindow inherits Window {
 
                     Button {
                         width: 80px;
-                        height: 24px;
                         text: "Move Up";
                         enabled: root.has-split && root.selected > 0;
                         clicked => { root.move-split(true); }
-
-                        Tooltip {
-                            Tip {
-                                text: "Move the selected split up, with the splits compared together with it (Alt+Up)";
-                            }
-                        }
+                        tip: "Move the selected split up, with the splits compared together with it (Alt+Up)";
                     }
 
                     Button {
                         width: 80px;
-                        height: 24px;
                         text: "Move Down";
                         enabled: root.has-split && root.selected < root.rows.length - 1;
                         clicked => { root.move-split(false); }
-
-                        Tooltip {
-                            Tip {
-                                text: "Move the selected split down, with the splits compared together with it (Alt+Down)";
-                            }
-                        }
+                        tip: "Move the selected split down, with the splits compared together with it (Alt+Down)";
                     }
                 }
             }
@@ -680,15 +584,9 @@ export component MakerWindow inherits Window {
 
                     Button {
                         width: 70px;
-                        height: 24px;
                         text: "Browse...";
                         clicked => { root.browse-folder(); }
-
-                        Tooltip {
-                            Tip {
-                                text: "Pick the split image folder, which the profile uses from now on";
-                            }
-                        }
+                        tip: "Pick the split image folder, which the profile uses from now on";
                     }
                 }
 
@@ -719,19 +617,6 @@ export component MakerWindow inherits Window {
                         has-split: root.has-split;
                         form: root.form;
                         kinds: root.kinds;
-                        form-generation: root.form-generation;
-                        split-name <=> root.split-name;
-                        split-kind <=> root.split-kind;
-                        has-threshold <=> root.has-threshold;
-                        threshold <=> root.threshold;
-                        has-delay <=> root.has-delay;
-                        delay <=> root.delay;
-                        has-pause <=> root.has-pause;
-                        pause <=> root.pause;
-                        dummy <=> root.dummy;
-                        below <=> root.below;
-                        with-previous <=> root.with-previous;
-                        instructions <=> root.instructions;
                         split-edited(field) => { root.split-edited(field); }
                         choose-mask => { root.choose-mask(); }
                         choose-savestate => { root.choose-savestate(); }
@@ -775,29 +660,17 @@ export component MakerWindow inherits Window {
                     spacing: 6px;
 
                     Button {
-                        height: 24px;
                         text: "Copy Savestates";
                         enabled: root.has-savestates;
                         clicked => { root.copy-savestates(); }
-
-                        Tooltip {
-                            Tip {
-                                text: "Put the preset's savestates on the clipboard, numbered like the split images, to paste where the practice tool on the console loads them from, like gz's savestate folder on the SD card";
-                            }
-                        }
+                        tip: "Put the preset's savestates on the clipboard, numbered like the split images, to paste where the practice tool on the console loads them from, like gz's savestate folder on the SD card";
                     }
 
                     Button {
-                        height: 24px;
                         text: "Savestate Instructions";
                         enabled: root.has-instructions;
                         clicked => { root.show-instructions(); }
-
-                        Tooltip {
-                            Tip {
-                                text: "Show what to do after loading the savestates that need more than loading, under the names Copy Savestates gives them";
-                            }
-                        }
+                        tip: "Show what to do after loading the savestates that need more than loading, under the names Copy Savestates gives them";
                     }
                 }
 
@@ -807,16 +680,10 @@ export component MakerWindow inherits Window {
 
                     Button {
                         width: 110px;
-                        height: 24px;
                         text: "Delete Preset...";
                         enabled: root.saved-preset;
                         clicked => { root.delete-preset(); }
-
-                        Tooltip {
-                            Tip {
-                                text: root.saved-preset ? "Delete this preset's folder, with its masks and savestates" : "A new preset has nothing to delete yet. Cancel leaves it unsaved.";
-                            }
-                        }
+                        tip: root.saved-preset ? "Delete this preset's folder, with its masks and savestates" : "A new preset has nothing to delete yet. Cancel leaves it unsaved.";
                     }
                 }
             }
@@ -846,16 +713,10 @@ export component MakerWindow inherits Window {
 
             if root.preset-problem != "": Button {
                 width: 80px;
-                height: 24px;
                 text: "Fix It";
                 enabled: !root.working;
                 clicked => { root.edit-preset(); }
-
-                Tooltip {
-                    Tip {
-                        text: "Edit the preset to fix what the line beside it says";
-                    }
-                }
+                tip: "Edit the preset to fix what the line beside it says";
             }
 
             if root.preset-problem == "" && root.needs-grouping: Label {
@@ -871,29 +732,17 @@ export component MakerWindow inherits Window {
 
             if root.preset-problem == "" && root.needs-grouping: Button {
                 width: 80px;
-                height: 24px;
                 text: "Turn It On";
                 clicked => { root.turn-on-grouping(); }
-
-                Tooltip {
-                    Tip {
-                        text: "Turn on Compare images with the same number for one split in the profile, which this preset needs. Save the profile to keep it.";
-                    }
-                }
+                tip: "Turn on Compare images with the same number for one split in the profile, which this preset needs. Save the profile to keep it.";
             }
 
             Button {
                 width: 130px;
-                height: 24px;
                 text: "Generate Profile...";
                 enabled: root.presets.length > 0 && root.preset-problem == "";
                 clicked => { root.generate-profile(); }
-
-                Tooltip {
-                    Tip {
-                        text: "Save the settings as a new profile named for the game and preset, with this split image folder, and use it from now on";
-                    }
-                }
+                tip: "Save the settings as a new profile named for the game and preset, with this split image folder, and use it from now on";
             }
         }
 
@@ -954,44 +803,26 @@ export component MakerWindow inherits Window {
             // A preset saved before can be saved as another, a new one only once
             if root.saved-preset: Button {
                 width: 110px;
-                height: 24px;
                 text: "Save as New";
                 enabled: !root.has-problems;
                 clicked => { root.save-preset-as-new(); }
-
-                Tooltip {
-                    Tip {
-                        text: "Save these changes as a new preset, and leave this one as it was";
-                    }
-                }
+                tip: "Save these changes as a new preset, and leave this one as it was";
             }
 
             Button {
                 width: 70px;
-                height: 24px;
                 text: "Cancel";
                 clicked => { root.cancel-edit(); }
-
-                Tooltip {
-                    Tip {
-                        text: "Leave the preset as it was (Escape)";
-                    }
-                }
+                tip: "Leave the preset as it was (Escape)";
             }
 
             Button {
                 width: 70px;
-                height: 24px;
                 text: "Save";
                 suggested: true;
                 enabled: root.can-save-preset;
                 clicked => { root.save-preset(); }
-
-                Tooltip {
-                    Tip {
-                        text: root.has-problems ? "Fix the problems first, which the line beside it lists" : "Save the preset (Ctrl+S)";
-                    }
-                }
+                tip: root.has-problems ? "Fix the problems first, which the line beside it lists" : "Save the preset (Ctrl+S)";
             }
         }
     }
