@@ -189,7 +189,7 @@ export component SettingsWindow inherits Window {
             ComboBox {
                 x: 10px;
                 y: 132px;
-                width: 284px;
+                width: 274px;
                 height: 26px;
                 model: root.capture-device-placeholder == "" ? root.capture-devices : [root.capture-device-placeholder];
                 enabled: root.capture-device-placeholder == "";
@@ -198,9 +198,10 @@ export component SettingsWindow inherits Window {
             }
 
             Button {
-                x: 300px;
+                // Lined up with Browse... below
+                x: 290px;
                 y: 132px;
-                width: 70px;
+                width: 80px;
                 height: 26px;
                 text: "Refresh";
                 clicked => { root.capture-devices-requested(); }
@@ -343,7 +344,7 @@ export component SettingsWindow inherits Window {
             SpinBox {
                 x: 200px;
                 y: 42px;
-                width: 60px;
+                width: 100px;
                 height: 22px;
                 maximum: 1;
                 step: 0.01;
