@@ -29,7 +29,9 @@ windows = { version = "0.62", features = ["Win32_Foundation", "Win32_Media", "Wi
 # Keeps App Nap from slowing comparisons down while the window is hidden
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
-objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSProcessInfo", "NSString", "NSObject"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSData", "NSProcessInfo", "NSString", "NSObject"] }
+# Sets the Dock icon, which a bare binary doesn't get from an app bundle
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSApplication", "NSImage", "NSResponder"] }
 
 [dev-dependencies]
 image = { version = "0.25.10", default-features = false, features = ["png"] }

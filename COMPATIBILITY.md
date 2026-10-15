@@ -103,6 +103,7 @@ Window:
 - Set Hotkey reads the key while the settings window has focus, not globally. Escape clears the hotkey, and clicking Set Hotkey again cancels.
 - Set Hotkey names keys without what Shift types on them (`shift+1`, not `shift+!`). Keypad keys are `num 7` whether Num Lock is on or not, where AutoSplit records `home` with Num Lock off.
 - Keyboard shortcuts (Ctrl+S and the others) work in the main and settings windows, not in About or the log window. AutoSplit's work in all of its windows.
+- On macOS, shortcuts follow its other apps: Cmd+M minimizes and Cmd+W closes any window, so Make Split Images is Cmd+Shift+M and Help is Cmd+?. Help > About is called Licenses and Links there, since the app menu has its own About.
 - There's no Max FPS button. It waited for a new frame per comparison, so it only showed the capture device's frame rate.
 - There's no save prompt when nothing changed. AutoSplit asks for every new profile, because its window's defaults differ from its profile defaults.
 - Warnings about a loaded profile (keys in the wrong place) are shown in one message box.

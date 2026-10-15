@@ -226,7 +226,8 @@ export component MainWindow inherits Window {
             }
             MenuItem {
                 title: "Make Split Images";
-                shortcut: @keys(Control + M);
+                // Cmd+M minimizes on macOS
+                shortcut: Platform.os == OperatingSystemType.macos ? @keys(Control + Shift + M) : @keys(Control + M);
                 activated => { root.open-maker(); }
             }
             MenuSeparator { }
@@ -250,7 +251,8 @@ export component MainWindow inherits Window {
             title: "Help";
             MenuItem {
                 title: "View Help";
-                shortcut: @keys(F1);
+                // Cmd+? on macOS, like its other apps, where F1 needs the fn key
+                shortcut: Platform.os == OperatingSystemType.macos ? @keys(Control + "?") : @keys(F1);
                 activated => { root.view-help(); }
             }
             MenuItem {
@@ -259,7 +261,8 @@ export component MainWindow inherits Window {
             }
             MenuSeparator { }
             MenuItem {
-                title: "About AutoSplit";
+                // The app menu has About on macOS, which Slint always adds
+                title: Platform.os == OperatingSystemType.macos ? "Licenses and Links" : "About AutoSplit";
                 activated => { root.about(); }
             }
         }

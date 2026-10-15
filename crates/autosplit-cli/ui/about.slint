@@ -3,7 +3,8 @@
 import { Button, Theme } from "widgets.slint";
 
 export component AboutWindow inherits Window {
-    title: "About AutoSplit";
+    // Help > Licenses and Links on macOS, where the app menu has About
+    title: Platform.os == OperatingSystemType.macos ? "Licenses and Links" : "About AutoSplit";
     icon: @image-url("../assets/icon.png");
     width: 264px;
     height: 250px;

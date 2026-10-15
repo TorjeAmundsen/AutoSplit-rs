@@ -223,7 +223,6 @@ thread_local! {
     static GUI: RefCell<Option<Rc<Gui>>> = const { RefCell::new(None) };
 }
 
-/// Runs `action` with the GUI, on the window's thread.
 /// Has Cmd+Q, the app menu's Quit, the Dock's Quit and logging out ask first, like closing the
 /// main window, on macOS. AppKit otherwise ends the process at once, without asking to save the
 /// profile or a preset being edited, and without stopping the session.
@@ -261,6 +260,21 @@ fn ask_before_quitting() {
     };
 }
 
+/// Puts AutoSplit's icon in the Dock and the app menu's About panel on macOS. A bare binary has no
+/// app bundle for macOS to take it from, so they'd show the generic program icon.
+#[cfg(target_os = "macos")]
+fn show_dock_icon() {
+    use objc2::{AllocAnyThread, MainThreadMarker};
+    use objc2_app_kit::{NSApplication, NSImage};
+    use objc2_foundation::NSData;
+
+    let Some(main_thread) = MainThreadMarker::new() else { return };
+    let data = NSData::with_bytes(include_bytes!("../../assets/icon.png"));
+    let Some(image) = NSImage::initWithData(NSImage::alloc(), &data) else { return };
+    unsafe { NSApplication::sharedApplication(main_thread).setApplicationIconImage(Some(&image)) };
+}
+
+/// Runs `action` with the GUI, on the window's thread.
 fn with_gui(action: impl FnOnce(&Rc<Gui>) + Send + 'static) {
     let _ = slint::invoke_from_event_loop(move || {
         if let Some(gui) = GUI.with(|gui| gui.borrow().clone()) {
@@ -544,7 +558,10 @@ pub fn run(options: Options) -> Result<(), Error> {
         }
     });
     #[cfg(target_os = "macos")]
-    ask_before_quitting();
+    {
+        ask_before_quitting();
+        show_dock_icon();
+    }
     slint::run_event_loop_until_quit().map_err(|error| Error::Failed(error.into()))?;
     // Hidden first, since stopping the session can take a moment
     gui.hide_all();
@@ -830,7 +847,7 @@ impl Gui {
                         gui.key_recorded(action, event, held);
                         return EventResult::PreventDefault;
                     }
-                    if gui.shortcut(event, held) {
+                    if gui.mac_window_key(gui.windows.settings.window(), event, held) || gui.shortcut(event, held) {
                         return EventResult::PreventDefault;
                     }
                     // Escape closes it, like Qt's dialogs
@@ -852,8 +869,15 @@ impl Gui {
         ];
         for (window, enter_too) in windows {
             let weak = self.me.clone();
+            let mut held = Modifiers::empty();
             window.on_winit_window_event(move |window, event| {
+                if let WindowEvent::ModifiersChanged(modifiers) = event {
+                    held = modifiers_held(modifiers.state());
+                }
                 let WindowEvent::KeyboardInput { event, .. } = event else { return EventResult::Propagate };
+                if weak.upgrade().is_some_and(|gui| !gui.blocked() && gui.mac_window_key(window, event, held)) {
+                    return EventResult::PreventDefault;
+                }
                 let closes = match &event.logical_key {
                     Key::Named(NamedKey::Escape) => true,
                     Key::Named(NamedKey::Enter) => enter_too,
@@ -868,12 +892,18 @@ impl Gui {
         }
 
         let weak = self.me.clone();
-        self.windows.main.window().on_winit_window_event(move |_, event| {
+        let mut held = Modifiers::empty();
+        self.windows.main.window().on_winit_window_event(move |window, event| {
             let Some(gui) = weak.upgrade() else { return EventResult::Propagate };
             if gui.inline_message_key(event) {
                 return EventResult::PreventDefault;
             }
             match event {
+                WindowEvent::ModifiersChanged(modifiers) => held = modifiers_held(modifiers.state()),
+                // Closing asks first, like the close button
+                WindowEvent::KeyboardInput { event, .. } if gui.mac_window_key(window, event, held) => {
+                    return EventResult::PreventDefault;
+                }
                 WindowEvent::Focused(focused) => {
                     gui.windows.main.global::<WindowFocus>().set_active(*focused);
                     if *focused {
@@ -896,7 +926,9 @@ impl Gui {
             match event {
                 WindowEvent::ModifiersChanged(modifiers) => held = modifiers_held(modifiers.state()),
                 WindowEvent::KeyboardInput { event, .. }
-                    if event.state == ElementState::Pressed && gui.tool_shortcut(Tool::Tester, event, held) =>
+                    if event.state == ElementState::Pressed
+                        && (gui.mac_window_key(gui.windows.tester.window(), event, held)
+                            || gui.tool_shortcut(Tool::Tester, event, held)) =>
                 {
                     return EventResult::PreventDefault;
                 }
@@ -918,7 +950,9 @@ impl Gui {
                 WindowEvent::ModifiersChanged(modifiers) => held = modifiers_held(modifiers.state()),
                 WindowEvent::KeyboardInput { event, .. }
                     if event.state == ElementState::Pressed
-                        && (gui.editor_shortcut(event, held) || gui.tool_shortcut(Tool::Maker, event, held)) =>
+                        && (gui.mac_window_key(gui.windows.maker.window(), event, held)
+                            || gui.editor_shortcut(event, held)
+                            || gui.tool_shortcut(Tool::Maker, event, held)) =>
                 {
                     return EventResult::PreventDefault;
                 }
@@ -975,11 +1009,27 @@ impl Gui {
         match (control, shift, key_character(event).map(|c| c.to_ascii_lowercase()), &event.logical_key) {
             (true, _, Some(','), _) => self.open_settings(),
             (true, _, Some('t'), _) => self.open_tester(),
-            (true, _, Some('m'), _) => self.open_maker(),
+            // Cmd+M minimizes on macOS, like in its other apps
+            (true, cfg!(target_os = "macos"), Some('m'), _) => self.open_maker(),
             (true, true, Some('s'), _) => self.save_profile(true, None),
             (true, false, Some('s'), _) => self.save_profile(false, None),
             (true, _, Some('o'), _) => self.load_profile(),
             (false, _, _, Key::Named(NamedKey::F1)) => self.open(TUTORIAL_URL),
+            _ => return false,
+        }
+        true
+    }
+
+    /// macOS's keys for any window, which its apps share: Cmd+W closes it like its close button,
+    /// and Cmd+M minimizes it. Returns whether the key was one. None of them elsewhere, where
+    /// Ctrl+M opens Make Split Images.
+    fn mac_window_key(&self, window: &slint::Window, event: &KeyEvent, held: Modifiers) -> bool {
+        if !cfg!(target_os = "macos") || event.state != ElementState::Pressed || event.repeat || held != PRIMARY {
+            return false;
+        }
+        match key_character(event).map(|c| c.to_ascii_lowercase()) {
+            Some('w') => window.dispatch_event(slint::platform::WindowEvent::CloseRequested),
+            Some('m') => window.set_minimized(true),
             _ => return false,
         }
         true
@@ -1070,12 +1120,29 @@ impl Gui {
 
     /// Puts `window` where `place` says, by the main window, so it doesn't show up on another
     /// screen.
+    ///
+    /// Windows and Linux lay screens out in pixels. macOS lays them out in points, which winit
+    /// turns into pixels by each screen's or window's own scale, so with a Retina screen and a
+    /// 1x one, their pixel positions don't line up. There it places windows in points.
     fn place_by_main(&self, window: &slint::Window, place: fn(Area, u32, u32, Option<Area>) -> (i32, i32)) {
+        let points = cfg!(target_os = "macos");
+        // What a pixel position at `scale` is divided by
+        let unit = |scale: f64| if points { scale } else { 1.0 };
+        let area = |x: i32, y: i32, width: u32, height: u32, scale: f64| {
+            let unit = unit(scale);
+            let (x, y) = ((f64::from(x) / unit).round() as i32, (f64::from(y) / unit).round() as i32);
+            Area {
+                x,
+                y,
+                width: (f64::from(width) / unit).round() as u32,
+                height: (f64::from(height) / unit).round() as u32,
+            }
+        };
         let main = self.windows.main.window();
         let Some((minimized, screen)) = main.with_winit_window(|main| {
             let screen = main.current_monitor().map(|monitor| {
                 let (position, size) = (monitor.position(), monitor.size());
-                Area { x: position.x, y: position.y, width: size.width, height: size.height }
+                area(position.x, position.y, size.width, size.height, monitor.scale_factor())
             });
             (main.is_minimized().unwrap_or(false), screen)
         }) else {
@@ -1086,11 +1153,16 @@ impl Gui {
             return;
         }
         let (position, size) = (main.position(), main.size());
-        let main_area = Area { x: position.x, y: position.y, width: size.width, height: size.height };
+        let main_area = area(position.x, position.y, size.width, size.height, main.scale_factor().into());
         // A hidden window's size can be at another screen's scale, so it goes by the main window's
-        let size = window.size().to_logical(window.scale_factor()).to_physical(main.scale_factor());
+        let logical = window.size().to_logical(window.scale_factor());
+        let size = if points { logical.to_physical(1.0) } else { logical.to_physical(main.scale_factor()) };
         let (x, y) = place(main_area, size.width, size.height, screen);
-        window.set_position(slint::PhysicalPosition::new(x, y));
+        if points {
+            window.set_position(slint::LogicalPosition::new(x as f32, y as f32));
+        } else {
+            window.set_position(slint::PhysicalPosition::new(x, y));
+        }
     }
 
     /// Lists capture devices in the background, since some take a while to answer.

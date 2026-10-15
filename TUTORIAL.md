@@ -73,7 +73,7 @@ The Virtual Camera sends a picture the size of OBS's canvas, with your source in
 
 ![The main window, with the split image folder, the capture region boxes, the live preview, the current split image and the buttons marked](docs/images/main-window-annotated.png)
 
-Shortcuts here use Ctrl, like Ctrl+S. On macOS they use Cmd instead, like Cmd+S, and Alt is Option.
+Shortcuts here use Ctrl, like Ctrl+S. On macOS they use Cmd instead, like Cmd+S, and Alt is Option. Also on macOS, like its other apps, Cmd+M minimizes a window and Cmd+W closes it, so Make Split Images is Cmd+Shift+M, Help is Cmd+? instead of F1, and Help > About is called Licenses and Links, since the app menu has About.
 
 ### Split image folder
 
@@ -128,7 +128,7 @@ The right side keeps the frames that would have made the image act, decided like
 
 ### Make Split Images
 
-File > Make Split Images (Ctrl+M) makes split images from a preset: a list of a category's splits, each with a mask that keeps only the part of the screen that tells the split apart, and the threshold, pause, delay and flags it needs. Presets come with `autosplit`, in the `presets` folder next to it. Pick the game and the preset at the top. Like the Live Tester, it opens beside the main window, which can't be used while it's open apart from the Help menu and File > Settings (also Ctrl+, or the Settings button in the main window), so set the capture region first. The split images are saved into the profile's split image folder, which Browse... next to it changes.
+File > Make Split Images (Ctrl+M, or Cmd+Shift+M on macOS) makes split images from a preset: a list of a category's splits, each with a mask that keeps only the part of the screen that tells the split apart, and the threshold, pause, delay and flags it needs. Presets come with `autosplit`, in the `presets` folder next to it. Pick the game and the preset at the top. Like the Live Tester, it opens beside the main window, which can't be used while it's open apart from the Help menu and File > Settings (also Ctrl+, or the Settings button in the main window), so set the capture region first. The split images are saved into the profile's split image folder, which Browse... next to it changes.
 
 The list shows each split's name over its file name, colored like in the Live Tester, and what its image is made from. The box on the left shows the grab or screenshot, unmasked, and stays empty until there is one. The file names use the profile's defaults for what the preset leaves out, and are numbered from 0 like AutoSplit reads them, with as many digits as the last number needs, so `00_` with 10 to 99 numbers. There are two ways to make the images:
 

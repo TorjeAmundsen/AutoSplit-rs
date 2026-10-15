@@ -27,4 +27,4 @@ A Rust rewrite of [AutoSplit](https://github.com/Toufool/AutoSplit), the image c
 
 ## License
 
-GPL-3.0-only, like AutoSplit. Parts of the image processing are ports of OpenCV, and the window uses Slint under its GPL-3.0 license. See [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt). Both are built into the program: Help > About > Licenses.
+GPL-3.0-only, like AutoSplit. Parts of the image processing are ports of OpenCV, and the window uses Slint under its GPL-3.0 license. See [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt). Both are built into the program: Help > About > Licenses (Help > Licenses and Links on macOS).
