@@ -623,10 +623,13 @@ impl Gui {
         }
         drop(maker);
         self.make_thumbnails(set);
+        // Unlike a grab, they're saved when asked
         let status = match paths.len() {
-            1 => "Screenshot set for the selected split.".to_owned(),
-            n if n == count => format!("{n} screenshots set, one for each split."),
-            n => format!("{n} screenshots for {count} splits, set in order from the first."),
+            1 => "Screenshot set for the selected split. Save Selected writes its split image.".to_owned(),
+            n if n == count => format!("{n} screenshots set, one for each split. Save All writes their split images."),
+            n => format!(
+                "{n} screenshots for {count} splits, set in order from the first. Save All writes their split images."
+            ),
         };
         self.windows.maker.set_status(status.into());
         // Split images picked as screenshots would be masked twice

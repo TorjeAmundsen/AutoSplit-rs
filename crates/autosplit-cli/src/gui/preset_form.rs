@@ -418,6 +418,10 @@ impl Draft {
         if self.preset.name.trim().is_empty() {
             problems.push("The preset needs a name.".to_owned());
         }
+        // It's listed under its game
+        if self.preset.game.trim().is_empty() {
+            problems.push("The preset needs a game. Pick one, or type a new one.".to_owned());
+        }
         if self.preset.splits.is_empty() {
             problems.push("The preset needs a split. Add one.".to_owned());
         } else if self.preset.splits.iter().all(PresetSplit::is_keyword) {

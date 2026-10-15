@@ -217,6 +217,21 @@ fn problems_name_their_split() {
     );
 }
 
+#[test_case("" => true; "none")]
+#[test_case("  " => true; "only spaces")]
+#[test_case("Game" => false; "one")]
+fn a_preset_needs_a_game(game: &str) -> bool {
+    // Arrange
+    let mut draft = draft(&["Boss"]);
+    draft.preset.game = game.into();
+
+    // Act
+    let problems = draft.problems();
+
+    // Assert, with the expected value checked by test_case
+    problems.iter().any(|problem| problem.message.starts_with("The preset needs a game."))
+}
+
 #[test]
 fn a_preset_without_splits_needs_one() {
     // Arrange
