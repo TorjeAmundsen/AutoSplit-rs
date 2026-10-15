@@ -233,6 +233,25 @@ pub fn hold_menu_shortcuts(held: bool) {
     let _ = held;
 }
 
+/// The folder for files AutoSplit writes for other programs to open or paste, and for the log
+/// when it can't be next to the program. The temp folder is each user's own on Windows and
+/// macOS, but on Linux every user shares `/tmp`, where a file another user left there can't be
+/// replaced. There it's `~/.cache/autosplit` (or under `XDG_CACHE_HOME`) instead.
+pub fn temp_folder() -> std::path::PathBuf {
+    #[cfg(target_os = "linux")]
+    {
+        let absolute =
+            |name: &str| std::env::var_os(name).map(std::path::PathBuf::from).filter(|path| path.is_absolute());
+        let cache = absolute("XDG_CACHE_HOME").or_else(|| absolute("HOME").map(|home| home.join(".cache")));
+        if let Some(folder) = cache.map(|cache| cache.join("autosplit"))
+            && std::fs::create_dir_all(&folder).is_ok()
+        {
+            return folder;
+        }
+    }
+    std::env::temp_dir()
+}
+
 /// Lets the menus that open from the menu bar follow the system's dark mode on Windows. The bar
 /// itself already does, but a menu is light unless the program allows dark mode for itself,
 /// which Windows only offers through uxtheme.dll's unnamed `SetPreferredAppMode`.

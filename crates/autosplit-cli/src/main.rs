@@ -522,7 +522,7 @@ fn synthetic_split(masked: bool) -> Result<SplitImage> {
         pixel[3] = if visible { 255 } else { 0 };
     }
     let image = BgraImage::from_raw(width, height, data);
-    let path = std::env::temp_dir().join(format!("autosplit-bench-{}-{masked}.png", std::process::id()));
+    let path = platform::temp_folder().join(format!("autosplit-bench-{}-{masked}.png", std::process::id()));
     std::fs::write(&path, image.encode_png()?)?;
     let split = load_split_image(&path);
     std::fs::remove_file(&path).ok();

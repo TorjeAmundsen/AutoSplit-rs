@@ -14,7 +14,7 @@ pub fn text(crlf: bool) -> String {
 
 /// Writes the licenses to a text file in the temporary folder, to open in the default text editor.
 pub fn write() -> std::io::Result<PathBuf> {
-    let path = std::env::temp_dir().join("AutoSplit licenses.txt");
+    let path = crate::platform::temp_folder().join("AutoSplit licenses.txt");
     std::fs::write(&path, text(cfg!(windows)))?;
     Ok(path)
 }

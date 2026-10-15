@@ -18,7 +18,7 @@ impl Gui {
         let copies: Vec<(PathBuf, String)> =
             loaded.preset.savestate_copies().into_iter().map(|(path, name)| (loaded.file(path), name)).collect();
         drop(maker);
-        let folder = std::env::temp_dir().join(SAVESTATES_FOLDER);
+        let folder = crate::platform::temp_folder().join(SAVESTATES_FOLDER);
         let mut copied = Vec::new();
         let mut missing = Vec::new();
         let emptied = match std::fs::remove_dir_all(&folder) {

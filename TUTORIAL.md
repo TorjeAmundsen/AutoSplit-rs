@@ -14,7 +14,7 @@ Only video capture devices work for now, meaning capture cards, webcams and OBS 
 6. Set the [capture region](#capture-region).
 7. Pick your split image folder with Browse..., set the hotkeys your timer uses in Settings > Hotkeys, and press Start Auto Splitter (or your split hotkey).
 
-If it doesn't split, Help > View Log says why. The same log is in `autosplit.log` next to the program, or in the temp folder when that folder is read-only.
+If it doesn't split, Help > View Log says why. The same log is in `autosplit.log` next to the program, or in the temp folder when that folder is read-only (`~/.cache/autosplit` on Linux).
 
 ## Which timer setup to use
 
@@ -143,7 +143,7 @@ Generate Profile... saves the settings as a new profile named for the game and p
 
 A preset can have something the editor wouldn't save, like a preset written by hand where splits compared together have the same name, which would give their savestate copies the same name. Then the line at the bottom of the window says what to fix, the split's name in the list is red, and Grab, Use Screenshots..., saving, Test, Copy Savestates and Generate Profile... wait until it's fixed. Fix It opens the preset in the editor.
 
-Some presets come with savestates for a practice tool that loads savestates on the console, like gz for Ocarina of Time (`.gzs` files), to get to each split's screen for its screenshot. Emulators don't need them, since they can auto split by reading the game's memory. Copy Savestates puts them on the clipboard, numbered like the split images, to paste where the practice tool loads them from. On Linux, `autosplit` holds them on the clipboard itself, so paste them before closing it. Don't copy them out of the preset's `savestates` folder yourself, as its `DO_NOT_COPY.txt` says: presets use some savestates for several splits, and the file names there aren't in split order. The copies are in the `AutoSplit savestates` folder in the temp folder, which the next Copy Savestates empties first. Savestate Instructions shows what to do with the savestates that need more than loading, under the names Copy Savestates gives them.
+Some presets come with savestates for a practice tool that loads savestates on the console, like gz for Ocarina of Time (`.gzs` files), to get to each split's screen for its screenshot. Emulators don't need them, since they can auto split by reading the game's memory. Copy Savestates puts them on the clipboard, numbered like the split images, to paste where the practice tool loads them from. On Linux, `autosplit` holds them on the clipboard itself, so paste them before closing it. Don't copy them out of the preset's `savestates` folder yourself, as its `DO_NOT_COPY.txt` says: presets use some savestates for several splits, and the file names there aren't in split order. The copies are in the `AutoSplit savestates` folder in the temp folder (`~/.cache/autosplit` on Linux), which the next Copy Savestates empties first. Savestate Instructions shows what to do with the savestates that need more than loading, under the names Copy Savestates gives them.
 
 #### Editing presets
 
