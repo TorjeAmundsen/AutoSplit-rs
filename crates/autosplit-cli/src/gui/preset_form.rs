@@ -473,6 +473,27 @@ pub fn split_heading(preset: &Preset, index: usize) -> String {
     }
 }
 
+/// How many characters of a mask's and a savestate's file name fit beside their buttons in the
+/// split form, about, since characters differ in width.
+pub const MASK_NAME_CHARS: usize = 24;
+pub const SAVESTATE_NAME_CHARS: usize = 15;
+
+/// `name` in at most `max` characters, shortened in the middle with `...`, so the start, often a
+/// number, and the end with the extension both show: `006 en...ku.gzs`.
+pub fn elide_middle(name: &str, max: usize) -> String {
+    let chars: Vec<char> = name.chars().collect();
+    if chars.len() <= max {
+        return name.to_owned();
+    }
+    let keep = max.saturating_sub(3);
+    // The end gets the odd one, for the extension
+    let tail = keep.div_ceil(2);
+    let head = keep - tail;
+    let start: String = chars[..head].iter().collect();
+    let end: String = chars[chars.len() - tail..].iter().collect();
+    format!("{start}...{end}")
+}
+
 /// A card of the Savestate Instructions window, for a savestate with instructions.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct InstructionText {

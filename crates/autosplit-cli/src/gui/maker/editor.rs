@@ -13,7 +13,10 @@ use super::super::Gui;
 use super::super::maker_plan::DeletedPreset;
 use super::super::messages::{Answer, Message};
 use super::super::paths::{canonical, file_name_text};
-use super::super::preset_form::{Draft, Field, ListChange, SplitEdit, SplitKind, field_problems, field_value};
+use super::super::preset_form::{
+    Draft, Field, ListChange, MASK_NAME_CHARS, SAVESTATE_NAME_CHARS, SplitEdit, SplitKind, elide_middle,
+    field_problems, field_value,
+};
 use super::super::preset_form::{known_game, problem_flags, problem_list, problem_summary, saved_preset_name};
 use super::super::recorder::key_character;
 use super::super::ui::{SplitField, SplitForm, SplitValues};
@@ -414,8 +417,12 @@ impl Gui {
                 name_problem: field_problems(&problems, selected, Field::Name).into(),
                 mask_problem: field_problems(&problems, selected, Field::Mask).into(),
                 group_problem: field_problems(&problems, selected, Field::Group).into(),
-                mask: file_name_text(Path::new(&split.mask)).unwrap_or_default().into(),
-                savestate: file_name_text(Path::new(&split.savestate)).unwrap_or_default().into(),
+                mask: elide_middle(&file_name_text(Path::new(&split.mask)).unwrap_or_default(), MASK_NAME_CHARS).into(),
+                savestate: elide_middle(
+                    &file_name_text(Path::new(&split.savestate)).unwrap_or_default(),
+                    SAVESTATE_NAME_CHARS,
+                )
+                .into(),
                 mask_path: shown_path(&maker, &split.mask).into(),
                 savestate_path: shown_path(&maker, &split.savestate).into(),
                 mask_copied: copied_in(edit.source.as_deref(), &split.mask),

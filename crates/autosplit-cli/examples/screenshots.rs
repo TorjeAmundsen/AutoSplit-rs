@@ -4,6 +4,7 @@
 use std::rc::Rc;
 
 use autosplit::gui::messages::Buttons;
+use autosplit::gui::preset_form::{MASK_NAME_CHARS, SAVESTATE_NAME_CHARS, elide_middle};
 use autosplit::gui::ui::{
     AboutWindow, HotkeyRow, InfoCell, InstructionCard, InstructionsWindow, LogWindow, MainWindow, MakerRow,
     MakerWindow, MessageWindow, SettingsWindow, SimilarityRow, SplitForm, SplitValues, TesterReading, TesterWindow,
@@ -289,8 +290,8 @@ fn main() {
         name_problem: "".into(),
         mask_problem: "".into(),
         group_problem: "".into(),
-        mask: "006_a_button_flip.png".into(),
-        savestate: "006 enter deku.gzs".into(),
+        mask: elide_middle("006_a_button_flip_after_the_door.png", MASK_NAME_CHARS).into(),
+        savestate: elide_middle("006 enter deku.gzs", SAVESTATE_NAME_CHARS).into(),
         mask_path: "presets/No_Wrong_Warp/006_a_button_flip.png".into(),
         savestate_path: "C:/Users/Runner/gz/006 enter deku.gzs".into(),
         mask_copied: false,

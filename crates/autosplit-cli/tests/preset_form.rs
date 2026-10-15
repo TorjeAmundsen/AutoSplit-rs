@@ -1,8 +1,9 @@
 //! The preset editor's draft: edits, list operations kept in step with other lists, and problems.
 
 use autosplit::gui::preset_form::{
-    Draft, Field, InstructionText, ListChange, Problem, SplitEdit, SplitKind, field_problems, field_value,
-    instruction_cards, known_game, problem_flags, problem_list, problem_summary, saved_preset_name, split_heading,
+    Draft, Field, InstructionText, ListChange, Problem, SplitEdit, SplitKind, elide_middle, field_problems,
+    field_value, instruction_cards, known_game, problem_flags, problem_list, problem_summary, saved_preset_name,
+    split_heading,
 };
 use autosplit_core::preset::{Preset, PresetSplit};
 use test_case::test_case;
@@ -667,4 +668,13 @@ fn only_the_type_changes_other_fields() {
 fn typed_games_are_the_known_ones(game: &str) -> Option<&'static str> {
     // Act, with the expected value checked by test_case
     known_game(game, &["", "The Legend of Zelda: Ocarina of Time", "Super Mario 64"])
+}
+
+#[test_case("006 enter deku.gzs", 15 => "006 en...ku.gzs"; "shortened in the middle")]
+#[test_case("deku.gzs", 15 => "deku.gzs"; "short enough")]
+#[test_case("006 enter deku.gzs", 18 => "006 enter deku.gzs"; "exactly the limit")]
+#[test_case("Dékù Trée.gzs", 12 => "Dékù...e.gzs"; "characters, not bytes")]
+fn long_file_names_keep_their_start_and_end(name: &str, max: usize) -> String {
+    // Act, with the expected value checked by test_case
+    elide_middle(name, max)
 }
