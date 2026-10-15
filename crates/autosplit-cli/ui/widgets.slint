@@ -1,6 +1,12 @@
 // Widgets drawn like AutoSplit's, which uses Qt's Fusion style: compact gradient buttons and spin
 // boxes and combo boxes with arrows, so text fits at AutoSplit's sizes. Check boxes are Slint's.
 
+// One font on every system, so text takes the same room everywhere. Each window sets it as its
+// default.
+import "../assets/fonts/NotoSans-Regular.ttf";
+import "../assets/fonts/NotoSans-SemiBold.ttf";
+import "../assets/fonts/NotoSans-Bold.ttf";
+
 import { ListView, Palette } from "std-widgets.slint";
 
 export global Theme {

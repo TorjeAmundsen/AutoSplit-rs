@@ -37,6 +37,7 @@ export component SettingsWindow inherits Window {
     icon: @image-url("../assets/icon.png");
     width: 380px;
     height: 384px;
+    default-font-family: "Noto Sans";
     default-font-size: 12px;
 
     in-out property <float> fps-limit: 60;
@@ -477,7 +478,7 @@ export component SettingsWindow inherits Window {
                 width: 360px;
                 height: 61px;
                 wrap: word-wrap;
-                text: "Image settings and flags can be set per image through the image file name. These will override the default values. View the tutorial for full details on all available custom image settings.";
+                text: "Each image can set its own settings and flags in its file name, which override these defaults. The tutorial lists them all.";
             }
 
             Button {
@@ -514,10 +515,12 @@ export component SettingsWindow inherits Window {
                     }
                 }
 
+                // Two lines for the long names, a little taller than the row
                 Label {
                     x: 10px;
+                    y: -4px;
                     width: 84px;
-                    height: 100%;
+                    height: parent.height + 8px;
                     text: row.name;
                     wrap: word-wrap;
                     opacity: row.enabled ? 1 : 0.5;

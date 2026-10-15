@@ -33,6 +33,7 @@ export struct MakerRow {
 export component MakerWindow inherits Window {
     title: "Make Split Images";
     icon: @image-url("../assets/icon.png");
+    default-font-family: "Noto Sans";
     default-font-size: 12px;
 
     in property <[string]> games;
@@ -639,7 +640,6 @@ export component MakerWindow inherits Window {
                     }
 
                     CheckBox {
-                        width: 130px;
                         text: "Transparency grid";
                         checked <=> root.show-grid;
                     }

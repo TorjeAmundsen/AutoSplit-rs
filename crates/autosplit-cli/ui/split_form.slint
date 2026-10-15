@@ -304,15 +304,13 @@ export component SplitFormPanel inherits VerticalLayout {
             }
         }
 
+        // Dummy in the label column, like Threshold and Pause, so the other fits beside it
         HorizontalLayout {
             height: 24px;
-            spacing: 12px;
-
-            Rectangle {
-                width: root.label-width - 6px;
-            }
+            spacing: 6px;
 
             CheckBox {
+                width: root.label-width;
                 text: "Dummy";
                 checked <=> SplitValues.dummy;
                 toggled => { root.split-edited(SplitField.dummy); }
