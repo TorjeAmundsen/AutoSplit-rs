@@ -295,7 +295,7 @@ fn main() {
     });
     maker.set_problems("Split1: It needs a mask. Choose one.".into());
     maker.set_has_problems(true);
-    maker.set_can_delete_preset(true);
+    maker.set_saved_preset(true);
     save(&window, PhysicalSize::new(828, 672), &folder.join("maker-edit.png"));
     // Without the savestate note, all of the form fits
     maker.set_form(SplitForm { savestate_copied: false, ..maker.get_form() });

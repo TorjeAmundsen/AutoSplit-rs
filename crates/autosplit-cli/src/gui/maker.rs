@@ -477,6 +477,18 @@ impl Gui {
         self.refresh_instructions();
     }
 
+    /// Why Grab can't work yet, which its tooltip says, or empty. The hotkey still tries, and says
+    /// so in a message.
+    fn grab_blocker(&self) -> &'static str {
+        if !self.state.borrow().document.profile.has_capture_device() {
+            "Pick a capture device in Settings (Ctrl+,) first, which Grab takes the capture region from."
+        } else if !self.split_image_folder().is_some_and(|folder| folder.is_dir()) {
+            "Pick a split image folder that exists with Browse... first, which Grab saves into."
+        } else {
+            ""
+        }
+    }
+
     /// The split image folder, as the profile says.
     fn split_image_folder(&self) -> Option<PathBuf> {
         let state = self.state.borrow();
@@ -511,13 +523,15 @@ impl Gui {
         }
         let grouping = self.state.borrow().document.profile.group_split_images;
         let view = maker_view(&self.maker.borrow(), &names, &in_place, &problems, &preset_problems, grouping);
+        let grab_blocker = self.grab_blocker();
         self.maker_rows.set_vec(view.rows);
         let window = &self.windows.maker;
         // Empty without one, which the window says
         let folder = self.split_image_folder();
         window.set_output_folder(folder.map(|folder| folder.display().to_string()).unwrap_or_default().into());
         window.set_preset_problem(view.preset_problem.into());
-        window.set_can_grab(view.can_grab);
+        window.set_can_grab(view.can_grab && grab_blocker.is_empty());
+        window.set_grab_blocker(grab_blocker.into());
         window.set_can_save_selected(view.can_save_selected);
         window.set_can_save_all(view.can_save_all);
         window.set_can_test(view.can_test);

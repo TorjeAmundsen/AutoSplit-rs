@@ -99,7 +99,9 @@ impl Gui {
         let Some(edit) = &maker.edit else { return };
         let list = problem_list(&edit.draft.preset, &edit.draft.problems());
         drop(maker);
-        if !list.is_empty() {
+        if list.is_empty() {
+            self.windows.maker.set_status("No changes to save yet.".into());
+        } else {
             self.show_message(Message::warning(format!("Fix these before saving:\n\n{list}")));
         }
     }
@@ -127,6 +129,9 @@ impl Gui {
             (_, Modifiers::CONTROL) if character == Some('s') => {
                 if self.windows.maker.get_can_save_preset() {
                     self.save_draft(false);
+                } else {
+                    // Says what's in the way, or that there's nothing to save
+                    self.show_problems();
                 }
             }
             _ => return false,
@@ -435,7 +440,7 @@ impl Gui {
         window.set_problem_split(next.map_or(-1, |&index| index as i32));
         window.set_has_problems(!problems.is_empty());
         window.set_can_save_preset(problems.is_empty() && edit.draft.can_save());
-        window.set_can_delete_preset(edit.source.is_some());
+        window.set_saved_preset(edit.source.is_some());
         problem_flags(&problems, splits.len())
     }
 

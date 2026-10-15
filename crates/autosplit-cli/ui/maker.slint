@@ -48,6 +48,8 @@ export component MakerWindow inherits Window {
     in property <image> live-image;
     in property <string> live-message: "Waiting for capture device...";
     in property <bool> can-grab;
+    // Why Grab can't be used yet, like without a capture device, or empty
+    in property <string> grab-blocker;
     in property <image> preview-image;
     in property <string> preview-message: "No screenshot for this split yet.";
     // Behind the split image, so its transparent parts show
@@ -112,7 +114,8 @@ export component MakerWindow inherits Window {
     in property <bool> has-problems;
     in property <bool> can-save-preset;
     // The preset is saved already, so there's a folder to delete
-    in property <bool> can-delete-preset;
+    // The preset being edited was saved before, so it can be deleted or saved as another
+    in property <bool> saved-preset;
 
     callback game-chosen(int);
     // The index among the game's presets
@@ -452,7 +455,7 @@ export component MakerWindow inherits Window {
 
                         Tooltip {
                             Tip {
-                                text: "Make the selected split's image from the capture now, save it into the split image folder, and go to the next split. The screenshot hotkey does the same while this window is open.";
+                                text: root.grab-blocker != "" ? root.grab-blocker : "Make the selected split's image from the capture now, save it into the split image folder, and go to the next split. The screenshot hotkey does the same while this window is open.";
                             }
                         }
                     }
@@ -559,7 +562,7 @@ export component MakerWindow inherits Window {
 
                         Tooltip {
                             Tip {
-                                text: "Remove the selected split. Ctrl+Z brings it back, with its grab or screenshot.";
+                                text: "Remove the selected split. Ctrl+Z brings it back, with its grab or screenshot, until something else is changed.";
                             }
                         }
                     }
@@ -574,6 +577,12 @@ export component MakerWindow inherits Window {
                         text: "Move Up";
                         enabled: root.has-split && root.selected > 0;
                         clicked => { root.move-split(true); }
+
+                        Tooltip {
+                            Tip {
+                                text: "Move the selected split up, with the splits compared together with it (Alt+Up)";
+                            }
+                        }
                     }
 
                     Button {
@@ -582,6 +591,12 @@ export component MakerWindow inherits Window {
                         text: "Move Down";
                         enabled: root.has-split && root.selected < root.rows.length - 1;
                         clicked => { root.move-split(false); }
+
+                        Tooltip {
+                            Tip {
+                                text: "Move the selected split down, with the splits compared together with it (Alt+Down)";
+                            }
+                        }
                     }
                 }
             }
@@ -783,12 +798,12 @@ export component MakerWindow inherits Window {
                         width: 110px;
                         height: 24px;
                         text: "Delete Preset...";
-                        enabled: root.can-delete-preset;
+                        enabled: root.saved-preset;
                         clicked => { root.delete-preset(); }
 
                         Tooltip {
                             Tip {
-                                text: "Delete this preset's folder, with its masks and savestates";
+                                text: root.saved-preset ? "Delete this preset's folder, with its masks and savestates" : "A new preset has nothing to delete yet. Cancel leaves it unsaved.";
                             }
                         }
                     }
@@ -929,7 +944,8 @@ export component MakerWindow inherits Window {
                 }
             }
 
-            Button {
+            // A preset saved before can be saved as another, a new one only once
+            if root.saved-preset: Button {
                 width: 110px;
                 height: 24px;
                 text: "Save as New";
@@ -948,6 +964,12 @@ export component MakerWindow inherits Window {
                 height: 24px;
                 text: "Cancel";
                 clicked => { root.cancel-edit(); }
+
+                Tooltip {
+                    Tip {
+                        text: "Leave the preset as it was (Escape)";
+                    }
+                }
             }
 
             Button {
@@ -957,6 +979,12 @@ export component MakerWindow inherits Window {
                 primary: true;
                 enabled: root.can-save-preset;
                 clicked => { root.save-preset(); }
+
+                Tooltip {
+                    Tip {
+                        text: root.has-problems ? "Fix the problems first, which the line beside it lists" : "Save the preset (Ctrl+S)";
+                    }
+                }
             }
         }
     }
