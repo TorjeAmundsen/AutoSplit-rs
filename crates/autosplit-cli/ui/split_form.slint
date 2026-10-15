@@ -170,7 +170,7 @@ export component SplitFormPanel inherits VerticalLayout {
                     width: 80px;
                     height: 24px;
                     text: "Choose...";
-                    primary: root.form.mask == "";
+                    suggested: root.form.mask == "";
                     clicked => { root.choose-mask(); }
                 }
             }

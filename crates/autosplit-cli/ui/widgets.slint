@@ -53,6 +53,22 @@ export global OpenList {
     in-out property <bool> showing;
 }
 
+// Behind everything else in a window: a click where nothing else takes it, like on a label or
+// empty space, takes the focus from the field or button that has it, so no outline stays behind.
+// Keys it gets are left to the window.
+export component ClickAway inherits FocusScope {
+    width: 100%;
+    height: 100%;
+
+    TouchArea {
+        pointer-event(event) => {
+            if (event.kind == PointerEventKind.down) {
+                root.focus();
+            }
+        }
+    }
+}
+
 // A tooltip's content, drawn like Qt's: plain text in a box. Used as `Tooltip { Tip { text: ... } }`.
 // Slint draws tooltips inside the window and cuts off what's past its edge, so long text wraps at
 // a width that fits the narrowest windows that have tooltips, like Settings.
@@ -173,6 +189,8 @@ component Face inherits Rectangle {
     in property <bool> pressed;
     in property <bool> hovered;
     in property <color> outline-color: Theme.outline;
+    // Laid over the face, like for a suggested button
+    in property <color> tint: transparent;
 
     Rectangle {
         x: 1px;
@@ -182,6 +200,10 @@ component Face inherits Rectangle {
         background: root.pressed
             ? @linear-gradient(180deg, Theme.button-bottom 0%, Theme.button-bottom 100%)
             : @linear-gradient(180deg, root.hovered ? Theme.button-top.brighter(8%) : Theme.button-top 0%, Theme.button-bottom 100%);
+
+        Rectangle {
+            background: root.tint;
+        }
     }
 
     Rectangle {
@@ -203,8 +225,11 @@ component Face inherits Rectangle {
 export component Button inherits Rectangle {
     in property <string> text;
     in property <bool> enabled: true;
-    // The default button of a dialog, drawn with a focus color
+    // The default button of a dialog, which Enter presses, drawn with the focus color
     in property <bool> primary;
+    // The likely next step, like Grab, tinted with the focus color but outlined like the others,
+    // so only the focus has its outline
+    in property <bool> suggested;
     callback clicked();
     preferred-width: max(75px, label.preferred-width + 20px);
     preferred-height: 24px;
@@ -221,6 +246,7 @@ export component Button inherits Rectangle {
         pressed: touch.pressed && root.enabled;
         hovered: touch.has-hover && root.enabled;
         outline-color: root.primary || focus.has-focus ? Theme.focus : Theme.outline;
+        tint: root.suggested && root.enabled ? Theme.focus.with-alpha(0.18) : transparent;
     }
 
     label := Text {

@@ -8,7 +8,7 @@ import { MessageWindow } from "message.slint";
 import { InfoCell, TesterReading, TesterWindow } from "tester.slint";
 import { MakerRow, MakerWindow, SplitField, SplitForm } from "maker.slint";
 import { InstructionCard, InstructionsWindow } from "instructions.slint";
-import { Button, Label, NamePart, Preview, SpinBox, TextField, Theme, Tip, WindowFocus } from "widgets.slint";
+import { Button, ClickAway, Label, NamePart, Preview, SpinBox, TextField, Theme, Tip, WindowFocus } from "widgets.slint";
 
 export { SettingsWindow, HotkeyRow, Setting, AboutWindow, LogWindow, MessageWindow, InfoCell, NamePart, TesterReading, TesterWindow, MakerRow, MakerWindow, SplitField, SplitForm, InstructionCard, InstructionsWindow, WindowFocus }
 
@@ -264,6 +264,8 @@ export component MainWindow inherits Window {
     // rows. The layout sizes the window to fit it.
     property <length> extra-rows-height: root.group-split-images ? (root.group-rows.length - 1) * 22px : 0px;
 
+    click-away := ClickAway {}
+
     VerticalLayout {
         Rectangle {
             width: 786px;
@@ -453,8 +455,8 @@ export component MainWindow inherits Window {
                 height: 24px;
                 text: "Crop to 4:3";
                 clicked => {
-                    // Like other buttons, out of the field being typed in
-                    self.focus();
+                    // Out of the field being typed in, without an outline staying on the button
+                    click-away.focus();
                     root.crop-to-4x3();
                 }
 

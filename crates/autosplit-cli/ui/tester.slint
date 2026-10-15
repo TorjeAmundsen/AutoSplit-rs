@@ -1,7 +1,7 @@
 // The Live Tester: one split image compared with the capture region outside of a run, with the
 // frames that would have made it act.
 
-import { Button, FileName, Label, NamePart, Preview, Theme, Tip } from "widgets.slint";
+import { Button, ClickAway, FileName, Label, NamePart, Preview, Theme, Tip } from "widgets.slint";
 
 // How far the live similarity is from the threshold: a bar filled up to the similarity, a tick at
 // the highest, and a mark at the threshold where the green part starts.
@@ -255,6 +255,8 @@ export component TesterWindow inherits Window {
     callback previous-kept();
     callback next-kept();
     callback blocked-clicked();
+
+    click-away := ClickAway {}
 
     VerticalLayout {
         padding: 8px;

@@ -1,7 +1,7 @@
 // AutoSplit's settings window (settings.ui), with an extra tab for the timer connection.
 
 import { CheckBox } from "std-widgets.slint";
-import { Button, ComboBox, Label, SpinBox, TabFrame, TextField, Theme, Tip, WindowFocus } from "widgets.slint";
+import { Button, ClickAway, ComboBox, Label, SpinBox, TabFrame, TextField, Theme, Tip, WindowFocus } from "widgets.slint";
 
 export enum Setting {
     fps-limit,
@@ -92,6 +92,8 @@ export component SettingsWindow inherits Window {
     public function show-tab(index: int) {
         tabs.current-index = index;
     }
+
+    click-away := ClickAway {}
 
     tabs := TabFrame {
         width: 100%;

@@ -3,7 +3,7 @@
 // the selected split's mask shown on the capture as it's changed.
 
 import { CheckBox, ScrollView } from "std-widgets.slint";
-import { Button, ComboBox, FileName, Label, NamePart, OpenList, Preview, SavedCheck, TextField, Theme, Tip } from "widgets.slint";
+import { Button, ClickAway, ComboBox, FileName, Label, NamePart, OpenList, Preview, SavedCheck, TextField, Theme, Tip } from "widgets.slint";
 import { SplitField, SplitForm, SplitFormPanel } from "split_form.slint";
 
 export { SplitField, SplitForm }
@@ -189,6 +189,8 @@ export component MakerWindow inherits Window {
     callback blocked-clicked();
 
     // Two columns whose rows line up: the splits beside the previews, the list as tall as both
+    click-away := ClickAway {}
+
     VerticalLayout {
         padding: 8px;
         spacing: 6px;
@@ -449,7 +451,7 @@ export component MakerWindow inherits Window {
                         width: 90px;
                         height: 24px;
                         text: "Grab";
-                        primary: true;
+                        suggested: true;
                         enabled: root.can-grab;
                         clicked => { root.grab(); }
 
@@ -976,7 +978,7 @@ export component MakerWindow inherits Window {
                 width: 70px;
                 height: 24px;
                 text: "Save";
-                primary: true;
+                suggested: true;
                 enabled: root.can-save-preset;
                 clicked => { root.save-preset(); }
 
