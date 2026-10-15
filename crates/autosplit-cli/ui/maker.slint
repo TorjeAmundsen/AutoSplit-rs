@@ -740,9 +740,10 @@ export component MakerWindow inherits Window {
             Button {
                 width: 130px;
                 text: "Generate Profile...";
-                enabled: root.presets.length > 0 && root.preset-problem == "";
+                // The profile is for this preset's split images, so it needs their folder
+                enabled: root.presets.length > 0 && root.preset-problem == "" && root.output-folder != "";
                 clicked => { root.generate-profile(); }
-                tip: "Save the settings as a new profile named for the game and preset, with this split image folder, and use it from now on";
+                tip: root.output-folder == "" ? "Needs a split image folder. Pick one with Browse... first." : "Save the current settings as a new profile for this game and preset, using this split image folder. You can choose to load it afterwards.";
             }
         }
 

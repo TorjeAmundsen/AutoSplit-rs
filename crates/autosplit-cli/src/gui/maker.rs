@@ -10,9 +10,11 @@ use autosplit_core::image::{BgraImage, BgraView};
 use autosplit_core::imgproc::{ResizeBuffers, stretch_to_rgba};
 use autosplit_core::mask::{Mask, apply_mask};
 use autosplit_core::preset::{LoadedPreset, Preset, PresetError, load_presets};
+use autosplit_core::profile::UserProfile;
 use autosplit_core::split_folder::user_files;
 use slint::{ComponentHandle, ModelRc, Rgba8Pixel, SharedPixelBuffer, SharedString, VecModel};
 
+use super::document::Document;
 use super::maker_plan::{
     PresetList, looks_made, move_to_base, plan_writes, saves_in_place, screenshots_to_move, stale_to_delete,
 };
@@ -646,6 +648,9 @@ impl Gui {
         if self.refused_for_problems() {
             return;
         }
+        if self.split_image_folder().is_none() {
+            return self.show_message(Message::warning("Pick a split image folder with Browse... first."));
+        }
         let maker = self.maker.borrow();
         let Some(loaded) = maker.loaded() else { return };
         let (name, needs_grouping) = (loaded.preset.profile_file_name(), loaded.preset.needs_grouping());
@@ -658,14 +663,40 @@ impl Gui {
             .add_filter("TOML", &["toml"])
             .save_file();
         self.when_picked(dialog, move |gui, path| {
-            if needs_grouping {
-                gui.turn_on_grouping();
+            let mut profile = gui.state.borrow().document.to_save();
+            // The folder needs it, which the current profile gets only if this one is loaded
+            profile.group_split_images |= needs_grouping;
+            if let Err(error) = profile.save(&path) {
+                return gui.show_message(Message::error(format!("Couldn't save {}: {error}", path.display())));
             }
             let name = file_name_text(&path).unwrap_or_default();
-            let saved =
-                move |gui: &Rc<Gui>| gui.windows.maker.set_status(format!("Saved the profile as {name}.").into());
-            gui.save_to(path, Some(Box::new(saved)));
+            // Written over the current profile's file, which is what's loaded now
+            let current = gui.state.borrow().document.path.as_deref().map(canonical);
+            if current == Some(canonical(&path)) {
+                return gui.use_generated_profile(path, profile);
+            }
+            gui.windows.maker.set_status(format!("Saved the profile as {name}.").into());
+            let text = format!(
+                "Load the generated profile {name}? The main window uses it from now on, like after Load Profile. \
+                 Otherwise the current profile stays loaded."
+            );
+            let weak = Rc::downgrade(gui);
+            gui.show_message(Message::choice(text, ["Load It", "", "Keep Current"], 0, move |answer| {
+                if let (Some(gui), Answer::Yes) = (weak.upgrade(), answer) {
+                    gui.use_generated_profile(path, profile);
+                }
+            }));
         });
+    }
+
+    /// Loads the profile Generate Profile wrote to `path`, like Load Profile does.
+    fn use_generated_profile(&self, path: PathBuf, profile: UserProfile) {
+        let name = file_name_text(&path).unwrap_or_default();
+        self.state.borrow_mut().document = Document::new(profile, Some(path));
+        self.send_profile(true);
+        self.show_profile();
+        self.tester_follows_split_folder();
+        self.windows.maker.set_status(format!("Saved and loaded the profile {name}.").into());
     }
 
     /// Has the profile compare split images with the same number for one split, which the preset

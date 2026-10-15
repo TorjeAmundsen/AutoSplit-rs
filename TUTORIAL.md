@@ -137,7 +137,7 @@ Saving asks before replacing split images, and before leaving older images of th
 
 Click the Output Preview, or Transparency grid, to show what the mask removes as a checkerboard.
 
-Generate Profile... saves the settings as a new profile named for the game and preset, for example `tlozoot_no_wrong_warp.toml` for The Legend of Zelda: Ocarina of Time's No Wrong Warp, with the split image folder in it. That profile is the one in use afterwards, like after Save Profile As. For a preset that compares several images for one split, it also turns on Compare images with the same number for one split, which the folder needs. Until that's on, the line at the bottom of the window says so, with a Turn It On button.
+Generate Profile... saves the settings as a new profile named for the game and preset, for example `tlozoot_no_wrong_warp.toml` for The Legend of Zelda: Ocarina of Time's No Wrong Warp, with the split image folder in it. Then it asks whether to load it, so the main window uses it from now on like after Load Profile, or to keep the current profile loaded. For a preset that compares several images for one split, the generated profile has Compare images with the same number for one split turned on, which the folder needs. Until that's on, the line at the bottom of the window says so, with a Turn It On button.
 
 A preset can have something the editor wouldn't save, like a preset written by hand where splits compared together have the same name, which would give their savestate copies the same name. Then the line at the bottom of the window says what to fix, the split's name in the list is red, and Grab, Use Screenshots..., saving, Test, Copy Savestates and Generate Profile... wait until it's fixed. Fix It opens the preset in the editor.
 
