@@ -1,8 +1,8 @@
 //! The preset editor's draft: edits, list operations kept in step with other lists, and problems.
 
 use autosplit::gui::preset_form::{
-    Draft, Field, InstructionText, ListChange, Problem, SplitEdit, SplitKind, field_value, instruction_cards,
-    known_game, problem_flags, problem_list, problem_summary, saved_preset_name, split_heading,
+    Draft, Field, InstructionText, ListChange, Problem, SplitEdit, SplitKind, field_problems, field_value,
+    instruction_cards, known_game, problem_flags, problem_list, problem_summary, saved_preset_name, split_heading,
 };
 use autosplit_core::preset::{Preset, PresetSplit};
 use test_case::test_case;
@@ -370,7 +370,10 @@ fn splits_compared_together_need_their_own_names(names: &[&str], index: usize) -
     let problems = split_problems(&draft);
 
     // Assert: a problem, so it can't be saved, and the Name field shows it
-    (problems.iter().any(|(split, _)| *split == index), !draft.field_problems(index, Field::Name).is_empty())
+    (
+        problems.iter().any(|(split, _)| *split == index),
+        !field_problems(&draft.problems(), index, Field::Name).is_empty(),
+    )
 }
 
 #[test]
@@ -382,7 +385,7 @@ fn the_same_name_is_fine_for_splits_not_compared_together() {
     let problems = draft.problems();
 
     // Assert
-    assert_eq!((problems, draft.field_problems(1, Field::Name)), (Vec::new(), String::new()));
+    assert_eq!((problems, field_problems(&draft.problems(), 1, Field::Name)), (Vec::new(), String::new()));
 }
 
 #[test]
@@ -531,7 +534,8 @@ fn problems_show_by_the_field_they_are_about() {
     draft.edit_split(0, SplitEdit::WithPrevious(true));
 
     // Act
-    let fields = [Field::Name, Field::Mask, Field::Group].map(|field| !draft.field_problems(0, field).is_empty());
+    let fields =
+        [Field::Name, Field::Mask, Field::Group].map(|field| !field_problems(&draft.problems(), 0, field).is_empty());
 
     // Assert
     assert_eq!(fields, [true, true, true]);

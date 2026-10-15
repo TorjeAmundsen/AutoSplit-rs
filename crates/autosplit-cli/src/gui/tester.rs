@@ -224,6 +224,7 @@ impl Gui {
             self.show_tester_file(&texts.file);
             tester.set_path(texts.path.into());
             let cell = |cell: autosplit_core::text::InfoCell| InfoCell {
+                wide: cell.name == autosplit_core::text::ACTS_CELL,
                 name: cell.name.into(),
                 value: cell.value.into(),
                 note: cell.note.into(),

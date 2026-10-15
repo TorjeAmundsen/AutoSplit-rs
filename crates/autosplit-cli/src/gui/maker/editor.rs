@@ -13,7 +13,7 @@ use super::super::Gui;
 use super::super::maker_plan::{DeletedPreset, preset_after_delete};
 use super::super::messages::{Answer, Message};
 use super::super::paths::{canonical, file_name_text};
-use super::super::preset_form::{Draft, Field, ListChange, SplitEdit, SplitKind, field_value};
+use super::super::preset_form::{Draft, Field, ListChange, SplitEdit, SplitKind, field_problems, field_value};
 use super::super::preset_form::{known_game, problem_flags, problem_list, problem_summary, saved_preset_name};
 use super::super::recorder::key_character;
 use super::super::ui::{SplitField, SplitForm};
@@ -407,10 +407,12 @@ impl Gui {
         let window = &self.windows.maker;
         window.set_has_split(selected < splits.len());
         if let Some(split) = splits.get(selected) {
+            let why_not_joined = edit.draft.why_not_joined(selected);
             window.set_form(SplitForm {
-                name_problem: edit.draft.field_problems(selected, Field::Name).into(),
-                mask_problem: edit.draft.field_problems(selected, Field::Mask).into(),
-                group_problem: edit.draft.field_problems(selected, Field::Group).into(),
+                named: SplitKind::of(split) == SplitKind::Split,
+                name_problem: field_problems(&problems, selected, Field::Name).into(),
+                mask_problem: field_problems(&problems, selected, Field::Mask).into(),
+                group_problem: field_problems(&problems, selected, Field::Group).into(),
                 mask: file_name_text(Path::new(&split.mask)).unwrap_or_default().into(),
                 savestate: file_name_text(Path::new(&split.savestate)).unwrap_or_default().into(),
                 mask_path: shown_path(&maker, &split.mask).into(),
@@ -420,8 +422,8 @@ impl Gui {
                 grouping_off: !grouping
                     && (edit.draft.preset.joins_previous(selected)
                         || edit.draft.preset.keyword_place(selected).is_some_and(|place| place > 1)),
-                can_join: edit.draft.why_not_joined(selected).is_none(),
-                why_not_joined: edit.draft.why_not_joined(selected).unwrap_or_default().into(),
+                can_join: why_not_joined.is_none(),
+                why_not_joined: why_not_joined.unwrap_or_default().into(),
             });
             // Also when typing the name made it a start or reset image
             let kind = SplitKind::of(split);

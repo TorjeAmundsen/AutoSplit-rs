@@ -17,7 +17,7 @@ use super::maker_plan::{looks_made, move_to_base, plan_writes, saves_in_place, s
 use super::messages::{Answer, Message};
 use super::paths::{canonical, file_name_text};
 use super::placement::beside;
-use super::preset_form::{Draft, Problem, instruction_cards, problem_flags, problem_summary, split_heading};
+use super::preset_form::{Problem, instruction_cards, problem_flags, problem_summary, problems_of, split_heading};
 use super::ui::{InstructionCard, MakerRow};
 use super::view::{Pixels, rgba};
 use super::{Gui, Tool, exe_folder, file_name_parts, with_gui};
@@ -69,6 +69,8 @@ impl Source {
 #[derive(Default)]
 pub(super) struct Maker {
     presets: Vec<LoadedPreset>,
+    /// What each preset has to have fixed before anything's made from it.
+    problems: Vec<Vec<Problem>>,
     preset: usize,
     /// What's been done for each split, in the splits' order.
     splits: Vec<SplitWork>,
@@ -389,6 +391,8 @@ impl Gui {
     fn read_presets(&self) -> Vec<PresetError> {
         let (presets, errors) = load_presets(&presets_folder());
         let mut maker = self.maker.borrow_mut();
+        // Only reading them again changes them
+        maker.problems = presets.iter().map(|loaded| problems_of(&loaded.preset)).collect();
         maker.presets = presets;
         let games: Vec<SharedString> = maker.games().into_iter().map(game_label).collect();
         drop(maker);
@@ -537,7 +541,7 @@ impl Gui {
     /// with the same name in a preset written by hand.
     fn preset_problems(&self) -> Vec<Problem> {
         let maker = self.maker.borrow();
-        maker.loaded().map(|loaded| Draft::edit(loaded.preset.clone()).problems()).unwrap_or_default()
+        maker.problems.get(maker.preset).cloned().unwrap_or_default()
     }
 
     /// Says what to fix when the chosen preset has problems, and whether it has. Making split

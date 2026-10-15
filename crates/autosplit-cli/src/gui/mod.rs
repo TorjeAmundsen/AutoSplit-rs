@@ -44,7 +44,7 @@ use self::recorder::{key_character, modifiers_held, pressed_key};
 use self::settings_form::SettingEdit;
 use self::ui::{
     AboutWindow, HotkeyRow, InfoCell, InstructionsWindow, LogWindow, MainWindow, MakerRow, MakerWindow, MessageWindow,
-    NamePart, Setting, SettingsWindow, SimilarityRow, TesterWindow, WindowFocus,
+    NameKind, NamePart, Setting, SettingsWindow, SimilarityRow, TesterWindow, WindowFocus,
 };
 use self::view::{GuiView, Picture, Update};
 use crate::console::Console;
@@ -239,9 +239,22 @@ fn with_gui(action: impl FnOnce(&Rc<Gui>) + Send + 'static) {
 
 /// A split image's file name in parts, for the windows to color by what each part does.
 pub fn file_name_parts(name: &str) -> ModelRc<NamePart> {
+    use autosplit_core::filename::PartKind;
+    let kind = |kind: PartKind| match kind {
+        PartKind::Text => NameKind::Text,
+        PartKind::Number => NameKind::Number,
+        PartKind::Keyword => NameKind::Keyword,
+        PartKind::Threshold => NameKind::Threshold,
+        PartKind::Pause => NameKind::Pause,
+        PartKind::Delay => NameKind::Delay,
+        PartKind::Loops => NameKind::Loops,
+        PartKind::Method => NameKind::Method,
+        PartKind::Flags => NameKind::Flags,
+        PartKind::Extension => NameKind::Extension,
+    };
     let part = |part: autosplit_core::filename::NamePart| NamePart {
         text: part.text.into(),
-        kind: format!("{:?}", part.kind).into(),
+        kind: kind(part.kind),
         meaning: part.meaning.into(),
         ignored: part.ignored,
     };

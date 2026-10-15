@@ -9,6 +9,8 @@ export enum SplitField { name, kind, threshold, delay, pause, dummy, below, with
 
 // What the form shows of the selected split besides its fields, while editing.
 export struct SplitForm {
+    // A split, named by its Name, not a start or reset image, which their type names
+    named: bool,
     // What has to be fixed in each field, one problem a line, or empty
     name-problem: string,
     mask-problem: string,
@@ -124,13 +126,13 @@ export component SplitFormPanel inherits VerticalLayout {
                 // A start or reset image's name is what makes it one
                 TextField {
                     error: root.form.name-problem != "";
-                    enabled: root.split-kind == 0;
+                    enabled: root.form.named;
                     text <=> root.split-name;
                     edited => { root.split-edited(SplitField.name); }
 
                     Tooltip {
                         Tip {
-                            text: root.split-kind == 0 ? "The split's name in its file name, which AutoSplit shows as the current image" : "Start and reset images are named by their type, which AutoSplit reads from the name. Change the Type to name it.";
+                            text: root.form.named ? "The split's name in its file name, which AutoSplit shows as the current image" : "Start and reset images are named by their type, which AutoSplit reads from the name. Change the Type to name it.";
                         }
                     }
                 }

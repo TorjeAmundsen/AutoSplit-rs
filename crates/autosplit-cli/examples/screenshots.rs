@@ -128,8 +128,12 @@ fn main() {
     let file = "05_Bottle_(0.93)_[35]_#1100#_@0@_^0^_{b}.png";
     tester.set_file(file.into());
     tester.set_file_parts(file_name_parts(file));
-    let cell =
-        |name: &str, value: &str, note: &str| InfoCell { name: name.into(), value: value.into(), note: note.into() };
+    let cell = |name: &str, value: &str, note: &str| InfoCell {
+        name: name.into(),
+        value: value.into(),
+        note: note.into(),
+        wide: name == "ACTS",
+    };
     let info = vec![
         cell("ACTS", "splits once it drops back below", ""),
         cell("METHOD", "L2 Norm", "from profile"),
@@ -280,6 +284,7 @@ fn main() {
     maker.set_pause(60.0);
     maker.set_instructions("After loading, advance 1 frame before taking your screenshot.".into());
     maker.set_form(SplitForm {
+        named: true,
         name_problem: "".into(),
         mask_problem: "".into(),
         group_problem: "".into(),

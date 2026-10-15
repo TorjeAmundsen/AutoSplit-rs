@@ -176,6 +176,9 @@ impl Compared {
     }
 }
 
+/// The name of the cell that says what the image does, which has the most to say.
+pub const ACTS_CELL: &str = "ACTS";
+
 /// One cell of the Live Tester's information about its image.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct InfoCell {
@@ -204,7 +207,7 @@ pub fn tester_info(tester: &Tester) -> Vec<InfoCell> {
         delay => cell("DELAY", format!("{delay} ms"), from_profile(image.names_delay())),
     };
     vec![
-        cell("ACTS", action, if image.is_dummy() { "dummy" } else { "" }),
+        cell(ACTS_CELL, action, if image.is_dummy() { "dummy" } else { "" }),
         match image.comparison_method(defaults) {
             Some(method) => cell("METHOD", method.name().into(), from_profile(image.names_comparison_method())),
             None => cell("METHOD", "unknown".into(), "always compares as 0"),

@@ -787,9 +787,12 @@ export component SpinBox inherits Rectangle {
 
 // A part of a split image's file name, as the split image loader reads it. `kind` is what it does:
 // Text, Number, Keyword, Threshold, Pause, Delay, Loops, Method, Flags or Extension.
+// What a part of a split image's file name is, like the parser's PartKind.
+export enum NameKind { text, number, keyword, threshold, pause, delay, loops, method, flags, extension }
+
 export struct NamePart {
     text: string,
-    kind: string,
+    kind: NameKind,
     meaning: string,
     ignored: bool,
 }
@@ -800,28 +803,28 @@ global NameColors {
         if part.ignored {
             return Theme.warning;
         }
-        if part.kind == "Number" || part.kind == "Extension" {
+        if part.kind == NameKind.number || part.kind == NameKind.extension {
             return Theme.secondary-text;
         }
-        if part.kind == "Keyword" {
+        if part.kind == NameKind.keyword {
             return Theme.dark ? #f1948a : #b03a2e;
         }
-        if part.kind == "Threshold" {
+        if part.kind == NameKind.threshold {
             return Theme.reached;
         }
-        if part.kind == "Pause" {
+        if part.kind == NameKind.pause {
             return Theme.meter;
         }
-        if part.kind == "Delay" {
+        if part.kind == NameKind.delay {
             return Theme.dark ? #4dd0e1 : #00838f;
         }
-        if part.kind == "Loops" {
+        if part.kind == NameKind.loops {
             return Theme.dark ? #9fa8da : #283593;
         }
-        if part.kind == "Method" {
+        if part.kind == NameKind.method {
             return Theme.dark ? #f48fb1 : #c2185b;
         }
-        if part.kind == "Flags" {
+        if part.kind == NameKind.flags {
             return Theme.dark ? #c39bd3 : #8e44ad;
         }
         return Theme.text;
@@ -847,7 +850,7 @@ export component FileName inherits HorizontalLayout {
         text := Text {
             vertical-alignment: center;
             text: part.text;
-            font-weight: part.kind == "Text" ? 400 : 600;
+            font-weight: part.kind == NameKind.text ? 400 : 600;
             color: NameColors.of(part);
         }
 

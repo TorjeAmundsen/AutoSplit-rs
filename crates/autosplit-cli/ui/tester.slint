@@ -155,6 +155,8 @@ export struct InfoCell {
     name: string,
     value: string,
     note: string,
+    // Gets twice the room, for what the image does
+    wide: bool,
 }
 
 // An `InfoCell` in a box: its name small above the value, and the note small below.
@@ -333,7 +335,7 @@ export component TesterWindow inherits Window {
             }
 
             for cell in root.info: Info {
-                horizontal-stretch: cell.name == "ACTS" ? 2 : 1;
+                horizontal-stretch: cell.wide ? 2 : 1;
                 cell: cell;
             }
         }
