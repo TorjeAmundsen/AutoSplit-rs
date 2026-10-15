@@ -19,7 +19,7 @@ use super::maker_plan::{
 };
 use super::messages::{Answer, Message};
 use super::placement::beside;
-use super::preset_form::{Draft, Problem, problem_flags, problem_summary, split_heading};
+use super::preset_form::{Draft, Problem, instruction_cards, problem_flags, problem_summary, split_heading};
 use super::ui::{InstructionCard, MakerRow};
 use super::view::{Pixels, rgba};
 use super::{Gui, Tool, exe_folder, file_name_parts, with_gui};
@@ -420,6 +420,8 @@ impl Gui {
 
     /// Make Split Images closes: the capture is only needed for it while it's open.
     fn maker_closed(&self) {
+        // They're the window's preset's
+        let _ = self.windows.instructions.window().hide();
         self.tool_closed(Tool::Maker);
         self.send(UiCommand::SetMakerOpen(false));
         self.maker_visible.store(false, std::sync::atomic::Ordering::Relaxed);
@@ -472,6 +474,7 @@ impl Gui {
         self.maker.borrow_mut().live_mask = None;
         self.show_form();
         self.show_maker();
+        self.refresh_instructions();
     }
 
     /// The split image folder, as the profile says.

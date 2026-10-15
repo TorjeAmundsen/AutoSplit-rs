@@ -1,8 +1,8 @@
 //! The preset editor's draft: edits, list operations kept in step with other lists, and problems.
 
 use autosplit::gui::preset_form::{
-    Draft, Field, ListChange, Problem, SplitEdit, SplitKind, field_value, known_game, problem_flags, problem_list,
-    problem_summary, split_heading,
+    Draft, Field, InstructionText, ListChange, Problem, SplitEdit, SplitKind, field_value, instruction_cards,
+    known_game, problem_flags, problem_list, problem_summary, split_heading,
 };
 use autosplit_core::preset::{Preset, PresetSplit};
 use test_case::test_case;
@@ -21,6 +21,35 @@ fn draft(names: &[&str]) -> Draft {
 
 fn names(draft: &Draft) -> Vec<&str> {
     draft.preset.splits.iter().map(|split| split.name.as_str()).collect()
+}
+
+#[test]
+fn instruction_cards_are_named_like_the_copied_savestates() {
+    // Arrange: two reset images and splits compared together share numbers, and Door has no
+    // instructions, so list places would be off
+    let mut draft = grouped(&["reset", "reset", "A", "+B", "Door", "C"]);
+    for (index, instructions) in [(1, "Wait"), (3, "Jump"), (4, ""), (5, "Run")] {
+        draft.edit_split(index, SplitEdit::Savestate("savestates/state.gzs".into()));
+        draft.edit_split(index, SplitEdit::Instructions(instructions.into()));
+    }
+
+    // Act
+    let cards = instruction_cards(&draft.preset);
+
+    // Assert
+    let card = |heading: &str, file: &str, instructions: &str| InstructionText {
+        heading: heading.into(),
+        file: file.into(),
+        instructions: instructions.into(),
+    };
+    assert_eq!(
+        cards,
+        [
+            card("Reset Image 2", "0_reset_2_SEE_INSTRUCTIONS.gzs", "Wait"),
+            card("B", "1_B_SEE_INSTRUCTIONS.gzs", "Jump"),
+            card("C", "3_C_SEE_INSTRUCTIONS.gzs", "Run"),
+        ]
+    );
 }
 
 #[test]

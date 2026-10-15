@@ -316,8 +316,8 @@ fn main() {
         text: text.into(),
     };
     let cards = vec![card(
-        "03. EnterDeku",
-        "savestates/006 enter deku.gzs",
+        "EnterDeku",
+        "03_EnterDeku_SEE_INSTRUCTIONS.gzs",
         "After loading, advance 1 frame before taking your screenshot. The A button doesn't render correctly if the savestate is on the frame itself, so it had to be 1 frame before.",
     )];
     instructions.set_cards(std::rc::Rc::new(slint::VecModel::from(cards)).into());

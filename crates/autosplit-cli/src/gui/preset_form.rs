@@ -458,6 +458,31 @@ pub fn split_heading(preset: &Preset, index: usize) -> String {
     }
 }
 
+/// A card of the Savestate Instructions window, for a savestate with instructions.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct InstructionText {
+    /// The split's heading, like in the split list.
+    pub heading: String,
+    /// The name Copy Savestates gives the savestate, which is what's loaded on the console.
+    pub file: String,
+    pub instructions: String,
+}
+
+/// The cards of the Savestate Instructions window, in split order, named like Copy Savestates
+/// names the files, so each card goes with the savestate it's about.
+pub fn instruction_cards(preset: &Preset) -> Vec<InstructionText> {
+    let with_savestate = preset.splits.iter().enumerate().filter(|(_, split)| !split.savestate.is_empty());
+    // savestate_copies has one name for each split with a savestate, in the same order
+    (with_savestate.zip(preset.savestate_copies()))
+        .filter(|((_, split), _)| !split.instructions.is_empty())
+        .map(|((index, split), (_, file))| InstructionText {
+            heading: split_heading(preset, index),
+            file,
+            instructions: split.instructions.clone(),
+        })
+        .collect()
+}
+
 /// The first of `problems`, with the split it's about, and how many more there are. `None` when
 /// there are none.
 pub fn problem_summary(preset: &Preset, problems: &[Problem]) -> Option<String> {

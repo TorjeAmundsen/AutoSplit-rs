@@ -65,26 +65,38 @@ impl Gui {
 
     /// The instructions of the preset's savestates, in a window of their own.
     pub(super) fn show_instructions(&self) {
+        if self.fill_instructions() {
+            self.show_window(self.windows.instructions.window());
+        }
+    }
+
+    /// Keeps an open Savestate Instructions window on the chosen preset, as it's chosen, saved or
+    /// deleted, and closes it when that one has none.
+    pub(super) fn refresh_instructions(&self) {
+        let window = self.windows.instructions.window();
+        if window.is_visible() && !self.fill_instructions() {
+            let _ = window.hide();
+        }
+    }
+
+    /// Puts the chosen preset's savestate instructions in their window. Returns whether it has
+    /// any.
+    fn fill_instructions(&self) -> bool {
         let maker = self.maker.borrow();
-        let Some(loaded) = maker.loaded() else { return };
-        let width = loaded.preset.splits.len().to_string().len();
-        let cards: Vec<InstructionCard> = loaded
-            .preset
-            .splits
-            .iter()
-            .enumerate()
-            .filter(|(_, split)| !split.savestate.is_empty() && !split.instructions.is_empty())
-            .map(|(index, split)| InstructionCard {
-                heading: format!("{index:0width$}. {}", split.name).into(),
-                savestate: split.savestate.as_str().into(),
-                text: split.instructions.as_str().into(),
+        let Some(loaded) = maker.loaded() else { return false };
+        let cards: Vec<InstructionCard> = (instruction_cards(&loaded.preset).into_iter())
+            .map(|card| InstructionCard {
+                heading: card.heading.into(),
+                savestate: card.file.into(),
+                text: card.instructions.into(),
             })
             .collect();
         let title = format!("Savestate Instructions - {}", loaded.preset.name);
         drop(maker);
+        let any = !cards.is_empty();
         let window = &self.windows.instructions;
         window.set_cards(ModelRc::new(VecModel::from(cards)));
         window.set_window_title(title.into());
-        self.show_window(window.window());
+        any
     }
 }
