@@ -7,7 +7,7 @@ A Rust rewrite of [AutoSplit](https://github.com/Toufool/AutoSplit), the image c
 ## What it does
 
 - Uses your AutoSplit split images and profiles as they are, and computes the same similarity values to the last bit.
-- Runs on Windows, Linux and macOS.
+- Runs on Windows, Linux and macOS 11 or newer.
 - Captures from capture cards, webcams and OBS Virtual Camera. To split on a window or the screen, show it in OBS and use OBS Virtual Camera.
 - Controls LiveSplit through its AutoSplit Integration component, LiveSplit One over a local connection, Molok through signals on Linux, or any timer through hotkeys.
 - Uses little CPU, so it can run next to OBS on a weak machine. Most comparisons take well under a millisecond, see [PERFORMANCE.md](PERFORMANCE.md).

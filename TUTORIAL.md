@@ -7,8 +7,8 @@ Only video capture devices work for now, meaning capture cards, webcams and OBS 
 ## Getting started
 
 1. Download the zip for your system from the releases (`windows-x64`, `windows-arm64`, `linux-x64`, `linux-arm64` or `macos-universal`) and unzip it.
-2. macOS blocks the first start because the program isn't notarized. Run `xattr -d com.apple.quarantine autosplit` in the folder, or click Open Anyway in System Settings > Privacy & Security.
-3. On Linux and macOS, set up the [permissions](#permissions).
+2. macOS blocks the first start because the program isn't notarized. Run `xattr -d com.apple.quarantine autosplit` in the folder, or click Open Anyway in System Settings > Privacy & Security. It needs macOS 11 Big Sur or newer.
+3. On Linux and macOS, set up the [permissions](#permissions). On Linux, see [Linux](#linux) too.
 4. Start `autosplit` (`AutoSplit.exe` on Windows). If there's exactly one `.toml` file next to it, it loads that profile, like AutoSplit. Otherwise use File > Load Profile, or set things up and save with File > Save Profile As.
 5. In File > Settings, pick your capture device. With Live Capture Region on, the left preview shows what gets compared.
 6. Set the [capture region](#capture-region).
@@ -334,7 +334,39 @@ Molok is a Linux timer controlled with POSIX signals. Choose Molok (POSIX signal
   - Capture devices need the `video` group, which desktop users usually have.
   - The window needs fontconfig and xkbcommon, which every desktop has.
   - Without these, `autosplit` still runs and says what's missing. The LiveSplit One and Molok connections need none of them.
-- macOS: in System Settings > Privacy & Security, allow `autosplit` under Camera for capture devices, Accessibility for pressing hotkeys and Input Monitoring for listening to them, then restart it. When you start it from a terminal, allow the terminal app instead, like Terminal or iTerm.
+- macOS: `autosplit` is a plain program, not an app, so macOS gives these permissions to the app that starts it. Double-clicking it starts it in Terminal, so that's Terminal, and from a terminal it's that terminal app, like iTerm. `autosplit` itself can't be added to these lists.
+  - Camera, for capture devices: macOS asks the first time a device is opened. Click Allow.
+  - Input Monitoring, for listening to hotkeys, and Accessibility, for pressing them: in System Settings > Privacy & Security, turn on Terminal (or your terminal app) under both. If it isn't listed, add it with the + button from Applications > Utilities.
+  - Then quit Terminal and start `autosplit` again. A permission only applies once the app has restarted.
+  - Every program you start from that terminal app gets the same permissions.
+
+## Linux
+
+- The window works under X11 and Wayland. Under Wayland, a program can't place its windows or keep them on top, so tool windows open wherever the desktop puts them, and message boxes are drawn inside the windows they block. To get X11's behavior under Wayland, start it through XWayland with `WAYLAND_DISPLAY= ./autosplit`.
+- File pickers use xdg-desktop-portal, which desktops usually have, or zenity when there's no portal. Without either, Browse... and the profile pickers do nothing. When `autosplit` can't start, it shows why in a zenity box, so without zenity, start it from a terminal to see the error.
+- Under X11, the window needs libxkbcommon-x11 (`libxkbcommon-x11-0` on Debian and Ubuntu), which most desktops have.
+- OBS Virtual Camera needs the v4l2loopback kernel module: `sudo apt install v4l2loopback-dkms` on Debian and Ubuntu, `sudo dnf install v4l2loopback` on Fedora (from RPM Fusion) or `sudo pacman -S v4l2loopback-dkms` on Arch. OBS loads it when the Virtual Camera starts. Start the Virtual Camera before opening Settings, since the device isn't listed until then. Refresh lists it again.
+
+### Adding it to the app menu
+
+The zip has no installer. To list AutoSplit in your desktop's app menu with its icon, run this in the unzipped folder. It writes a `.desktop` file with the folder's full path, so run it again if you move the folder.
+
+```sh
+mkdir -p ~/.local/share/applications
+cat > ~/.local/share/applications/io.github.torjeamundsen.autosplit.desktop << EOF
+[Desktop Entry]
+Type=Application
+Name=AutoSplit
+Comment=Image comparison auto splitter for speedrunning
+Exec="$PWD/autosplit"
+Icon=$PWD/icon.png
+Terminal=false
+Categories=Game;Utility;
+StartupWMClass=io.github.torjeamundsen.autosplit
+EOF
+```
+
+The file name and `StartupWMClass` match the app id `autosplit` gives its windows, so the desktop shows the icon on the running windows too. To remove it, delete that file.
 
 ## From a terminal
 

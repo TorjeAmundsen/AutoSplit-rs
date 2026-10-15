@@ -183,6 +183,10 @@ function Build($name) {
     foreach ($folder in @("presets", "splits")) {
         Copy-Item "$PSScriptRoot/$folder" $output -Recurse
     }
+    # For the .desktop file TUTORIAL.md has Linux users write
+    if ((OsOf $targets[$name][0]) -eq "linux") {
+        Copy-Item "$PSScriptRoot/crates/autosplit-cli/assets/icon.png" "$output/icon.png"
+    }
 
     $zip = "$PSScriptRoot/build/AutoSplit-v$version-$name.zip"
     Zip $output $zip $binaryName

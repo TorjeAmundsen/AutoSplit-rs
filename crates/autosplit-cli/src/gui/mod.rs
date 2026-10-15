@@ -355,9 +355,15 @@ struct Windows {
     instructions: InstructionsWindow,
 }
 
+/// The app id windows get on Linux, which desktops match to the .desktop file TUTORIAL.md has
+/// you write, named after it, for its icon and name. The macOS bundle id in build.rs is the same.
+const APP_ID: &str = "io.github.torjeamundsen.autosplit";
+
 /// Draws on the CPU, which only redraws what changed: the preview and a few labels.
 fn open_windows() -> anyhow::Result<Windows> {
     slint::BackendSelector::new().backend_name("winit".into()).renderer_name("software".into()).select()?;
+    // Before any window is made. Does nothing outside Linux.
+    slint::set_xdg_app_id(APP_ID)?;
     platform::allow_dark_menus();
     Ok(Windows {
         main: MainWindow::new()?,
