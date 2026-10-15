@@ -127,6 +127,12 @@ export component SplitFormPanel inherits VerticalLayout {
                     enabled: root.split-kind == 0;
                     text <=> root.split-name;
                     edited => { root.split-edited(SplitField.name); }
+
+                    Tooltip {
+                        Tip {
+                            text: root.split-kind == 0 ? "The split's name in its file name, which AutoSplit shows as the current image" : "Start and reset images are named by their type, which AutoSplit reads from the name. Change the Type to name it.";
+                        }
+                    }
                 }
             }
 
@@ -278,9 +284,10 @@ export component SplitFormPanel inherits VerticalLayout {
                 }
             }
 
+            // Unticked, the value is the profile's default, like Threshold and Delay show theirs
             Label {
                 color: root.has-pause ? Theme.text : Theme.secondary-text;
-                text: root.has-pause ? "seconds" : "the profile's default";
+                text: "seconds";
             }
         }
 

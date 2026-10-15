@@ -382,6 +382,7 @@ export component TesterWindow inherits Window {
                 spacing: 4px;
 
                 HorizontalLayout {
+                    // As tall as the labels above the other two pictures, which line up with this one
                     height: 18px;
                     spacing: 4px;
 
@@ -390,6 +391,12 @@ export component TesterWindow inherits Window {
                         text: "<";
                         enabled: root.can-previous-kept;
                         clicked => { root.previous-kept(); }
+
+                        Tooltip {
+                            Tip {
+                                text: "The frame kept before this one";
+                            }
+                        }
                     }
 
                     Label {
@@ -406,6 +413,12 @@ export component TesterWindow inherits Window {
                         text: ">";
                         enabled: root.can-next-kept;
                         clicked => { root.next-kept(); }
+
+                        Tooltip {
+                            Tip {
+                                text: "The frame kept after this one";
+                            }
+                        }
                     }
                 }
 

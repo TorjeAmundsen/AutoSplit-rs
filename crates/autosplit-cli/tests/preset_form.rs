@@ -211,7 +211,7 @@ fn problems_name_their_split() {
             problem(
                 Some(3),
                 Some(Field::Name),
-                "It has the same name as a split it's compared together with. Give it another name."
+                "It has the same name as a split above it that it's compared together with. Give it another name."
             ),
         ]
     );
@@ -340,7 +340,7 @@ fn a_preset_of_reset_and_start_images_needs_a_split() {
     let problems = draft.problems();
 
     // Assert
-    let message = "The preset needs a split besides the start_auto_splitter and reset images.";
+    let message = "The preset needs a split besides the start and reset images.";
     assert_eq!(problems, [Problem { split: None, field: None, message: message.into() }]);
 }
 

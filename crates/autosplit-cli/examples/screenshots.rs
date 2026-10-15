@@ -219,7 +219,8 @@ fn main() {
     save(&window, PhysicalSize::new(828, 672), &folder.join("maker.png"));
     // A preset written by hand that has to be fixed before anything's made from it
     maker.set_preset_problem(
-        "Boss Alt: It has the same name as a split it's compared together with. Give it another name.".into(),
+        "Boss Alt: It has the same name as a split above it that it's compared together with. Give it another name."
+            .into(),
     );
     maker.set_can_grab(false);
     // And no split image folder yet
@@ -261,7 +262,7 @@ fn main() {
     maker.set_rows(std::rc::Rc::new(slint::VecModel::from(rows)).into());
     maker.set_selected(3);
     maker.set_editing(true);
-    let kinds: Vec<slint::SharedString> = ["Split", "Start image", "Reset image"].map(Into::into).into();
+    let kinds: Vec<slint::SharedString> = ["Split", "Start Image", "Reset Image"].map(Into::into).into();
     maker.set_kinds(std::rc::Rc::new(slint::VecModel::from(kinds)).into());
     let games: Vec<slint::SharedString> =
         ["The Legend of Zelda: Ocarina of Time", "New game..."].map(Into::into).into();
@@ -312,7 +313,8 @@ fn main() {
     maker.set_form(SplitForm { mask_copied: false, ..maker.get_form() });
     // A long problem wraps under the name
     maker.set_form(SplitForm {
-        name_problem: "It has the same name as a split it's compared together with. Give it another name.".into(),
+        name_problem:
+            "It has the same name as a split above it that it's compared together with. Give it another name.".into(),
         group_problem: "There's no split before it to compare it with.".into(),
         mask_problem: "It needs a mask. Choose one.".into(),
         ..maker.get_form()

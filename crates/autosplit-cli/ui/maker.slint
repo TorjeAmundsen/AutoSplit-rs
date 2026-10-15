@@ -495,6 +495,12 @@ export component MakerWindow inherits Window {
                         text: "Save Selected";
                         enabled: root.can-save-selected;
                         clicked => { root.save-selected(); }
+
+                        Tooltip {
+                            Tip {
+                                text: "Write the selected split's split image into the split image folder, from its grab or screenshot";
+                            }
+                        }
                     }
 
                     Button {
@@ -503,6 +509,12 @@ export component MakerWindow inherits Window {
                         text: "Save All";
                         enabled: root.can-save-all;
                         clicked => { root.save-all(); }
+
+                        Tooltip {
+                            Tip {
+                                text: "Write the split images of every split with a grab or screenshot into the split image folder";
+                            }
+                        }
                     }
                 }
 
@@ -645,6 +657,12 @@ export component MakerWindow inherits Window {
                         height: 24px;
                         text: "Browse...";
                         clicked => { root.browse-folder(); }
+
+                        Tooltip {
+                            Tip {
+                                text: "Pick the split image folder, which the profile uses from now on";
+                            }
+                        }
                     }
                 }
 
@@ -748,6 +766,12 @@ export component MakerWindow inherits Window {
                         text: "Savestate Instructions";
                         enabled: root.has-instructions;
                         clicked => { root.show-instructions(); }
+
+                        Tooltip {
+                            Tip {
+                                text: "Show what to do after loading the savestates that need more than loading, under the names Copy Savestates gives them";
+                            }
+                        }
                     }
                 }
 
@@ -800,6 +824,12 @@ export component MakerWindow inherits Window {
                 text: "Fix It";
                 enabled: !root.working;
                 clicked => { root.edit-preset(); }
+
+                Tooltip {
+                    Tip {
+                        text: "Edit the preset to fix what the line beside it says";
+                    }
+                }
             }
 
             if root.preset-problem == "" && root.needs-grouping: Label {
@@ -818,6 +848,12 @@ export component MakerWindow inherits Window {
                 height: 24px;
                 text: "Turn It On";
                 clicked => { root.turn-on-grouping(); }
+
+                Tooltip {
+                    Tip {
+                        text: "Turn on Compare images with the same number for one split in the profile, which this preset needs. Save the profile to keep it.";
+                    }
+                }
             }
 
             Button {

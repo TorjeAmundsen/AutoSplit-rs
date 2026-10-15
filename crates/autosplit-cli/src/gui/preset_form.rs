@@ -70,8 +70,8 @@ impl SplitKind {
     pub fn label(self) -> &'static str {
         match self {
             Self::Split => "Split",
-            Self::Start => "Start image",
-            Self::Reset => "Reset image",
+            Self::Start => "Start Image",
+            Self::Reset => "Reset Image",
         }
     }
 }
@@ -389,8 +389,8 @@ impl Draft {
         let mut group_size = 0;
         for (index, split) in preset.splits.iter().enumerate() {
             if preset.keyword_place(index) > Some(MAX_GROUP_SIZE) {
-                let name = &split.name;
-                problems.push((index, Field::Name, format!("A preset can have up to {MAX_GROUP_SIZE} {name} images.")));
+                let kind = kind_word(split);
+                problems.push((index, Field::Name, format!("A preset can have up to {MAX_GROUP_SIZE} {kind} images.")));
             }
             group_size = if preset.joins_previous(index) { group_size + 1 } else { 1 };
             if group_size == MAX_GROUP_SIZE + 1 {
@@ -399,7 +399,7 @@ impl Draft {
             }
             if split.with_previous && !preset.joins_previous(index) {
                 let message = if split.is_keyword() {
-                    format!("A {} image can't be compared with the split before it.", split.name)
+                    format!("A {} image can't be compared with the split before it.", kind_word(split))
                 } else {
                     "There's no split before it to compare it with.".to_owned()
                 };
@@ -407,7 +407,8 @@ impl Draft {
             }
         }
         for index in (0..preset.splits.len()).filter(|&index| preset.same_name_in_group(index).is_some()) {
-            let message = "It has the same name as a split it's compared together with. Give it another name.";
+            let message = "It has the same name as a split above it that it's compared together with. Give it \
+                           another name.";
             problems.push((index, Field::Name, message.to_owned()));
         }
         problems
@@ -425,7 +426,7 @@ impl Draft {
         if self.preset.splits.is_empty() {
             problems.push("The preset needs a split. Add one.".to_owned());
         } else if self.preset.splits.iter().all(PresetSplit::is_keyword) {
-            problems.push(format!("The preset needs a split besides the {START_KEYWORD} and {RESET_KEYWORD} images."));
+            problems.push("The preset needs a split besides the start and reset images.".to_owned());
         }
         problems
     }
@@ -445,6 +446,14 @@ fn split_problems(split: &PresetSplit) -> Vec<(Field, String)> {
         problems.push((Field::Mask, "It needs a mask. Choose one.".to_owned()));
     }
     problems
+}
+
+/// What a reset or start image is called in messages.
+fn kind_word(split: &PresetSplit) -> &'static str {
+    match SplitKind::of(split) {
+        SplitKind::Start => "start",
+        _ => "reset",
+    }
 }
 
 /// A split's name as the list's heading: the reset and start images by what they are, numbered
