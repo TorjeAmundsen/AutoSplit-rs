@@ -126,13 +126,6 @@ struct State {
     can_start: bool,
     log: LogLines,
     messages: MessageQueue,
-    /// The Live Tester's image.
-    tester_path: Option<PathBuf>,
-    /// Numbers the Live Tester's loads, so updates for an older one are ignored.
-    tester_request: u64,
-    /// The frames the Live Tester kept, with their captions, and which one it shows.
-    kept: Vec<(slint::Image, SharedString)>,
-    kept_index: usize,
     /// The tool windows that are open, the newest last, which the main window can't be used
     /// beside.
     tools: Vec<Tool>,
@@ -165,6 +158,8 @@ struct Gui {
     current_tiles: Rc<VecModel<slint::Image>>,
     /// The Live Tester's information about its image.
     tester_info: Rc<VecModel<InfoCell>>,
+    /// The Live Tester's image and kept frames.
+    tester_state: RefCell<tester::TesterState>,
     maker: RefCell<maker::Maker>,
     /// Make Split Images' splits.
     maker_rows: Rc<VecModel<MakerRow>>,
@@ -436,6 +431,7 @@ pub fn run(options: Options) -> Result<(), Error> {
         group_rows: Rc::new(VecModel::from(vec![SimilarityRow::default(); MAX_GROUP_SIZE])),
         current_tiles: Rc::new(VecModel::from(vec![slint::Image::default(); MAX_GROUP_SIZE])),
         tester_info: Rc::new(VecModel::default()),
+        tester_state: RefCell::default(),
         maker: RefCell::default(),
         maker_rows: Rc::new(VecModel::default()),
         clipboard: RefCell::new(None),
@@ -448,10 +444,6 @@ pub fn run(options: Options) -> Result<(), Error> {
             can_start: true,
             log: LogLines::default(),
             messages: MessageQueue::default(),
-            tester_path: None,
-            tester_request: 0,
-            kept: Vec::new(),
-            kept_index: 0,
             tools: Vec::new(),
         }),
         events: events.clone(),
@@ -1280,18 +1272,18 @@ impl Gui {
             }
         }
         let maker = &self.windows.maker;
-        let maker_live = std::mem::take(&mut update.maker_live);
+        let maker_live = std::mem::take(&mut update.maker.live);
         if let Picture::Show(pixels) = &maker_live {
             self.maker_live_frame(pixels);
         }
         if let Some(live) = shown_image(maker_live) {
             maker.set_live_image(live);
         }
-        if let Some(message) = update.maker_message.take() {
+        if let Some(message) = update.maker.message.take() {
             self.maker_live_message(&message);
             maker.set_live_message(message.into());
         }
-        self.show_tester_update(update);
+        self.show_tester_update(update.tester);
     }
 
     /// Start Auto Splitter, which AutoSplit disables while Set Hotkey waits for a key.

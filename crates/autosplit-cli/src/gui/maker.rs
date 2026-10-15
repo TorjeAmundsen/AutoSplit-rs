@@ -9,11 +9,13 @@ use std::sync::Arc;
 use autosplit_core::image::{BgraImage, BgraView};
 use autosplit_core::imgproc::{ResizeBuffers, stretch_to_rgba};
 use autosplit_core::mask::{Mask, apply_mask};
-use autosplit_core::preset::{LoadedPreset, Preset, PresetError, game_key, load_presets};
+use autosplit_core::preset::{LoadedPreset, Preset, PresetError, load_presets};
 use autosplit_core::split_folder::user_files;
 use slint::{ComponentHandle, ModelRc, Rgba8Pixel, SharedPixelBuffer, SharedString, VecModel};
 
-use super::maker_plan::{looks_made, move_to_base, plan_writes, saves_in_place, screenshots_to_move, stale_to_delete};
+use super::maker_plan::{
+    PresetList, looks_made, move_to_base, plan_writes, saves_in_place, screenshots_to_move, stale_to_delete,
+};
 use super::messages::{Answer, Message};
 use super::paths::{canonical, file_name_text};
 use super::placement::beside;
@@ -68,7 +70,7 @@ impl Source {
 /// The window's preset, and what's been done with it.
 #[derive(Default)]
 pub(super) struct Maker {
-    presets: Vec<LoadedPreset>,
+    presets: PresetList,
     /// What each preset has to have fixed before anything's made from it.
     problems: Vec<Vec<Problem>>,
     preset: usize,
@@ -160,26 +162,6 @@ impl Maker {
     /// What split `index`'s image is made from, if anything.
     fn source(&self, index: usize) -> Option<&Source> {
         self.splits.get(index)?.source.as_ref()
-    }
-
-    /// The games of the presets, in the order they're listed, each as its first preset spells it.
-    fn games(&self) -> Vec<&str> {
-        let mut games: Vec<&str> = self.presets.iter().map(|loaded| loaded.preset.game.as_str()).collect();
-        // Sorted by game_key, so the presets of a game are next to each other
-        games.dedup_by(|game, before| game_key(game) == game_key(before));
-        games
-    }
-
-    /// Where `game` is among the games, however it's spelled.
-    fn game_index(&self, game: &str) -> Option<usize> {
-        let key = game_key(game);
-        self.games().iter().position(|&each| game_key(each) == key)
-    }
-
-    /// The presets of `game`, however it's spelled, by index.
-    fn presets_of(&self, game: &str) -> Vec<usize> {
-        let key = game_key(game);
-        (0..self.presets.len()).filter(|&index| game_key(&self.presets[index].preset.game) == key).collect()
     }
 }
 
@@ -307,7 +289,7 @@ impl Gui {
         on!(weak, maker, on_preset_chosen, (index) gui => {
             let maker = gui.maker.borrow();
             let game = maker.loaded().map(|loaded| loaded.preset.game.clone()).unwrap_or_default();
-            let chosen = maker.presets_of(&game).get(index as usize).copied();
+            let chosen = maker.presets.presets_of(&game).get(index as usize).copied();
             drop(maker);
             if let Some(chosen) = chosen {
                 gui.choose_preset(chosen);
@@ -352,10 +334,7 @@ impl Gui {
         let errors = self.read_presets();
         let mut maker = self.maker.borrow_mut();
         // The preset from before, which presets added or removed meanwhile may have moved
-        let found = before.as_ref().and_then(|before| {
-            let folder = canonical(&before.folder);
-            maker.presets.iter().position(|loaded| canonical(&loaded.folder) == folder)
-        });
+        let found = before.as_ref().and_then(|before| maker.presets.find(&before.folder));
         let chosen = found.unwrap_or(maker.preset.min(maker.presets.len().saturating_sub(1)));
         // What was grabbed or picked for the same preset is kept, unless its splits changed
         let same = found.is_some()
@@ -393,8 +372,8 @@ impl Gui {
         let mut maker = self.maker.borrow_mut();
         // Only reading them again changes them
         maker.problems = presets.iter().map(|loaded| problems_of(&loaded.preset)).collect();
-        maker.presets = presets;
-        let games: Vec<SharedString> = maker.games().into_iter().map(game_label).collect();
+        maker.presets = PresetList::new(presets);
+        let games: Vec<SharedString> = maker.presets.games().into_iter().map(game_label).collect();
         drop(maker);
         self.windows.maker.set_games(ModelRc::new(VecModel::from(games)));
         errors
@@ -432,7 +411,7 @@ impl Gui {
     /// The first preset of the `index`th game.
     fn choose_game(&self, index: usize) {
         let maker = self.maker.borrow();
-        let first = maker.games().get(index).and_then(|game| maker.presets_of(game).first().copied());
+        let first = maker.presets.games().get(index).and_then(|game| maker.presets.presets_of(game).first().copied());
         drop(maker);
         if let Some(first) = first {
             self.choose_preset(first);
@@ -457,10 +436,12 @@ impl Gui {
         let mut maker = self.maker.borrow_mut();
         maker.preset = index;
         let game = maker.loaded().map(|loaded| loaded.preset.game.clone()).unwrap_or_default();
-        let game_index = maker.game_index(&game).unwrap_or(0);
-        let of_game = maker.presets_of(&game);
-        let names: Vec<SharedString> =
-            of_game.iter().map(|&each| maker.presets[each].preset.name.clone().into()).collect();
+        let game_index = maker.presets.game_index(&game).unwrap_or(0);
+        let of_game = maker.presets.presets_of(&game);
+        let names: Vec<SharedString> = (of_game.iter())
+            .filter_map(|&each| maker.presets.get(each))
+            .map(|loaded| loaded.preset.name.as_str().into())
+            .collect();
         let window = &self.windows.maker;
         window.set_game_index(game_index as i32);
         window.set_presets(ModelRc::new(VecModel::from(names)));
@@ -714,7 +695,7 @@ impl Gui {
         let maker = self.maker.borrow();
         let Some(path) = maker.splits.get(maker.selected).and_then(|split| split.saved.clone()) else { return };
         drop(maker);
-        self.state.borrow_mut().tester_path = Some(path);
+        self.tester_state.borrow_mut().path = Some(path);
         if self.windows.tester.window().is_visible() {
             self.load_tester_image();
             self.show_window(self.windows.tester.window());

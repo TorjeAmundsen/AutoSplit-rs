@@ -6,11 +6,11 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use autosplit_core::mask::Mask;
-use autosplit_core::preset::{Preset, delete_preset, game_key, new_preset_folder, save_preset};
+use autosplit_core::preset::{Preset, delete_preset, new_preset_folder, save_preset};
 use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
 
 use super::super::Gui;
-use super::super::maker_plan::{DeletedPreset, preset_after_delete};
+use super::super::maker_plan::DeletedPreset;
 use super::super::messages::{Answer, Message};
 use super::super::paths::{canonical, file_name_text};
 use super::super::preset_form::{Draft, Field, ListChange, SplitEdit, SplitKind, field_problems, field_value};
@@ -184,8 +184,8 @@ impl Gui {
     /// when no preset has it.
     fn show_edit_games(&self, game: &str) {
         let maker = self.maker.borrow();
-        let mut games: Vec<SharedString> = maker.games().into_iter().map(game_label).collect();
-        let index = maker.game_index(game);
+        let mut games: Vec<SharedString> = maker.presets.games().into_iter().map(game_label).collect();
+        let index = maker.presets.game_index(game);
         drop(maker);
         games.push("New game...".into());
         let window = &self.windows.maker;
@@ -200,8 +200,8 @@ impl Gui {
     fn pick_game(&self) {
         let window = &self.windows.maker;
         let maker = self.maker.borrow();
-        let index = (maker.game_index(&window.get_edit_game()))
-            .or_else(|| maker.loaded().and_then(|loaded| maker.game_index(&loaded.preset.game)))
+        let index = (maker.presets.game_index(&window.get_edit_game()))
+            .or_else(|| maker.loaded().and_then(|loaded| maker.presets.game_index(&loaded.preset.game)))
             .unwrap_or(0);
         drop(maker);
         window.set_new_game(false);
@@ -211,7 +211,7 @@ impl Gui {
 
     /// A game was picked for the preset, or New game..., the last, to type one.
     fn edit_game_chosen(&self, index: usize) {
-        let game = self.maker.borrow().games().get(index).map(|&game| game.to_owned());
+        let game = self.maker.borrow().presets.games().get(index).map(|&game| game.to_owned());
         let window = &self.windows.maker;
         match game {
             Some(game) => {
@@ -511,16 +511,12 @@ impl Gui {
         }
         let (source, mut preset) = (edit.source.clone(), edit.draft.to_save());
         // A new game typed like one that has presets is that game
-        if let Some(game) = known_game(&preset.game, &maker.games()) {
+        if let Some(game) = known_game(&preset.game, &maker.presets.games()) {
             preset.game = game.to_owned();
         }
         let in_place = source.as_ref().filter(|_| !as_new);
         // The other presets of the game, which the Preset list tells apart by name
-        let taken: Vec<&str> = (maker.presets.iter())
-            .filter(|loaded| in_place.is_none_or(|folder| canonical(&loaded.folder) != canonical(folder)))
-            .filter(|loaded| game_key(&loaded.preset.game) == game_key(&preset.game))
-            .map(|loaded| loaded.preset.name.as_str())
-            .collect();
+        let taken = maker.presets.taken_names(&preset.game, in_place.map(PathBuf::as_path));
         let name = saved_preset_name(&preset.name, &taken, in_place.is_none());
         drop(maker);
         match name {
@@ -549,12 +545,7 @@ impl Gui {
         let Some(Editing { source: Some(folder), .. }) = &maker.edit else { return };
         let folder = folder.clone();
         let name = maker.loaded().map(|loaded| loaded.preset.name.clone()).unwrap_or_default();
-        let game = maker.loaded().map(|loaded| loaded.preset.game.clone()).unwrap_or_default();
-        let deleted = DeletedPreset {
-            place: maker.presets_of(&game).iter().position(|&index| index == maker.preset).unwrap_or(0),
-            game_place: maker.game_index(&game).unwrap_or(0),
-            game,
-        };
+        let deleted = maker.presets.place(maker.preset);
         drop(maker);
         let text = format!(
             "Delete the preset {name}? Its folder is deleted with its masks and savestates, which can't be undone:\n\n{}",
@@ -577,16 +568,10 @@ impl Gui {
     fn reload_presets(&self, folder: Option<&Path>, deleted: Option<&DeletedPreset>) {
         let errors = self.read_presets();
         let mut maker = self.maker.borrow_mut();
-        let found = folder.and_then(|folder| {
-            let folder = canonical(folder);
-            maker.presets.iter().position(|loaded| canonical(&loaded.folder) == folder)
-        });
+        let found = folder.and_then(|folder| maker.presets.find(folder));
         maker.masks.clear();
         maker.live_mask = None;
-        let games: Vec<String> = maker.presets.iter().map(|loaded| game_key(&loaded.preset.game)).collect();
-        let games: Vec<&str> = games.iter().map(String::as_str).collect();
-        let deleted = deleted.map(|deleted| DeletedPreset { game: game_key(&deleted.game), ..deleted.clone() });
-        let next = deleted.map_or(0, |deleted| preset_after_delete(&games, &deleted));
+        let next = deleted.map_or(0, |deleted| maker.presets.after_delete(deleted));
         drop(maker);
         match found {
             Some(index) => {

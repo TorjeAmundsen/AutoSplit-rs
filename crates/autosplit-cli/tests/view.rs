@@ -87,7 +87,7 @@ fn closed_tester_is_said_once_per_request() {
 
     // Assert
     let gone: Vec<(bool, u64)> =
-        delivered.0.lock().unwrap().iter().map(|update| (update.tester_gone, update.tester_request)).collect();
+        delivered.0.lock().unwrap().iter().map(|update| (update.tester.gone, update.tester.request)).collect();
     assert_eq!(gone, [(true, 1), (true, 2)]);
 }
 
@@ -118,7 +118,7 @@ fn maker_without_a_device_says_to_close_it_first() {
     show(&mut view, &UserProfile::default(), None, 0);
 
     // Assert: the main window's menu can't be used while the maker is open
-    assert_eq!(delivered.last().maker_message.as_deref(), Some(NO_DEVICE_IN_TOOL));
+    assert_eq!(delivered.last().maker.message.as_deref(), Some(NO_DEVICE_IN_TOOL));
 }
 
 #[test]

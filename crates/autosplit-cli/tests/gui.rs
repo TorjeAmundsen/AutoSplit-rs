@@ -8,17 +8,18 @@ use std::rc::Rc;
 use autosplit::gui::document::{Document, folder_text, profile_on_open};
 use autosplit::gui::log::{LOG_LINES, LogLines};
 use autosplit::gui::maker_plan::{
-    DeletedPreset, WritePlan, looks_made, move_to_base, plan_writes, preset_after_delete, saves_in_place,
+    DeletedPreset, PresetList, WritePlan, looks_made, move_to_base, plan_writes, preset_after_delete, saves_in_place,
     screenshots_to_move, stale_to_delete,
 };
 use autosplit::gui::messages::{Answer, Buttons, Message, MessageQueue};
 use autosplit::gui::placement::{Area, beside, centered_over};
 use autosplit::gui::recorder::key_code;
 use autosplit::gui::settings_form::{SettingEdit, Shown, apply, pick_default_device};
-use autosplit::gui::view::{KeptFrames, Picture, Pixels, Update};
+use autosplit::gui::view::{KeptFrames, Picture, Pixels, TesterUpdate, Update};
 use autosplit::gui::{THUMB_SIZE, thumbnail};
 use autosplit_capture::DeviceInfo;
 use autosplit_core::commands::{Command, TimerLink};
+use autosplit_core::preset::{LoadedPreset, Preset};
 use autosplit_core::profile::{TimerConnection, UserProfile, VIDEO_CAPTURE_DEVICE};
 use autosplit_input::KeyCode;
 use slint::winit_030::winit::keyboard;
@@ -583,14 +584,14 @@ fn merging_updates_keeps_the_newest_tiles() {
 #[test_case(1, 2 => None; "an older request's part is dropped")]
 fn merging_updates_drops_the_testers_part_of_an_older_request(older: u64, newer: u64) -> Option<u8> {
     // Arrange
-    let older = Update { tester_live: pixels(2), tester_request: older, ..Update::default() };
-    let newer = Update { tester_request: newer, ..Update::default() };
+    let older = TesterUpdate { live: pixels(2), request: older, ..TesterUpdate::default() };
+    let newer = TesterUpdate { request: newer, ..TesterUpdate::default() };
 
     // Act
     let merged = newer.after(older);
 
     // Assert, with the expected value checked by test_case
-    red(&merged.tester_live)
+    red(&merged.live)
 }
 
 fn kept(cleared: bool, captions: &[&str]) -> KeptFrames {
@@ -850,4 +851,55 @@ fn saved_marks_only_count_in_the_split_image_folder() {
 fn after_a_delete_the_preset_next_to_it_shows(games: &[&str], game: &str, place: usize, game_place: usize) -> usize {
     // Act, with the expected value checked by test_case
     preset_after_delete(games, &DeletedPreset { game: game.into(), place, game_place })
+}
+
+/// Presets in folders named after them, of the games `games`, in that order.
+fn preset_list(presets: &[(&str, &str)]) -> PresetList {
+    let loaded = presets.iter().map(|&(game, name)| LoadedPreset {
+        folder: PathBuf::from(format!("presets/{name}")),
+        preset: Preset { name: name.into(), game: game.into(), ..Preset::default() },
+    });
+    PresetList::new(loaded.collect())
+}
+
+#[test]
+fn games_spelled_differently_are_listed_once() {
+    // Arrange
+    let presets = preset_list(&[("Mario", "Any%"), ("Zelda", "Any%"), ("zelda ", "100%"), ("Zelda", "MST")]);
+
+    // Act
+    let games = presets.games();
+
+    // Assert
+    assert_eq!(
+        (games, presets.presets_of("ZELDA"), presets.game_index("zelda")),
+        (vec!["Mario", "Zelda"], vec![1, 2, 3], Some(1))
+    );
+}
+
+#[test]
+fn a_deleted_presets_neighbor_shows_after_reading_them_again() {
+    // Arrange: the second of Zelda's presets is deleted
+    let before = preset_list(&[("Mario", "Any%"), ("Zelda", "Any%"), ("Zelda", "MST"), ("Zelda", "NMS")]);
+    let deleted = before.place(2);
+    let after = preset_list(&[("Mario", "Any%"), ("Zelda", "Any%"), ("Zelda", "NMS")]);
+
+    // Act
+    let next = after.after_delete(&deleted);
+
+    // Assert: the one that took its place
+    assert_eq!((deleted.place, deleted.game_place, next), (1, 1, 2));
+}
+
+#[test_case(None => vec!["Any%", "MST"]; "a new preset")]
+#[test_case(Some("presets/MST") => vec!["Any%"]; "one saved again in its folder")]
+fn names_taken_are_the_games_other_presets(except: Option<&str>) -> Vec<String> {
+    // Arrange
+    let presets = preset_list(&[("Mario", "Any%"), ("Zelda", "Any%"), ("Zelda", "MST")]);
+
+    // Act
+    let taken = presets.taken_names("zelda", except.map(Path::new));
+
+    // Assert, with the expected value checked by test_case
+    taken.into_iter().map(String::from).collect()
 }

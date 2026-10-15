@@ -97,6 +97,11 @@ pub struct KeptFrames {
 }
 
 impl KeptFrames {
+    /// Nothing for the window to change.
+    pub fn is_empty(&self) -> bool {
+        !self.cleared && self.added.is_empty()
+    }
+
     /// These frames after `older`, which the window hasn't taken yet.
     pub fn after(self, mut older: KeptFrames) -> KeptFrames {
         if self.cleared {
@@ -115,52 +120,90 @@ pub struct Update {
     pub current: Picture,
     /// The grid's tiles, cleared when there's no image for them.
     pub tiles: [Picture; MAX_GROUP_SIZE],
-    pub tester: Option<TesterTexts>,
-    pub tester_live: Picture,
-    pub tester_image: Picture,
-    pub kept: KeptFrames,
-    /// The Live Tester has no image: it couldn't load one, or it was closed.
-    pub tester_gone: bool,
-    /// The window's request the Live Tester's part is for. The window ignores it when it asked
-    /// for another image since.
-    pub tester_request: u64,
-    /// Make Split Images' preview of the capture region.
-    pub maker_live: Picture,
-    /// Shown instead of Make Split Images' preview, when it changed.
-    pub maker_message: Option<String>,
+    pub tester: TesterUpdate,
+    pub maker: MakerUpdate,
 }
 
 impl Update {
     /// This update after `older`, which the window hasn't shown yet: the newest texts and
-    /// pictures. The Live Tester's part of `older` is dropped when it's for another request.
+    /// pictures.
     pub fn after(self, older: Update) -> Update {
         let mut older_tiles = older.tiles.into_iter();
-        let same_request = self.tester_request == older.tester_request;
-        let (tester, tester_live, tester_image, kept, tester_gone) = if same_request {
-            (
-                self.tester.or(older.tester),
-                self.tester_live.after(older.tester_live),
-                self.tester_image.after(older.tester_image),
-                self.kept.after(older.kept),
-                self.tester_gone || older.tester_gone,
-            )
-        } else {
-            (self.tester, self.tester_live, self.tester_image, self.kept, self.tester_gone)
-        };
         Update {
             texts: self.texts.or(older.texts),
             live: self.live.after(older.live),
             current: self.current.after(older.current),
             tiles: self.tiles.map(|tile| tile.after(older_tiles.next().unwrap_or(Picture::Keep))),
-            tester,
-            tester_live,
-            tester_image,
-            kept,
-            tester_gone,
-            tester_request: self.tester_request,
-            maker_live: self.maker_live.after(older.maker_live),
-            maker_message: self.maker_message.or(older.maker_message),
+            tester: self.tester.after(older.tester),
+            maker: self.maker.after(older.maker),
         }
+    }
+
+    /// Nothing for the window to change.
+    pub fn is_empty(&self) -> bool {
+        let pictures = [&self.live, &self.current].into_iter().chain(&self.tiles);
+        self.texts.is_none()
+            && pictures.into_iter().all(|picture| matches!(picture, Picture::Keep))
+            && self.tester.is_empty()
+            && self.maker.is_empty()
+    }
+}
+
+/// The Live Tester's part of an update.
+#[derive(Default)]
+pub struct TesterUpdate {
+    pub texts: Option<TesterTexts>,
+    pub live: Picture,
+    pub image: Picture,
+    pub kept: KeptFrames,
+    /// It has no image: it couldn't load one, or it was closed.
+    pub gone: bool,
+    /// The window's request this is for. The window ignores it when it asked for another image
+    /// since.
+    pub request: u64,
+}
+
+impl TesterUpdate {
+    /// This part after `older`, which is dropped when it's for another request.
+    pub fn after(self, older: TesterUpdate) -> TesterUpdate {
+        if self.request != older.request {
+            return self;
+        }
+        TesterUpdate {
+            texts: self.texts.or(older.texts),
+            live: self.live.after(older.live),
+            image: self.image.after(older.image),
+            kept: self.kept.after(older.kept),
+            gone: self.gone || older.gone,
+            request: self.request,
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        let pictures = [&self.live, &self.image];
+        self.texts.is_none()
+            && pictures.into_iter().all(|picture| matches!(picture, Picture::Keep))
+            && self.kept.is_empty()
+            && !self.gone
+    }
+}
+
+/// Make Split Images' part of an update.
+#[derive(Default)]
+pub struct MakerUpdate {
+    /// Its preview of the capture region.
+    pub live: Picture,
+    /// Shown instead of its preview, when it changed.
+    pub message: Option<String>,
+}
+
+impl MakerUpdate {
+    pub fn after(self, older: MakerUpdate) -> MakerUpdate {
+        MakerUpdate { live: self.live.after(older.live), message: self.message.or(older.message) }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        matches!(self.live, Picture::Keep) && self.message.is_none()
     }
 }
 
@@ -187,21 +230,33 @@ pub struct GuiView {
     tester_visible: Arc<AtomicBool>,
     /// Whether Make Split Images can be seen.
     maker_visible: Arc<AtomicBool>,
-    /// The frame shown in Make Split Images' preview.
-    maker_frame: Option<u64>,
-    /// The message Make Split Images shows instead of its preview.
-    maker_message: Option<String>,
-    /// Whether the Live Tester was open at the last update.
-    tester_open: bool,
+    tester: TesterView,
+    maker: MakerPreview,
+}
+
+/// What the window shows of the Live Tester, as last sent.
+#[derive(Default)]
+struct TesterView {
+    /// Whether it was open at the last update.
+    open: bool,
     /// The request the window was last told has no image for.
     gone_sent: Option<u64>,
-    tester_texts: Option<TesterTexts>,
-    /// The frame shown in the Live Tester's preview.
-    tester_frame: Option<u64>,
-    /// The Live Tester's image shown, by which loading it's from.
-    tester_shown: Option<u64>,
+    texts: Option<TesterTexts>,
+    /// The frame shown in its preview.
+    frame: Option<u64>,
+    /// Its image shown, by which loading it's from.
+    shown: Option<u64>,
     /// The kept frames the window has: of which loading and rearm, and how many.
     kept_sent: (u64, u64, usize),
+}
+
+/// What Make Split Images shows of the capture, as last sent.
+#[derive(Default)]
+struct MakerPreview {
+    /// The frame shown in its preview.
+    frame: Option<u64>,
+    /// The message it shows instead of its preview.
+    message: Option<String>,
 }
 
 impl GuiView {
@@ -216,8 +271,8 @@ impl GuiView {
             visible,
             tester_visible,
             maker_visible,
-            maker_frame: None,
-            maker_message: None,
+            tester: TesterView::default(),
+            maker: MakerPreview::default(),
             pending: Arc::default(),
             deliver,
             notices: Box::new(notices),
@@ -225,12 +280,6 @@ impl GuiView {
             shown_frame: None,
             shown_image: None,
             receiving: false,
-            tester_open: false,
-            gone_sent: None,
-            tester_texts: None,
-            tester_frame: None,
-            tester_shown: None,
-            kept_sent: (0, 0, 0),
         }
     }
 
@@ -253,54 +302,57 @@ impl GuiView {
     }
 
     /// Make Split Images' preview of the capture region, while it can be seen.
-    fn maker(&mut self, snapshot: &Snapshot, update: &mut Update) {
-        if !self.maker_seen() {
-            self.maker_frame = None;
-            return;
+    fn maker(&mut self, snapshot: &Snapshot) -> MakerUpdate {
+        let shown = &mut self.maker;
+        if !self.maker_visible.load(Ordering::Relaxed) {
+            shown.frame = None;
+            return MakerUpdate::default();
         }
         let (message, live) = if snapshot.profile.has_capture_device() {
-            region_preview(snapshot, &mut self.maker_frame)
+            region_preview(snapshot, &mut shown.frame)
         } else {
             (NO_DEVICE_IN_TOOL.into(), Picture::Keep)
         };
-        update.maker_live = live;
-        if self.maker_message.as_ref() != Some(&message) {
-            self.maker_message = Some(message.clone());
-            update.maker_message = Some(message);
-        }
+        let message = (shown.message.as_ref() != Some(&message)).then(|| {
+            shown.message = Some(message.clone());
+            message
+        });
+        MakerUpdate { live, message }
     }
 
     /// The Live Tester's texts and pictures, when it's open.
-    fn tester(&mut self, snapshot: &Snapshot, update: &mut Update) {
-        update.tester_request = snapshot.tester_request;
+    fn tester(&mut self, snapshot: &Snapshot) -> TesterUpdate {
+        let mut update = TesterUpdate { request: snapshot.tester_request, ..TesterUpdate::default() };
+        let tester_visible = self.tester_visible.load(Ordering::Relaxed);
+        let shown = &mut self.tester;
         let Some(tester) = snapshot.tester else {
-            self.tester_open = false;
-            (self.tester_texts, self.tester_frame, self.tester_shown) = (None, None, None);
+            shown.open = false;
+            (shown.texts, shown.frame, shown.shown) = (None, None, None);
             // Said once, so the window can clear what it showed of the last image
-            if self.gone_sent != Some(snapshot.tester_request) {
-                self.gone_sent = Some(snapshot.tester_request);
-                update.tester_gone = true;
+            if shown.gone_sent != Some(snapshot.tester_request) {
+                shown.gone_sent = Some(snapshot.tester_request);
+                update.gone = true;
             }
-            return;
+            return update;
         };
-        self.tester_open = true;
-        self.gone_sent = None;
+        shown.open = true;
+        shown.gone_sent = None;
         let (live_message, live) = if !snapshot.profile.has_capture_device() {
-            self.tester_frame = None;
+            shown.frame = None;
             (NO_DEVICE_IN_TOOL.into(), Picture::Keep)
-        } else if self.tester_visible.load(Ordering::Relaxed) {
-            region_preview(snapshot, &mut self.tester_frame)
+        } else if tester_visible {
+            region_preview(snapshot, &mut shown.frame)
         } else {
             // Nobody sees it, so frames aren't converted for it
-            (self.tester_texts.as_ref().map(|texts| texts.live_message.clone()).unwrap_or_default(), Picture::Keep)
+            (shown.texts.as_ref().map(|texts| texts.live_message.clone()).unwrap_or_default(), Picture::Keep)
         };
-        update.tester_live = live;
+        update.live = live;
         let image = tester.image();
-        if self.tester_shown != Some(snapshot.tester_loaded) {
-            self.tester_shown = Some(snapshot.tester_loaded);
+        if shown.shown != Some(snapshot.tester_loaded) {
+            shown.shown = Some(snapshot.tester_loaded);
             // The window cleared its texts for the new image
-            self.tester_texts = None;
-            update.tester_image = match &image.content {
+            shown.texts = None;
+            update.image = match &image.content {
                 SplitContent::Image { pixels, .. } => Picture::Show(rgba(pixels.view())),
                 SplitContent::Invalid(_) => Picture::Clear,
             };
@@ -325,12 +377,12 @@ impl GuiView {
             ),
             live_message,
         };
-        if self.tester_texts.as_ref() != Some(&texts) {
-            self.tester_texts = Some(texts.clone());
-            update.tester = Some(texts);
+        if shown.texts.as_ref() != Some(&texts) {
+            shown.texts = Some(texts.clone());
+            update.texts = Some(texts);
         }
         let triggers = tester.triggers();
-        let (loaded, generation, sent) = self.kept_sent;
+        let (loaded, generation, sent) = shown.kept_sent;
         let cleared = (loaded, generation) != (snapshot.tester_loaded, tester.generation());
         let from = if cleared { 0 } else { sent.min(triggers.len()) };
         let added = triggers[from..]
@@ -340,7 +392,8 @@ impl GuiView {
             })
             .collect();
         update.kept = KeptFrames { cleared, added };
-        self.kept_sent = (snapshot.tester_loaded, tester.generation(), triggers.len());
+        shown.kept_sent = (snapshot.tester_loaded, tester.generation(), triggers.len());
+        update
     }
 
     /// The current image, or the grid's tiles when `grid` has the images of the split, or the
@@ -427,7 +480,7 @@ pub(crate) fn rgba(view: BgraView) -> Pixels {
 impl View for GuiView {
     fn interval(&self, profile: &UserProfile) -> Duration {
         // The Live Tester's window can be seen while the main window can't
-        let tool_seen = (self.tester_open && self.tester_visible.load(Ordering::Relaxed)) || self.maker_seen();
+        let tool_seen = (self.tester.open && self.tester_visible.load(Ordering::Relaxed)) || self.maker_seen();
         if !self.visible() && !tool_seen {
             return HIDDEN_INTERVAL;
         }
@@ -482,14 +535,10 @@ impl View for GuiView {
         if changed {
             self.texts = Some(texts.clone());
         }
-        let mut update = Update { texts: changed.then_some(texts), live, current, tiles, ..Update::default() };
-        self.tester(&snapshot, &mut update);
-        self.maker(&snapshot, &mut update);
-        let pictures = [&update.live, &update.current, &update.tester_live, &update.tester_image, &update.maker_live];
-        let pictures_kept = pictures.into_iter().chain(&update.tiles).all(|picture| matches!(picture, Picture::Keep));
-        let kept_unchanged = !update.kept.cleared && update.kept.added.is_empty();
-        let tester_unchanged = update.tester.is_none() && !update.tester_gone && kept_unchanged;
-        if update.texts.is_none() && pictures_kept && tester_unchanged && update.maker_message.is_none() {
+        let tester = self.tester(&snapshot);
+        let maker = self.maker(&snapshot);
+        let update = Update { texts: changed.then_some(texts), live, current, tiles, tester, maker };
+        if update.is_empty() {
             return;
         }
         let mut pending = self.pending.lock().unwrap_or_else(|poisoned| poisoned.into_inner());

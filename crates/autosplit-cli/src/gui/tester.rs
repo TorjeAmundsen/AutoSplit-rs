@@ -9,7 +9,7 @@ use slint::{ComponentHandle, SharedString};
 use super::paths::{canonical, file_name_text};
 use super::placement::beside;
 use super::ui::{InfoCell, TesterReading};
-use super::view::{KeptFrames, Update};
+use super::view::{KeptFrames, TesterUpdate};
 use super::{Gui, Tool, exe_folder, file_name_parts, png_images, shown_image};
 use crate::session::UiCommand;
 
@@ -45,12 +45,12 @@ impl Gui {
         self.show_window(window);
         self.tool_opened(Tool::Tester);
         self.update_visibility();
-        let gone = self.state.borrow().tester_path.as_ref().is_none_or(|path| !path.is_file());
+        let gone = self.tester_state.borrow().path.as_ref().is_none_or(|path| !path.is_file());
         if gone {
             let first = self.split_image_folder().and_then(|folder| png_images(&folder).into_iter().next());
-            self.state.borrow_mut().tester_path = first;
+            self.tester_state.borrow_mut().path = first;
         }
-        if self.state.borrow().tester_path.is_some() {
+        if self.tester_state.borrow().path.is_some() {
             self.load_tester_image();
         } else {
             self.pick_tester_image();
@@ -61,7 +61,7 @@ impl Gui {
     /// from that folder already. `None` without a split image folder or images in it.
     fn split_folder_image(&self) -> Option<PathBuf> {
         let folder = self.split_image_folder()?;
-        let current = self.state.borrow().tester_path.as_ref().and_then(|path| path.parent()).map(Path::to_owned);
+        let current = self.tester_state.borrow().path.as_ref().and_then(|path| path.parent()).map(Path::to_owned);
         // Compared as the system sees them, since the profile's folder can be written another way
         if current.is_some_and(|current| canonical(&current) == canonical(&folder)) {
             return None;
@@ -73,7 +73,7 @@ impl Gui {
     /// once when it's open, else when it opens again.
     pub(super) fn tester_follows_split_folder(&self) {
         if let Some(image) = self.split_folder_image() {
-            self.state.borrow_mut().tester_path = Some(image);
+            self.tester_state.borrow_mut().path = Some(image);
             if self.windows.tester.window().is_visible() {
                 self.load_tester_image();
             }
@@ -93,17 +93,16 @@ impl Gui {
         self.tester_seen.hidden();
         // The session's update saying it has no image is for the image that was closed, which
         // the window keeps until it opens again
-        self.state.borrow_mut().tester_request += 1;
+        self.tester_state.borrow_mut().request += 1;
     }
 
     /// Asks for the Live Tester's image, in its folder or the split image folder.
     fn pick_tester_image(self: &Rc<Self>) {
-        let state = self.state.borrow();
-        let folder = match &state.tester_path {
+        let path = self.tester_state.borrow().path.clone();
+        let folder = match path {
             Some(path) => path.parent().map_or_else(exe_folder, Path::to_owned),
-            None => state.document.resolve(&exe_folder(), &state.document.profile.split_image_directory),
+            None => self.split_image_folder().unwrap_or_else(exe_folder),
         };
-        drop(state);
         let dialog = self
             .file_dialog_over("Select Split Image", self.windows.tester.window())
             .set_directory(folder)
@@ -114,24 +113,24 @@ impl Gui {
             if !gui.windows.tester.window().is_visible() {
                 return;
             }
-            gui.state.borrow_mut().tester_path = Some(path);
+            gui.tester_state.borrow_mut().path = Some(path);
             gui.load_tester_image();
         });
     }
 
     /// The PNG images in the Live Tester's image's folder, in the split image folder's order.
     fn tester_folder_images(&self) -> Vec<PathBuf> {
-        let folder = self.state.borrow().tester_path.as_ref().and_then(|path| path.parent()).map(Path::to_owned);
+        let folder = self.tester_state.borrow().path.as_ref().and_then(|path| path.parent()).map(Path::to_owned);
         folder.map(|folder| png_images(&folder)).unwrap_or_default()
     }
 
     /// Opens the image `step` images from the Live Tester's in its folder.
     fn step_tester_image(&self, step: isize) {
         let images = self.tester_folder_images();
-        let current = self.state.borrow().tester_path.clone();
+        let current = self.tester_state.borrow().path.clone();
         let Some(index) = images.iter().position(|image| Some(image) == current.as_ref()) else { return };
         if let Some(image) = index.checked_add_signed(step).and_then(|index| images.get(index)) {
-            self.state.borrow_mut().tester_path = Some(image.clone());
+            self.tester_state.borrow_mut().path = Some(image.clone());
             self.load_tester_image();
         }
     }
@@ -139,10 +138,10 @@ impl Gui {
     /// Has the session load the Live Tester's image. The window keeps showing the last image and
     /// the capture until the new one is loaded, so going through a folder doesn't flash.
     pub(super) fn load_tester_image(&self) {
-        let mut state = self.state.borrow_mut();
-        let Some(path) = state.tester_path.clone() else { return };
-        state.tester_request += 1;
-        let request = state.tester_request;
+        let mut state = self.tester_state.borrow_mut();
+        let Some(path) = state.path.clone() else { return };
+        state.request += 1;
+        let request = state.request;
         drop(state);
         let images = self.tester_folder_images();
         let index = images.iter().position(|image| *image == path);
@@ -179,7 +178,7 @@ impl Gui {
         if !kept.cleared && kept.added.is_empty() {
             return;
         }
-        let mut state = self.state.borrow_mut();
+        let mut state = self.tester_state.borrow_mut();
         if kept.cleared {
             state.kept.clear();
         }
@@ -194,7 +193,7 @@ impl Gui {
 
     /// Shows the kept frame `step` frames from the one shown.
     fn show_kept(&self, step: isize) {
-        let mut state = self.state.borrow_mut();
+        let mut state = self.tester_state.borrow_mut();
         let count = state.kept.len();
         state.kept_index = state.kept_index.saturating_add_signed(step).min(count.saturating_sub(1));
         let index = state.kept_index;
@@ -209,17 +208,17 @@ impl Gui {
     }
 
     /// The Live Tester's part of the session's update.
-    pub(super) fn show_tester_update(&self, update: Update) {
+    pub(super) fn show_tester_update(&self, update: TesterUpdate) {
         // The Live Tester's part is for an image the window has asked to replace
-        if update.tester_request != self.state.borrow().tester_request {
+        if update.request != self.tester_state.borrow().request {
             return;
         }
         let tester = &self.windows.tester;
-        if update.tester_gone {
-            let tried = self.state.borrow().tester_path.is_some();
+        if update.gone {
+            let tried = self.tester_state.borrow().path.is_some();
             self.clear_tester(if tried { "Couldn't load the image. Fix it, then press Reload." } else { TESTER_INTRO });
         }
-        if let Some(texts) = update.tester {
+        if let Some(texts) = update.texts {
             tester.set_has_image(true);
             self.show_tester_file(&texts.file);
             tester.set_path(texts.path.into());
@@ -245,10 +244,10 @@ impl Gui {
                 threshold_value,
             });
         }
-        if let Some(live) = shown_image(update.tester_live) {
+        if let Some(live) = shown_image(update.live) {
             tester.set_live_image(live);
         }
-        if let Some(split) = shown_image(update.tester_image) {
+        if let Some(split) = shown_image(update.image) {
             tester.set_split_image(split);
         }
         self.take_kept(update.kept);
@@ -268,4 +267,16 @@ fn cleared_reading() -> TesterReading {
         threshold_value: -1.0,
         ..TesterReading::default()
     }
+}
+
+/// What the Live Tester window keeps of its own, besides what it shows.
+#[derive(Default)]
+pub(super) struct TesterState {
+    /// Its image.
+    pub(super) path: Option<PathBuf>,
+    /// Numbers its loads, so updates for an older one are ignored.
+    pub(super) request: u64,
+    /// The frames it kept, with their captions, and which one it shows.
+    kept: Vec<(slint::Image, SharedString)>,
+    kept_index: usize,
 }
