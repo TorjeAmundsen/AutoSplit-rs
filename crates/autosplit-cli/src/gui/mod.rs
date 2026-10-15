@@ -22,7 +22,7 @@ use std::path::{Path, PathBuf};
 use std::rc::{Rc, Weak};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, mpsc};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use autosplit_capture::{DeviceInfo, list_devices};
 use autosplit_core::commands::{Command, TimerLink};
@@ -98,6 +98,9 @@ type AfterSave = Box<dyn FnOnce(&Rc<Gui>)>;
 
 /// How often the main window is checked for being minimized.
 const VISIBILITY_INTERVAL: Duration = Duration::from_millis(500);
+/// How long a window under Wayland can go without a frame it asked for before it counts as
+/// minimized or covered. Compositors send one at the screen's refresh rate while it's seen.
+const FRAME_STALL: Duration = Duration::from_secs(1);
 /// AutoSplit's largest capture region position.
 const MAX_POSITION: i64 = 999_999_999;
 /// How long messages from opening wait for the main window's focus, which a minimized one never
@@ -191,11 +194,21 @@ struct Seen {
     flag: Arc<AtomicBool>,
     occluded: Cell<bool>,
     zero_size: Cell<bool>,
+    /// Under Wayland, when a redraw was asked for that hasn't come yet.
+    frame_asked: Cell<Option<Instant>>,
+    /// Under Wayland, the compositor stopped sending the window frames.
+    frames_stalled: Cell<bool>,
 }
 
 impl Seen {
     fn new(flag: Arc<AtomicBool>) -> Self {
-        Self { flag, occluded: Cell::new(false), zero_size: Cell::new(false) }
+        Self {
+            flag,
+            occluded: Cell::new(false),
+            zero_size: Cell::new(false),
+            frame_asked: Cell::new(None),
+            frames_stalled: Cell::new(false),
+        }
     }
 
     /// Notes `event` when it covers or uncovers the window, or sizes it. Returns whether it did,
@@ -205,16 +218,44 @@ impl Seen {
             WindowEvent::Occluded(occluded) => self.occluded.set(*occluded),
             // Windows minimizes to a size of 0
             WindowEvent::Resized(size) => self.zero_size.set(size.width == 0 || size.height == 0),
+            // A frame came, so the window is seen again if frames had stopped
+            WindowEvent::RedrawRequested => {
+                self.frame_asked.set(None);
+                return self.frames_stalled.replace(false);
+            }
             _ => return false,
         }
         true
     }
 
-    /// Works the flag out for `window`, which is `shown` or not.
-    fn refresh(&self, window: &slint::Window, shown: bool) {
+    /// Works the flag out for `window`, which is `shown` or not. `wayland` when the window is a
+    /// Wayland one.
+    fn refresh(&self, window: &slint::Window, shown: bool, wayland: bool) {
+        if wayland {
+            self.watch_frames(window, shown);
+        }
         let minimized = window.with_winit_window(|window| window.is_minimized()).flatten().unwrap_or(false);
-        let seen = shown && !minimized && !self.occluded.get() && !self.zero_size.get();
+        let seen = shown && !minimized && !self.occluded.get() && !self.zero_size.get() && !self.frames_stalled.get();
         self.flag.store(seen, Ordering::Relaxed);
+    }
+
+    /// Wayland doesn't say when a window is minimized or covered, but compositors stop sending it
+    /// the frames winit waits for before each redraw. So a redraw is asked for now and then, and
+    /// when it doesn't come, the window isn't seen. The next frame makes it seen again.
+    fn watch_frames(&self, window: &slint::Window, shown: bool) {
+        if !shown {
+            self.frame_asked.set(None);
+            self.frames_stalled.set(false);
+            return;
+        }
+        match self.frame_asked.get() {
+            None => {
+                self.frame_asked.set(Some(Instant::now()));
+                // winit's, which leaves what Slint draws alone, so a seen window draws nothing new
+                window.with_winit_window(|window| window.request_redraw());
+            }
+            Some(asked) => self.frames_stalled.set(asked.elapsed() >= FRAME_STALL),
+        }
     }
 
     /// The window closed.
@@ -983,12 +1024,13 @@ impl Gui {
     }
 
     fn update_visibility(&self) {
+        let wayland = self.under_wayland();
         // The main window is the program, so it counts as shown
-        self.seen.refresh(self.windows.main.window(), true);
+        self.seen.refresh(self.windows.main.window(), true, wayland);
         let tester = self.windows.tester.window();
-        self.tester_seen.refresh(tester, tester.is_visible());
+        self.tester_seen.refresh(tester, tester.is_visible(), wayland);
         let maker = self.windows.maker.window();
-        self.maker_seen.refresh(maker, maker.is_visible());
+        self.maker_seen.refresh(maker, maker.is_visible(), wayland);
     }
 
     fn hide_all(&self) {
@@ -1711,6 +1753,11 @@ impl Gui {
     /// their own: under Wayland, where a window can't be kept in front or brought there, so the
     /// message window could end up behind the windows it blocks, which would look frozen.
     fn messages_inline(&self) -> bool {
+        self.under_wayland()
+    }
+
+    /// Whether the windows are Wayland ones.
+    fn under_wayland(&self) -> bool {
         #[cfg(target_os = "linux")]
         {
             use slint::winit_030::winit::raw_window_handle::{HasDisplayHandle, RawDisplayHandle};
