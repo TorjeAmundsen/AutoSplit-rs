@@ -31,7 +31,7 @@ windows = { version = "0.62", features = ["Win32_Foundation", "Win32_Media", "Wi
 objc2 = "0.6"
 objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSData", "NSProcessInfo", "NSString", "NSObject"] }
 # Sets the Dock icon, which a bare binary doesn't get from an app bundle
-objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSApplication", "NSImage", "NSResponder"] }
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSApplication", "NSImage", "NSMenu", "NSResponder"] }
 
 [dev-dependencies]
 image = { version = "0.25.10", default-features = false, features = ["png"] }

@@ -201,6 +201,38 @@ pub fn app_in_front() -> bool {
     true
 }
 
+#[cfg(target_os = "macos")]
+thread_local! {
+    /// The menu bar taken away by [`hold_menu_shortcuts`].
+    static HELD_MENU: std::cell::RefCell<Option<Retained<objc2_app_kit::NSMenu>>> = const { std::cell::RefCell::new(None) };
+}
+
+/// Takes the menu bar away while `held` on macOS, where AppKit gives keys held with Cmd to its
+/// shortcuts first, so recording Cmd+Q as a hotkey would quit, and Cmd+H would hide the app. The
+/// menu bar is empty meanwhile. Does nothing elsewhere.
+pub fn hold_menu_shortcuts(held: bool) {
+    #[cfg(target_os = "macos")]
+    {
+        let Some(main_thread) = objc2::MainThreadMarker::new() else { return };
+        let app = objc2_app_kit::NSApplication::sharedApplication(main_thread);
+        HELD_MENU.with_borrow_mut(|menu| {
+            if held {
+                if menu.is_none() {
+                    *menu = app.mainMenu();
+                    app.setMainMenu(None);
+                }
+            } else if let Some(menu) = menu.take() {
+                // Unless the window set its own meanwhile
+                if app.mainMenu().is_none() {
+                    app.setMainMenu(Some(&menu));
+                }
+            }
+        });
+    }
+    #[cfg(not(target_os = "macos"))]
+    let _ = held;
+}
+
 /// Lets the menus that open from the menu bar follow the system's dark mode on Windows. The bar
 /// itself already does, but a menu is light unless the program allows dark mode for itself,
 /// which Windows only offers through uxtheme.dll's unnamed `SetPreferredAppMode`.

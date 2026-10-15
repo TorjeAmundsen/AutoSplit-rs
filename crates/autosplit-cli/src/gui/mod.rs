@@ -1065,6 +1065,8 @@ impl Gui {
     /// Starts or stops waiting for a key for a hotkey.
     fn record_hotkey(&self, action: Option<HotkeyAction>) {
         self.state.borrow_mut().recording = action;
+        // So keys held with Cmd reach Set Hotkey on macOS, like Cmd+Q
+        platform::hold_menu_shortcuts(action.is_some());
         let index = action.and_then(|action| HOTKEY_ROWS.iter().position(|&(row, _)| row == action));
         self.windows.settings.set_setting_hotkey(index.map_or(-1, |index| index as i32));
         self.show_buttons();
