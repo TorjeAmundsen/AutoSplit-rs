@@ -349,24 +349,7 @@ Molok is a Linux timer controlled with POSIX signals. Choose Molok (POSIX signal
 
 ### Adding it to the app menu
 
-The zip has no installer. To list AutoSplit in your desktop's app menu with its icon, run this in the unzipped folder. It writes a `.desktop` file with the folder's full path, so run it again if you move the folder.
-
-```sh
-mkdir -p ~/.local/share/applications
-cat > ~/.local/share/applications/io.github.torjeamundsen.autosplit.desktop << EOF
-[Desktop Entry]
-Type=Application
-Name=AutoSplit
-Comment=Image comparison auto splitter for speedrunning
-Exec="$PWD/autosplit"
-Icon=$PWD/icon.png
-Terminal=false
-Categories=Game;Utility;
-StartupWMClass=io.github.torjeamundsen.autosplit
-EOF
-```
-
-The file name and `StartupWMClass` match the app id `autosplit` gives its windows, so the desktop shows the icon on the running windows too. To remove it, delete that file.
+The zip has no installer. To list AutoSplit in your desktop's app menu with its icon, run `./install-desktop-entry.sh` in the unzipped folder. It writes `~/.local/share/applications/io.github.torjeamundsen.autosplit.desktop` with the folder's full path, so run it again if you move the folder. `./install-desktop-entry.sh --remove` takes it out of the menu again.
 
 ## From a terminal
 

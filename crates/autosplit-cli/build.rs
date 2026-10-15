@@ -8,7 +8,7 @@ fn main() {
 }
 
 /// The bundle id the Info.plist names on macOS, and the app id windows get on Linux, which the
-/// .desktop file in TUTORIAL.md is named after.
+/// .desktop file that assets/install-desktop-entry.sh writes is named after.
 const APP_ID: &str = "io.github.torjeamundsen.autosplit";
 
 /// macOS ships a bare binary, not an .app, so its Info.plist goes into the binary itself. macOS

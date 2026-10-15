@@ -123,7 +123,7 @@ function BuildTriple($triple) {
 
 # Compress-Archive drops the executable bit, so Linux and macOS binaries are added with Unix
 # permissions set
-function Zip($directory, $zip, $executable) {
+function Zip($directory, $zip, $executables) {
     Add-Type -AssemblyName System.IO.Compression
     $stream = [System.IO.File]::Open($zip, [System.IO.FileMode]::Create)
     $archive = [System.IO.Compression.ZipArchive]::new($stream, [System.IO.Compression.ZipArchiveMode]::Create)
@@ -133,7 +133,7 @@ function Zip($directory, $zip, $executable) {
             # Entries in folders, like presets/, by their path with forward slashes
             $name = $file.FullName.Substring($root.Length).TrimStart('\', '/').Replace('\', '/')
             $entry = $archive.CreateEntry($name, [System.IO.Compression.CompressionLevel]::Optimal)
-            $mode = if ($name -eq $executable) { 0x81ED } else { 0x81A4 }
+            $mode = if ($executables -contains $name) { 0x81ED } else { 0x81A4 }
             $entry.ExternalAttributes = $mode -shl 16
             $writer = $entry.Open()
             try {
@@ -183,13 +183,16 @@ function Build($name) {
     foreach ($folder in @("presets", "splits")) {
         Copy-Item "$PSScriptRoot/$folder" $output -Recurse
     }
-    # For the .desktop file TUTORIAL.md has Linux users write
+    # Adds it to the app menu on Linux, with the icon
+    $executables = @($binaryName)
     if ((OsOf $targets[$name][0]) -eq "linux") {
         Copy-Item "$PSScriptRoot/crates/autosplit-cli/assets/icon.png" "$output/icon.png"
+        Copy-Item "$PSScriptRoot/crates/autosplit-cli/assets/install-desktop-entry.sh" "$output/install-desktop-entry.sh"
+        $executables += "install-desktop-entry.sh"
     }
 
     $zip = "$PSScriptRoot/build/AutoSplit-v$version-$name.zip"
-    Zip $output $zip $binaryName
+    Zip $output $zip $executables
     Write-Host "  Zipped: $zip"
 }
 
