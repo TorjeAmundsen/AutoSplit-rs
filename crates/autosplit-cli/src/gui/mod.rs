@@ -967,8 +967,10 @@ impl Gui {
             return self.assign_hotkey(action, "");
         }
         let Some(key) = pressed_key(event) else { return };
+        // Named so the name reads back as this key, whatever the layout
+        let character = autosplit_input::recorded_character(key, key_character(event));
         // A modifier on its own: wait for the key it goes with
-        let Some(name) = hotkey_name(key, key_character(event), held) else { return };
+        let Some(name) = hotkey_name(key, character, held) else { return };
         self.assign_hotkey(action, &name);
     }
 

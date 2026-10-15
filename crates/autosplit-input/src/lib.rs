@@ -27,6 +27,19 @@ pub fn system_layout() -> &'static dyn Layout {
     &UsLayout
 }
 
+/// What the physical `key` types on a US layout, without Shift, when it types anything.
+pub fn us_character(key: KeyCode) -> Option<char> {
+    keys::find(key)?.us.map(|(plain, _)| plain)
+}
+
+/// The character a hotkey recorded from the physical `key` is named by, where `typed` is what the
+/// key types on the keyboard layout. Names are read back with [`system_layout`], so they have to
+/// follow it: the layout's own character on Windows, and the key's US character elsewhere. There
+/// the key labelled Z on a German keyboard records "y", its US name, and listens on that key.
+pub fn recorded_character(key: KeyCode, typed: Option<char>) -> Option<char> {
+    if cfg!(windows) { typed } else { us_character(key).or(typed) }
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum InputError {
     #[error("{0}")]

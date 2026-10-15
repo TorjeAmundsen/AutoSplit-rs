@@ -96,6 +96,42 @@ fn recorded_names_listen_for_the_key(key: KeyCode, character: Option<char>, modi
     assert!(parsed.listen.contains(&Hotkey { key_code: key, modifiers }), "{name}");
 }
 
+#[test]
+fn keys_named_by_their_us_character_listen_for_themselves() {
+    // Every key the US layout types something on, like the key labelled Z on a German keyboard,
+    // named the way macOS and Linux record it
+    let letters = ('A'..='Z').map(|letter| format!("Key{letter}"));
+    let digits = (0..=9).map(|digit| format!("Digit{digit}"));
+    let symbols = ["Backquote", "Minus", "Equal", "BracketLeft", "BracketRight", "Backslash", "Semicolon", "Quote"]
+        .into_iter()
+        .chain(["Comma", "Period", "Slash", "Space"])
+        .map(String::from);
+    let keys: Vec<KeyCode> = letters.chain(digits).chain(symbols).map(|name| name.parse().unwrap()).collect();
+    let typing: Vec<(KeyCode, char)> =
+        keys.into_iter().filter_map(|key| Some((key, autosplit_input::us_character(key)?))).collect();
+    assert_eq!(typing.len(), 48, "every one types a character");
+    for (key, character) in typing {
+        // Arrange
+        let name = autosplit_input::hotkey_name(key, Some(character), Modifiers::CONTROL).unwrap();
+
+        // Act
+        let parsed = parse_hotkey(&name, &UsLayout).unwrap();
+
+        // Assert
+        let hotkey = Hotkey { key_code: key, modifiers: Modifiers::CONTROL };
+        assert!(parsed.listen.contains(&hotkey), "{key:?} named {name}");
+    }
+}
+
+#[test]
+fn keys_are_recorded_by_their_us_character_off_windows() {
+    // Act: the German layout's Z, on the key US layouts have Y on
+    let character = autosplit_input::recorded_character(KeyCode::KeyY, Some('z'));
+
+    // Assert
+    assert_eq!(character, Some(if cfg!(windows) { 'z' } else { 'y' }));
+}
+
 #[test_case("f1", "F1" => true; "case of a key name")]
 #[test_case("shift+ctrl+a", "ctrl+shift+a" => true; "modifier order")]
 #[test_case(" num 1", "num 1" => true; "spaces")]
