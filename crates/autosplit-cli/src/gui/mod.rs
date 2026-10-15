@@ -473,6 +473,7 @@ pub fn run(options: Options) -> Result<(), Error> {
     let windows =
         open_windows().map_err(|error| Error::NoWindow(anyhow::anyhow!("Couldn't open a window: {error}")))?;
     platform::keep_running_when_hidden();
+    picker::catch_errors();
 
     let (events, receiver) = mpsc::channel();
     let (mut console, log_path) = Console::with_listener(Box::new(|line| {
@@ -622,6 +623,7 @@ macro_rules! on {
 }
 
 mod maker;
+pub mod picker;
 mod tester;
 
 pub use maker::{THUMB_SIZE, thumbnail, transparency_grid};
@@ -1479,6 +1481,7 @@ impl Gui {
 
     /// A file dialog in front of `window`.
     fn file_dialog_over(&self, title: &str, window: &slint::Window) -> rfd::AsyncFileDialog {
+        picker::clear_error();
         rfd::AsyncFileDialog::new().set_title(title).set_parent(&window.window_handle())
     }
 
@@ -1490,10 +1493,16 @@ impl Gui {
     ) {
         let weak = Rc::downgrade(self);
         let waiting = slint::spawn_local(async move {
-            if let Some(file) = dialog.await
-                && let Some(gui) = weak.upgrade()
-            {
-                then(&gui, file.path().to_owned());
+            let picked = dialog.await;
+            let Some(gui) = weak.upgrade() else { return };
+            match picked {
+                Some(file) => then(&gui, file.path().to_owned()),
+                // Answered nothing because it couldn't open, rather than cancelled
+                None => {
+                    if let Some(error) = picker::take_error() {
+                        gui.show_message(Message::error(error));
+                    }
+                }
             }
         });
         if let Err(error) = waiting {

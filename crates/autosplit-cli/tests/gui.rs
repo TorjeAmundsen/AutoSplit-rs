@@ -948,3 +948,20 @@ fn names_taken_are_the_games_other_presets(except: Option<&str>) -> Vec<String> 
     // Assert, with the expected value checked by test_case
     taken.into_iter().map(String::from).collect()
 }
+
+#[test]
+fn a_picker_that_couldnt_open_says_why() {
+    // Arrange: rfd logs why, then answers like the picker was cancelled
+    autosplit::gui::picker::catch_errors();
+    autosplit::gui::picker::clear_error();
+    log::error!(target: "winit", "not about the picker");
+    assert_eq!(autosplit::gui::picker::take_error(), None);
+    log::error!(target: "rfd::backend::xdg_desktop_portal", "Failed to pick folder with zenity: not found");
+
+    // Act
+    let error = autosplit::gui::picker::take_error();
+
+    // Assert: said once
+    assert!(error.is_some_and(|error| error.contains("Failed to pick folder with zenity: not found")));
+    assert_eq!(autosplit::gui::picker::take_error(), None);
+}

@@ -47,9 +47,17 @@ fn device_path(index: usize) -> PathBuf {
 }
 
 /// Metadata nodes, which UVC webcams add next to each camera, can't capture video.
+///
+/// A v4l2loopback node, like OBS Virtual Camera's, counts too. OBS makes it with exclusive_caps,
+/// so it only says it captures while OBS writes to it, which would leave it out of the list
+/// until the Virtual Camera starts, and have Settings pick another device. Opened before then, it
+/// gives no frames, and AutoSplit keeps trying it, like a device that was unplugged.
 fn captures_video(path: &Path) -> bool {
     match Device::open(path).and_then(|device| device.capabilities()) {
-        Ok(capabilities) => capabilities.device_capabilities().contains(CapabilityFlags::VIDEO_CAPTURE),
+        Ok(capabilities) => {
+            capabilities.device_capabilities().contains(CapabilityFlags::VIDEO_CAPTURE)
+                || capabilities.driver() == "v4l2 loopback"
+        }
         // Listed anyway, so opening it explains the problem (like missing permissions)
         Err(_) => true,
     }
