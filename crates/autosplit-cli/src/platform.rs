@@ -180,6 +180,17 @@ pub fn open(target: impl AsRef<std::ffi::OsStr>) -> std::io::Result<()> {
     Ok(())
 }
 
+/// Whether AutoSplit is the app in front on macOS, where showing one of its windows with the
+/// focus would bring it there. Elsewhere, where the system decides whether a window may take
+/// the focus, always true.
+pub fn app_in_front() -> bool {
+    #[cfg(target_os = "macos")]
+    if let Some(main_thread) = objc2::MainThreadMarker::new() {
+        return objc2_app_kit::NSApplication::sharedApplication(main_thread).isActive();
+    }
+    true
+}
+
 /// Lets the menus that open from the menu bar follow the system's dark mode on Windows. The bar
 /// itself already does, but a menu is light unless the program allows dark mode for itself,
 /// which Windows only offers through uxtheme.dll's unnamed `SetPreferredAppMode`.

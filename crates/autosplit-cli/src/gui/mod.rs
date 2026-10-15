@@ -32,7 +32,7 @@ use autosplit_core::split_folder::{MAX_GROUP_SIZE, user_files};
 use autosplit_input::{Modifiers, hotkey_name, parse_hotkey, same_hotkey, system_layout};
 use slint::winit_030::winit::event::{ElementState, KeyEvent, WindowEvent};
 use slint::winit_030::winit::keyboard::{Key, NamedKey};
-use slint::winit_030::winit::window::WindowLevel;
+use slint::winit_030::winit::window::{UserAttentionType, WindowLevel};
 use slint::winit_030::{EventResult, WinitWindowAccessor};
 use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
 
@@ -103,6 +103,8 @@ const MAX_POSITION: i64 = 999_999_999;
 /// How long messages from opening wait for the main window's focus, which a minimized one never
 /// gets.
 const FIRST_MESSAGES_FALLBACK: Duration = Duration::from_secs(2);
+/// How often a message box waiting for AutoSplit to be in front, on macOS, checks whether it is.
+const MESSAGE_BEHIND_CHECK: Duration = Duration::from_millis(200);
 /// How long log lines are gathered before the log window shows them.
 const LOG_DELAY: Duration = Duration::from_millis(100);
 
@@ -179,6 +181,8 @@ struct Gui {
     /// it and in front of it.
     first_messages: RefCell<Vec<Message>>,
     first_messages_fallback: slint::Timer,
+    /// Waits for AutoSplit to be in front to show a message box, on macOS.
+    message_behind: slint::Timer,
 }
 
 /// Whether a window can be seen, for the previews only made while one can: shown, and not
@@ -512,6 +516,7 @@ pub fn run(options: Options) -> Result<(), Error> {
         log_dirty: Cell::new(false),
         first_messages: RefCell::new(Vec::new()),
         first_messages_fallback: slint::Timer::default(),
+        message_behind: slint::Timer::default(),
     });
     GUI.with(|cell| *cell.borrow_mut() = Some(gui.clone()));
     gui.connect();
@@ -1652,6 +1657,26 @@ impl Gui {
         self.windows.message.set_tertiary(tertiary.into());
         self.windows.message.set_default_button(shown.default as i32);
         self.set_all_blocked(true);
+        // Showing it with the focus brings the whole app to the front on macOS, and its window
+        // floats above other apps' windows, so either would get in the way of the game, like
+        // when the screenshot hotkey fails mid-run. While another app is in front, the Dock icon
+        // bounces once instead, and the message box shows once AutoSplit is in front.
+        if !platform::app_in_front() {
+            let main = self.windows.main.window();
+            main.with_winit_window(|window| window.request_user_attention(Some(UserAttentionType::Informational)));
+            let weak = self.me.clone();
+            return self.message_behind.start(slint::TimerMode::Repeated, MESSAGE_BEHIND_CHECK, move || {
+                if let Some(gui) = weak.upgrade().filter(|_| platform::app_in_front()) {
+                    gui.message_behind.stop();
+                    gui.show_message_window();
+                }
+            });
+        }
+        self.message_behind.stop();
+        self.show_message_window();
+    }
+
+    fn show_message_window(&self) {
         self.show_window(self.windows.message.window());
         self.windows.message.window().with_winit_window(|window| window.set_window_level(WindowLevel::AlwaysOnTop));
         self.windows.message.invoke_focus_keys();
