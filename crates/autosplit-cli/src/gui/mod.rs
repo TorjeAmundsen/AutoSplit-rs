@@ -40,7 +40,7 @@ use self::document::{Document, folder_text, profile_on_open};
 use self::log::LogLines;
 use self::messages::{Answer, Message, MessageQueue};
 use self::placement::{Area, centered_over};
-use self::recorder::{key_character, modifiers_held, pressed_key};
+use self::recorder::{PRIMARY, key_character, modifiers_held, pressed_key};
 use self::settings_form::SettingEdit;
 use self::ui::{
     AboutWindow, HotkeyRow, InfoCell, InstructionsWindow, LogWindow, MainWindow, MakerRow, MakerWindow, MessageWindow,
@@ -224,6 +224,43 @@ thread_local! {
 }
 
 /// Runs `action` with the GUI, on the window's thread.
+/// Has Cmd+Q, the app menu's Quit, the Dock's Quit and logging out ask first, like closing the
+/// main window, on macOS. AppKit otherwise ends the process at once, without asking to save the
+/// profile or a preset being edited, and without stopping the session.
+#[cfg(target_os = "macos")]
+fn ask_before_quitting() {
+    use objc2::runtime::{AnyClass, AnyObject, Imp, Sel};
+    use objc2::{ffi, sel};
+
+    /// `applicationShouldTerminate:`, which winit's app delegate doesn't have. It answers no, and
+    /// the window asks instead, then quits by itself when it may.
+    unsafe extern "C-unwind" fn should_terminate(
+        _delegate: *mut AnyObject,
+        _cmd: Sel,
+        _sender: *mut AnyObject,
+    ) -> usize {
+        with_gui(|gui| gui.close_requested());
+        // NSTerminateCancel
+        0
+    }
+
+    // Made with the event loop, which the windows made
+    let Some(class) = AnyClass::get(c"WinitApplicationDelegate") else { return };
+    type ShouldTerminate = unsafe extern "C-unwind" fn(*mut AnyObject, Sel, *mut AnyObject) -> usize;
+    let method: ShouldTerminate = should_terminate;
+    // SAFETY: the runtime calls it with the arguments the type string says: an NSUInteger answer
+    // for self, _cmd and the sender, which match the function's own
+    let imp = unsafe { std::mem::transmute::<ShouldTerminate, Imp>(method) };
+    unsafe {
+        ffi::class_addMethod(
+            std::ptr::from_ref(class).cast_mut(),
+            sel!(applicationShouldTerminate:),
+            imp,
+            c"Q@:@".as_ptr(),
+        )
+    };
+}
+
 fn with_gui(action: impl FnOnce(&Rc<Gui>) + Send + 'static) {
     let _ = slint::invoke_from_event_loop(move || {
         if let Some(gui) = GUI.with(|gui| gui.borrow().clone()) {
@@ -500,6 +537,8 @@ pub fn run(options: Options) -> Result<(), Error> {
             gui.show_first_messages();
         }
     });
+    #[cfg(target_os = "macos")]
+    ask_before_quitting();
     slint::run_event_loop_until_quit().map_err(|error| Error::Failed(error.into()))?;
     // Hidden first, since stopping the session can take a moment
     gui.hide_all();
@@ -916,7 +955,7 @@ impl Gui {
         if self.blocked() {
             return false;
         }
-        let control = held.contains(Modifiers::CONTROL);
+        let control = held.contains(PRIMARY);
         let shift = held.contains(Modifiers::SHIFT);
         match (control, shift, key_character(event).map(|c| c.to_ascii_lowercase()), &event.logical_key) {
             (true, _, Some(','), _) => self.open_settings(),
@@ -940,7 +979,7 @@ impl Gui {
         }
         let comma = key_character(event) == Some(',');
         match (&event.logical_key, held) {
-            (_, Modifiers::CONTROL) if comma => self.open_settings(),
+            (_, PRIMARY) if comma => self.open_settings(),
             (Key::Named(NamedKey::F1), held) if held.is_empty() => self.open(TUTORIAL_URL),
             (Key::Named(NamedKey::Escape), held) if held.is_empty() => match tool {
                 Tool::Tester => self.close_tester(),

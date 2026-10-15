@@ -18,6 +18,7 @@ use super::super::preset_form::{
     field_problems, field_value,
 };
 use super::super::preset_form::{known_game, problem_flags, problem_list, problem_summary, saved_preset_name};
+use super::super::recorder::PRIMARY;
 use super::super::recorder::key_character;
 use super::super::ui::{SplitField, SplitForm, SplitValues};
 use super::{Kept, game_label, presets_folder};
@@ -130,8 +131,8 @@ impl Gui {
                 self.unless_discarded(|gui| gui.cancel_editing());
             }
             // Otherwise a text field's own undo
-            (_, Modifiers::CONTROL) if character == Some('z') => return self.undo_remove(),
-            (_, Modifiers::CONTROL) if character == Some('s') => {
+            (_, PRIMARY) if character == Some('z') => return self.undo_remove(),
+            (_, PRIMARY) if character == Some('s') => {
                 if self.windows.maker.get_can_save_preset() {
                     self.save_draft(false);
                 } else {

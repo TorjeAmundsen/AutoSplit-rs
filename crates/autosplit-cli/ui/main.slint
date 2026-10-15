@@ -8,7 +8,7 @@ import { MessageWindow } from "message.slint";
 import { InfoCell, TesterReading, TesterWindow } from "tester.slint";
 import { MakerRow, MakerWindow, SplitField, SplitForm, SplitValues } from "maker.slint";
 import { InstructionCard, InstructionsWindow } from "instructions.slint";
-import { Button, ClickAway, Label, NameKind, NamePart, Preview, SpinBox, TextField, Theme, Tip, WindowFocus } from "widgets.slint";
+import { Button, ClickAway, Keys, Label, NameKind, NamePart, Preview, SpinBox, TextField, Theme, Tip, WindowFocus } from "widgets.slint";
 
 export { SettingsWindow, HotkeyRow, Setting, AboutWindow, LogWindow, MessageWindow, InfoCell, NameKind, NamePart, TesterReading, TesterWindow, MakerRow, MakerWindow, SplitField, SplitForm, SplitValues, InstructionCard, InstructionsWindow, WindowFocus }
 
@@ -659,7 +659,7 @@ export component MainWindow inherits Window {
                                 text: "Settings";
                                 enabled: !root.blocked;
                                 clicked => { root.open-settings(); }
-                                tip: "Open Settings beside the tool window, like File > Settings and Ctrl+, do";
+                                tip: "Open Settings beside the tool window, like File > Settings and " + Keys.primary + "+, do";
                             }
                         }
 

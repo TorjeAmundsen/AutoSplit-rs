@@ -47,6 +47,12 @@ export global WindowFocus {
     in-out property <bool> active: true;
 }
 
+// The name of the key shortcuts are held with, for tooltips: Cmd on macOS, Ctrl elsewhere, like
+// the shortcuts themselves.
+export global Keys {
+    out property <string> primary: Platform.os == OperatingSystemType.macos ? "Cmd" : "Ctrl";
+}
+
 // Whether a ComboBox's list is showing. Escape closes it then, not the window or what the window
 // would cancel with it, which Rust checks here.
 export global OpenList {

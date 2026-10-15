@@ -466,7 +466,11 @@ impl Gui {
     /// so in a message.
     fn grab_blocker(&self) -> &'static str {
         if !self.state.borrow().document.profile.has_capture_device() {
-            "Pick a capture device in Settings (Ctrl+,) first, which Grab takes the capture region from."
+            concat!(
+                "Pick a capture device in Settings (",
+                primary_key!(),
+                "+,) first, which Grab takes the capture region from."
+            )
         } else if !self.split_image_folder().is_some_and(|folder| folder.is_dir()) {
             "Pick a split image folder that exists with Browse... first, which Grab saves into."
         } else {

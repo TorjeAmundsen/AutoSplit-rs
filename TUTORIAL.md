@@ -73,6 +73,8 @@ The Virtual Camera sends a picture the size of OBS's canvas, with your source in
 
 ![The main window, with the split image folder, the capture region boxes, the live preview, the current split image and the buttons marked](docs/images/main-window-annotated.png)
 
+Shortcuts here use Ctrl, like Ctrl+S. On macOS they use Cmd instead, like Cmd+S, and Alt is Option.
+
 ### Split image folder
 
 The folder with your split images, picked with Browse.... They're used in file name order, so number them `001_SplitName.png`, `002_SplitName.png` and so on. Only PNG images work. The file name also sets how each image is used, see [Split image file names](#split-image-file-names).

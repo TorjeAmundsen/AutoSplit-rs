@@ -3,7 +3,7 @@
 // the selected split's mask shown on the capture as it's changed.
 
 import { CheckBox, ScrollView } from "std-widgets.slint";
-import { Button, ClickAway, ComboBox, FileName, Label, NamePart, OpenList, Preview, SavedCheck, TextField, Theme, Tip } from "widgets.slint";
+import { Button, ClickAway, ComboBox, FileName, Keys, Label, NamePart, OpenList, Preview, SavedCheck, TextField, Theme, Tip } from "widgets.slint";
 import { SplitField, SplitForm, SplitFormPanel, SplitValues } from "split_form.slint";
 
 export { SplitField, SplitForm, SplitValues }
@@ -491,7 +491,7 @@ export component MakerWindow inherits Window {
                         text: "Remove";
                         enabled: root.has-split;
                         clicked => { root.remove-split(); }
-                        tip: "Remove the selected split. Ctrl+Z brings it back, with its grab or screenshot, until something else is changed.";
+                        tip: "Remove the selected split. " + Keys.primary + "+Z brings it back, with its grab or screenshot, until something else is changed.";
                     }
 
                     Rectangle {
@@ -796,7 +796,7 @@ export component MakerWindow inherits Window {
 
                 Tooltip {
                     Tip {
-                        text: root.problem-list + (root.problem-split >= 0 ? "\n\nClick or press F8 to go to the next split with a problem. Ctrl+S lists them all." : "");
+                        text: root.problem-list + (root.problem-split >= 0 ? "\n\nClick or press F8 to go to the next split with a problem. " + Keys.primary + "+S lists them all." : "");
                     }
                 }
             }
@@ -823,7 +823,7 @@ export component MakerWindow inherits Window {
                 suggested: true;
                 enabled: root.can-save-preset;
                 clicked => { root.save-preset(); }
-                tip: root.has-problems ? "Fix the problems first, which the line beside it lists" : "Save the preset (Ctrl+S)";
+                tip: root.has-problems ? "Fix the problems first, which the line beside it lists" : "Save the preset (" + Keys.primary + "+S)";
             }
         }
     }

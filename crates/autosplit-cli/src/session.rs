@@ -938,7 +938,12 @@ impl Session {
     fn grab(&mut self) {
         let frame = self.device.latest().filter(|_| self.device.receiving());
         let image = match frame {
-            None => Err("There's no capture to grab. Check the capture device in Settings (Ctrl+,).".into()),
+            None => Err(concat!(
+                "There's no capture to grab. Check the capture device in Settings (",
+                primary_key!(),
+                "+,)."
+            )
+            .into()),
             Some(frame) => match frame.region_view(&self.profile.capture_region) {
                 Some(view) if !view.is_empty() => Ok(view.to_image()),
                 _ => {
@@ -954,7 +959,11 @@ impl Session {
     /// Sets the capture region to the 4:3 picture in the middle of the newest frame.
     fn crop_to_4x3(&mut self) {
         let Some(frame) = self.device.latest().filter(|_| self.device.receiving()) else {
-            return self.dialog("There's no capture to crop. Check the capture device in Settings (Ctrl+,).");
+            return self.dialog(concat!(
+                "There's no capture to crop. Check the capture device in Settings (",
+                primary_key!(),
+                "+,)."
+            ));
         };
         let (width, height) = frame.frame_size();
         let region = Region::centered_4_3(width, height);
