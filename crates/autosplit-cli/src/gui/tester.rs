@@ -7,8 +7,9 @@ use std::sync::atomic::Ordering;
 
 use slint::{ComponentHandle, SharedString};
 
+use super::paths::{canonical, file_name_text};
 use super::placement::beside;
-use super::ui::InfoCell;
+use super::ui::{InfoCell, TesterReading};
 use super::view::{KeptFrames, Update};
 use super::{Gui, Tool, exe_folder, file_name_parts, png_images, shown_image};
 use crate::session::UiCommand;
@@ -19,6 +20,7 @@ impl Gui {
     pub(super) fn connect_tester(&self) {
         let weak = self.me.clone();
         let tester = &self.windows.tester;
+        tester.set_reading(cleared_reading());
         on!(weak, tester, on_open_image, () gui => gui.pick_tester_image());
         on!(weak, tester, on_previous_image, () gui => gui.step_tester_image(-1));
         on!(weak, tester, on_next_image, () gui => gui.step_tester_image(1));
@@ -46,7 +48,7 @@ impl Gui {
         self.update_visibility();
         let gone = self.state.borrow().tester_path.as_ref().is_none_or(|path| !path.is_file());
         if gone {
-            let first = self.split_image_folder_path().and_then(|folder| png_images(&folder).into_iter().next());
+            let first = self.split_image_folder().and_then(|folder| png_images(&folder).into_iter().next());
             self.state.borrow_mut().tester_path = first;
         }
         if self.state.borrow().tester_path.is_some() {
@@ -59,13 +61,10 @@ impl Gui {
     /// The first image of the profile's split image folder, unless the Live Tester's image is
     /// from that folder already. `None` without a split image folder or images in it.
     fn split_folder_image(&self) -> Option<PathBuf> {
-        let folder = self.split_image_folder_path()?;
+        let folder = self.split_image_folder()?;
         let current = self.state.borrow().tester_path.as_ref().and_then(|path| path.parent()).map(Path::to_owned);
         // Compared as the system sees them, since the profile's folder can be written another way
-        let same = |a: &Path, b: &Path| {
-            std::fs::canonicalize(a).ok().is_some_and(|a| std::fs::canonicalize(b).ok() == Some(a))
-        };
-        if current.is_some_and(|current| same(&current, &folder)) {
+        if current.is_some_and(|current| canonical(&current) == canonical(&folder)) {
             return None;
         }
         png_images(&folder).into_iter().next()
@@ -82,13 +81,6 @@ impl Gui {
         }
     }
 
-    /// The profile's split image folder, or `None` without one.
-    fn split_image_folder_path(&self) -> Option<PathBuf> {
-        let state = self.state.borrow();
-        let directory = &state.document.profile.split_image_directory;
-        (!directory.is_empty()).then(|| state.document.resolve(&exe_folder(), directory))
-    }
-
     /// The main window's Close button.
     pub(super) fn close_tester(&self) {
         self.tool_closed(Tool::Tester);
@@ -96,6 +88,7 @@ impl Gui {
     }
 
     /// The Live Tester closes: it stops comparing. See [`Gui::tool_closed`].
+    /// The Live Tester closed, which `tool_closed` says.
     pub(super) fn tester_closed(&self) {
         self.send(UiCommand::CloseTester);
         self.tester_visible.store(false, Ordering::Relaxed);
@@ -155,7 +148,7 @@ impl Gui {
         let images = self.tester_folder_images();
         let index = images.iter().position(|image| *image == path);
         let tester = &self.windows.tester;
-        self.show_tester_file(&super::maker_plan::file_name_text(&path).unwrap_or_default());
+        self.show_tester_file(&file_name_text(&path).unwrap_or_default());
         tester.set_path(path.display().to_string().into());
         tester.set_can_reload(true);
         tester.set_can_previous_image(index.is_some_and(|index| index > 0));
@@ -176,17 +169,8 @@ impl Gui {
         tester.set_has_image(false);
         tester.set_message(message.into());
         self.tester_info.clear();
-        tester.set_ignored(SharedString::new());
-        tester.set_status(SharedString::new());
-        tester.set_live("-".into());
-        tester.set_highest("-".into());
-        tester.set_threshold("-".into());
-        tester.set_reached(false);
-        tester.set_highest_reached(false);
-        tester.set_live_value(-1.0);
-        tester.set_highest_value(-1.0);
+        tester.set_reading(cleared_reading());
         tester.set_live_image(slint::Image::default());
-        tester.set_live_message("Open a split image to start comparing.".into());
         tester.set_split_image(slint::Image::default());
         self.take_kept(KeptFrames { cleared: true, added: Vec::new() });
     }
@@ -246,18 +230,20 @@ impl Gui {
                 note: cell.note.into(),
             };
             self.tester_info.set_vec(texts.info.into_iter().map(cell).collect::<Vec<_>>());
-            tester.set_ignored(texts.ignored.into());
-            tester.set_status(texts.status.into());
-            tester.set_live(texts.live.into());
-            tester.set_highest(texts.highest.into());
-            tester.set_threshold(texts.threshold.into());
-            tester.set_reached(texts.reached);
-            tester.set_highest_reached(texts.highest_reached);
-            let (live, highest, threshold) = texts.meter;
-            tester.set_live_value(live);
-            tester.set_highest_value(highest);
-            tester.set_threshold_value(threshold);
-            tester.set_live_message(texts.live_message.into());
+            let (live_value, highest_value, threshold_value) = texts.meter;
+            tester.set_reading(TesterReading {
+                ignored: texts.ignored.into(),
+                status: texts.status.into(),
+                live_message: texts.live_message.into(),
+                live: texts.live.into(),
+                highest: texts.highest.into(),
+                threshold: texts.threshold.into(),
+                reached: texts.reached,
+                highest_reached: texts.highest_reached,
+                live_value,
+                highest_value,
+                threshold_value,
+            });
         }
         if let Some(live) = shown_image(update.tester_live) {
             tester.set_live_image(live);
@@ -266,5 +252,20 @@ impl Gui {
             tester.set_split_image(split);
         }
         self.take_kept(update.kept);
+    }
+}
+
+/// What the Live Tester reads without an image: dashes, and no similarity for the meter.
+fn cleared_reading() -> TesterReading {
+    let dash = || SharedString::from("-");
+    TesterReading {
+        live_message: "Open a split image to start comparing.".into(),
+        live: dash(),
+        highest: dash(),
+        threshold: dash(),
+        live_value: -1.0,
+        highest_value: -1.0,
+        threshold_value: -1.0,
+        ..TesterReading::default()
     }
 }

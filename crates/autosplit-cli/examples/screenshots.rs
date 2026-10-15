@@ -6,7 +6,7 @@ use std::rc::Rc;
 use autosplit::gui::messages::Buttons;
 use autosplit::gui::ui::{
     AboutWindow, HotkeyRow, InfoCell, InstructionCard, InstructionsWindow, LogWindow, MainWindow, MakerRow,
-    MakerWindow, MessageWindow, SettingsWindow, SimilarityRow, SplitForm, TesterWindow,
+    MakerWindow, MessageWindow, SettingsWindow, SimilarityRow, SplitForm, TesterReading, TesterWindow,
 };
 use autosplit::gui::{HOTKEY_ROWS, file_name_parts, thumbnail, transparency_grid};
 use slint::platform::software_renderer::{MinimalSoftwareWindow, RepaintBufferType, Rgb565Pixel};
@@ -137,32 +137,32 @@ fn main() {
         cell("DELAY", "1100 ms", ""),
     ];
     tester.set_info(std::rc::Rc::new(slint::VecModel::from(info)).into());
-    tester.set_ignored("Ignored in the name: the loop count 0 isn't 1 or more, so the image is used once".into());
-    tester.set_status("Reached the threshold. Waiting for it to drop back below.".into());
+
     tester.set_can_reload(true);
     tester.set_can_next_image(true);
-    tester.set_live_message("Waiting for capture device...".into());
+
     tester.set_split_image(solid([60, 90, 200]));
     tester.set_kept_image(solid([200, 60, 60]));
     tester.set_kept_caption("Reached: 0.951".into());
     tester.set_kept_position("1/2".into());
     tester.set_can_next_kept(true);
-    tester.set_live("0.951".into());
-    tester.set_highest("0.962".into());
-    tester.set_threshold("0.930".into());
-    tester.set_reached(true);
-    tester.set_live_value(0.951);
-    tester.set_highest_value(0.962);
-    tester.set_highest_reached(true);
-    tester.set_threshold_value(0.93);
+    let reached = TesterReading {
+        ignored: "Ignored in the name: the loop count 0 isn't 1 or more, so the image is used once".into(),
+        status: "Reached the threshold. Waiting for it to drop back below.".into(),
+        live_message: "Waiting for capture device...".into(),
+        live: "0.951".into(),
+        highest: "0.962".into(),
+        threshold: "0.930".into(),
+        reached: true,
+        highest_reached: true,
+        live_value: 0.951,
+        highest_value: 0.962,
+        threshold_value: 0.93,
+    };
+    tester.set_reading(reached.clone());
     tester.show().unwrap();
     save(&window, PhysicalSize::new(992, 470), &folder.join("tester.png"));
-    tester.set_reached(false);
-    tester.set_live("0.412".into());
-    tester.set_live_value(0.412);
-    tester.set_highest("0.962".into());
-    tester.set_highest_value(0.962);
-    tester.set_highest_reached(true);
+    tester.set_reading(TesterReading { reached: false, live: "0.412".into(), live_value: 0.412, ..reached });
     save(&window, PhysicalSize::new(992, 470), &folder.join("tester-waiting.png"));
     tester.hide().unwrap();
 

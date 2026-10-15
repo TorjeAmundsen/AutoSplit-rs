@@ -11,8 +11,8 @@ use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
 
 use super::super::Gui;
 use super::super::maker_plan::{DeletedPreset, preset_after_delete};
-use super::super::maker_plan::{canonical, file_name_text};
 use super::super::messages::{Answer, Message};
+use super::super::paths::{canonical, file_name_text};
 use super::super::preset_form::{Draft, Field, ListChange, SplitEdit, SplitKind, field_value};
 use super::super::preset_form::{known_game, problem_flags, problem_list, problem_summary};
 use super::super::recorder::key_character;
@@ -22,7 +22,6 @@ use autosplit_input::Modifiers;
 use slint::winit_030::winit::event::KeyEvent;
 use slint::winit_030::winit::keyboard::{Key, NamedKey};
 
-/// A preset being edited, with what the window had before, to go back to on Cancel.
 /// A split that was removed, to bring back with Ctrl+Z while nothing else changed.
 struct Removal {
     before: Preset,
@@ -30,6 +29,7 @@ struct Removal {
     kept: Kept,
 }
 
+/// A preset being edited, with what the window had before, to go back to on Cancel.
 pub(super) struct Editing {
     pub(super) draft: Draft,
     /// The folder the preset was read from, which its masks' relative paths are in. None for a
@@ -381,7 +381,7 @@ impl Gui {
         window.set_form_generation(window.get_form_generation().wrapping_add(1));
         window.set_split_name(split.name.as_str().into());
         let kind = SplitKind::of(&split);
-        window.set_split_kind(SplitKind::ALL.iter().position(|&each| each == kind).unwrap_or_default() as i32);
+        window.set_split_kind(kind.index() as i32);
         // Unticked, they show the profile's defaults, which ticking or editing starts from
         window.set_has_threshold(split.threshold.is_some());
         window.set_threshold(split.threshold.unwrap_or(threshold_default) as f32);
@@ -425,7 +425,7 @@ impl Gui {
             });
             // Also when typing the name made it a start or reset image
             let kind = SplitKind::of(split);
-            window.set_split_kind(SplitKind::ALL.iter().position(|&each| each == kind).unwrap_or_default() as i32);
+            window.set_split_kind(kind.index() as i32);
         }
         let summary = match problem_summary(&edit.draft.preset, &problems) {
             Some(summary) => summary,

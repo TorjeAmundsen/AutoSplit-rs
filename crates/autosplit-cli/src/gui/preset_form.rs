@@ -59,6 +59,11 @@ impl SplitKind {
     /// In the order the form lists them.
     pub const ALL: [Self; 3] = [Self::Split, Self::Start, Self::Reset];
 
+    /// Where it is in `ALL`, which the Type list shows in that order.
+    pub fn index(self) -> usize {
+        Self::ALL.iter().position(|&each| each == self).unwrap_or_default()
+    }
+
     pub fn of(split: &PresetSplit) -> Self {
         match split.name.as_str() {
             START_KEYWORD => Self::Start,

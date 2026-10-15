@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 
 use autosplit_core::filename::{PartKind, RESET_KEYWORD, START_KEYWORD, has_keyword, name_parts, number_prefix};
 
+use super::paths::{canonical, file_name_text, is_png};
 use crate::screenshot::is_screenshot_name;
 
 /// Whether the file `name` looks like a split image made already, which masking again would ruin:
@@ -45,21 +46,6 @@ fn split_key(name: &str) -> Option<SplitKey> {
     }
     // By value, so "5_Boss" and "05_Boss" are the same split, like when the preset grows
     number_prefix(&name)?.parse().ok().map(SplitKey::Number)
-}
-
-pub(crate) fn is_png(path: &Path) -> bool {
-    path.extension().is_some_and(|extension| extension.eq_ignore_ascii_case("png"))
-}
-
-/// A path's last part as text, or `None` for a path without one, like `..`.
-pub(crate) fn file_name_text(path: &Path) -> Option<String> {
-    path.file_name().map(|name| name.to_string_lossy().into_owned())
-}
-
-/// The path with links and `..` resolved, to compare paths written in different ways, or the
-/// path itself when it doesn't exist.
-pub(crate) fn canonical(path: &Path) -> PathBuf {
-    std::fs::canonicalize(path).unwrap_or_else(|_| path.to_owned())
 }
 
 /// Writing `names` into a folder that has `existing` files. The split images of the preset, all

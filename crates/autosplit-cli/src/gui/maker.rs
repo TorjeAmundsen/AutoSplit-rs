@@ -13,11 +13,9 @@ use autosplit_core::preset::{LoadedPreset, Preset, PresetError, game_key, load_p
 use autosplit_core::split_folder::user_files;
 use slint::{ComponentHandle, ModelRc, Rgba8Pixel, SharedPixelBuffer, SharedString, VecModel};
 
-use super::maker_plan::{
-    canonical, file_name_text, looks_made, move_to_base, plan_writes, saves_in_place, screenshots_to_move,
-    stale_to_delete,
-};
+use super::maker_plan::{looks_made, move_to_base, plan_writes, saves_in_place, screenshots_to_move, stale_to_delete};
 use super::messages::{Answer, Message};
+use super::paths::{canonical, file_name_text};
 use super::placement::beside;
 use super::preset_form::{Draft, Problem, instruction_cards, problem_flags, problem_summary, split_heading};
 use super::ui::{InstructionCard, MakerRow};
@@ -413,16 +411,16 @@ impl Gui {
         }
         self.unless_discarded(|gui| {
             gui.cancel_editing();
-            gui.maker_closed();
+            gui.tool_closed(Tool::Maker);
             let _ = gui.windows.maker.hide();
         });
     }
 
     /// Make Split Images closes: the capture is only needed for it while it's open.
-    fn maker_closed(&self) {
+    /// Make Split Images closed, which `tool_closed` says.
+    pub(super) fn maker_closed(&self) {
         // They're the window's preset's
         let _ = self.windows.instructions.window().hide();
-        self.tool_closed(Tool::Maker);
         self.send(UiCommand::SetMakerOpen(false));
         self.maker_visible.store(false, std::sync::atomic::Ordering::Relaxed);
     }
@@ -487,13 +485,6 @@ impl Gui {
         } else {
             ""
         }
-    }
-
-    /// The split image folder, as the profile says.
-    fn split_image_folder(&self) -> Option<PathBuf> {
-        let state = self.state.borrow();
-        let directory = &state.document.profile.split_image_directory;
-        (!directory.is_empty()).then(|| state.document.resolve(&exe_folder(), directory))
     }
 
     /// The preset's file names, with the profile's defaults for what they leave out.

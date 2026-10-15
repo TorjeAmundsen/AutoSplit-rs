@@ -200,6 +200,25 @@ component Info inherits Rectangle {
     }
 }
 
+// What the Live Tester reads from the capture for its image.
+export struct TesterReading {
+    // Values in the image's name that are ignored
+    ignored: string,
+    status: string,
+    live-message: string,
+    live: string,
+    highest: string,
+    threshold: string,
+    reached: bool,
+    // The highest similarity reached the threshold, which stays until Start Over
+    highest-reached: bool,
+    // The live similarity, the highest and the threshold for the meter, the similarities negative
+    // without one
+    live-value: float,
+    highest-value: float,
+    threshold-value: float,
+}
+
 export component TesterWindow inherits Window {
     title: "Live Tester";
     icon: @image-url("../assets/icon.png");
@@ -216,27 +235,15 @@ export component TesterWindow inherits Window {
     // Why there's no image's information to show
     in property <string> message: "Open a split image to compare it with the capture region, like a run would.";
     in property <[InfoCell]> info;
-    // Values in the image's name that are ignored
-    in property <string> ignored;
-    in property <string> status;
+    // What's read from the capture, set as one so clearing it can't leave a part behind
+    in property <TesterReading> reading;
     in property <image> live-image;
-    in property <string> live-message: "Open a split image to start comparing.";
     in property <image> split-image;
     in property <image> kept-image;
     in property <string> kept-caption;
     in property <string> kept-position;
     in property <bool> can-previous-kept;
     in property <bool> can-next-kept;
-    in property <string> live: "-";
-    in property <string> highest: "-";
-    in property <string> threshold: "-";
-    in property <bool> reached;
-    // The live similarity and the threshold for the meter, the similarity negative without one
-    in property <float> live-value: -1;
-    in property <float> highest-value: -1;
-    // The highest similarity reached the threshold, which stays until Start Over
-    in property <bool> highest-reached;
-    in property <float> threshold-value;
     // A message box is open, which AutoSplit's are modal
     in property <bool> blocked;
 
@@ -329,14 +336,14 @@ export component TesterWindow inherits Window {
             }
         }
 
-        if root.ignored != "": Label {
+        if root.reading.ignored != "": Label {
             height: 16px;
             color: Theme.warning;
-            text: root.ignored;
+            text: root.reading.ignored;
 
             Tooltip {
                 Tip {
-                    text: root.ignored;
+                    text: root.reading.ignored;
                 }
             }
         }
@@ -357,7 +364,7 @@ export component TesterWindow inherits Window {
                     width: 320px;
                     height: 240px;
                     source: root.live-image;
-                    message: root.live-message;
+                    message: root.reading.live-message;
                 }
             }
 
@@ -438,14 +445,14 @@ export component TesterWindow inherits Window {
 
             LiveReading {
                 width: 320px;
-                live: root.live;
-                highest: root.highest;
-                threshold: root.threshold;
-                live-value: root.live-value;
-                highest-value: root.highest-value;
-                threshold-value: root.threshold-value;
-                met: root.reached;
-                highest-met: root.highest-reached;
+                live: root.reading.live;
+                highest: root.reading.highest;
+                threshold: root.reading.threshold;
+                live-value: root.reading.live-value;
+                highest-value: root.reading.highest-value;
+                threshold-value: root.reading.threshold-value;
+                met: root.reading.reached;
+                highest-met: root.reading.highest-reached;
             }
 
             VerticalLayout {
@@ -467,7 +474,7 @@ export component TesterWindow inherits Window {
             }
 
             Label {
-                text: root.status;
+                text: root.reading.status;
             }
         }
     }

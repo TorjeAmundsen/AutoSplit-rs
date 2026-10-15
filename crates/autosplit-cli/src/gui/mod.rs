@@ -6,6 +6,7 @@ pub mod document;
 pub mod log;
 pub mod maker_plan;
 pub mod messages;
+pub mod paths;
 pub mod placement;
 pub mod preset_form;
 pub mod recorder;
@@ -217,10 +218,9 @@ pub fn file_name_parts(name: &str) -> ModelRc<NamePart> {
 
 /// The PNG images in `folder`, in the split image folder's order.
 fn png_images(folder: &Path) -> Vec<PathBuf> {
-    user_files(folder).unwrap_or_default().into_iter().filter(|path| maker_plan::is_png(path)).collect()
+    user_files(folder).unwrap_or_default().into_iter().filter(|path| paths::is_png(path)).collect()
 }
 
-/// The folder next to the executable, where AutoSplit looks for a profile on open.
 /// A picture of an update as an image for the window, or `None` to keep what it shows.
 fn shown_image(picture: Picture) -> Option<slint::Image> {
     match picture {
@@ -230,6 +230,7 @@ fn shown_image(picture: Picture) -> Option<slint::Image> {
     }
 }
 
+/// The folder next to the executable, where AutoSplit looks for a profile on open.
 fn exe_folder() -> PathBuf {
     std::env::current_exe().ok().and_then(|exe| exe.parent().map(Path::to_owned)).unwrap_or_else(|| ".".into())
 }
@@ -547,6 +548,13 @@ impl Gui {
         self.profile_edited();
     }
 
+    /// The split image folder, as the profile says, or `None` without one.
+    fn split_image_folder(&self) -> Option<PathBuf> {
+        let state = self.state.borrow();
+        let directory = &state.document.profile.split_image_directory;
+        (!directory.is_empty()).then(|| state.document.resolve(&exe_folder(), directory))
+    }
+
     /// The profile changed in a way the windows show elsewhere too.
     fn profile_edited(&self) {
         self.send_profile(false);
@@ -591,8 +599,9 @@ impl Gui {
     /// A tool window closes. Called before it's hidden.
     fn tool_closed(&self, tool: Tool) {
         self.state.borrow_mut().tools.retain(|open| *open != tool);
-        if tool == Tool::Tester {
-            self.tester_closed();
+        match tool {
+            Tool::Tester => self.tester_closed(),
+            Tool::Maker => self.maker_closed(),
         }
         self.show_tool();
     }
@@ -1166,7 +1175,7 @@ impl Gui {
                 self.show_profile();
             }
             Notice::ScreenshotSaved(path) => {
-                let name = maker_plan::file_name_text(&path).unwrap_or_default();
+                let name = paths::file_name_text(&path).unwrap_or_default();
                 self.windows.main.invoke_screenshot_saved(name.into());
             }
             Notice::Grabbed(image) => {
@@ -1487,10 +1496,7 @@ impl Gui {
         self.windows.message.set_secondary(secondary.into());
         self.windows.message.set_tertiary(tertiary.into());
         self.windows.message.set_default_button(shown.default as i32);
-        self.windows.main.set_blocked(true);
-        self.windows.settings.set_blocked(true);
-        self.windows.tester.set_blocked(true);
-        self.windows.maker.set_blocked(true);
+        self.set_all_blocked(true);
         self.show_window(self.windows.message.window());
         self.windows.message.window().with_winit_window(|window| window.set_window_level(WindowLevel::AlwaysOnTop));
         self.windows.message.invoke_focus_keys();
@@ -1521,18 +1527,23 @@ impl Gui {
         }
     }
 
+    /// The windows a message box blocks, which AutoSplit's are modal for, take no input while
+    /// one shows.
+    fn set_all_blocked(&self, blocked: bool) {
+        let windows = &self.windows;
+        windows.main.set_blocked(blocked);
+        windows.settings.set_blocked(blocked);
+        windows.tester.set_blocked(blocked);
+        windows.maker.set_blocked(blocked);
+    }
+
     /// A message box was answered with a button, or closed.
     fn message_answered(&self, button: Option<usize>) {
         let _ = self.windows.message.hide();
         let (answered, next) = self.state.borrow_mut().messages.answer(button);
         match next {
             Some(next) => self.present_message(next),
-            None => {
-                self.windows.main.set_blocked(false);
-                self.windows.settings.set_blocked(false);
-                self.windows.tester.set_blocked(false);
-                self.windows.maker.set_blocked(false);
-            }
+            None => self.set_all_blocked(false),
         }
         if let Some((answered, answer)) = answered {
             answered(answer);
