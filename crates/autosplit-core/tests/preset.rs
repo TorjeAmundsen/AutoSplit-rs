@@ -280,6 +280,20 @@ fn savestates_of_several_reset_images_get_their_place() {
     assert_eq!(names, ["0_reset.gzs", "0_reset_2.gzs", "1_Boss.gzs"]);
 }
 
+#[test_case(0 => 0..1; "a split of its own")]
+#[test_case(1 => 1..4; "the first of a group")]
+#[test_case(2 => 1..4; "one that joins")]
+#[test_case(3 => 1..4; "the last that joins")]
+#[test_case(4 => 4..5; "after a group")]
+#[test_case(9 => 5..5; "no such split")]
+fn groups_are_the_splits_compared_together(index: usize) -> std::ops::Range<usize> {
+    // Arrange
+    let preset = grouped_preset(&["A", "B", "+C", "+D", "E"]);
+
+    // Act, with the expected value checked by test_case
+    preset.group(index)
+}
+
 #[test]
 fn splits_compared_together_with_the_same_name_are_found() {
     // Arrange: written by hand, their savestate copies would get the same name

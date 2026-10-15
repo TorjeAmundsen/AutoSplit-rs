@@ -2,7 +2,7 @@
 
 use autosplit::gui::preset_form::{
     Draft, Field, InstructionText, ListChange, Problem, SplitEdit, SplitKind, field_value, instruction_cards,
-    known_game, problem_flags, problem_list, problem_summary, split_heading,
+    known_game, problem_flags, problem_list, problem_summary, saved_preset_name, split_heading,
 };
 use autosplit_core::preset::{Preset, PresetSplit};
 use test_case::test_case;
@@ -21,6 +21,16 @@ fn draft(names: &[&str]) -> Draft {
 
 fn names(draft: &Draft) -> Vec<&str> {
     draft.preset.splits.iter().map(|split| split.name.as_str()).collect()
+}
+
+#[test_case("Any%", &[], true => Some("Any%".to_owned()); "a free name")]
+#[test_case("Any%", &["any%"], true => Some("Any% (2)".to_owned()); "a copy")]
+#[test_case("Any% ", &["Any%", "Any% (2)"], true => Some("Any% (3)".to_owned()); "the next free copy")]
+#[test_case("Any%  NMS", &["any% nms"], false => None; "saved in place under a taken name")]
+#[test_case("Any%", &["100%"], false => Some("Any%".to_owned()); "saved in place")]
+fn presets_are_saved_under_names_their_game_tells_apart(name: &str, taken: &[&str], new: bool) -> Option<String> {
+    // Act, with the expected value checked by test_case
+    saved_preset_name(name, taken, new)
 }
 
 #[test]

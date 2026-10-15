@@ -169,7 +169,7 @@ impl Draft {
             Some("It's the first split, so there's no split above to compare it with.")
         } else if previous.is_some_and(PresetSplit::is_keyword) {
             Some("The split above is a start or reset image, which isn't a split to compare it with.")
-        } else if index - self.group(index - 1).start >= MAX_GROUP_SIZE {
+        } else if index - self.preset.group(index - 1).start >= MAX_GROUP_SIZE {
             Some("The splits above are already 4 compared together, the most there can be.")
         } else {
             None
@@ -220,13 +220,6 @@ impl Draft {
         }
     }
 
-    /// The splits compared together with split `index`, itself too, as the range of their indexes.
-    fn group(&self, index: usize) -> std::ops::Range<usize> {
-        let start = (0..=index).rev().find(|&first| !self.preset.joins_previous(first)).unwrap_or(0);
-        let end = (index + 1..self.preset.splits.len()).find(|&next| !self.preset.joins_previous(next));
-        start..end.unwrap_or(self.preset.splits.len())
-    }
-
     /// Makes split `index` a split, start image or reset image. Those can't be compared with the
     /// split above.
     fn set_kind(&mut self, index: usize, kind: SplitKind) {
@@ -275,7 +268,7 @@ impl Draft {
     pub fn add(&mut self, selected: Option<usize>) -> (usize, ListChange) {
         self.drop_unused_joins();
         let count = self.preset.splits.len();
-        let at = selected.filter(|&index| index < count).map_or(count, |index| self.group(index).end);
+        let at = selected.filter(|&index| index < count).map_or(count, |index| self.preset.group(index).end);
         let name = self.free_split_name();
         self.preset.splits.insert(at, new_split(&name));
         (at, ListChange::Insert(at))
@@ -287,7 +280,7 @@ impl Draft {
     pub fn duplicate(&mut self, index: usize) -> Option<(usize, ListChange)> {
         self.drop_unused_joins();
         let copy = self.preset.splits.get(index)?.clone();
-        let at = self.group(index).end;
+        let at = self.preset.group(index).end;
         self.preset.splits.insert(at, copy);
         Some((at, ListChange::Insert(at)))
     }
@@ -318,7 +311,7 @@ impl Draft {
             return None;
         }
         self.drop_unused_joins();
-        let group = self.group(index);
+        let group = self.preset.group(index);
         let inside = if up { index > group.start } else { index + 1 < group.end };
         if inside {
             let to = if up { index - 1 } else { index + 1 };
@@ -330,13 +323,13 @@ impl Draft {
             return Some((to, ListChange::Swap(index, to)));
         }
         let (start, end, left, to) = if up {
-            let before = self.group(group.start.checked_sub(1)?);
+            let before = self.preset.group(group.start.checked_sub(1)?);
             (before.start, group.end, group.start - before.start, index - before.len())
         } else {
             if group.end >= self.preset.splits.len() {
                 return None;
             }
-            let after = self.group(group.end);
+            let after = self.preset.group(group.end);
             (group.start, after.end, group.len(), index + after.len())
         };
         self.preset.splits[start..end].rotate_left(left);
@@ -391,14 +384,13 @@ impl Draft {
     fn group_problems(&self) -> Vec<(usize, Field, String)> {
         let preset = &self.preset;
         let mut problems = Vec::new();
-        let mut group_size = 0;
         for (index, split) in preset.splits.iter().enumerate() {
             if preset.keyword_place(index) > Some(MAX_GROUP_SIZE) {
                 let kind = kind_word(split);
                 problems.push((index, Field::Name, format!("A preset can have up to {MAX_GROUP_SIZE} {kind} images.")));
             }
-            group_size = if preset.joins_previous(index) { group_size + 1 } else { 1 };
-            if group_size == MAX_GROUP_SIZE + 1 {
+            // Once, on the first split past the most
+            if index - preset.group(index).start == MAX_GROUP_SIZE {
                 let message = format!("Up to {MAX_GROUP_SIZE} splits can be compared together.");
                 problems.push((index, Field::Group, message));
             }
@@ -529,6 +521,19 @@ pub fn problem_list(preset: &Preset, problems: &[Problem]) -> String {
 /// Which of `count` splits have one of `problems`, for their names in the list.
 pub fn problem_flags(problems: &[Problem], count: usize) -> Vec<bool> {
     (0..count).map(|index| problems.iter().any(|problem| problem.split == Some(index))).collect()
+}
+
+/// The name a preset named `name` is saved with, among the names of its game's other presets,
+/// `taken`: its own when that's free, else for a `new` preset the first free ` (2)`, ` (3)` and so
+/// on, like a copy. `None` for one saved in place under a taken name, which the Preset list
+/// couldn't tell apart. Names are the same ignoring case and extra spaces, like games.
+pub fn saved_preset_name(name: &str, taken: &[&str], new: bool) -> Option<String> {
+    let is_taken = |name: &str| taken.iter().any(|other| game_key(other) == game_key(name));
+    if !is_taken(name) {
+        return Some(name.to_owned());
+    }
+    let base = name.trim();
+    new.then(|| (2..).map(|n| format!("{base} ({n})")).find(|name| !is_taken(name)).expect("some number is free"))
 }
 
 /// The one of `games` that `game` is, typed in another case or with other spaces, like

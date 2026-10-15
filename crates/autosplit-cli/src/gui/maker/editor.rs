@@ -14,7 +14,7 @@ use super::super::maker_plan::{DeletedPreset, preset_after_delete};
 use super::super::messages::{Answer, Message};
 use super::super::paths::{canonical, file_name_text};
 use super::super::preset_form::{Draft, Field, ListChange, SplitEdit, SplitKind, field_value};
-use super::super::preset_form::{known_game, problem_flags, problem_list, problem_summary};
+use super::super::preset_form::{known_game, problem_flags, problem_list, problem_summary, saved_preset_name};
 use super::super::recorder::key_character;
 use super::super::ui::{SplitField, SplitForm};
 use super::{Kept, game_label, presets_folder};
@@ -514,23 +514,20 @@ impl Gui {
         }
         let in_place = source.as_ref().filter(|_| !as_new);
         // The other presets of the game, which the Preset list tells apart by name
-        let taken: Vec<String> = (maker.presets.iter())
+        let taken: Vec<&str> = (maker.presets.iter())
             .filter(|loaded| in_place.is_none_or(|folder| canonical(&loaded.folder) != canonical(folder)))
             .filter(|loaded| game_key(&loaded.preset.game) == game_key(&preset.game))
-            .map(|loaded| loaded.preset.name.trim().to_lowercase())
+            .map(|loaded| loaded.preset.name.as_str())
             .collect();
+        let name = saved_preset_name(&preset.name, &taken, in_place.is_none());
         drop(maker);
-        let is_taken = |name: &str| taken.contains(&name.trim().to_lowercase());
-        if is_taken(&preset.name) {
-            if in_place.is_some() {
+        match name {
+            Some(name) => preset.name = name,
+            None => {
                 let text =
                     format!("Another preset for {} is named {}. Give this one another name.", preset.game, preset.name);
                 return self.show_message(Message::error(text));
             }
-            // A copy, named like one
-            let base = preset.name.trim().to_owned();
-            preset.name =
-                (2..).map(|n| format!("{base} ({n})")).find(|name| !is_taken(name)).expect("some number is free");
         }
         let target = match in_place {
             Some(folder) => folder.clone(),

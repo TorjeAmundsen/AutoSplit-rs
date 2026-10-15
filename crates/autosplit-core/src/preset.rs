@@ -183,8 +183,19 @@ impl Preset {
     pub fn same_name_in_group(&self, index: usize) -> Option<usize> {
         let plain = |name: &str| name.trim().trim_end_matches(['.', ' ']).to_lowercase();
         let name = plain(&self.splits.get(index)?.name);
-        let start = (0..=index).rev().find(|&first| !self.joins_previous(first))?;
-        (start..index).find(|&other| plain(&self.splits[other].name) == name)
+        (self.group(index).start..index).find(|&other| plain(&self.splits[other].name) == name)
+    }
+
+    /// The splits compared together with split `index`, itself too, as the range of their
+    /// indexes: from the split before the ones that join it, through the last that joins.
+    pub fn group(&self, index: usize) -> std::ops::Range<usize> {
+        let count = self.splits.len();
+        if index >= count {
+            return count..count;
+        }
+        let start = (0..=index).rev().find(|&first| !self.joins_previous(first)).unwrap_or(0);
+        let end = (index + 1..count).find(|&next| !self.joins_previous(next)).unwrap_or(count);
+        start..end
     }
 
     /// The file name of a profile made for this preset: the game's initials, then the preset's

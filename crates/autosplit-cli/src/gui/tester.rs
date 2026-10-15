@@ -3,7 +3,6 @@
 
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
-use std::sync::atomic::Ordering;
 
 use slint::{ComponentHandle, SharedString};
 
@@ -91,7 +90,7 @@ impl Gui {
     /// The Live Tester closed, which `tool_closed` says.
     pub(super) fn tester_closed(&self) {
         self.send(UiCommand::CloseTester);
-        self.tester_visible.store(false, Ordering::Relaxed);
+        self.tester_seen.hidden();
         // The session's update saying it has no image is for the image that was closed, which
         // the window keeps until it opens again
         self.state.borrow_mut().tester_request += 1;

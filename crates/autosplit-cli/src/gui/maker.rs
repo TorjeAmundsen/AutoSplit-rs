@@ -422,7 +422,7 @@ impl Gui {
         // They're the window's preset's
         let _ = self.windows.instructions.window().hide();
         self.send(UiCommand::SetMakerOpen(false));
-        self.maker_visible.store(false, std::sync::atomic::Ordering::Relaxed);
+        self.maker_seen.hidden();
     }
 
     /// The first preset of the `index`th game.

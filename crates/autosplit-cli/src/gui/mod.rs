@@ -173,15 +173,10 @@ struct Gui {
     state: RefCell<State>,
     events: mpsc::Sender<Event>,
     /// Whether the main window can be seen, for the live preview.
-    visible: Arc<AtomicBool>,
-    occluded: Cell<bool>,
-    zero_size: Cell<bool>,
-    /// The same for the Live Tester's window.
-    tester_visible: Arc<AtomicBool>,
-    tester_occluded: Cell<bool>,
-    tester_zero_size: Cell<bool>,
-    /// Whether Make Split Images can be seen: open and not minimized.
-    maker_visible: Arc<AtomicBool>,
+    seen: Seen,
+    /// The same for the Live Tester's window and Make Split Images, for theirs.
+    tester_seen: Seen,
+    maker_seen: Seen,
     visibility_check: slint::Timer,
     log_flush: slint::Timer,
     log_dirty: Cell<bool>,
@@ -189,6 +184,44 @@ struct Gui {
     /// it and in front of it.
     first_messages: RefCell<Vec<Message>>,
     first_messages_fallback: slint::Timer,
+}
+
+/// Whether a window can be seen, for the previews only made while one can: shown, and not
+/// minimized, covered or sized to nothing. The flag is read by the session's thread.
+struct Seen {
+    flag: Arc<AtomicBool>,
+    occluded: Cell<bool>,
+    zero_size: Cell<bool>,
+}
+
+impl Seen {
+    fn new(flag: Arc<AtomicBool>) -> Self {
+        Self { flag, occluded: Cell::new(false), zero_size: Cell::new(false) }
+    }
+
+    /// Notes `event` when it covers or uncovers the window, or sizes it. Returns whether it did,
+    /// so the flag is worked out again.
+    fn note(&self, event: &WindowEvent) -> bool {
+        match event {
+            WindowEvent::Occluded(occluded) => self.occluded.set(*occluded),
+            // Windows minimizes to a size of 0
+            WindowEvent::Resized(size) => self.zero_size.set(size.width == 0 || size.height == 0),
+            _ => return false,
+        }
+        true
+    }
+
+    /// Works the flag out for `window`, which is `shown` or not.
+    fn refresh(&self, window: &slint::Window, shown: bool) {
+        let minimized = window.with_winit_window(|window| window.is_minimized()).flatten().unwrap_or(false);
+        let seen = shown && !minimized && !self.occluded.get() && !self.zero_size.get();
+        self.flag.store(seen, Ordering::Relaxed);
+    }
+
+    /// The window closed.
+    fn hidden(&self) {
+        self.flag.store(false, Ordering::Relaxed);
+    }
 }
 
 thread_local! {
@@ -409,13 +442,9 @@ pub fn run(options: Options) -> Result<(), Error> {
             tools: Vec::new(),
         }),
         events: events.clone(),
-        visible: visible.clone(),
-        occluded: Cell::new(false),
-        zero_size: Cell::new(false),
-        tester_visible: tester_visible.clone(),
-        maker_visible: maker_visible.clone(),
-        tester_occluded: Cell::new(false),
-        tester_zero_size: Cell::new(false),
+        seen: Seen::new(visible.clone()),
+        tester_seen: Seen::new(tester_visible.clone()),
+        maker_seen: Seen::new(maker_visible.clone()),
         visibility_check: slint::Timer::default(),
         log_flush: slint::Timer::default(),
         log_dirty: Cell::new(false),
@@ -792,15 +821,7 @@ impl Gui {
                         gui.show_first_messages();
                     }
                 }
-                WindowEvent::Occluded(occluded) => {
-                    gui.occluded.set(*occluded);
-                    gui.update_visibility();
-                }
-                // Windows minimizes to a size of 0
-                WindowEvent::Resized(size) => {
-                    gui.zero_size.set(size.width == 0 || size.height == 0);
-                    gui.update_visibility();
-                }
+                event if gui.seen.note(event) => gui.update_visibility(),
                 _ => {}
             }
             EventResult::Propagate
@@ -820,14 +841,7 @@ impl Gui {
                 {
                     return EventResult::PreventDefault;
                 }
-                WindowEvent::Occluded(occluded) => {
-                    gui.tester_occluded.set(*occluded);
-                    gui.update_visibility();
-                }
-                WindowEvent::Resized(size) => {
-                    gui.tester_zero_size.set(size.width == 0 || size.height == 0);
-                    gui.update_visibility();
-                }
+                event if gui.tester_seen.note(event) => gui.update_visibility(),
                 _ => {}
             }
             EventResult::Propagate
@@ -849,6 +863,7 @@ impl Gui {
                 {
                     return EventResult::PreventDefault;
                 }
+                event if gui.maker_seen.note(event) => gui.update_visibility(),
                 _ => {}
             }
             EventResult::Propagate
@@ -867,17 +882,12 @@ impl Gui {
     }
 
     fn update_visibility(&self) {
-        let minimized = |window: &slint::Window| {
-            window.with_winit_window(|window| window.is_minimized()).flatten().unwrap_or(false)
-        };
-        let main = self.windows.main.window();
-        self.visible.store(!minimized(main) && !self.zero_size.get() && !self.occluded.get(), Ordering::Relaxed);
+        // The main window is the program, so it counts as shown
+        self.seen.refresh(self.windows.main.window(), true);
         let tester = self.windows.tester.window();
-        let tester_visible =
-            tester.is_visible() && !minimized(tester) && !self.tester_zero_size.get() && !self.tester_occluded.get();
-        self.tester_visible.store(tester_visible, Ordering::Relaxed);
+        self.tester_seen.refresh(tester, tester.is_visible());
         let maker = self.windows.maker.window();
-        self.maker_visible.store(maker.is_visible() && !minimized(maker), Ordering::Relaxed);
+        self.maker_seen.refresh(maker, maker.is_visible());
     }
 
     fn hide_all(&self) {
