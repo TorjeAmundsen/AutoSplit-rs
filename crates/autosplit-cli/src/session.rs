@@ -921,10 +921,14 @@ impl Session {
     fn grab(&mut self) {
         let frame = self.device.latest().filter(|_| self.device.receiving());
         let image = match frame {
-            None => Err("There's no capture to grab. Check the capture device in the settings.".into()),
+            None => Err("There's no capture to grab. Check the capture device in Settings (Ctrl+,).".into()),
             Some(frame) => match frame.region_view(&self.profile.capture_region) {
                 Some(view) if !view.is_empty() => Ok(view.to_image()),
-                _ => Err("The capture region is empty or outside the capture.".into()),
+                _ => {
+                    Err("The capture region is empty or outside the capture. Close this window to set X, Y, Width and \
+                          Height in the main window."
+                        .into())
+                }
             },
         };
         self.notify(Notice::Grabbed(image));

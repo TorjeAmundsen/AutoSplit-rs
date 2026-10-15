@@ -635,7 +635,8 @@ impl Gui {
         on!(main weak, main, on_next_image, () gui => gui.send(UiCommand::NextImage));
         on!(main weak, main, on_previous_image, () gui => gui.send(UiCommand::PreviousImage));
         on!(main weak, main, on_reload_split_images, () gui => gui.send(UiCommand::ReloadSplitImages));
-        on!(main weak, main, on_open_settings, () gui => gui.open_settings());
+        // Also beside a tool window, which may need the capture device or grouping changed
+        on!(weak, main, on_open_settings, () gui => gui.open_settings());
         on!(main weak, main, on_open_tester, () gui => gui.open_tester());
         on!(main weak, main, on_open_maker, () gui => gui.open_maker());
         on!(main weak, main, on_save_profile, () gui => gui.save_profile(false, None));
@@ -788,12 +789,19 @@ impl Gui {
         });
 
         let weak = self.me.clone();
+        let mut held = Modifiers::empty();
         self.windows.tester.window().on_winit_window_event(move |_, event| {
             let Some(gui) = weak.upgrade() else { return EventResult::Propagate };
             if gui.swallowed_while_blocked(event) {
                 return EventResult::PreventDefault;
             }
             match event {
+                WindowEvent::ModifiersChanged(modifiers) => held = modifiers_held(modifiers.state()),
+                WindowEvent::KeyboardInput { event, .. }
+                    if event.state == ElementState::Pressed && gui.tool_shortcut(event, held) =>
+                {
+                    return EventResult::PreventDefault;
+                }
                 WindowEvent::Occluded(occluded) => {
                     gui.tester_occluded.set(*occluded);
                     gui.update_visibility();
@@ -818,7 +826,8 @@ impl Gui {
             match event {
                 WindowEvent::ModifiersChanged(modifiers) => held = modifiers_held(modifiers.state()),
                 WindowEvent::KeyboardInput { event, .. }
-                    if event.state == ElementState::Pressed && gui.editor_shortcut(event, held) =>
+                    if event.state == ElementState::Pressed
+                        && (gui.editor_shortcut(event, held) || gui.tool_shortcut(event, held)) =>
                 {
                     return EventResult::PreventDefault;
                 }
@@ -886,6 +895,17 @@ impl Gui {
             (false, _, _, Key::Named(NamedKey::F1)) => self.open(TUTORIAL_URL),
             _ => return false,
         }
+        true
+    }
+
+    /// The shortcuts of the main window that work in a tool window too: Ctrl+, for Settings,
+    /// which can be open beside it. Returns whether the key was one.
+    fn tool_shortcut(&self, event: &KeyEvent, held: Modifiers) -> bool {
+        let comma = key_character(event) == Some(',');
+        if self.blocked() || held != Modifiers::CONTROL || !comma {
+            return false;
+        }
+        self.open_settings();
         true
     }
 

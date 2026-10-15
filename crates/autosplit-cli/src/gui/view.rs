@@ -376,8 +376,10 @@ impl GuiView {
 /// Shown instead of the capture when the profile has no capture device.
 pub const NO_DEVICE: &str = "No capture device. Pick one in File > Settings.";
 
-/// `NO_DEVICE` in a tool window, which the main window's menu can't be used beside.
-pub const NO_DEVICE_IN_TOOL: &str = "No capture device. Close this window, then pick one in File > Settings.";
+/// `NO_DEVICE` in a tool window, which the main window's menu can't be used beside, but Settings
+/// can be opened from.
+pub const NO_DEVICE_IN_TOOL: &str =
+    "No capture device. Pick one in Settings (Ctrl+, or the Settings button in the main window).";
 
 /// The capture region of the newest frame, unless `shown` is that frame already, or why there's
 /// none.

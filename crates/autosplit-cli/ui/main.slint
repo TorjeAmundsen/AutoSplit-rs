@@ -609,12 +609,13 @@ export component MainWindow inherits Window {
 
             Text {
                 horizontal-alignment: center;
-                text: "Close it to use this window.";
+                text: "Close it to use this window, or open Settings beside it.";
                 color: Theme.text;
             }
 
             HorizontalLayout {
                 alignment: center;
+                spacing: 6px;
 
                 Button {
                     width: 160px;
@@ -622,6 +623,20 @@ export component MainWindow inherits Window {
                     text: "Close " + root.tool;
                     enabled: !root.blocked;
                     clicked => { root.close-tool(); }
+                }
+
+                Button {
+                    width: 90px;
+                    height: 27px;
+                    text: "Settings";
+                    enabled: !root.blocked;
+                    clicked => { root.open-settings(); }
+
+                    Tooltip {
+                        Tip {
+                            text: "Open Settings beside the tool window, like File > Settings and Ctrl+, do";
+                        }
+                    }
                 }
             }
 

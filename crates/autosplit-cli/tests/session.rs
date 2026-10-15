@@ -370,7 +370,7 @@ fn live_tester_with_an_unusable_image_shows_a_dialog() {
     );
 }
 
-const NO_CAPTURE: &str = "grabbed Err(\"There's no capture to grab. Check the capture device in the settings.\")";
+const NO_CAPTURE: &str = "grabbed Err(\"There's no capture to grab. Check the capture device in Settings (Ctrl+,).\")";
 
 #[test]
 fn grab_without_a_capture_says_so() {

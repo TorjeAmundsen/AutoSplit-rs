@@ -680,6 +680,7 @@ impl Gui {
     fn turn_on_grouping(&self) {
         self.state.borrow_mut().document.profile.group_split_images = true;
         self.profile_edited();
+        self.windows.maker.set_status("Grouping is on. Save the profile to keep it.".into());
     }
 
     /// Shows what the profile decides in the window when it changes while the window is open,
