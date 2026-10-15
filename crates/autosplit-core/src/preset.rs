@@ -238,6 +238,13 @@ pub struct LibrarySplit {
     pub base_image: String,
 }
 
+/// The keys a preset's `[[split]]` table can have, which are [`PresetSplit`]'s fields.
+pub const SPLIT_KEYS: &[&str] =
+    &["name", "with_previous", "mask", "threshold", "pause", "delay", "dummy", "below", "savestate", "instructions"];
+
+/// The keys a splits library's `[[split]]` table can have besides [`SPLIT_KEYS`].
+const LIBRARY_SPLIT_KEYS: &[&str] = &["description", "base_image"];
+
 fn is_default<T: Default + PartialEq>(value: &T) -> bool {
     *value == T::default()
 }
@@ -275,12 +282,27 @@ pub struct LoadedLibrary {
     pub library: SplitLibrary,
 }
 
-/// Reads TOML with `[[split]]` tables, which presets and libraries have and profiles don't.
-fn parse_with_splits<T: serde::de::DeserializeOwned>(text: &str, path: &Path) -> Result<T, PresetError> {
+/// Reads TOML with `[[split]]` tables, which presets and libraries have and profiles don't. A
+/// split's key that isn't in `split_keys` is an error, like a misspelled `treshold`: it would
+/// otherwise be left out without a word, and gone from the file once the preset is saved.
+fn parse_with_splits<T: serde::de::DeserializeOwned>(
+    text: &str,
+    path: &Path,
+    split_keys: &[&[&str]],
+) -> Result<T, PresetError> {
     let invalid = |reason: String| PresetError::Invalid { path: path.to_owned(), reason };
     let table: toml::Table = text.parse().map_err(|error: toml::de::Error| invalid(error.message().to_owned()))?;
-    if !table.get("split").is_some_and(toml::Value::is_array) {
+    let Some(splits) = table.get("split").and_then(toml::Value::as_array) else {
         return Err(PresetError::NotAPreset { path: path.to_owned() });
+    };
+    let known = |key: &str| split_keys.iter().any(|keys| keys.contains(&key));
+    for (index, split) in splits.iter().enumerate() {
+        let Some(split) = split.as_table() else { continue };
+        if let Some(key) = split.keys().find(|key| !known(key)) {
+            let name = split.get("name").and_then(toml::Value::as_str).unwrap_or_default();
+            let keys = split_keys.concat().join(", ");
+            return Err(invalid(format!("split {} ({name}) has `{key}`, which isn't one of {keys}", index + 1)));
+        }
     }
     toml::from_str(text).map_err(|error| invalid(error.message().to_owned()))
 }
@@ -297,7 +319,7 @@ impl Preset {
 
     /// `path` is only for the errors.
     pub fn parse(text: &str, path: &Path) -> Result<Self, PresetError> {
-        parse_with_splits(text, path)
+        parse_with_splits(text, path, &[SPLIT_KEYS])
     }
 
     pub fn to_toml(&self) -> String {
@@ -307,7 +329,7 @@ impl Preset {
 
 impl SplitLibrary {
     pub fn load(path: &Path) -> Result<Self, PresetError> {
-        parse_with_splits(&read(path)?, path)
+        parse_with_splits(&read(path)?, path, &[SPLIT_KEYS, LIBRARY_SPLIT_KEYS])
     }
 }
 

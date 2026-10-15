@@ -7,7 +7,9 @@ use autosplit_core::filename::{
     flags_from_filename, pause_from_filename, threshold_from_filename,
 };
 use autosplit_core::image::BgraImage;
-use autosplit_core::preset::{PRESET_FILE, Preset, PresetError, PresetSplit, game_key, load_libraries, load_presets};
+use autosplit_core::preset::{
+    PRESET_FILE, Preset, PresetError, PresetSplit, SPLIT_KEYS, game_key, load_libraries, load_presets,
+};
 use autosplit_core::profile::{ProfileError, UserProfile};
 use autosplit_core::split_folder::{ValidationContext, load_split_folder};
 use autosplit_core::split_image::SplitDefaults;
@@ -119,6 +121,49 @@ fn a_preset_isnt_a_profile() {
 
     // Assert
     assert_eq!(parsed, Err(ProfileError::SplitImagePreset));
+}
+
+#[test]
+fn a_split_key_presets_dont_have_is_an_error() {
+    // Arrange: a misspelled threshold, which would be left out and then lost on saving
+    let text = "name = \"Any%\"\n\n[[split]]\nname = \"Deku\"\nmask = \"deku.png\"\ntreshold = 0.9\n";
+
+    // Act
+    let parsed = Preset::parse(text, Path::new("preset.toml"));
+
+    // Assert
+    let Err(PresetError::Invalid { reason, .. }) = parsed else { panic!("{parsed:?}") };
+    assert!(reason.starts_with("split 1 (Deku) has `treshold`"), "{reason}");
+}
+
+#[test]
+fn split_keys_are_the_fields_of_a_split() {
+    // Arrange: every field set, so each is written
+    let split = PresetSplit {
+        name: "Deku".into(),
+        with_previous: true,
+        mask: "deku.png".into(),
+        threshold: Some(0.9),
+        pause: Some(1.0),
+        delay: Some(100),
+        dummy: true,
+        below: true,
+        savestate: "deku.gzs".into(),
+        instructions: "Load it".into(),
+    };
+    let preset = Preset { name: "Any%".into(), splits: vec![split.clone()], ..Preset::default() };
+
+    // Act
+    let written: toml::Table = preset.to_toml().parse().unwrap();
+
+    // Assert
+    let table = written["split"].as_array().unwrap()[0].as_table().unwrap();
+    let mut keys: Vec<&str> = table.keys().map(String::as_str).collect();
+    let mut expected = SPLIT_KEYS.to_vec();
+    keys.sort_unstable();
+    expected.sort_unstable();
+    assert_eq!(keys, expected);
+    assert_eq!(Preset::parse(&preset.to_toml(), Path::new("")).unwrap().splits, vec![split]);
 }
 
 #[test]
