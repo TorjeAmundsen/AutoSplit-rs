@@ -776,7 +776,8 @@ export component MakerWindow inherits Window {
             height: 24px;
             spacing: 6px;
 
-            if root.preset-problem == "" && !root.needs-grouping: Label {
+            // Also beside the grouping warning, which is short so what was done still shows
+            if root.preset-problem == "": Label {
                 horizontal-stretch: 1;
                 text: root.status;
             }
@@ -802,13 +803,12 @@ export component MakerWindow inherits Window {
             }
 
             if root.preset-problem == "" && root.needs-grouping: Label {
-                horizontal-stretch: 1;
                 color: Theme.error;
-                text: "This preset compares several images for one split, which the profile has turned off.";
+                text: "The profile has grouping off.";
 
                 Tooltip {
                     Tip {
-                        text: "Some splits are compared together, or there are several reset or start images. The split image folder only loads like that with Compare images with the same number for one split turned on in Settings.";
+                        text: "This preset compares several images for one split: some splits are compared together, or there are several reset or start images. The split image folder only loads like that with Compare images with the same number for one split turned on in Settings.";
                     }
                 }
             }

@@ -587,6 +587,8 @@ export component MainWindow inherits Window {
 
     if root.blocked || root.tool != "": TouchArea {
         clicked => { root.blocked-clicked(); }
+        // A spin box under it would take the wheel and show a value the profile doesn't get
+        scroll-event(event) => { accept }
     }
 
     // Dimmed while a tool window is open, so it's clear why nothing here responds

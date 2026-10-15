@@ -231,6 +231,11 @@ fn main() {
     maker.set_can_grab(true);
     maker.invoke_split_images_saved();
     save(&window, PhysicalSize::new(828, 672), &folder.join("maker-saved.png"));
+    // What was done still shows beside the grouping warning
+    maker.set_needs_grouping(true);
+    maker.set_status("Copied 3 savestates to the clipboard.".into());
+    save(&window, PhysicalSize::new(828, 672), &folder.join("maker-grouping.png"));
+    maker.set_needs_grouping(false);
     // Enough splits to scroll, which puts the scroll bar over the rows' right side
     let many: Vec<MakerRow> = (0..14)
         .map(|index| {
@@ -294,6 +299,12 @@ fn main() {
     // Without the savestate note, all of the form fits
     maker.set_form(SplitForm { savestate_copied: false, ..maker.get_form() });
     save(&window, PhysicalSize::new(828, 672), &folder.join("maker-edit-plain.png"));
+    // Compared with the split above while the profile has grouping off
+    maker.set_with_previous(true);
+    maker.set_form(SplitForm { grouping_off: true, ..maker.get_form() });
+    save(&window, PhysicalSize::new(828, 672), &folder.join("maker-edit-grouping.png"));
+    maker.set_with_previous(false);
+    maker.set_form(SplitForm { grouping_off: false, ..maker.get_form() });
     maker.set_form(SplitForm { savestate_copied: true, ..maker.get_form() });
     // A new split's mask and savestate, both copied in on save
     maker.set_form(SplitForm { mask_copied: true, ..maker.get_form() });

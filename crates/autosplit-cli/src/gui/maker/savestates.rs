@@ -48,13 +48,11 @@ impl Gui {
             clipboard.as_mut().map(|clipboard| clipboard.clear().and_then(|()| clipboard.set().file_list(&copied)));
         drop(clipboard);
         let status = match set {
-            Some(Ok(())) => format!("Copied {} savestates to the clipboard.", copied.len()),
+            Some(Ok(())) => format!("Copied {} to the clipboard.", plural(copied.len(), "savestate")),
             _ => {
                 self.open(&folder.display().to_string());
-                format!(
-                    "The clipboard can't take files here, so the {} savestates are in the folder that opened.",
-                    copied.len()
-                )
+                let copied = plural(copied.len(), "savestate");
+                format!("The clipboard can't take files here, so the folder with the {copied} opened.")
             }
         };
         self.windows.maker.set_status(status.into());
