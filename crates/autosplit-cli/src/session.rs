@@ -471,7 +471,7 @@ impl Session {
                     wake = wake.min(due - PRECISE_LEAD);
                 }
             }
-            self.timer.set(precise);
+            self.timer.set(precise, self.runner.next_wakeup().is_some());
             match receiver.recv_timeout(wake.saturating_duration_since(Instant::now())) {
                 Ok(event) => self.handle(event),
                 Err(RecvTimeoutError::Timeout) => {}

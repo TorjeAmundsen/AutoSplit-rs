@@ -34,6 +34,10 @@ pub fn leave_own_console() {
 /// up to its timer tick (15.6 ms by default), which would make comparisons uneven and splits
 /// late, and macOS's App Nap stretches them while the window is hidden. The precision costs a
 /// little power, so it's only asked for while comparing.
+///
+/// On macOS it's also kept while a split waits out a delay or pause, when nothing is compared:
+/// App Nap would otherwise stretch the wait until just before it ends, from which precision is
+/// asked for, by seconds, and the split or the next comparison would come late.
 #[derive(Default)]
 pub struct PreciseTimer {
     #[cfg_attr(not(windows), allow(dead_code))]
@@ -48,7 +52,9 @@ use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
 
 impl PreciseTimer {
-    pub fn set(&mut self, precise: bool) {
+    /// `precise` while comparing and just before the run's next wakeup, `waiting` while the run
+    /// waits for one at all, like during a delay or pause.
+    pub fn set(&mut self, precise: bool, waiting: bool) {
         #[cfg(windows)]
         if precise != self.active {
             use windows::Win32::Media::{timeBeginPeriod, timeEndPeriod};
@@ -61,6 +67,10 @@ impl PreciseTimer {
             }
             self.active = precise;
         }
+        #[cfg(target_os = "macos")]
+        let precise = precise || waiting;
+        #[cfg(not(target_os = "macos"))]
+        let _ = waiting;
         #[cfg(target_os = "macos")]
         if precise != self.activity.is_some() {
             use objc2_foundation::{NSActivityOptions, NSProcessInfo, NSString};
@@ -83,7 +93,7 @@ impl PreciseTimer {
 
 impl Drop for PreciseTimer {
     fn drop(&mut self) {
-        self.set(false);
+        self.set(false, false);
     }
 }
 
