@@ -147,13 +147,18 @@ export component MakerWindow inherits Window {
     // Selects split `index`, scrolled into view
     public function pick(index: int) {
         root.selected = index;
+        root.scroll-to(index);
+        root.split-chosen(index);
+    }
+
+    // Scrolls split `index` into view, like after it's added or moved
+    public function scroll-to(index: int) {
         if (index * root.row-height < -list.content-y) {
             list.content-y = -index * root.row-height;
         }
         if ((index + 1) * root.row-height > -list.content-y + list.visible-height) {
             list.content-y = -((index + 1) * root.row-height - list.visible-height);
         }
-        root.split-chosen(index);
     }
     callback grab();
     callback use-screenshots();

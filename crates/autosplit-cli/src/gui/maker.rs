@@ -460,6 +460,8 @@ impl Gui {
         self.maker.borrow_mut().live_mask = None;
         self.show_form();
         self.show_maker();
+        // Once the list has its rows, so a split just added or moved isn't left out of view
+        self.windows.maker.invoke_scroll_to(index as i32);
         self.refresh_instructions();
     }
 
