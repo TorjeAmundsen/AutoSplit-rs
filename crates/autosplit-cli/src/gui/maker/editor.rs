@@ -106,8 +106,8 @@ impl Gui {
         }
     }
 
-    /// Escape cancels editing, Ctrl+S saves, Ctrl+Z brings back a removed split and Alt+Up and
-    /// Alt+Down move the selected split, like the buttons. Returns whether the key was one of them.
+    /// Escape cancels editing, Ctrl+S saves, Ctrl+Z brings back a removed split, Alt+Up and
+    /// Alt+Down move the selected split, like the buttons, and F8 goes to the next problem. Returns whether the key was one of them.
     pub(in crate::gui) fn editor_shortcut(self: &Rc<Self>, event: &KeyEvent, held: Modifiers) -> bool {
         if !self.editing() {
             return false;
@@ -119,6 +119,8 @@ impl Gui {
                 let selected = self.selected_split();
                 self.change_splits(|draft| draft.move_split(selected?, up));
             }
+            // To the next split with a problem, like clicking the problem line; held, it goes on
+            (Key::Named(NamedKey::F8), held) if held.is_empty() => self.windows.maker.invoke_next_problem(),
             _ if event.repeat => return false,
             // An open dropdown list closes first
             (Key::Named(NamedKey::Escape), held) if held.is_empty() && !self.windows.maker.get_list_showing() => {

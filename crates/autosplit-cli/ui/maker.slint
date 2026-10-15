@@ -147,6 +147,15 @@ export component MakerWindow inherits Window {
     // The form's labels, so the fields line up
     property <length> label-width: 88px;
 
+    // Goes to the next split with a problem, from the problem line or F8
+    public function next-problem() {
+        if (root.problem-split >= 0) {
+            // Like clicking the list: a field being typed in commits first
+            list-keys.focus();
+            root.pick(root.problem-split);
+        }
+    }
+
     // Selects split `index`, scrolled into view
     public function pick(index: int) {
         root.selected = index;
@@ -932,16 +941,12 @@ export component MakerWindow inherits Window {
                 TouchArea {
                     enabled: root.problem-split >= 0;
                     mouse-cursor: self.enabled ? MouseCursor.pointer : MouseCursor.default;
-                    clicked => {
-                        // Like clicking the list: a field being typed in commits first
-                        list-keys.focus();
-                        root.pick(root.problem-split);
-                    }
+                    clicked => { root.next-problem(); }
                 }
 
                 Tooltip {
                     Tip {
-                        text: root.problem-list;
+                        text: root.problem-list + (root.problem-split >= 0 ? "\n\nClick or press F8 to go to the next split with a problem. Ctrl+S lists them all." : "");
                     }
                 }
             }
