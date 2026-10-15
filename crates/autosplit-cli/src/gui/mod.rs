@@ -1465,9 +1465,14 @@ impl Gui {
         });
     }
 
-    /// A file dialog in front of the main window.
+    /// A file dialog in front of the main window, or of Settings while it has the focus, like for
+    /// its Browse... button or Save Profile's shortcut there. On macOS a dialog is a sheet on the
+    /// window it's in front of, so on the main window it could open behind Settings.
     fn file_dialog(&self, title: &str) -> rfd::AsyncFileDialog {
-        self.file_dialog_over(title, self.windows.main.window())
+        let settings = &self.windows.settings;
+        let in_settings = settings.window().is_visible() && settings.global::<WindowFocus>().get_active();
+        let window = if in_settings { settings.window() } else { self.windows.main.window() };
+        self.file_dialog_over(title, window)
     }
 
     /// A file dialog in front of `window`.
