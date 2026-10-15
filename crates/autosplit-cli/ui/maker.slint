@@ -4,6 +4,7 @@
 
 import { CheckBox, ScrollView } from "std-widgets.slint";
 import { Button, ClickAway, ComboBox, FileName, Keys, Label, NamePart, OpenList, Preview, SavedCheck, TextField, Theme, Tip } from "widgets.slint";
+import { InlineMessage, MessageOverlay } from "message.slint";
 import { SplitField, SplitForm, SplitFormPanel, SplitValues } from "split_form.slint";
 
 export { SplitField, SplitForm, SplitValues }
@@ -68,6 +69,10 @@ export component MakerWindow inherits Window {
     in property <string> preset-problem;
     // A message box is open, which AutoSplit's are modal
     in property <bool> blocked;
+    // A message box drawn in the window, under Wayland, instead of the message window
+    in property <InlineMessage> inline-message;
+    // Its button, or -1 for closing it
+    callback inline-answered(int);
 
     // Editing the preset instead of making its split images
     in property <bool> editing;
@@ -830,5 +835,11 @@ export component MakerWindow inherits Window {
 
     if root.blocked: TouchArea {
         clicked => { root.blocked-clicked(); }
+    }
+
+    // Last, over everything else
+    if root.inline-message.shown: MessageOverlay {
+        message: root.inline-message;
+        answered(button) => { root.inline-answered(button); }
     }
 }

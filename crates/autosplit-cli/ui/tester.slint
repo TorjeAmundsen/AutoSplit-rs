@@ -2,6 +2,7 @@
 // frames that would have made it act.
 
 import { Button, ClickAway, FileName, Label, NamePart, Preview, Theme, Tip } from "widgets.slint";
+import { InlineMessage, MessageOverlay } from "message.slint";
 
 // How far the live similarity is from the threshold: a bar filled up to the similarity, a tick at
 // the highest, and a mark at the threshold where the green part starts.
@@ -248,6 +249,10 @@ export component TesterWindow inherits Window {
     in property <bool> can-next-kept;
     // A message box is open, which AutoSplit's are modal
     in property <bool> blocked;
+    // A message box drawn in the window, under Wayland, instead of the message window
+    in property <InlineMessage> inline-message;
+    // Its button, or -1 for closing it
+    callback inline-answered(int);
 
     callback open-image();
     callback previous-image();
@@ -450,5 +455,11 @@ export component TesterWindow inherits Window {
 
     if root.blocked: TouchArea {
         clicked => { root.blocked-clicked(); }
+    }
+
+    // Last, over everything else
+    if root.inline-message.shown: MessageOverlay {
+        message: root.inline-message;
+        answered(button) => { root.inline-answered(button); }
     }
 }

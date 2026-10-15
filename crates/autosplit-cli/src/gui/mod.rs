@@ -43,8 +43,8 @@ use self::placement::{Area, centered_over};
 use self::recorder::{PRIMARY, key_character, modifiers_held, pressed_key};
 use self::settings_form::SettingEdit;
 use self::ui::{
-    AboutWindow, HotkeyRow, InfoCell, InstructionsWindow, LogWindow, MainWindow, MakerRow, MakerWindow, MessageWindow,
-    NameKind, NamePart, Setting, SettingsWindow, SimilarityRow, TesterWindow, WindowFocus,
+    AboutWindow, HotkeyRow, InfoCell, InlineMessage, InstructionsWindow, LogWindow, MainWindow, MakerRow, MakerWindow,
+    MessageWindow, NameKind, NamePart, Setting, SettingsWindow, SimilarityRow, TesterWindow, WindowFocus,
 };
 use self::view::{GuiView, Picture, Update};
 use crate::console::Console;
@@ -786,6 +786,12 @@ impl Gui {
             }
         });
         on!(always weak, message, on_answered, (button) gui => gui.message_answered(Some(button as usize)));
+        // The same message box, drawn in the windows it blocks under Wayland
+        let windows = &self.windows;
+        on!(always weak, windows.main, on_inline_answered, (button) gui => gui.message_answered(usize::try_from(button).ok()));
+        on!(always weak, windows.settings, on_inline_answered, (button) gui => gui.message_answered(usize::try_from(button).ok()));
+        on!(always weak, windows.tester, on_inline_answered, (button) gui => gui.message_answered(usize::try_from(button).ok()));
+        on!(always weak, windows.maker, on_inline_answered, (button) gui => gui.message_answered(usize::try_from(button).ok()));
         on!(always weak, message, on_dismissed, () gui => gui.message_answered(None));
         on!(always weak, message.window(), on_close_requested, () gui => {
             gui.message_answered(None);
@@ -858,6 +864,9 @@ impl Gui {
         let weak = self.me.clone();
         self.windows.main.window().on_winit_window_event(move |_, event| {
             let Some(gui) = weak.upgrade() else { return EventResult::Propagate };
+            if gui.inline_message_key(event) {
+                return EventResult::PreventDefault;
+            }
             match event {
                 WindowEvent::Focused(focused) => {
                     gui.windows.main.global::<WindowFocus>().set_active(*focused);
@@ -1546,6 +1555,18 @@ impl Gui {
 
     fn present_message(&self, shown: messages::Shown) {
         let [primary, secondary, tertiary] = shown.labels;
+        if self.messages_inline() {
+            self.show_inline_message(InlineMessage {
+                shown: true,
+                title: shown.buttons.title().into(),
+                message: shown.text.into(),
+                primary: primary.into(),
+                secondary: secondary.into(),
+                tertiary: tertiary.into(),
+                default_button: shown.default as i32,
+            });
+            return self.set_all_blocked(true);
+        }
         self.windows.message.set_window_title(shown.buttons.title().into());
         self.windows.message.set_message(shown.text.into());
         self.windows.message.set_primary(primary.into());
@@ -1560,7 +1581,53 @@ impl Gui {
     }
 
     fn focus_message(&self) {
-        self.windows.message.window().with_winit_window(|window| window.focus_window());
+        // Drawn in every window it blocks, so it's in front already
+        if !self.messages_inline() {
+            self.windows.message.window().with_winit_window(|window| window.focus_window());
+        }
+    }
+
+    /// Whether message boxes are drawn inside the windows they block instead of in a window of
+    /// their own: under Wayland, where a window can't be kept in front or brought there, so the
+    /// message window could end up behind the windows it blocks, which would look frozen.
+    fn messages_inline(&self) -> bool {
+        #[cfg(target_os = "linux")]
+        {
+            use slint::winit_030::winit::raw_window_handle::{HasDisplayHandle, RawDisplayHandle};
+            let display = self.windows.main.window().with_winit_window(|window| {
+                window.display_handle().is_ok_and(|handle| matches!(handle.as_raw(), RawDisplayHandle::Wayland(_)))
+            });
+            return display.unwrap_or(false);
+        }
+        #[allow(unreachable_code)]
+        false
+    }
+
+    /// Shows `message` in every window a message box blocks, or hides it there.
+    fn show_inline_message(&self, message: InlineMessage) {
+        let windows = &self.windows;
+        windows.main.set_inline_message(message.clone());
+        windows.settings.set_inline_message(message.clone());
+        windows.tester.set_inline_message(message.clone());
+        windows.maker.set_inline_message(message);
+    }
+
+    /// Enter and Escape answer a message box drawn in the window, like the message window's, and
+    /// other keys don't reach the window under it. Returns whether `event` was a key for it.
+    fn inline_message_key(&self, event: &WindowEvent) -> bool {
+        let message = self.windows.main.get_inline_message();
+        let WindowEvent::KeyboardInput { event, .. } = event else { return false };
+        if !message.shown {
+            return false;
+        }
+        if event.state == ElementState::Pressed && !event.repeat {
+            match event.logical_key {
+                Key::Named(NamedKey::Enter) => self.message_answered(usize::try_from(message.default_button).ok()),
+                Key::Named(NamedKey::Escape) => self.message_answered(None),
+                _ => {}
+            }
+        }
+        true
     }
 
     /// While a message box is open, keys, typed text and scrolling don't reach the windows under
@@ -1571,7 +1638,13 @@ impl Gui {
         if !self.blocked() {
             return false;
         }
+        if self.inline_message_key(event) {
+            return true;
+        }
         match event {
+            // A long message drawn in the window scrolls, and its backdrop keeps the wheel from
+            // the window under it
+            WindowEvent::MouseWheel { .. } if self.windows.main.get_inline_message().shown => false,
             WindowEvent::KeyboardInput { event, .. } => {
                 if event.state == ElementState::Pressed {
                     self.focus_message();
@@ -1599,7 +1672,10 @@ impl Gui {
         let (answered, next) = self.state.borrow_mut().messages.answer(button);
         match next {
             Some(next) => self.present_message(next),
-            None => self.set_all_blocked(false),
+            None => {
+                self.show_inline_message(InlineMessage::default());
+                self.set_all_blocked(false);
+            }
         }
         if let Some((answered, answer)) = answered {
             answered(answer);

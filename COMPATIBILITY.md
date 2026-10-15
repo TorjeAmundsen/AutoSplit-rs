@@ -78,6 +78,7 @@ Capture and hotkeys:
 - When two hotkeys are the same, the first one keeps it and a warning is logged. Combos register before single keys. AutoSplit clears all but the last one from the profile.
 - With `--auto-controlled`, the screenshot and toggle auto reset image hotkeys from the profile work. AutoSplit only has them work once set again in the settings window.
 - With `--auto-controlled`, `autosplit` exits when LiveSplit closes its input. AutoSplit keeps running.
+- Under Wayland, message boxes are drawn inside the windows they block instead of in a window of their own, since Wayland doesn't let a program keep a window in front. Elsewhere they're separate windows on top, like AutoSplit's.
 - Hotkey names follow the keyboard layout on Windows, including localized key names, like AutoSplit. On Linux and macOS they follow the US layout, and Set Hotkey names a key by where it is on a US keyboard, so the key pressed is the key listened for on any layout.
 - Navigation keys (`home`, `end`, `up`, ...) only fire for those keys, not for the numpad keys that double as them with Num Lock off. `num 7` fires whatever the Num Lock state. AutoSplit tells them apart by Num Lock state, which livesplit-hotkey doesn't report.
 - OBS Virtual Camera's "not started" placeholder frames are skipped and the last real frame stays current. After a second of them, `autosplit` says OBS Virtual Camera isn't started. AutoSplit tries to skip them too, but checks for a color they don't convert to in OpenCV 4.11, so it compares the gray placeholder.

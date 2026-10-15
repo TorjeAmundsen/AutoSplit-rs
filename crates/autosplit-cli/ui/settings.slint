@@ -2,6 +2,7 @@
 
 import { CheckBox } from "std-widgets.slint";
 import { Button, ClickAway, ComboBox, Label, SpinBox, TabFrame, TextField, Theme, Tip, WindowFocus } from "widgets.slint";
+import { InlineMessage, MessageOverlay } from "message.slint";
 
 export enum Setting {
     fps-limit,
@@ -78,6 +79,10 @@ export component SettingsWindow inherits Window {
     in property <bool> molok-listed;
     // A message box is open, which AutoSplit's are modal
     in property <bool> blocked;
+    // A message box drawn in the window, under Wayland, instead of the message window
+    in property <InlineMessage> inline-message;
+    // Its button, or -1 for closing it
+    callback inline-answered(int);
 
     callback changed(Setting);
     callback capture-devices-requested();
@@ -619,5 +624,11 @@ export component SettingsWindow inherits Window {
 
     if root.blocked: TouchArea {
         clicked => { root.blocked-clicked(); }
+    }
+
+    // Last, over everything else
+    if root.inline-message.shown: MessageOverlay {
+        message: root.inline-message;
+        answered(button) => { root.inline-answered(button); }
     }
 }

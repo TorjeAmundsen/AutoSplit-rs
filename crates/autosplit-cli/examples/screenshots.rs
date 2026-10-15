@@ -6,8 +6,9 @@ use std::rc::Rc;
 use autosplit::gui::messages::Buttons;
 use autosplit::gui::preset_form::{MASK_NAME_CHARS, SAVESTATE_NAME_CHARS, elide_middle};
 use autosplit::gui::ui::{
-    AboutWindow, HotkeyRow, InfoCell, InstructionCard, InstructionsWindow, LogWindow, MainWindow, MakerRow,
-    MakerWindow, MessageWindow, SettingsWindow, SimilarityRow, SplitForm, SplitValues, TesterReading, TesterWindow,
+    AboutWindow, HotkeyRow, InfoCell, InlineMessage, InstructionCard, InstructionsWindow, LogWindow, MainWindow,
+    MakerRow, MakerWindow, MessageWindow, SettingsWindow, SimilarityRow, SplitForm, SplitValues, TesterReading,
+    TesterWindow,
 };
 use autosplit::gui::{HOTKEY_ROWS, file_name_parts, thumbnail, transparency_grid};
 use slint::platform::software_renderer::{MinimalSoftwareWindow, RepaintBufferType, Rgb565Pixel};
@@ -54,6 +55,19 @@ fn main() {
     main.set_window_title("AutoSplit v0.1.0".into());
     main.show().unwrap();
     save(&window, PhysicalSize::new(786, 450), &folder.join("main.png"));
+    // A message box drawn in the window, like under Wayland
+    let question = InlineMessage {
+        shown: true,
+        title: "AutoSplit".into(),
+        message: "Do you want to save changes made to settings file settings.toml?".into(),
+        primary: "Yes".into(),
+        secondary: "No".into(),
+        tertiary: "Cancel".into(),
+        default_button: 0,
+    };
+    main.set_inline_message(question.clone());
+    save(&window, PhysicalSize::new(786, 450), &folder.join("main-inline-message.png"));
+    main.set_inline_message(InlineMessage::default());
     let row = |live: &str, highest: &str, threshold: &str| SimilarityRow {
         live: live.into(),
         highest: highest.into(),
@@ -237,6 +251,27 @@ fn main() {
     maker.set_can_grab(true);
     maker.invoke_split_images_saved();
     save(&window, PhysicalSize::new(828, 672), &folder.join("maker-saved.png"));
+    // A long message drawn in the window scrolls
+    let files: Vec<String> = (1..=40).map(|number| format!("{number:02}_Boss_(0.95).png")).collect();
+    maker.set_inline_message(InlineMessage {
+        message: format!(
+            "These split images are replaced:
+{}
+
+Replace them?",
+            files.join(
+                "
+"
+            )
+        )
+        .into(),
+        primary: "Replace".into(),
+        secondary: "".into(),
+        tertiary: "Cancel".into(),
+        ..question
+    });
+    save(&window, PhysicalSize::new(828, 672), &folder.join("maker-inline-message.png"));
+    maker.set_inline_message(InlineMessage::default());
     // What was done still shows beside the grouping warning
     maker.set_needs_grouping(true);
     maker.set_status("Copied 3 savestates to the clipboard.".into());
