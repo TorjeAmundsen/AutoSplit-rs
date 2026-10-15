@@ -18,6 +18,8 @@ macro_rules! primary_key {
 
 pub mod console;
 pub mod device;
+#[cfg(target_os = "linux")]
+pub mod file_clipboard;
 pub mod gui;
 pub mod hotkeys;
 pub mod licenses;

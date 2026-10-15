@@ -38,18 +38,9 @@ impl Gui {
         if copied.is_empty() {
             return self.show_message(Message::error("None of the preset's savestate files were found."));
         }
-        let mut clipboard = self.clipboard.borrow_mut();
-        if clipboard.is_none() {
-            *clipboard = arboard::Clipboard::new().ok();
-        }
-        // On Windows, setting a file list adds it to what's on the clipboard, and a program pasting
-        // can take the text that was there before instead
-        let set =
-            clipboard.as_mut().map(|clipboard| clipboard.clear().and_then(|()| clipboard.set().file_list(&copied)));
-        drop(clipboard);
-        let status = match set {
-            Some(Ok(())) => format!("Copied {} to the clipboard.", plural(copied.len(), "savestate")),
-            _ => {
+        let status = match self.put_files_on_clipboard(&copied) {
+            true => format!("Copied {} to the clipboard.", plural(copied.len(), "savestate")),
+            false => {
                 self.open(&folder.display().to_string());
                 let copied = plural(copied.len(), "savestate");
                 format!("The clipboard can't take files here, so the folder with the {copied} opened.")
@@ -59,6 +50,25 @@ impl Gui {
         if !missing.is_empty() {
             self.show_message(Message::warning(format!("These savestates weren't found:\n\n{}", missing.join("\n"))));
         }
+    }
+
+    /// Puts `files` on the clipboard for pasting into a file manager. Returns whether it could.
+    fn put_files_on_clipboard(&self, files: &[PathBuf]) -> bool {
+        // Every format Linux file managers paste, where arboard offers only one. Through X11,
+        // or XWayland, which the Wayland desktops share their clipboard with.
+        #[cfg(target_os = "linux")]
+        if std::env::var_os("DISPLAY").is_some() && crate::file_clipboard::copy_files(files).is_ok() {
+            return true;
+        }
+        let mut clipboard = self.clipboard.borrow_mut();
+        if clipboard.is_none() {
+            *clipboard = arboard::Clipboard::new().ok();
+        }
+        // On Windows, setting a file list adds it to what's on the clipboard, and a program pasting
+        // can take the text that was there before instead
+        clipboard
+            .as_mut()
+            .is_some_and(|clipboard| clipboard.clear().and_then(|()| clipboard.set().file_list(files)).is_ok())
     }
 
     /// The instructions of the preset's savestates, in a window of their own.

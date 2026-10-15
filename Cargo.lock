@@ -369,6 +369,7 @@ dependencies = [
  "tungstenite",
  "unicode-width",
  "windows",
+ "x11rb",
 ]
 
 [[package]]
