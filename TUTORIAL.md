@@ -19,8 +19,8 @@ If it doesn't split, Help > View Log says why. The same log is in `autosplit.log
 ## Which timer setup to use
 
 - Windows with LiveSplit: add LiveSplit's AutoSplit Integration component, and in its settings choose `AutoSplit.exe` and your profile. LiveSplit starts `autosplit` and tells it when the timer starts, splits, skips, undoes and resets, like it does for AutoSplit. The window title says "(externally controlled)". If the component already runs AutoSplit, point it at `AutoSplit.exe` instead and keep your profile.
-- LiveSplit One, on any system: see [LiveSplit One](#livesplit-one). It needs no hotkeys and no permissions.
-- Molok, on Linux: see [Molok](#molok). It needs no hotkeys and no permissions.
+- LiveSplit One, on any system: see [LiveSplit One](#livesplit-one). It needs no hotkeys and no hotkey permissions, unless you set a Screenshot or Toggle auto reset image hotkey, which need [listening](#permissions).
+- Molok, on Linux: see [Molok](#molok). It needs no hotkeys and no hotkey permissions, unless you set a Screenshot or Toggle auto reset image hotkey, which need [listening](#permissions).
 - Any other timer: hotkeys, like AutoSplit. `autosplit` presses the profile's hotkeys, and the timer listens for them as global hotkeys.
 
 ![LiveSplit's Layout Settings with the AutoSplit Integration component, AutoSplit.exe and a profile picked](docs/images/livesplit-integration.png)
@@ -333,10 +333,10 @@ Molok is a Linux timer controlled with POSIX signals. Choose Molok (POSIX signal
   - Pressing hotkeys needs `/dev/uinput`: `echo 'KERNEL=="uinput", TAG+="uaccess"' | sudo tee /etc/udev/rules.d/50-uinput.rules`, then restart. If `/dev/uinput` doesn't exist, load it with `sudo modprobe uinput` (and `echo uinput | sudo tee /etc/modules-load.d/uinput.conf` to keep it after a restart). Under WSL, key presses can't be sent.
   - Capture devices need the `video` group, which desktop users usually have.
   - The window needs fontconfig and xkbcommon, which every desktop has.
-  - Without these, `autosplit` still runs and says what's missing. The LiveSplit One and Molok connections need none of them.
+  - Without these, `autosplit` still runs and says what's missing. The LiveSplit One and Molok connections need neither hotkey permission, apart from the input group for a Screenshot or Toggle auto reset image hotkey.
 - macOS: `autosplit` is a plain program, not an app, so macOS gives these permissions to the app that starts it. Double-clicking it starts it in Terminal, so that's Terminal, and from a terminal it's that terminal app, like iTerm. `autosplit` itself can't be added to these lists.
   - Camera, for capture devices: macOS asks the first time a device is opened. Click Allow.
-  - Input Monitoring, for listening to hotkeys, and Accessibility, for pressing them: in System Settings > Privacy & Security, turn on Terminal (or your terminal app) under both. If it isn't listed, add it with the + button from Applications > Utilities.
+  - Input Monitoring, for listening to hotkeys, and Accessibility, for pressing them: in System Settings > Privacy & Security, turn on Terminal (or your terminal app) under both. If it isn't listed, add it with the + button from Applications > Utilities. With LiveSplit One, which gets no key presses, only a Screenshot or Toggle auto reset image hotkey needs a permission, and only Input Monitoring.
   - Then quit Terminal and start `autosplit` again. A permission only applies once the app has restarted.
   - Every program you start from that terminal app gets the same permissions.
 

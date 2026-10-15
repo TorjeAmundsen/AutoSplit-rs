@@ -417,6 +417,7 @@ version = "0.1.0"
 dependencies = [
  "evdev",
  "livesplit-hotkey",
+ "objc2-core-foundation",
  "objc2-core-graphics",
  "test-case",
  "thiserror 2.0.21",
