@@ -33,7 +33,8 @@ impl Gui {
     }
 
     /// Opens the Live Tester beside the main window, with the image it had when it was closed,
-    /// or asks for one.
+    /// from any folder. The split image folder's first image when the folder changed meanwhile,
+    /// the image is gone, or it had none, and else asks for one.
     pub(super) fn open_tester(self: &Rc<Self>) {
         let window = self.windows.tester.window();
         if window.is_visible() {
@@ -43,8 +44,10 @@ impl Gui {
         self.show_window(window);
         self.tool_opened(Tool::Tester);
         self.update_visibility();
-        if let Some(image) = self.split_folder_image() {
-            self.state.borrow_mut().tester_path = Some(image);
+        let gone = self.state.borrow().tester_path.as_ref().is_none_or(|path| !path.is_file());
+        if gone {
+            let first = self.split_image_folder_path().and_then(|folder| png_images(&folder).into_iter().next());
+            self.state.borrow_mut().tester_path = first;
         }
         if self.state.borrow().tester_path.is_some() {
             self.load_tester_image();
@@ -56,14 +59,8 @@ impl Gui {
     /// The first image of the profile's split image folder, unless the Live Tester's image is
     /// from that folder already. `None` without a split image folder or images in it.
     fn split_folder_image(&self) -> Option<PathBuf> {
-        let state = self.state.borrow();
-        let directory = &state.document.profile.split_image_directory;
-        if directory.is_empty() {
-            return None;
-        }
-        let folder = state.document.resolve(&exe_folder(), directory);
-        let current = state.tester_path.as_ref().and_then(|path| path.parent()).map(Path::to_owned);
-        drop(state);
+        let folder = self.split_image_folder_path()?;
+        let current = self.state.borrow().tester_path.as_ref().and_then(|path| path.parent()).map(Path::to_owned);
         // Compared as the system sees them, since the profile's folder can be written another way
         let same = |a: &Path, b: &Path| {
             std::fs::canonicalize(a).ok().is_some_and(|a| std::fs::canonicalize(b).ok() == Some(a))
@@ -74,15 +71,22 @@ impl Gui {
         png_images(&folder).into_iter().next()
     }
 
-    /// The profile's split image folder changed: an open Live Tester switches to its first image.
+    /// The profile's split image folder changed: the Live Tester switches to its first image, at
+    /// once when it's open, else when it opens again.
     pub(super) fn tester_follows_split_folder(&self) {
-        if !self.windows.tester.window().is_visible() {
-            return;
-        }
         if let Some(image) = self.split_folder_image() {
             self.state.borrow_mut().tester_path = Some(image);
-            self.load_tester_image();
+            if self.windows.tester.window().is_visible() {
+                self.load_tester_image();
+            }
         }
+    }
+
+    /// The profile's split image folder, or `None` without one.
+    fn split_image_folder_path(&self) -> Option<PathBuf> {
+        let state = self.state.borrow();
+        let directory = &state.document.profile.split_image_directory;
+        (!directory.is_empty()).then(|| state.document.resolve(&exe_folder(), directory))
     }
 
     /// The main window's Close button.

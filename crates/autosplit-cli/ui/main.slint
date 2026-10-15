@@ -597,76 +597,92 @@ export component MainWindow inherits Window {
 
         VerticalLayout {
             alignment: center;
-            spacing: 8px;
-
-            Text {
-                horizontal-alignment: center;
-                text: root.tool + " is open";
-                font-size: 16px;
-                font-weight: 600;
-                color: Theme.text;
-            }
-
-            Text {
-                horizontal-alignment: center;
-                text: "Close it to use this window, or open Settings beside it.";
-                color: Theme.text;
-            }
 
             HorizontalLayout {
                 alignment: center;
-                spacing: 6px;
 
-                Button {
-                    width: 160px;
-                    height: 27px;
-                    text: "Close " + root.tool;
-                    enabled: !root.blocked;
-                    clicked => { root.close-tool(); }
-                }
+                // Solid, so what's dimmed behind doesn't run into its text
+                Rectangle {
+                    background: Palette.background;
+                    border-width: 1px;
+                    border-radius: 4px;
+                    border-color: Theme.outline;
 
-                Button {
-                    width: 90px;
-                    height: 27px;
-                    text: "Settings";
-                    enabled: !root.blocked;
-                    clicked => { root.open-settings(); }
+                    VerticalLayout {
+                        padding: 16px;
+                        spacing: 8px;
 
-                    Tooltip {
-                        Tip {
-                            text: "Open Settings beside the tool window, like File > Settings and Ctrl+, do";
+                        Text {
+                            horizontal-alignment: center;
+                            text: root.tool + " is open";
+                            font-size: 16px;
+                            font-weight: 600;
+                            color: Theme.text;
+                        }
+
+                        Text {
+                            horizontal-alignment: center;
+                            text: "Close it to use this window, or open Settings beside it.";
+                            color: Theme.text;
+                        }
+
+                        HorizontalLayout {
+                            alignment: center;
+                            spacing: 6px;
+
+                            Button {
+                                width: 160px;
+                                height: 27px;
+                                text: "Close " + root.tool;
+                                enabled: !root.blocked;
+                                clicked => { root.close-tool(); }
+                            }
+
+                            Button {
+                                width: 90px;
+                                height: 27px;
+                                text: "Settings";
+                                enabled: !root.blocked;
+                                clicked => { root.open-settings(); }
+
+                                Tooltip {
+                                    Tip {
+                                        text: "Open Settings beside the tool window, like File > Settings and Ctrl+, do";
+                                    }
+                                }
+                            }
+                        }
+
+                        // The run goes on beside the tool window
+                        if root.running: HorizontalLayout {
+                            alignment: center;
+                            spacing: 6px;
+
+                            Button {
+                                width: 59px;
+                                height: 27px;
+                                text: "Undo";
+                                enabled: root.can-undo && !root.blocked;
+                                clicked => { root.undo-split(); }
+                            }
+
+                            Button {
+                                width: 59px;
+                                height: 27px;
+                                text: "Skip";
+                                enabled: root.can-skip && !root.blocked;
+                                clicked => { root.skip-split(); }
+                            }
+
+                            Button {
+                                width: 59px;
+                                height: 27px;
+                                text: "Reset";
+                                enabled: root.can-reset && !root.blocked;
+                                clicked => { root.reset(); }
+                            }
                         }
                     }
-                }
-            }
-
-            // The run goes on beside the tool window
-            if root.running: HorizontalLayout {
-                alignment: center;
-                spacing: 6px;
-
-                Button {
-                    width: 59px;
-                    height: 27px;
-                    text: "Undo";
-                    enabled: root.can-undo && !root.blocked;
-                    clicked => { root.undo-split(); }
-                }
-
-                Button {
-                    width: 59px;
-                    height: 27px;
-                    text: "Skip";
-                    enabled: root.can-skip && !root.blocked;
-                    clicked => { root.skip-split(); }
-                }
-
-                Button {
-                    width: 59px;
-                    height: 27px;
-                    text: "Reset";
-                    enabled: root.can-reset && !root.blocked;
-                    clicked => { root.reset(); }
                 }
             }
         }

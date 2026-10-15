@@ -144,6 +144,12 @@ export component SettingsWindow inherits Window {
                 text: "Show Pause Timer";
                 checked <=> root.display-pause-timer;
                 toggled => { root.changed(Setting.display-pause-timer); }
+
+                Tooltip {
+                    Tip {
+                        text: "Show the seconds left of a pause or a split delay next to Current Image";
+                    }
+                }
             }
 
             Label {
