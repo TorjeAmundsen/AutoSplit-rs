@@ -190,17 +190,6 @@ pub fn open(target: impl AsRef<std::ffi::OsStr>) -> std::io::Result<()> {
     Ok(())
 }
 
-/// Whether AutoSplit is the app in front on macOS, where showing one of its windows with the
-/// focus would bring it there. Elsewhere, where the system decides whether a window may take
-/// the focus, always true.
-pub fn app_in_front() -> bool {
-    #[cfg(target_os = "macos")]
-    if let Some(main_thread) = objc2::MainThreadMarker::new() {
-        return objc2_app_kit::NSApplication::sharedApplication(main_thread).isActive();
-    }
-    true
-}
-
 #[cfg(target_os = "macos")]
 thread_local! {
     /// The menu bar taken away by [`hold_menu_shortcuts`].
