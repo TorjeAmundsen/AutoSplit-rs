@@ -1,9 +1,13 @@
-// How to use a preset's savestates: one card for each split whose savestate has instructions.
+// How to use a preset's savestates: one card for each split whose savestate has instructions. The
+// card of the split selected in Make Split Images is highlighted and scrolled into view, and
+// clicking a card selects its split there.
 
 import { ScrollView } from "std-widgets.slint";
 import { Label, Theme } from "widgets.slint";
 
 export struct InstructionCard {
+    // The split's place in the preset, which Make Split Images selects it by
+    split: int,
     heading: string,
     savestate: string,
     text: string,
@@ -21,18 +25,61 @@ export component InstructionsWindow inherits Window {
     default-font-size: 12px;
 
     in property <[InstructionCard]> cards;
+    // The split selected in Make Split Images, or -1
+    in property <int> selected-split: -1;
+    callback card-clicked(int);
 
-    ScrollView {
+    scroll := ScrollView {
         VerticalLayout {
             padding: 8px;
             spacing: 8px;
             alignment: start;
 
-            for card in root.cards: Rectangle {
-                border-width: 1px;
+            for card in root.cards: card-box := Rectangle {
+                property <bool> current: card.split == root.selected-split;
+                border-width: self.current ? 2px : 1px;
                 border-radius: 3px;
-                border-color: Theme.outline;
-                background: Theme.field;
+                border-color: self.current ? Theme.selection : Theme.outline;
+                background: self.current ? Theme.selection.with-alpha(0.12) : Theme.field;
+
+                // Scrolls the card into view, with the padding around it
+                function reveal() {
+                    if (self.y - 8px < -scroll.content-y) {
+                        scroll.content-y = -(self.y - 8px);
+                    }
+                    if (self.y + self.height + 8px > -scroll.content-y + scroll.visible-height) {
+                        scroll.content-y = -(self.y + self.height + 8px - scroll.visible-height);
+                    }
+                }
+
+                changed current => {
+                    if (self.current) {
+                        self.reveal();
+                    }
+                }
+
+                // When the window opens on it, once the cards are laid out
+                init => {
+                    if (self.current) {
+                        reveal-later.running = true;
+                    }
+                }
+
+                reveal-later := Timer {
+                    interval: 1ms;
+                    running: false;
+                    triggered => {
+                        self.running = false;
+                        card-box.reveal();
+                    }
+                }
+
+                TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => {
+                        root.card-clicked(card.split);
+                    }
+                }
 
                 VerticalLayout {
                     padding: 8px;

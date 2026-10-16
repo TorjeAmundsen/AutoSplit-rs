@@ -312,6 +312,8 @@ impl Gui {
         on!(weak, maker, on_test, () gui => gui.test_split_image());
         on!(weak, maker, on_copy_savestates, () gui => gui.copy_savestates());
         on!(weak, maker, on_show_instructions, () gui => gui.show_instructions());
+        let instructions = &self.windows.instructions;
+        on!(weak, instructions, on_card_clicked, (split) gui => gui.instruction_card_clicked(split as usize));
         on!(weak, maker, on_browse_folder, () gui => gui.browse_folder(gui.windows.maker.window(), |gui| gui.maker_folder_changed()));
         on!(weak, maker, on_generate_profile, () gui => gui.generate_profile());
         on!(weak, maker, on_turn_on_grouping, () gui => gui.turn_on_grouping());

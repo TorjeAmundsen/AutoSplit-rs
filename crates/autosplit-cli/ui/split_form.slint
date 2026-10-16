@@ -1,8 +1,8 @@
 // The edit form of Make Split Images: the selected split's fields. Its values go both ways with
 // the window's properties, and each field says it was edited with split-edited.
 
-import { CheckBox, TextEdit } from "std-widgets.slint";
-import { Button, ComboBox, Label, SpinBox, TextField, Theme, Tip } from "widgets.slint";
+import { CheckBox } from "std-widgets.slint";
+import { Button, ComboBox, Label, SpinBox, TextArea, TextField, Theme, Tip } from "widgets.slint";
 
 // A field of the split form, which says it was edited. Its value is in its property.
 export enum SplitField { name, kind, threshold, delay, pause, dummy, below, with-previous, instructions }
@@ -424,11 +424,9 @@ export component SplitFormPanel inherits VerticalLayout {
         }
 
         // Always two lines, however much is above it
-        TextEdit {
+        TextArea {
             vertical-stretch: 1;
             min-height: 42px;
-            font-size: 12px;
-            wrap: word-wrap;
             enabled: root.form.savestate != "";
             placeholder-text: root.form.savestate == "" ? "Instructions for the savestate, once there is one" : "What to do after loading the savestate, if anything";
             text <=> SplitValues.instructions;

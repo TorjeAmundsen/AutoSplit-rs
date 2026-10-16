@@ -94,17 +94,37 @@ impl Gui {
         let Some(loaded) = maker.loaded() else { return false };
         let cards: Vec<InstructionCard> = (instruction_cards(&loaded.preset).into_iter())
             .map(|card| InstructionCard {
+                split: card.split as i32,
                 heading: card.heading.into(),
                 savestate: card.file.into(),
                 text: card.instructions.into(),
             })
             .collect();
         let title = format!("Savestate Instructions - {}", loaded.preset.name);
+        // While editing, the selected split is the draft's, which these cards aren't about
+        let selected = if maker.edit.is_some() { -1 } else { maker.selected as i32 };
         drop(maker);
         let any = !cards.is_empty();
         let window = &self.windows.instructions;
-        window.set_cards(ModelRc::new(VecModel::from(cards)));
+        // Only when they changed, so selecting another split moves the highlight instead of
+        // making the cards again
+        if !slint::Model::iter(&window.get_cards()).eq(cards.iter().cloned()) {
+            window.set_cards(ModelRc::new(VecModel::from(cards)));
+        }
+        window.set_selected_split(selected);
         window.set_window_title(title.into());
         any
+    }
+
+    /// A card in Savestate Instructions was clicked: its split is selected in Make Split Images,
+    /// unless a preset is being edited, which the cards aren't about.
+    pub(super) fn instruction_card_clicked(&self, split: usize) {
+        if self.blocked() || self.editing() {
+            return;
+        }
+        let count = self.maker.borrow().loaded().map_or(0, |loaded| loaded.preset.splits.len());
+        if split < count {
+            self.choose_split(split);
+        }
     }
 }

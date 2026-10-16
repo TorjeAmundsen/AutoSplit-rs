@@ -48,7 +48,8 @@ fn instruction_cards_are_named_like_the_copied_savestates() {
     let cards = instruction_cards(&draft.preset);
 
     // Assert
-    let card = |heading: &str, file: &str, instructions: &str| InstructionText {
+    let card = |split: usize, heading: &str, file: &str, instructions: &str| InstructionText {
+        split,
         heading: heading.into(),
         file: file.into(),
         instructions: instructions.into(),
@@ -56,9 +57,9 @@ fn instruction_cards_are_named_like_the_copied_savestates() {
     assert_eq!(
         cards,
         [
-            card("Reset Image 2", "0_reset_2_SEE_INSTRUCTIONS.gzs", "Wait"),
-            card("B", "1_B_SEE_INSTRUCTIONS.gzs", "Jump"),
-            card("C", "3_C_SEE_INSTRUCTIONS.gzs", "Run"),
+            card(1, "Reset Image 2", "0_reset_2_SEE_INSTRUCTIONS.gzs", "Wait"),
+            card(3, "B", "1_B_SEE_INSTRUCTIONS.gzs", "Jump"),
+            card(5, "C", "3_C_SEE_INSTRUCTIONS.gzs", "Run"),
         ]
     );
 }

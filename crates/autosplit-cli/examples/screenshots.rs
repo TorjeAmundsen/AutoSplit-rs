@@ -366,6 +366,7 @@ Replace them?",
 
     let instructions = InstructionsWindow::new().unwrap();
     let card = |heading: &str, savestate: &str, text: &str| InstructionCard {
+        split: 3,
         heading: heading.into(),
         savestate: savestate.into(),
         text: text.into(),

@@ -712,6 +712,69 @@ export component TextField inherits Rectangle {
     }
 }
 
+// A text box of several lines, drawn like TextField. The text wraps, and when it's taller than
+// the box, it scrolls to keep the cursor in view.
+export component TextArea inherits Rectangle {
+    in-out property <string> text <=> input.text;
+    in property <bool> enabled: true;
+    in property <string> placeholder-text;
+    callback edited(string);
+    forward-focus: input;
+    // A line's height, to keep the cursor's whole line in view
+    property <length> line-height: 18px;
+
+    FieldFrame {
+        width: 100%;
+        height: 100%;
+        focused: input.has-focus;
+        enabled: root.enabled;
+    }
+
+    flick := Flickable {
+        x: 4px;
+        y: 3px;
+        width: parent.width - 8px;
+        height: parent.height - 6px;
+        content-width: self.width;
+        content-height: max(self.height, input.preferred-height);
+
+        input := TextInput {
+            width: flick.width;
+            height: max(flick.height, self.preferred-height);
+            single-line: false;
+            wrap: word-wrap;
+            read-only: !root.enabled;
+            enabled: root.enabled;
+            color: root.enabled ? Theme.text : Theme.disabled-text;
+            selection-background-color: Theme.selection;
+            edited => {
+                root.edited(self.text);
+            }
+            cursor-position-changed(position) => {
+                if (position.y + flick.content-y < 0) {
+                    flick.content-y = -position.y;
+                }
+                if (position.y + root.line-height + flick.content-y > flick.height) {
+                    flick.content-y = flick.height - position.y - root.line-height;
+                }
+            }
+        }
+    }
+
+    Text {
+        x: 4px;
+        y: 3px;
+        width: parent.width - 8px;
+        height: parent.height - 6px;
+        vertical-alignment: top;
+        wrap: word-wrap;
+        overflow: elide;
+        text: root.placeholder-text;
+        color: Theme.disabled-text;
+        visible: input.text == "" && !input.has-focus;
+    }
+}
+
 // A spin box: a number field with up and down arrows, like Qt's. The value is corrected into
 // the range when editing ends. Arrows repeat while held, and the mouse wheel and PageUp and
 // PageDown step too.

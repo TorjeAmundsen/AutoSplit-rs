@@ -497,6 +497,8 @@ pub fn elide_middle(name: &str, max: usize) -> String {
 /// A card of the Savestate Instructions window, for a savestate with instructions.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct InstructionText {
+    /// The split's place in the preset.
+    pub split: usize,
     /// The split's heading, like in the split list.
     pub heading: String,
     /// The name Copy Savestates gives the savestate, which is what's loaded on the console.
@@ -512,6 +514,7 @@ pub fn instruction_cards(preset: &Preset) -> Vec<InstructionText> {
     (with_savestate.zip(preset.savestate_copies()))
         .filter(|((_, split), _)| !split.instructions.is_empty())
         .map(|((index, split), (_, file))| InstructionText {
+            split: index,
             heading: split_heading(preset, index),
             file,
             instructions: split.instructions.clone(),
