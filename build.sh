@@ -202,8 +202,15 @@ build() {
             cp "$target_dir/$first/release/$binary" "$output/$binary"
         fi
     fi
-    # The split image presets and the splits library, which are read from next to the binary
-    cp -R "$root/presets" "$root/splits" "$output/"
+    # The split image presets, which are read from next to the binary. A preset with a WIP.txt is
+    # a work in progress and stays out. The splits library stays out until it can be imported.
+    mkdir -p "$output/presets"
+    local preset
+    for preset in "$root/presets"/*/; do
+        if [ ! -f "$preset/WIP.txt" ]; then
+            cp -R "${preset%/}" "$output/presets/"
+        fi
+    done
     executables=("$binary")
     # Adds it to the app menu on Linux, with the icon
     if [ "$(os_of "$first")" = linux ]; then

@@ -15,7 +15,7 @@ The tests need no internet, Python or capture devices. The LiveSplit One tests l
 
 ## Release builds
 
-`build.ps1` (PowerShell 7), or `build.sh` on Linux and macOS without PowerShell, builds release zips into `build/`, named `AutoSplit-v{version}-{target}.zip`. It strips symbols unless you pass `--debug`. Windows zips have `AutoSplit.exe` and `AutoSplit.com`, renamed from Cargo's `autosplit.exe` and `autosplit-console.exe` (see [Command line](MANUAL.md#command-line)). Linux zips also have `icon.png` and `install-desktop-entry.sh`, which adds the program to the desktop's app menu. Every zip has the `presets` and `splits` folders.
+`build.ps1` (PowerShell 7), or `build.sh` on Linux and macOS without PowerShell, builds release zips into `build/`, named `AutoSplit-v{version}-{target}.zip`. It strips symbols unless you pass `--debug`. Windows zips have `AutoSplit.exe` and `AutoSplit.com`, renamed from Cargo's `autosplit.exe` and `autosplit-console.exe` (see [Command line](MANUAL.md#command-line)). Linux zips also have `icon.png` and `install-desktop-entry.sh`, which adds the program to the desktop's app menu. Every zip has the `presets` folder, apart from presets marked as a work in progress.
 
 The macOS binary is bare, not an `.app`, so `crates/autosplit-cli/build.rs` links an Info.plist into it, with the bundle id and the camera usage text, and `.cargo/config.toml` sets `MACOSX_DEPLOYMENT_TARGET` to 11.0. On Windows, `build.rs` embeds the icon instead. Shell scripts keep LF line endings through `.gitattributes`, since a CR after `#!` breaks them.
 
@@ -51,4 +51,4 @@ The script installs the Rust targets and the cargo tools it needs. macOS builds 
 - `tests/fixtures`: split images, captures and profiles. `real/` holds split images made with AutoMask.
 - `tests/golden`: expected values from AutoSplit and OpenCV.
 - `tools/golden/generate.py`: regenerates the fixtures and golden values from AutoSplit 2.3.4. Instructions are at the top of the file. Only rerun it when you mean to change the baseline.
-- `presets/` and `splits/`: the split image presets and the splits library, shipped next to the binary. `tools/convert_presets.py` converted them from AutoMask.
+- `presets/` and `splits/`: the split image presets and the splits library. `tools/convert_presets.py` converted them from AutoMask. Release builds put the presets next to the binary, apart from those with a `WIP.txt` in their folder, which are still being made. The splits library stays out of them until it can be imported.
