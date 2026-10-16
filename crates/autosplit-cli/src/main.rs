@@ -2,7 +2,7 @@
 //! split from a capture device without a window, check split image folders, compare images,
 //! replay recorded frames through the split state machine, and benchmark comparisons.
 
-// On Windows, a GUI program, so opening the window shows no console. Terminals run autosplit.com
+// On Windows, a GUI program, so opening the window shows no console. Terminals run AutoSplit.com
 // instead, which runs this one inside the terminal (src/bin/autosplit-console.rs).
 #![cfg_attr(windows, windows_subsystem = "windows")]
 
@@ -34,7 +34,8 @@ const MAX_TICKS_WITHOUT_TIME_PASSING: u32 = 10_000;
     about,
     args_conflicts_with_subcommands = true,
     after_help = "Start with `autosplit devices`, then `autosplit check <profile.toml>`, then `autosplit run \
-                  <profile.toml>`. TUTORIAL.md in the zip explains each step."
+                  <profile.toml>`. MANUAL.md's Command line section explains each command: \
+                  https://github.com/TorjeAmundsen/AutoSplit-rs/blob/main/MANUAL.md#command-line"
 )]
 struct Cli {
     #[command(subcommand)]
@@ -144,7 +145,9 @@ impl std::error::Error for Reported {}
 fn main() -> ExitCode {
     // Commands write to the terminal they were started from
     let auto_controlled = std::env::args_os().any(|argument| argument == "--auto-controlled");
-    let terminal = std::env::args_os().len() > 1 && !auto_controlled && platform::attach_console();
+    // Opening the window from a terminal attaches none on Windows, where it would keep the
+    // terminal's console. Elsewhere, checking has no side effects, so errors go to the terminal.
+    let terminal = (std::env::args_os().len() > 1 || !cfg!(windows)) && !auto_controlled && platform::attach_console();
     match run_command() {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) if error.downcast_ref::<Reported>().is_some() => ExitCode::FAILURE,
@@ -290,8 +293,8 @@ fn check(profile_path: &Path, split_dir: Option<PathBuf>) -> Result<()> {
     };
     println!(
         "\n{summary}: {}, {}, {}",
-        count(set.start.iter().count(), "start image"),
-        count(set.reset.iter().count(), "reset image"),
+        count(set.start.len(), "start image"),
+        count(set.reset.len(), "reset image"),
         count(set.splits.len(), "split image")
     );
     Ok(())
@@ -395,7 +398,7 @@ fn replay(
 
     let mut runner = Runner::new(RunnerSettings::from_profile(&profile), link.timer_synced());
     let (initial, _) = folder_result(load_profile_folder(&profile, hotkeys_needed))?;
-    let has_start_image = initial.start.is_some();
+    let has_start_image = !initial.start.is_empty();
     runner.arm(initial, Duration::ZERO);
     let mut runs = 0;
     if !has_start_image {
@@ -520,7 +523,7 @@ fn synthetic_split(masked: bool) -> Result<SplitImage> {
         pixel[3] = if visible { 255 } else { 0 };
     }
     let image = BgraImage::from_raw(width, height, data);
-    let path = std::env::temp_dir().join(format!("autosplit-bench-{}-{masked}.png", std::process::id()));
+    let path = platform::temp_folder().join(format!("autosplit-bench-{}-{masked}.png", std::process::id()));
     std::fs::write(&path, image.encode_png()?)?;
     let split = load_split_image(&path);
     std::fs::remove_file(&path).ok();

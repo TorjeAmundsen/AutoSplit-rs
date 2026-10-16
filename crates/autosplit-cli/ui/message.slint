@@ -1,14 +1,18 @@
 // A message box for errors, like AutoSplit's, and for questions like saving changes. Buttons
 // are in the order given, like Qt's Yes, No, Cancel.
 
+import { Palette, ScrollView } from "std-widgets.slint";
 import { Button, Theme } from "widgets.slint";
 
 export component MessageWindow inherits Window {
     in property <string> window-title: "AutoSplit";
     title: root.window-title;
     icon: @image-url("../assets/icon.png");
-    preferred-width: 380px;
-    min-width: 300px;
+    // A fixed size, its height from the message once it's wrapped at this width, so the
+    // buttons keep their margin and the box can't be resized
+    width: 380px;
+    height: layout.preferred-height;
+    default-font-family: "Noto Sans";
     default-font-size: 12px;
 
     in property <string> message;
@@ -16,6 +20,8 @@ export component MessageWindow inherits Window {
     in property <string> primary: "OK";
     in property <string> secondary;
     in property <string> tertiary;
+    // The button Enter picks, drawn as the default one
+    in property <int> default-button: 0;
     callback answered(int);
     // Escape, like closing the box
     callback dismissed();
@@ -26,11 +32,11 @@ export component MessageWindow inherits Window {
         keys.focus();
     }
 
-    // Enter picks the first button and Escape closes, like Qt's message boxes
+    // Enter picks the default button and Escape closes, like Qt's message boxes
     keys := FocusScope {
         key-pressed(event) => {
             if (event.text == Key.Return) {
-                root.answered(0);
+                root.answered(root.default-button);
                 return accept;
             }
             if (event.text == Key.Escape) {
@@ -41,14 +47,21 @@ export component MessageWindow inherits Window {
         }
     }
 
-    VerticalLayout {
+    layout := VerticalLayout {
         padding: 14px;
         spacing: 14px;
 
-        Text {
-            color: Theme.text;
-            text: root.message;
-            wrap: word-wrap;
+        // A long message, like a list of files, scrolls instead of growing past the screen
+        ScrollView {
+            height: min(body.preferred-height, 420px);
+            content-height: body.preferred-height;
+
+            body := Text {
+                width: 340px;
+                color: Theme.text;
+                text: root.message;
+                wrap: word-wrap;
+            }
         }
 
         HorizontalLayout {
@@ -57,18 +70,108 @@ export component MessageWindow inherits Window {
 
             Button {
                 text: root.primary;
-                primary: true;
+                primary: root.default-button == 0;
                 clicked => { root.answered(0); }
             }
 
             if root.secondary != "": Button {
                 text: root.secondary;
+                primary: root.default-button == 1;
                 clicked => { root.answered(1); }
             }
 
             if root.tertiary != "": Button {
                 text: root.tertiary;
+                primary: root.default-button == 2;
                 clicked => { root.answered(2); }
+            }
+        }
+    }
+}
+
+// A message box drawn inside a window it blocks, for where a separate message window can't be
+// kept in front, like under Wayland. Every window it blocks shows it, and answering one answers
+// all of them. Rust answers Enter and Escape, like the message window's.
+export struct InlineMessage {
+    shown: bool,
+    title: string,
+    message: string,
+    // Button texts; an empty one isn't shown
+    primary: string,
+    secondary: string,
+    tertiary: string,
+    // The button Enter picks, drawn as the default one
+    default-button: int,
+}
+
+export component MessageOverlay inherits Rectangle {
+    in property <InlineMessage> message;
+    callback answered(int);
+    background: Palette.background.with-alpha(0.85);
+
+    // Clicks and the wheel stay off the window under it
+    TouchArea {
+        scroll-event(event) => {
+            accept
+        }
+    }
+
+    card := Rectangle {
+        width: min(parent.width - 24px, 380px);
+        height: min(layout.preferred-height, parent.height - 24px);
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        background: Palette.background;
+        border-width: 1px;
+        border-radius: 4px;
+        border-color: Theme.outline;
+
+        layout := VerticalLayout {
+            padding: 14px;
+            spacing: 10px;
+
+            Text {
+                text: root.message.title;
+                font-weight: 600;
+                color: Theme.text;
+            }
+
+            // A long message, like a list of files, scrolls instead of growing past the window
+            ScrollView {
+                vertical-stretch: 1;
+                preferred-height: body.preferred-height;
+                min-height: min(body.preferred-height, 60px);
+                content-height: body.preferred-height;
+
+                body := Text {
+                    width: card.width - 28px - 16px;
+                    color: Theme.text;
+                    text: root.message.message;
+                    wrap: word-wrap;
+                }
+            }
+
+            HorizontalLayout {
+                alignment: end;
+                spacing: 8px;
+
+                Button {
+                    text: root.message.primary;
+                    primary: root.message.default-button == 0;
+                    clicked => { root.answered(0); }
+                }
+
+                if root.message.secondary != "": Button {
+                    text: root.message.secondary;
+                    primary: root.message.default-button == 1;
+                    clicked => { root.answered(1); }
+                }
+
+                if root.message.tertiary != "": Button {
+                    text: root.message.tertiary;
+                    primary: root.message.default-button == 2;
+                    clicked => { root.answered(2); }
+                }
             }
         }
     }

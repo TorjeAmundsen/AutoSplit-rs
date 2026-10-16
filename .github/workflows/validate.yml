@@ -85,6 +85,16 @@ jobs:
         shell: pwsh
         run: ./build.ps1 ${{ matrix.name }}
 
+      # Starts both halves of the universal binary that ships, which the tests above don't run,
+      # so a framework call newer than the minimum macOS version shows up as a load error here
+      - name: Start the shipped binary
+        if: matrix.name == 'macos-universal'
+        run: |
+          unzip -q build/AutoSplit-*-macos-universal.zip -d "$RUNNER_TEMP/zip"
+          arch -arm64 "$RUNNER_TEMP/zip/autosplit" --version
+          arch -x86_64 "$RUNNER_TEMP/zip/autosplit" --version
+          launchctl plist __TEXT,__info_plist "$RUNNER_TEMP/zip/autosplit"
+
       - uses: actions/upload-artifact@v7
         with:
           name: build-${{ matrix.name }}

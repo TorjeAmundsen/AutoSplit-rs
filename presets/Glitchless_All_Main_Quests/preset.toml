@@ -1,0 +1,304 @@
+name = "Glitchless All Main Quests"
+game = "The Legend of Zelda: Ocarina of Time"
+
+[[split]]
+name = "reset"
+mask = "reset.png"
+threshold = 0.96
+pause = 0.1
+savestate = "savestates/000 start and reset.gzs"
+instructions = "If loading this state from outside of Link's house, you have to advance 1 frame to make the background render correctly."
+
+[[split]]
+name = "start_auto_splitter"
+mask = "start.png"
+threshold = 0.96
+pause = 10.0
+below = true
+savestate = "savestates/000 start and reset.gzs"
+
+[[split]]
+name = "DekuCSDummy"
+mask = "005_deku_text.png"
+threshold = 0.94
+pause = 6.5
+dummy = true
+savestate = "savestates/000-kokiri forest.gzs"
+
+[[split]]
+name = "EnterDeku"
+mask = "006_a_button_flip.png"
+threshold = 0.92
+pause = 60.0
+delay = 1000
+savestate = "savestates/001-kokiri forest.gzs"
+instructions = "After loading, advance 1 frame before taking your screenshot. The A button doesn't render correctly if the savestate is on the frame itself, so it had to be 1 frame before."
+
+[[split]]
+name = "HeartContainerDummy"
+mask = "heart_container_icon.png"
+threshold = 0.96
+pause = 0.2
+dummy = true
+savestate = "savestates/002-gohma.gzs"
+
+[[split]]
+name = "KokiriEmerald"
+mask = "cutscene_black_bars.png"
+threshold = 0.96
+pause = 500.0
+delay = 7400
+savestate = "savestates/003-gohma.gzs"
+
+[[split]]
+name = "SariasSong"
+mask = "uta.png"
+threshold = 0.95
+delay = 400
+savestate = "savestates/005-sacred forest meadow.gzs"
+
+[[split]]
+name = "ZeldasLetter"
+mask = "tegami.png"
+threshold = 0.95
+pause = 400.0
+delay = 1150
+below = true
+savestate = "savestates/004-zelda.gzs"
+
+[[split]]
+name = "BraceletDummy"
+mask = "bracelet.png"
+threshold = 0.95
+delay = 1250
+dummy = true
+savestate = "savestates/008-goron city.gzs"
+instructions = "This split is a dummy split by default. If you want to split on Goron Bracelet, it is already set up in a way that splits on Goron Bracelet model over head if you simply open the preset editor, uncheck \"Dummy\" and check \"Inverted\" on this split."
+
+[[split]]
+name = "TrailDummy"
+mask = "tozandou.png"
+threshold = 0.95
+pause = 8.0
+dummy = true
+savestate = "savestates/006-death mountain trail.gzs"
+
+[[split]]
+name = "EnterDodongos"
+mask = "fade_center.png"
+threshold = 0.97
+delay = 50
+savestate = "savestates/007-dodongo's cavern.gzs"
+
+[[split]]
+name = "StairsDummy"
+mask = "dc_stairs.png"
+threshold = 0.95
+pause = 50.0
+dummy = true
+savestate = "savestates/009-dodongo's cavern.gzs"
+
+[[split]]
+name = "ThrowDummy"
+mask = "nageru.png"
+threshold = 0.96
+pause = 15.0
+dummy = true
+savestate = "savestates/010-dodongo's cavern.gzs"
+
+[[split]]
+name = "TransitionDummy"
+mask = "cutscene_black_bars.png"
+threshold = 0.97
+pause = 15.0
+dummy = true
+savestate = "savestates/011-dodongo's cavern.gzs"
+
+[[split]]
+name = "TransitionDummy2"
+mask = "cutscene_black_bars.png"
+threshold = 0.97
+pause = 20.0
+dummy = true
+savestate = "savestates/012-dodongo's cavern.gzs"
+
+[[split]]
+name = "Bombs"
+mask = "cutscene_black_bars.png"
+threshold = 0.95
+delay = 1000
+below = true
+savestate = "savestates/013-dodongo's cavern.gzs"
+
+[[split]]
+name = "HeartContainerDummy"
+mask = "heart_container_icon.png"
+threshold = 0.96
+pause = 0.2
+dummy = true
+savestate = "savestates/014-king dodongo.gzs"
+
+[[split]]
+name = "GoronRuby"
+mask = "cutscene_black_bars.png"
+threshold = 0.96
+delay = 7400
+savestate = "savestates/015-king dodongo.gzs"
+
+[[split]]
+name = "LakeDummy"
+mask = "kohan.png"
+threshold = 0.95
+pause = 4.5
+dummy = true
+savestate = "savestates/016-lake hylia.gzs"
+
+[[split]]
+name = "RutosLetter"
+mask = "blank_a_flip.png"
+threshold = 0.95
+delay = 2400
+savestate = "savestates/018-lake hylia.gzs"
+instructions = "Similar to the Enter Deku split, gz doesn't load the A button text correctly during a transition from one A button action to another. Load this savestate and advance 2 frames before taking your screenshot. This should be the first frame where the A button is visible with no text on it."
+
+[[split]]
+name = "EnterJabu"
+mask = "jabu_eye.png"
+threshold = 0.95
+delay = 14050
+savestate = "savestates/019-zora's fountain.gzs"
+
+[[split]]
+name = "DekuNutDummy"
+mask = "009_nut_throw.png"
+threshold = 0.95
+dummy = true
+savestate = "savestates/021-jabu jabu.gzs"
+
+[[split]]
+name = "ChestSpawnDummy"
+mask = "cutscene_black_bars.png"
+threshold = 0.97
+pause = 7.0
+dummy = true
+savestate = "savestates/023-jabu jabu.gzs"
+
+[[split]]
+name = "Boomerang"
+mask = "cutscene_black_bars.png"
+threshold = 0.97
+delay = 1000
+below = true
+savestate = "savestates/024-jabu jabu.gzs"
+
+[[split]]
+name = "ZoraSapphire"
+mask = "zora.png"
+threshold = 0.96
+delay = 7750
+below = true
+savestate = "savestates/025-barinade.gzs"
+
+[[split]]
+name = "OcarinaOfTime"
+mask = "oot_icon.png"
+threshold = 0.96
+savestate = "savestates/027-hyrule field.gzs"
+
+[[split]]
+name = "MasterSword"
+mask = "master_sword_pedestal.png"
+threshold = 0.95
+savestate = "savestates/028-temple of time.gzs"
+
+[[split]]
+name = "DampeDummy"
+mask = "hehehe.png"
+threshold = 0.95
+pause = 12.0
+dummy = true
+savestate = "savestates/029-windmill.gzs"
+
+[[split]]
+name = "Hookshot"
+mask = "cutscene_black_bars.png"
+threshold = 0.96
+delay = 1000
+below = true
+savestate = "savestates/030-windmill.gzs"
+
+[[split]]
+name = "Bolero"
+mask = "honoo.png"
+threshold = 0.96
+delay = 600
+savestate = "savestates/031-death mountain crater.gzs"
+
+[[split]]
+name = "FaroresWind"
+mask = "totte.png"
+threshold = 0.96
+delay = 14300
+below = true
+savestate = "savestates/032-fairy spells.gzs"
+
+[[split]]
+name = "BlueFireDummy1"
+mask = "bottle_icon.png"
+threshold = 0.95
+pause = 60.0
+dummy = true
+savestate = "savestates/033-ice cavern.gzs"
+
+[[split]]
+name = "BlueFireDummy2"
+mask = "bottle_icon.png"
+threshold = 0.95
+dummy = true
+savestate = "savestates/034-ice cavern.gzs"
+
+[[split]]
+name = "BarsOpeningDummy"
+mask = "cutscene_black_bars.png"
+threshold = 0.96
+pause = 5.0
+dummy = true
+savestate = "savestates/035-ice cavern.gzs"
+
+[[split]]
+name = "DoorDummy"
+mask = "cutscene_black_bars.png"
+threshold = 0.96
+dummy = true
+savestate = "savestates/036-ice cavern.gzs"
+
+[[split]]
+name = "ChestSpawnDummy"
+mask = "cutscene_black_bars.png"
+threshold = 0.96
+pause = 10.0
+dummy = true
+savestate = "savestates/037-ice cavern.gzs"
+
+[[split]]
+name = "IronBoots"
+mask = "cutscene_black_bars.png"
+threshold = 0.97
+delay = 1000
+below = true
+savestate = "savestates/038-ice cavern.gzs"
+
+[[split]]
+name = "HammerDummy"
+mask = "hammer_room_pillar.png"
+threshold = 0.96
+dummy = true
+savestate = "savestates/039-fire temple.gzs"
+
+[[split]]
+name = "Hammer"
+mask = "cutscene_black_bars.png"
+threshold = 0.97
+delay = 1000
+below = true
+savestate = "savestates/040-fire temple.gzs"

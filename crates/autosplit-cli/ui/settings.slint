@@ -1,11 +1,13 @@
 // AutoSplit's settings window (settings.ui), with an extra tab for the timer connection.
 
 import { CheckBox } from "std-widgets.slint";
-import { Button, ComboBox, Label, SpinBox, TabFrame, TextField, Theme, Tip, WindowFocus } from "widgets.slint";
+import { Button, ClickAway, ComboBox, Label, SpinBox, TabFrame, TextField, Theme, Tip, WindowFocus } from "widgets.slint";
+import { InlineMessage, MessageOverlay } from "message.slint";
 
 export enum Setting {
     fps-limit,
     live-capture-region,
+    display-pause-timer,
     capture-method,
     capture-device,
     open-screenshot,
@@ -35,10 +37,12 @@ export component SettingsWindow inherits Window {
     icon: @image-url("../assets/icon.png");
     width: 380px;
     height: 384px;
+    default-font-family: "Noto Sans";
     default-font-size: 12px;
 
     in-out property <float> fps-limit: 60;
     in-out property <bool> live-capture-region: true;
+    in-out property <bool> display-pause-timer: true;
     in property <[string]> capture-methods: ["Video Capture Device"];
     in-out property <int> capture-method-index;
     in property <[string]> capture-devices;
@@ -76,6 +80,10 @@ export component SettingsWindow inherits Window {
     in property <bool> molok-listed;
     // A message box is open, which AutoSplit's are modal
     in property <bool> blocked;
+    // A message box drawn in the window, under Wayland, instead of the message window
+    in property <InlineMessage> inline-message;
+    // Its button, or -1 for closing it
+    callback inline-answered(int);
 
     callback changed(Setting);
     callback capture-devices-requested();
@@ -90,6 +98,8 @@ export component SettingsWindow inherits Window {
     public function show-tab(index: int) {
         tabs.current-index = index;
     }
+
+    click-away := ClickAway {}
 
     tabs := TabFrame {
         width: 100%;
@@ -127,11 +137,27 @@ export component SettingsWindow inherits Window {
             CheckBox {
                 x: 10px;
                 y: 38px;
-                width: 340px;
+                width: 141px;
                 height: 24px;
                 text: "Live Capture Region";
                 checked <=> root.live-capture-region;
                 toggled => { root.changed(Setting.live-capture-region); }
+            }
+
+            CheckBox {
+                x: 160px;
+                y: 38px;
+                width: 131px;
+                height: 24px;
+                text: "Show Pause Timer";
+                checked <=> root.display-pause-timer;
+                toggled => { root.changed(Setting.display-pause-timer); }
+
+                Tooltip {
+                    Tip {
+                        text: "Show the seconds left of a pause or a split delay next to Current Image";
+                    }
+                }
             }
 
             Label {
@@ -169,12 +195,23 @@ export component SettingsWindow inherits Window {
             ComboBox {
                 x: 10px;
                 y: 132px;
-                width: 360px;
+                width: 274px;
                 height: 26px;
                 model: root.capture-device-placeholder == "" ? root.capture-devices : [root.capture-device-placeholder];
                 enabled: root.capture-device-placeholder == "";
                 current-index <=> root.capture-device-index;
                 selected => { root.changed(Setting.capture-device); }
+            }
+
+            Button {
+                // Lined up with Browse... below
+                x: 290px;
+                y: 132px;
+                width: 80px;
+                height: 26px;
+                text: "Refresh";
+                clicked => { root.capture-devices-requested(); }
+                tip: "List the capture devices again, for one connected or started since";
             }
 
             Label {
@@ -313,7 +350,7 @@ export component SettingsWindow inherits Window {
             SpinBox {
                 x: 200px;
                 y: 42px;
-                width: 60px;
+                width: 100px;
                 height: 22px;
                 maximum: 1;
                 step: 0.01;
@@ -441,7 +478,7 @@ export component SettingsWindow inherits Window {
                 width: 360px;
                 height: 61px;
                 wrap: word-wrap;
-                text: "Image settings and flags can be set per image through the image file name. These will override the default values. View the tutorial for full details on all available custom image settings.";
+                text: "Each image can set its own settings and flags in its file name, which override these defaults. The tutorial lists all available file name settings and flags.";
             }
 
             Button {
@@ -478,10 +515,12 @@ export component SettingsWindow inherits Window {
                     }
                 }
 
+                // Two lines for the long names, a little taller than the row
                 Label {
                     x: 10px;
+                    y: -4px;
                     width: 84px;
-                    height: 100%;
+                    height: parent.height + 8px;
                     text: row.name;
                     wrap: word-wrap;
                     opacity: row.enabled ? 1 : 0.5;
@@ -565,6 +604,8 @@ export component SettingsWindow inherits Window {
                 height: 22px;
                 minimum: 1;
                 maximum: 65535;
+                // Each port typed on the way would be listened on
+                live: false;
                 enabled: root.timer-connection == 1 && !root.auto-controlled;
                 value <=> root.livesplit-one-port;
                 edited => { root.changed(Setting.livesplit-one-port); }
@@ -578,7 +619,7 @@ export component SettingsWindow inherits Window {
                 wrap: word-wrap;
                 visible: root.timer-connection-waiting || root.auto-controlled;
                 text: root.auto-controlled
-                    ? "LiveSplit started autosplit, so it controls the timer."
+                    ? "LiveSplit started AutoSplit, so it controls the timer."
                     : "The new timer connection is used once the run ends.";
             }
         }
@@ -586,5 +627,11 @@ export component SettingsWindow inherits Window {
 
     if root.blocked: TouchArea {
         clicked => { root.blocked-clicked(); }
+    }
+
+    // Last, over everything else
+    if root.inline-message.shown: MessageOverlay {
+        message: root.inline-message;
+        answered(button) => { root.inline-answered(button); }
     }
 }

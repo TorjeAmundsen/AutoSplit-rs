@@ -1,12 +1,16 @@
 //! AutoSplit settings profiles (`.toml`), compatible both ways with AutoSplit's files.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::commands::Command;
 use crate::image::Rect;
 use crate::split_image::SplitDefaults;
+
+/// The capture region of a new profile: AutoSplit's window starts with a 640x480 region at the
+/// top left.
+pub const NEW_PROFILE_REGION: Region = Region { x: 0, y: 0, width: 640, height: 480 };
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Region {
@@ -17,8 +21,21 @@ pub struct Region {
 }
 
 impl Region {
-    /// The part of a capture device frame AutoSplit compares: the start is kept inside the
-    /// frame, the end is clamped to it.
+    /// The 4:3 picture in the middle of a frame of this size, like a 4:3 game in a 16:9 canvas:
+    /// 1440x1080 at X 240 in 1920x1080. The full height when the frame is wider, else the full
+    /// width.
+    pub fn centered_4_3(width: usize, height: usize) -> Self {
+        let (width, height) = (width as i64, height as i64);
+        if width * 3 >= height * 4 {
+            // Rounded to the nearest pixel
+            let inner = (height * 4 + 1) / 3;
+            Self { x: (width - inner) / 2, y: 0, width: inner, height }
+        } else {
+            let inner = (width * 3 + 2) / 4;
+            Self { x: 0, y: (height - inner) / 2, width, height: inner }
+        }
+    }
+
     /// The pixels AutoSplit compares from a frame of this size: the start is kept inside the
     /// frame, the end is clamped to it.
     pub fn rect(&self, width: usize, height: usize) -> Rect {
@@ -96,6 +113,8 @@ pub struct UserProfile {
     pub toggle_auto_reset_image_hotkey: String,
     pub fps_limit: i64,
     pub live_capture_region: bool,
+    /// Whether pauses and delays show the seconds left. New in AutoSplit 2.3.3.
+    pub display_pause_timer: bool,
     /// AutoSplit's capture method name, like `WINDOWS_GRAPHICS_CAPTURE`. Kept as text so that
     /// a profile made on another OS keeps its value when saved here.
     pub capture_method: String,
@@ -150,6 +169,7 @@ impl Default for UserProfile {
             toggle_auto_reset_image_hotkey: String::new(),
             fps_limit: 60,
             live_capture_region: true,
+            display_pause_timer: true,
             capture_method: String::new(),
             capture_device_id: -1,
             capture_device_name: String::new(),
@@ -183,6 +203,13 @@ pub enum ProfileError {
     Unreadable { reason: String },
     #[error("The settings file isn't valid: {reason}")]
     Invalid { reason: String },
+    #[error("This is a split image preset, not a settings file.")]
+    SplitImagePreset,
+}
+
+/// Where a profile's `directory` is: relative folders are read from `base`, the profile's folder.
+pub fn resolve_directory(base: &Path, directory: &str) -> PathBuf {
+    base.join(directory)
 }
 
 /// AutoSplit's names for its capture methods, for the window capture ones a profile can have.
@@ -207,6 +234,10 @@ impl UserProfile {
     }
 
     pub fn parse(text: &str) -> Result<Self, ProfileError> {
+        // Any TOML reads as a profile with defaults for what it doesn't have, presets too
+        if text.parse::<toml::Table>().is_ok_and(|table| table.contains_key("split")) {
+            return Err(ProfileError::SplitImagePreset);
+        }
         toml::from_str(text).map_err(|error| ProfileError::Invalid { reason: plain_toml_error(&error) })
     }
 
@@ -222,8 +253,8 @@ impl UserProfile {
     /// folder, instead of wherever AutoSplit was started from.
     pub fn resolve_directories(&mut self, base: &Path) {
         for directory in [&mut self.split_image_directory, &mut self.screenshot_directory] {
-            if !directory.is_empty() && Path::new(directory.as_str()).is_relative() {
-                *directory = base.join(directory.as_str()).to_string_lossy().into_owned();
+            if !directory.is_empty() {
+                *directory = resolve_directory(base, directory).to_string_lossy().into_owned();
             }
         }
     }
@@ -241,7 +272,23 @@ impl UserProfile {
         !self.capture_device_name.is_empty() || self.capture_device_id >= 0
     }
 
-    /// The window capture method the profile uses, which isn't supported yet, if it uses one.
+    /// Whether the capture region is still a new profile's, or empty, so it wasn't set.
+    pub fn region_untouched(&self) -> bool {
+        self.capture_region == NEW_PROFILE_REGION || self.capture_region == Region::default()
+    }
+
+    /// The region to compare from OBS Virtual Camera's frames of `frame` size while the profile's
+    /// region is still a new profile's, or empty: the whole frame. The camera sends OBS's canvas,
+    /// usually 1920x1080, whatever the game's capture in it is, and 640x480 at the top left is
+    /// only part of it. `None` for other devices, a region that was set, or a frame it fits.
+    pub fn obs_full_frame_region(&self, frame: (usize, usize)) -> Option<Region> {
+        let untouched = self.region_untouched();
+        let obs = self.capture_device_name.to_lowercase().contains("obs virtual cam");
+        let full = Region { x: 0, y: 0, width: frame.0 as i64, height: frame.1 as i64 };
+        (untouched && obs && full.width > 0 && full.height > 0 && full != self.capture_region).then_some(full)
+    }
+
+    /// The window capture method the profile uses, which isn't supported, if it uses one.
     pub fn window_capture_method(&self) -> Option<&str> {
         let method = self.capture_method.as_str();
         (!method.is_empty() && method != VIDEO_CAPTURE_DEVICE).then_some(method)

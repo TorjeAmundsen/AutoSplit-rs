@@ -1,0 +1,886 @@
+// Make Split Images: a preset's masks applied to screenshots, saved as split images named the way
+// AutoSplit reads them, into the split image folder. Edit switches it to editing the preset, with
+// the selected split's mask shown on the capture as it's changed.
+
+import { ScrollView } from "std-widgets.slint";
+import { Button, ClickAway, ComboBox, FileName, GridIcon, IconToggle, Keys, Label, LiveIcon, MaskIcon, NamePart, OpenList, Preview, SavedCheck, TextField, Theme, Tip } from "widgets.slint";
+import { InlineMessage, MessageOverlay } from "message.slint";
+import { SplitField, SplitForm, SplitFormPanel, SplitValues } from "split_form.slint";
+
+export { SplitField, SplitForm, SplitValues }
+
+// A split of the preset, with the file name it gets and where its screenshot comes from.
+export struct MakerRow {
+    // The split's name
+    heading: string,
+    parts: [NamePart],
+    file: string,
+    // The screenshot's file name, or empty
+    source: string,
+    // The split image is written
+    saved: bool,
+    // A small picture of its split image, once there's something to make it from
+    thumb: image,
+    has-thumb: bool,
+    // Something has to be fixed before the preset can be saved
+    problem: bool,
+    // Compared for the same split as the row above
+    joined: bool,
+    // Every other split, or group of splits compared together, is shaded
+    shaded: bool,
+}
+
+export component MakerWindow inherits Window {
+    // While editing, the preset's name too, with a * while it has unsaved changes
+    title: !root.editing ? "Make Split Images" : (root.edit-changed ? "*" : "") + "Editing " + (root.edit-name == "" ? "a new preset" : root.edit-name) + " - Make Split Images";
+    icon: @image-url("../assets/icon.png");
+    default-font-family: "Noto Sans";
+    default-font-size: 12px;
+
+    in property <[string]> games;
+    // A dropdown's list is showing, which Escape closes first
+    out property <bool> list-showing: OpenList.showing;
+    in-out property <int> game-index;
+    // The chosen game's presets
+    in property <[string]> presets;
+    in-out property <int> preset-index;
+    in property <[MakerRow]> rows;
+    in-out property <int> selected: 0;
+    // Shown from its end when it's too long, since the end tells folders apart. Empty for none
+    in property <string> output-folder;
+    in property <image> live-image;
+    in property <string> live-message: "Waiting for capture device...";
+    in property <bool> can-grab;
+    // Why Grab can't be used yet, like without a capture device, or empty
+    in property <string> grab-blocker;
+    in property <image> preview-image;
+    in property <string> preview-message: "No screenshot for this split yet.";
+    // Behind the split image, so its transparent parts show
+    in property <image> grid-image;
+    in-out property <bool> show-grid: true;
+    // While editing, whether the Output Preview applies the mask, and whether it shows the live
+    // capture instead of the split's grab or screenshot
+    in-out property <bool> preview-mask: true;
+    in-out property <bool> preview-live: true;
+    callback preview-toggled();
+    property <image> no-image;
+    in property <string> status;
+    in property <bool> can-save-selected;
+    in property <bool> can-save-all;
+    in property <bool> can-test;
+    in property <bool> has-savestates;
+    in property <bool> has-instructions;
+    // The preset compares several images for one split, which the profile doesn't do
+    in property <bool> needs-grouping;
+    // What has to be fixed in the chosen preset before anything's made from it, or empty
+    in property <string> preset-problem;
+    // A message box is open, which AutoSplit's are modal
+    in property <bool> blocked;
+    // A message box drawn in the window, under Wayland, instead of the message window
+    in property <InlineMessage> inline-message;
+    // Its button, or -1 for closing it
+    callback inline-answered(int);
+
+    // Editing the preset instead of making its split images
+    in property <bool> editing;
+    // Split images are being saved or the list's pictures made, which editing waits for
+    in property <bool> working;
+    // The preset's game and name while editing, set when editing starts
+    in-out property <string> edit-game;
+    // While editing: the games to pick from, then New game..., the one picked, and whether a new
+    // game is typed instead
+    in property <[string]> edit-games;
+    in-out property <int> edit-game-index;
+    in-out property <bool> new-game;
+    in-out property <string> edit-name;
+    // What the form shows of the selected split besides its values, which are in SplitValues
+    in property <SplitForm> form;
+    // The Type list: a split, the start image, a reset image, in SplitKind::ALL's order
+    in property <[string]> kinds;
+    // Whether a split is selected to edit
+    in property <bool> has-split;
+    // What has to be fixed before saving, or that it's ready
+    in property <string> problems;
+    // Every problem on a line of its own, with the split it's about
+    in property <string> problem-list;
+    // The split the problem line goes to when clicked: the next one with a problem, or -1
+    in property <int> problem-split: -1;
+    in property <bool> has-problems;
+    in property <bool> can-save-preset;
+    // The preset being edited differs from how it was opened
+    in property <bool> edit-changed;
+    // Raised to move the focus to the Name field, like after Add
+    in property <int> name-focus-request;
+    // The preset is saved already, so there's a folder to delete
+    // The preset being edited was saved before, so it can be deleted or saved as another
+    in property <bool> saved-preset;
+
+    callback game-chosen(int);
+    // The index among the game's presets
+    callback preset-chosen(int);
+    callback split-chosen(int);
+    callback edit-preset();
+    callback new-preset();
+    callback game-edited(string);
+    callback edit-game-chosen(int);
+    callback pick-game();
+    callback name-edited(string);
+    callback split-edited(SplitField);
+    callback choose-mask();
+    callback choose-savestate();
+    callback clear-savestate();
+    callback add-split();
+    callback duplicate-split();
+    callback remove-split();
+    callback move-split(bool);
+    callback save-preset();
+    callback save-preset-as-new();
+    callback cancel-edit();
+    callback show-problems();
+    callback delete-preset();
+    callback turn-on-grouping();
+
+    // The split list's rows: the split's name over its file name, beside a picture
+    property <length> row-height: 44px;
+    // The form's labels, so the fields line up
+    property <length> label-width: 88px;
+
+    // Goes to the next split with a problem, from the problem line or F8
+    public function next-problem() {
+        if (root.problem-split >= 0) {
+            // Like clicking the list: a field being typed in commits first
+            list-keys.focus();
+            root.pick(root.problem-split);
+        }
+    }
+
+    // Selects split `index`, scrolled into view
+    public function pick(index: int) {
+        root.selected = index;
+        root.scroll-to(index);
+        root.split-chosen(index);
+    }
+
+    // Scrolls split `index` into view, like after it's added or moved
+    public function scroll-to(index: int) {
+        if (index * root.row-height < -list.content-y) {
+            list.content-y = -index * root.row-height;
+        }
+        if ((index + 1) * root.row-height > -list.content-y + list.visible-height) {
+            list.content-y = -((index + 1) * root.row-height - list.visible-height);
+        }
+    }
+    callback grab();
+    callback use-screenshots();
+    callback save-selected();
+    callback save-all();
+    callback test();
+    callback copy-savestates();
+    callback show-instructions();
+    callback browse-folder();
+
+    property <bool> saved-flash;
+
+    // Split images were saved: the output preview dims under a check mark for a moment
+    public function split-images-saved() {
+        root.saved-flash = true;
+        // Restarting only resets a running timer, it doesn't start a stopped one
+        flash-timer.running = true;
+        flash-timer.restart();
+    }
+
+    flash-timer := Timer {
+        interval: 1s;
+        running: false;
+        triggered => {
+            self.running = false;
+            root.saved-flash = false;
+        }
+    }
+    callback generate-profile();
+    callback blocked-clicked();
+
+    // Two columns whose rows line up: the splits beside the previews, the list as tall as both
+    click-away := ClickAway {}
+
+    VerticalLayout {
+        padding: 8px;
+        spacing: 6px;
+
+        HorizontalLayout {
+            spacing: 12px;
+
+            VerticalLayout {
+                width: 480px;
+                spacing: 6px;
+
+                HorizontalLayout {
+                    height: 24px;
+                    spacing: 6px;
+
+                    Label {
+                        width: 46px;
+                        text: "Game:";
+                    }
+
+                    if !root.editing: ComboBox {
+                        model: root.games;
+                        current-index <=> root.game-index;
+                        selected => { root.game-chosen(root.game-index); }
+                    }
+
+                    // A game that has presets is picked, so its name can't be mistyped
+                    if root.editing && !root.new-game: ComboBox {
+                        model: root.edit-games;
+                        current-index <=> root.edit-game-index;
+                        selected => { root.edit-game-chosen(root.edit-game-index); }
+
+                        Tooltip {
+                            Tip {
+                                text: "The game the preset is listed under. New game... types the name of one that has no presets yet.";
+                            }
+                        }
+                    }
+
+                    if root.editing && root.new-game: TextField {
+                        text <=> root.edit-game;
+                        placeholder-text: "The new game's name";
+                        edited(text) => { root.game-edited(text); }
+                    }
+
+                    if root.editing && root.new-game && root.edit-games.length > 1: Button {
+                        width: 60px;
+                        text: "Games";
+                        clicked => { root.pick-game(); }
+                        tip: "Pick one of the games that have presets instead";
+                    }
+                }
+
+                HorizontalLayout {
+                    height: 24px;
+                    spacing: 6px;
+
+                    Label {
+                        width: 46px;
+                        text: "Preset:";
+                    }
+
+                    if !root.editing: ComboBox {
+                        model: root.presets;
+                        current-index <=> root.preset-index;
+                        selected => { root.preset-chosen(root.preset-index); }
+                    }
+
+                    if !root.editing: Button {
+                        width: 60px;
+                        text: "Edit";
+                        enabled: root.presets.length > 0 && !root.working;
+                        clicked => { root.edit-preset(); }
+                        tip: "Change this preset's splits, masks and settings";
+                    }
+
+                    if !root.editing: Button {
+                        width: 60px;
+                        text: "New";
+                        enabled: !root.working;
+                        clicked => { root.new-preset(); }
+                        tip: "Make a new preset for this game";
+                    }
+
+                    if root.editing: TextField {
+                        text <=> root.edit-name;
+                        placeholder-text: "The preset's name, like the category";
+                        edited(text) => { root.name-edited(text); }
+                    }
+                }
+
+                Label {
+                    height: 20px;
+                    text: "Splits";
+                }
+
+                // The outline is outside, like the previews', so their edges line up
+                Rectangle {
+                    vertical-stretch: 1;
+                    background: Theme.field;
+
+                    Rectangle {
+                        x: -1px;
+                        y: -1px;
+                        width: parent.width + 2px;
+                        height: parent.height + 2px;
+                        border-width: 1px;
+                        border-color: Theme.frame;
+                    }
+
+                    // Up and Down pick the split above or below, scrolled into view
+                    list-keys := FocusScope {
+                        key-pressed(event) => {
+                            if (event.text == Key.UpArrow && root.selected > 0) {
+                                root.pick(root.selected - 1);
+                                return accept;
+                            }
+                            if (event.text == Key.DownArrow && root.selected < root.rows.length - 1) {
+                                root.pick(root.selected + 1);
+                                return accept;
+                            }
+                            reject
+                        }
+
+                        list := ScrollView {
+                            content-height: root.rows.length * root.row-height;
+
+                            for row[index] in root.rows: row-box := Rectangle {
+                                y: index * root.row-height;
+                                height: root.row-height;
+                                width: parent.width;
+                                background: index == root.selected ? Theme.selection.with-alpha(list-keys.has-focus ? 0.35 : 0.2) : row.shaded ? Theme.stripe : transparent;
+
+                                TouchArea {
+                                    clicked => {
+                                        list-keys.focus();
+                                        root.pick(index);
+                                    }
+                                }
+
+                                // Splits compared together are one block: a line only above the
+                                // first, and a bar down the margin beside all of them
+                                property <bool> joins-next: index + 1 < root.rows.length && root.rows[index + 1].joined;
+
+                                if index > 0 && !row.joined: Rectangle {
+                                    y: 0px;
+                                    height: 1px;
+                                    background: Theme.separator;
+                                }
+
+                                if row.joined || row-box.joins-next: Rectangle {
+                                    x: 4px;
+                                    y: row.joined ? 0px : 5px;
+                                    width: 3px;
+                                    height: root.row-height - self.y - (row-box.joins-next ? 0px : 5px);
+                                    background: Theme.secondary-text;
+                                }
+
+                                HorizontalLayout {
+                                    padding-left: 12px;
+                                    // Clear of the scroll bar, 14px wide over the rows when it shows
+                                    padding-right: root.rows.length * root.row-height > list.visible-height ? 20px : 6px;
+                                    spacing: 8px;
+
+                                    // The split image at a glance, or an empty box until there's
+                                    // something to make it from
+                                    VerticalLayout {
+                                        alignment: center;
+
+                                        Rectangle {
+                                            width: 48px;
+                                            height: 36px;
+                                            border-width: 1px;
+                                            border-color: Theme.frame;
+
+                                            if row.has-thumb: Image {
+                                                x: 1px;
+                                                y: 1px;
+                                                width: parent.width - 2px;
+                                                height: parent.height - 2px;
+                                                source: row.thumb;
+                                                image-fit: fill;
+                                            }
+                                        }
+                                    }
+
+                                    VerticalLayout {
+                                        alignment: center;
+                                        horizontal-stretch: 1;
+
+                                        Label {
+                                            height: 18px;
+                                            font-size: 13px;
+                                            font-weight: 600;
+                                            color: row.problem ? Theme.error : Theme.text;
+                                            text: row.heading;
+                                        }
+
+                                        Rectangle {
+                                            height: 16px;
+                                            clip: true;
+
+                                            FileName {
+                                                parts: row.parts;
+                                                file: row.file;
+                                            }
+                                        }
+                                    }
+
+                                    VerticalLayout {
+                                        alignment: center;
+                                        horizontal-stretch: 0;
+
+                                        Label {
+                                            height: 16px;
+                                            horizontal-alignment: right;
+                                            color: Theme.secondary-text;
+                                            text: row.source;
+                                        }
+
+                                        Label {
+                                            height: 16px;
+                                            horizontal-alignment: right;
+                                            color: Theme.reached;
+                                            text: row.saved ? "saved" : "";
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Where split images come from, then what's done with them, out to the list's edges
+                if !root.editing: HorizontalLayout {
+                    height: 24px;
+                    spacing: 6px;
+
+                    Button {
+                        width: 90px;
+                        text: "Grab";
+                        suggested: true;
+                        enabled: root.can-grab;
+                        clicked => { root.grab(); }
+                        tip: root.grab-blocker != "" ? root.grab-blocker : "Make the selected split's image from the capture now, save it into the split image folder, and go to the next split. The screenshot hotkey does the same while this window is open.";
+                    }
+
+                    Button {
+                        width: 120px;
+                        text: "Use Screenshots...";
+                        enabled: root.preset-problem == "";
+                        clicked => { root.use-screenshots(); }
+                        tip: "Make split images from screenshot files instead: one for the selected split, or several for the splits in order from the first";
+                    }
+
+                    Rectangle {
+                        horizontal-stretch: 1;
+                    }
+
+                    Button {
+                        width: 60px;
+                        text: "Test";
+                        enabled: root.can-test;
+                        clicked => { root.test(); }
+                        tip: "Open the selected split's saved split image in the Live Tester";
+                    }
+
+                    Button {
+                        width: 100px;
+                        text: "Save Selected";
+                        enabled: root.can-save-selected;
+                        clicked => { root.save-selected(); }
+                        tip: "Write the selected split's split image into the split image folder, from its grab or screenshot";
+                    }
+
+                    Button {
+                        width: 80px;
+                        text: "Save All";
+                        enabled: root.can-save-all;
+                        clicked => { root.save-all(); }
+                        tip: "Write the split images of every split with a grab or screenshot into the split image folder";
+                    }
+                }
+
+                // The splits' order, out to the list's edges like the buttons they replace
+                if root.editing: HorizontalLayout {
+                    height: 24px;
+                    spacing: 6px;
+
+                    Button {
+                        width: 70px;
+                        text: "Add";
+                        clicked => { root.add-split(); }
+                        tip: "Add a split after the selected one";
+                    }
+
+                    Button {
+                        width: 80px;
+                        text: "Duplicate";
+                        enabled: root.has-split;
+                        clicked => { root.duplicate-split(); }
+                        tip: "Add a copy of the selected split after it, with the same mask";
+                    }
+
+                    Button {
+                        width: 70px;
+                        text: "Remove";
+                        enabled: root.has-split;
+                        clicked => { root.remove-split(); }
+                        tip: "Remove the selected split. " + Keys.primary + "+Z brings it back, with its grab or screenshot, until something else is changed.";
+                    }
+
+                    Rectangle {
+                        horizontal-stretch: 1;
+                    }
+
+                    Button {
+                        width: 80px;
+                        text: "Move Up";
+                        enabled: root.has-split && root.selected > 0;
+                        clicked => { root.move-split(true); }
+                        tip: "Move the selected split up, with the splits compared together with it (Alt+Up)";
+                    }
+
+                    Button {
+                        width: 80px;
+                        text: "Move Down";
+                        enabled: root.has-split && root.selected < root.rows.length - 1;
+                        clicked => { root.move-split(false); }
+                        tip: "Move the selected split down, with the splits compared together with it (Alt+Down)";
+                    }
+                }
+            }
+
+            VerticalLayout {
+                width: 320px;
+                spacing: 6px;
+
+                if !root.editing: Label {
+                    height: 24px;
+                    text: "Saves to the split image folder:";
+                }
+
+                if !root.editing: HorizontalLayout {
+                    height: 24px;
+                    spacing: 6px;
+
+                    // Like a read-only field, without a cursor; the whole path in its tooltip
+                    Rectangle {
+                        background: Theme.field;
+                        border-width: 1px;
+                        border-radius: 2px;
+                        border-color: Theme.outline;
+
+                        Rectangle {
+                            x: 6px;
+                            width: parent.width - 12px;
+                            clip: true;
+
+                            // Short, so none of it is cut off
+                            if root.output-folder == "": Text {
+                                x: 0px;
+                                height: parent.height;
+                                vertical-alignment: center;
+                                color: Theme.secondary-text;
+                                text: "None yet. Use Browse...";
+                            }
+
+                            // Too long, it's moved left so its end shows, measured as it's drawn
+                            folder-text := Text {
+                                x: min(0px, parent.width - self.preferred-width);
+                                width: self.preferred-width;
+                                height: parent.height;
+                                vertical-alignment: center;
+                                color: Theme.text;
+                                text: root.output-folder;
+                            }
+
+                            // Covers the cut start
+                            if folder-text.preferred-width > parent.width: Rectangle {
+                                x: 0px;
+                                width: 16px;
+                                background: Theme.field;
+
+                                Text {
+                                    x: 0px;
+                                    vertical-alignment: center;
+                                    color: Theme.text;
+                                    text: "...";
+                                }
+                            }
+                        }
+
+                        Tooltip {
+                            Tip {
+                                text: root.output-folder == "" ? "No split image folder yet. Pick one with Browse..., where the split images are saved." : root.output-folder;
+                            }
+                        }
+                    }
+
+                    Button {
+                        width: 70px;
+                        text: "Browse...";
+                        clicked => { root.browse-folder(); }
+                        tip: "Pick the split image folder, which the profile uses from now on";
+                    }
+                }
+
+                if !root.editing: Label {
+                    height: 20px;
+                    text: "Capture Region";
+                }
+
+                if !root.editing: Preview {
+                    height: 240px;
+                    source: root.live-image;
+                    message: root.live-message;
+                }
+
+                // The selected split, in the space of the folder and the capture, which the
+                // output preview below shows masked as it's edited. Just as tall, so the window
+                // keeps its size, and it scrolls when problems or notes need more room.
+                if root.editing: form-scroll := ScrollView {
+                    height: 326px;
+                    content-height: max(self.visible-height, form-panel.preferred-height);
+                    content-width: self.visible-width;
+
+                    form-panel := SplitFormPanel {
+                        name-focus-request: root.name-focus-request;
+
+                        width: form-scroll.visible-width;
+                        height: form-scroll.content-height;
+                        label-width: root.label-width;
+                        has-split: root.has-split;
+                        form: root.form;
+                        kinds: root.kinds;
+                        split-edited(field) => { root.split-edited(field); }
+                        choose-mask => { root.choose-mask(); }
+                        choose-savestate => { root.choose-savestate(); }
+                        clear-savestate => { root.clear-savestate(); }
+                    }
+                }
+
+                HorizontalLayout {
+                    height: 20px;
+                    spacing: 6px;
+
+                    Label {
+                        horizontal-stretch: 1;
+                        text: "Output Preview";
+                    }
+
+                    HorizontalLayout {
+                        spacing: 3px;
+
+                        if root.editing: IconToggle {
+                            checked <=> root.preview-mask;
+                            label: "Mask";
+                            tip: "Apply the mask. Off shows the picture as it is.";
+                            toggled => { root.preview-toggled(); }
+
+                            MaskIcon { }
+                        }
+
+                        if root.editing: IconToggle {
+                            checked <=> root.preview-live;
+                            label: "Live capture";
+                            tip: "Show the live capture. Off shows the split's grab or screenshot, or the mask itself when it has neither.";
+                            toggled => { root.preview-toggled(); }
+
+                            LiveIcon { }
+                        }
+
+                        IconToggle {
+                            checked <=> root.show-grid;
+                            label: "Transparency grid";
+                            tip: "Show what the mask removes as a checkerboard. Clicking the Output Preview does this too.";
+
+                            GridIcon { }
+                        }
+                    }
+                }
+
+                Preview {
+                    height: 240px;
+                    source: root.preview-image;
+                    message: root.preview-message;
+                    backdrop: root.show-grid ? root.grid-image : root.no-image;
+
+                    TouchArea {
+                        clicked => { root.show-grid = !root.show-grid; }
+                    }
+
+                    SavedCheck {
+                        shown: root.saved-flash;
+                    }
+                }
+
+                if !root.editing: HorizontalLayout {
+                    height: 24px;
+                    spacing: 6px;
+
+                    Button {
+                        text: "Copy Savestates";
+                        enabled: root.has-savestates;
+                        clicked => { root.copy-savestates(); }
+                        tip: "Put the preset's savestates on the clipboard, numbered like the split images, to paste where the practice tool on the console loads them from, like gz's savestate folder on the SD card";
+                    }
+
+                    Button {
+                        text: "Savestate Instructions";
+                        enabled: root.has-instructions;
+                        clicked => { root.show-instructions(); }
+                        tip: "Show what to do after loading the savestates that need more than loading, under the names Copy Savestates gives them";
+                    }
+                }
+
+                if root.editing: HorizontalLayout {
+                    height: 24px;
+                    alignment: end;
+
+                    Button {
+                        width: 110px;
+                        text: "Delete Preset...";
+                        enabled: root.saved-preset;
+                        clicked => { root.delete-preset(); }
+                        tip: root.saved-preset ? "Delete this preset's folder, with its masks and savestates" : "A new preset has nothing to delete yet. Cancel leaves it unsaved.";
+                    }
+                }
+            }
+        }
+
+        if !root.editing: HorizontalLayout {
+            height: 24px;
+            spacing: 6px;
+
+            // Also beside the grouping warning, which is short so what was done still shows
+            if root.preset-problem == "": Label {
+                horizontal-stretch: 1;
+                text: root.status;
+            }
+
+            if root.preset-problem != "": Label {
+                horizontal-stretch: 1;
+                color: Theme.error;
+                text: root.preset-problem;
+
+                Tooltip {
+                    Tip {
+                        text: "The preset has to be fixed before split images are made or savestates copied from it. " + root.preset-problem;
+                    }
+                }
+            }
+
+            if root.preset-problem != "": Button {
+                width: 80px;
+                text: "Fix It";
+                enabled: !root.working;
+                clicked => { root.edit-preset(); }
+                tip: "Edit the preset to fix what the line beside it says";
+            }
+
+            if root.preset-problem == "" && root.needs-grouping: Label {
+                color: Theme.error;
+                text: "The profile has grouping off.";
+
+                Tooltip {
+                    Tip {
+                        text: "This preset compares several images for one split: some splits are compared together, or there are several reset or start images. The split image folder only loads like that with Compare images with the same number for one split turned on in Settings.";
+                    }
+                }
+            }
+
+            if root.preset-problem == "" && root.needs-grouping: Button {
+                width: 80px;
+                text: "Turn It On";
+                clicked => { root.turn-on-grouping(); }
+                tip: "Turn on Compare images with the same number for one split in the profile, which this preset needs. Save the profile to keep it.";
+            }
+
+            Button {
+                width: 130px;
+                text: "Generate Profile...";
+                // The profile is for this preset's split images, so it needs their folder
+                enabled: root.presets.length > 0 && root.preset-problem == "" && root.output-folder != "";
+                clicked => { root.generate-profile(); }
+                tip: root.output-folder == "" ? "Needs a split image folder. Pick one with Browse... first." : "Save the current settings as a new profile for this game and preset, using this split image folder. You can choose to load it afterwards.";
+            }
+        }
+
+        if root.editing: HorizontalLayout {
+            height: 24px;
+            spacing: 6px;
+
+            // Hovering shows every problem, clicking lists them in a message box
+            if root.has-problems: VerticalLayout {
+                alignment: center;
+
+                Rectangle {
+                    width: 16px;
+                    height: 16px;
+                    border-radius: 8px;
+                    background: Theme.error;
+
+                    Text {
+                        text: "!";
+                        color: white;
+                        font-weight: 700;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+
+                    TouchArea {
+                        mouse-cursor: MouseCursor.pointer;
+                        clicked => { root.show-problems(); }
+                    }
+
+                    Tooltip {
+                        Tip {
+                            text: root.problem-list;
+                        }
+                    }
+                }
+            }
+
+            Label {
+                horizontal-stretch: 1;
+                color: root.has-problems ? Theme.error : Theme.secondary-text;
+                text: root.problems;
+
+                // Goes to the split with the problem, then the next one each click
+                TouchArea {
+                    enabled: root.problem-split >= 0;
+                    mouse-cursor: self.enabled ? MouseCursor.pointer : MouseCursor.default;
+                    clicked => { root.next-problem(); }
+                }
+
+                Tooltip {
+                    Tip {
+                        text: root.problem-list + (root.problem-split >= 0 ? "\n\nClick or press F8 to go to the next split with a problem. " + Keys.primary + "+S lists them all." : "");
+                    }
+                }
+            }
+
+            // A preset saved before can be saved as another, a new one only once
+            if root.saved-preset: Button {
+                width: 110px;
+                text: "Save as New";
+                enabled: !root.has-problems;
+                clicked => { root.save-preset-as-new(); }
+                tip: "Save these changes as a new preset, and leave this one as it was";
+            }
+
+            Button {
+                width: 70px;
+                text: "Cancel";
+                clicked => { root.cancel-edit(); }
+                tip: "Leave the preset as it was (Escape)";
+            }
+
+            Button {
+                width: 70px;
+                text: "Save";
+                suggested: true;
+                enabled: root.can-save-preset;
+                clicked => { root.save-preset(); }
+                tip: root.has-problems ? "Fix the problems first, which the line beside it lists" : "Save the preset (" + Keys.primary + "+S)";
+            }
+        }
+    }
+
+    if root.blocked: TouchArea {
+        clicked => { root.blocked-clicked(); }
+    }
+
+    // Last, over everything else
+    if root.inline-message.shown: MessageOverlay {
+        message: root.inline-message;
+        answered(button) => { root.inline-answered(button); }
+    }
+}

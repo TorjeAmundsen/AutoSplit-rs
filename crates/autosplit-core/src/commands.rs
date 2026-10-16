@@ -147,13 +147,13 @@ pub fn outputs_for(command: Command, profile: &UserProfile, link: TimerLink) -> 
         }
         #[cfg(target_os = "linux")]
         TimerLink::Molok => outputs.extend(sent.iter().map(|&command| Output::Molok(molok::signal_for(command)))),
-        TimerLink::Hotkeys => {
-            // Only the reset hotkey for "start also resets": the first matching case in AutoSplit
-            let hotkey = HotkeyAction::from(sent[0]).hotkey(profile);
-            if !hotkey.is_empty() {
-                outputs.push(Output::PressHotkey(hotkey.to_owned()));
-            }
-        }
+        // The reset hotkey then the split hotkey for "start also resets", like AutoSplit 2.3.4
+        TimerLink::Hotkeys => outputs.extend(
+            sent.iter()
+                .map(|&command| HotkeyAction::from(command).hotkey(profile))
+                .filter(|hotkey| !hotkey.is_empty())
+                .map(|hotkey| Output::PressHotkey(hotkey.to_owned())),
+        ),
     }
     outputs
 }

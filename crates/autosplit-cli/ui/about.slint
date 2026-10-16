@@ -3,15 +3,19 @@
 import { Button, Theme } from "widgets.slint";
 
 export component AboutWindow inherits Window {
-    title: "About AutoSplit";
+    // Help > Licenses and Links on macOS, where the app menu has About
+    title: Platform.os == OperatingSystemType.macos ? "Licenses and Links" : "About AutoSplit";
     icon: @image-url("../assets/icon.png");
     width: 264px;
     height: 250px;
+    default-font-family: "Noto Sans";
     default-font-size: 12px;
 
     in property <string> version;
     callback ok();
     callback open-link(string);
+    // The license and third-party notices, which are built into the program
+    callback open-licenses();
 
     Text {
         color: Theme.text;
@@ -44,6 +48,19 @@ export component AboutWindow inherits Window {
         x: 10px;
         y: 160px;
         width: 244px;
+        text: "AutoSplit-rs on GitHub";
+        color: Theme.link;
+
+        TouchArea {
+            mouse-cursor: pointer;
+            clicked => { root.open-link("https://github.com/TorjeAmundsen/AutoSplit-rs"); }
+        }
+    }
+
+    Text {
+        x: 10px;
+        y: 182px;
+        width: 244px;
         text: "AutoSplit on GitHub";
         color: Theme.link;
 
@@ -51,6 +68,15 @@ export component AboutWindow inherits Window {
             mouse-cursor: pointer;
             clicked => { root.open-link("https://github.com/Toufool/AutoSplit"); }
         }
+    }
+
+    Button {
+        x: 10px;
+        y: 220px;
+        width: 75px;
+        height: 24px;
+        text: "Licenses";
+        clicked => { root.open-licenses(); }
     }
 
     Button {

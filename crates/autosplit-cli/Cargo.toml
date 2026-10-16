@@ -9,23 +9,31 @@ rust-version.workspace = true
 
 [dependencies]
 anyhow = "1.0.104"
+# Puts savestate files on the clipboard
+arboard = { version = "3.6.1", default-features = false }
 autosplit-capture = { version = "0.1.0", path = "../autosplit-capture" }
 autosplit-core = { version = "0.1.0", path = "../autosplit-core" }
 autosplit-input = { version = "0.1.0", path = "../autosplit-input" }
 clap = { version = "4.6.7", features = ["derive"] }
 ctrlc = "3.5.2"
+# Catches the errors rfd only logs, like when no file picker can open
+log = "0.4.34"
 rfd = "0.17.2"
+# Whether two names in the split image folder are one file, which depends on its file system
+same-file = "1.0.6"
 slint = { version = "1.18.1", default-features = false, features = ["std", "backend-winit", "backend-winit-x11", "backend-winit-wayland", "renderer-software", "compat-1-2", "raw-window-handle-06", "unstable-winit-030"] }
 tungstenite = { version = "0.30.0", default-features = false, features = ["handshake"] }
 unicode-width = "0.2.2"
 
 [target.'cfg(windows)'.dependencies]
-windows = { version = "0.62", features = ["Win32_Foundation", "Win32_Media", "Win32_System_Console", "Win32_System_LibraryLoader","Win32_System_Threading", "Win32_Globalization"] }
+windows = { version = "0.62", features = ["Win32_Foundation", "Win32_Media", "Win32_System_Console", "Win32_System_LibraryLoader","Win32_System_Threading", "Win32_Globalization", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
 
 # Keeps App Nap from slowing comparisons down while the window is hidden
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
-objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSProcessInfo", "NSString", "NSObject"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSData", "NSProcessInfo", "NSString", "NSObject"] }
+# Sets the Dock icon, which a bare binary doesn't get from an app bundle
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSApplication", "NSImage", "NSMenu", "NSResponder"] }
 
 [dev-dependencies]
 image = { version = "0.25.10", default-features = false, features = ["png"] }
@@ -42,3 +50,7 @@ slint-build = "1.18.1"
 fontique = { version = "0.11.1", default-features = false, features = ["fontconfig-dlopen"] }
 # Signals Molok
 libc = "0.2.190"
+# The clipboard on Wayland too, for savestate files
+arboard = { version = "3.6.1", default-features = false, features = ["wayland-data-control"] }
+# Puts files on the clipboard in the formats Linux file managers paste, where arboard offers one
+x11rb = "0.13.2"

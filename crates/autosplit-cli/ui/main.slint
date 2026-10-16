@@ -4,38 +4,13 @@ import { Palette } from "std-widgets.slint";
 import { SettingsWindow, HotkeyRow, Setting } from "settings.slint";
 import { AboutWindow } from "about.slint";
 import { LogWindow } from "log.slint";
-import { MessageWindow } from "message.slint";
-import { Button, Label, SpinBox, TextField, Theme, Tip, WindowFocus } from "widgets.slint";
+import { InlineMessage, MessageOverlay, MessageWindow } from "message.slint";
+import { InfoCell, TesterReading, TesterWindow } from "tester.slint";
+import { MakerRow, MakerWindow, SplitField, SplitForm, SplitValues } from "maker.slint";
+import { InstructionCard, InstructionsWindow } from "instructions.slint";
+import { Button, ClickAway, Keys, Label, NameKind, NamePart, Preview, SpinBox, TextField, Theme, Tip, WindowFocus } from "widgets.slint";
 
-export { SettingsWindow, HotkeyRow, Setting, AboutWindow, LogWindow, MessageWindow, WindowFocus }
-
-// A preview area: the image stretched to fill it like AutoSplit's, or a message.
-component Preview inherits Rectangle {
-    in property <image> source;
-    in property <string> message;
-    border-width: 1px;
-    border-color: Theme.frame;
-
-    Image {
-        x: 1px;
-        y: 1px;
-        width: parent.width - 2px;
-        height: parent.height - 2px;
-        source: root.source;
-        image-fit: fill;
-        visible: root.message == "";
-    }
-
-    Text {
-        width: 100%;
-        height: 100%;
-        text: root.message;
-        wrap: word-wrap;
-        horizontal-alignment: center;
-        vertical-alignment: center;
-        color: Theme.text;
-    }
-}
+export { SettingsWindow, HotkeyRow, InlineMessage, Setting, AboutWindow, LogWindow, MessageWindow, InfoCell, NameKind, NamePart, TesterReading, TesterWindow, MakerRow, MakerWindow, SplitField, SplitForm, SplitValues, InstructionCard, InstructionsWindow, WindowFocus }
 
 export struct SimilarityRow {
     live: string,
@@ -142,11 +117,15 @@ export component MainWindow inherits Window {
     in property <string> window-title: "AutoSplit";
     title: root.window-title;
     icon: @image-url("../assets/icon.png");
+    default-font-family: "Noto Sans";
     default-font-size: 12px;
 
     in property <string> split-image-folder: "No Folder Selected";
     in property <bool> running;
     in property <string> device-name: "-";
+    // Changes when the region is set for the user, like by Crop to 4:3: what was being typed in
+    // its fields is dropped, and they show the new region
+    in property <int> region-generation;
     in-out property <float> region-x;
     in-out property <float> region-y;
     in-out property <float> region-width;
@@ -178,10 +157,15 @@ export component MainWindow inherits Window {
     in property <bool> can-previous;
     // A message box is open, which AutoSplit's are modal
     in property <bool> blocked;
+    // A message box drawn in the window, under Wayland, instead of the message window
+    in property <InlineMessage> inline-message;
+    // Its button, or -1 for closing it
+    callback inline-answered(int);
+    // The tool window that's open, which this window can't be used beside, or empty
+    in property <string> tool;
 
     callback browse-folder();
     callback region-edited(float, float, float, float);
-    callback align-region();
     callback take-screenshot();
     callback start-auto-splitter();
     callback reset();
@@ -191,6 +175,7 @@ export component MainWindow inherits Window {
     callback previous-image();
     callback reload-split-images();
     callback open-settings();
+    callback open-tester();
     callback save-profile();
     callback save-profile-as();
     callback load-profile();
@@ -198,6 +183,29 @@ export component MainWindow inherits Window {
     callback view-log();
     callback about();
     callback blocked-clicked();
+    callback open-maker();
+    callback close-tool();
+    callback crop-to-4x3();
+
+    // The last screenshot's file name, shown under Take Screenshot for a few seconds
+    property <string> saved-screenshot;
+
+    // A screenshot was saved as `file`
+    public function screenshot-saved(file: string) {
+        root.saved-screenshot = file;
+        // Restarting only resets a running timer, it doesn't start a stopped one
+        note-timer.running = true;
+        note-timer.restart();
+    }
+
+    note-timer := Timer {
+        interval: 5s;
+        running: false;
+        triggered => {
+            self.running = false;
+            root.saved-screenshot = "";
+        }
+    }
 
     function region-changed() {
         root.region-edited(root.region-x, root.region-y, root.region-width, root.region-height);
@@ -210,6 +218,17 @@ export component MainWindow inherits Window {
                 title: "Settings";
                 shortcut: @keys(Control + ",");
                 activated => { root.open-settings(); }
+            }
+            MenuItem {
+                title: "Live Tester";
+                shortcut: @keys(Control + T);
+                activated => { root.open-tester(); }
+            }
+            MenuItem {
+                title: "Make Split Images";
+                // Cmd+M minimizes on macOS
+                shortcut: Platform.os == OperatingSystemType.macos ? @keys(Control + Shift + M) : @keys(Control + M);
+                activated => { root.open-maker(); }
             }
             MenuSeparator { }
             MenuItem {
@@ -232,7 +251,8 @@ export component MainWindow inherits Window {
             title: "Help";
             MenuItem {
                 title: "View Help";
-                shortcut: @keys(F1);
+                // Cmd+? on macOS, like its other apps, where F1 needs the fn key
+                shortcut: Platform.os == OperatingSystemType.macos ? @keys(Control + "?") : @keys(F1);
                 activated => { root.view-help(); }
             }
             MenuItem {
@@ -241,7 +261,8 @@ export component MainWindow inherits Window {
             }
             MenuSeparator { }
             MenuItem {
-                title: "About AutoSplit";
+                // The app menu has About on macOS, which Slint always adds
+                title: Platform.os == OperatingSystemType.macos ? "Licenses and Links" : "About AutoSplit";
                 activated => { root.about(); }
             }
         }
@@ -250,6 +271,8 @@ export component MainWindow inherits Window {
     // AutoSplit's 786x404 window below its menu bar, taller for the similarity viewer's extra
     // rows. The layout sizes the window to fit it.
     property <length> extra-rows-height: root.group-split-images ? (root.group-rows.length - 1) * 22px : 0px;
+
+    click-away := ClickAway {}
 
     VerticalLayout {
         Rectangle {
@@ -318,12 +341,7 @@ export component MainWindow inherits Window {
                 text: "<";
                 enabled: root.can-previous;
                 clicked => { root.previous-image(); }
-
-                Tooltip {
-                    Tip {
-                        text: "Previous image";
-                    }
-                }
+                tip: "Previous image";
             }
 
             Label {
@@ -343,51 +361,12 @@ export component MainWindow inherits Window {
                 text: ">";
                 enabled: root.can-next;
                 clicked => { root.next-image(); }
-
-                Tooltip {
-                    Tip {
-                        text: "Next image";
-                    }
-                }
-            }
-
-            // Window capture isn't supported yet, like AutoSplit disables these for capture devices
-            Button {
-                x: 10px;
-                y: 67px;
-                width: 107px;
-                height: 24px;
-                text: "Select Region";
-                enabled: false;
-            }
-
-            Button {
-                x: 10px;
-                y: 93px;
-                width: 107px;
-                height: 24px;
-                text: "Select Window";
-                enabled: false;
-            }
-
-            Button {
-                x: 10px;
-                y: 119px;
-                width: 107px;
-                height: 24px;
-                text: "Align Region";
-                clicked => { root.align-region(); }
-
-                Tooltip {
-                    Tip {
-                        text: "Align the capture region using a reference image";
-                    }
-                }
+                tip: "Next image";
             }
 
             Label {
                 x: 11px;
-                y: 145px;
+                y: 67px;
                 width: 49px;
                 height: 20px;
                 text: "X";
@@ -396,7 +375,7 @@ export component MainWindow inherits Window {
 
             Label {
                 x: 66px;
-                y: 145px;
+                y: 67px;
                 width: 49px;
                 height: 20px;
                 text: "Y";
@@ -405,27 +384,29 @@ export component MainWindow inherits Window {
 
             SpinBox {
                 x: 11px;
-                y: 165px;
+                y: 87px;
                 width: 51px;
                 height: 24px;
                 maximum: 999999999;
+                generation: root.region-generation;
                 value <=> root.region-x;
                 edited => { root.region-changed(); }
             }
 
             SpinBox {
                 x: 66px;
-                y: 165px;
+                y: 87px;
                 width: 51px;
                 height: 24px;
                 maximum: 999999999;
+                generation: root.region-generation;
                 value <=> root.region-y;
                 edited => { root.region-changed(); }
             }
 
             Label {
                 x: 11px;
-                y: 190px;
+                y: 112px;
                 width: 49px;
                 height: 20px;
                 text: "Width";
@@ -434,7 +415,7 @@ export component MainWindow inherits Window {
 
             Label {
                 x: 66px;
-                y: 190px;
+                y: 112px;
                 width: 49px;
                 height: 20px;
                 text: "Height";
@@ -443,33 +424,60 @@ export component MainWindow inherits Window {
 
             SpinBox {
                 x: 11px;
-                y: 210px;
+                y: 132px;
                 width: 51px;
                 height: 24px;
                 minimum: 1;
                 maximum: 10000;
+                generation: root.region-generation;
                 value <=> root.region-width;
                 edited => { root.region-changed(); }
             }
 
             SpinBox {
                 x: 66px;
-                y: 210px;
+                y: 132px;
                 width: 51px;
                 height: 24px;
                 minimum: 1;
                 maximum: 10000;
+                generation: root.region-generation;
                 value <=> root.region-height;
                 edited => { root.region-changed(); }
             }
 
             Button {
                 x: 10px;
-                y: 240px;
+                y: 162px;
+                width: 107px;
+                height: 24px;
+                text: "Crop to 4:3";
+                clicked => {
+                    // Out of the field being typed in, without an outline staying on the button
+                    click-away.focus();
+                    root.crop-to-4x3();
+                }
+                tip: "Set the region to the 4:3 picture in the middle of the capture, like a 4:3 game in OBS's 16:9 canvas: X 240, Width 1440 in 1920x1080";
+            }
+
+            Button {
+                x: 10px;
+                y: 192px;
                 width: 107px;
                 height: 24px;
                 text: "Take Screenshot";
                 clicked => { root.take-screenshot(); }
+                tip: "Save the capture region as a PNG in the screenshots folder, or the split image folder without one, to make a split image from. The Screenshot hotkey in Settings does the same.";
+            }
+
+            Text {
+                x: 10px;
+                y: 220px;
+                width: 107px;
+                wrap: word-wrap;
+                font-size: 11px;
+                color: Theme.secondary-text;
+                text: root.saved-screenshot == "" ? "" : "Saved " + root.saved-screenshot;
             }
 
             Preview {
@@ -600,7 +608,107 @@ export component MainWindow inherits Window {
         }
     }
 
-    if root.blocked: TouchArea {
+    if root.blocked || root.tool != "": TouchArea {
         clicked => { root.blocked-clicked(); }
+        // A spin box under it would take the wheel and show a value the profile doesn't get
+        scroll-event(event) => { accept }
+    }
+
+    // Dimmed while a tool window is open, so it's clear why nothing here responds
+    if root.tool != "": Rectangle {
+        background: Palette.background.with-alpha(0.8);
+
+        VerticalLayout {
+            alignment: center;
+
+            HorizontalLayout {
+                alignment: center;
+
+                // Solid, so what's dimmed behind doesn't run into its text
+                Rectangle {
+                    background: Palette.background;
+                    border-width: 1px;
+                    border-radius: 4px;
+                    border-color: Theme.outline;
+
+                    VerticalLayout {
+                        padding: 16px;
+                        spacing: 8px;
+
+                        Text {
+                            horizontal-alignment: center;
+                            text: root.tool + " is open";
+                            font-size: 16px;
+                            font-weight: 600;
+                            color: Theme.text;
+                        }
+
+                        Text {
+                            horizontal-alignment: center;
+                            text: "Close it to use this window, or open Settings beside it.";
+                            color: Theme.text;
+                        }
+
+                        HorizontalLayout {
+                            alignment: center;
+                            spacing: 6px;
+
+                            Button {
+                                width: 160px;
+                                height: 27px;
+                                text: "Close " + root.tool;
+                                enabled: !root.blocked;
+                                clicked => { root.close-tool(); }
+                            }
+
+                            Button {
+                                width: 90px;
+                                height: 27px;
+                                text: "Settings";
+                                enabled: !root.blocked;
+                                clicked => { root.open-settings(); }
+                                tip: "Open Settings beside the tool window, like File > Settings and " + Keys.primary + "+, do";
+                            }
+                        }
+
+                        // The run goes on beside the tool window
+                        if root.running: HorizontalLayout {
+                            alignment: center;
+                            spacing: 6px;
+
+                            Button {
+                                width: 59px;
+                                height: 27px;
+                                text: "Undo";
+                                enabled: root.can-undo && !root.blocked;
+                                clicked => { root.undo-split(); }
+                            }
+
+                            Button {
+                                width: 59px;
+                                height: 27px;
+                                text: "Skip";
+                                enabled: root.can-skip && !root.blocked;
+                                clicked => { root.skip-split(); }
+                            }
+
+                            Button {
+                                width: 59px;
+                                height: 27px;
+                                text: "Reset";
+                                enabled: root.can-reset && !root.blocked;
+                                clicked => { root.reset(); }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Last, over everything else
+    if root.inline-message.shown: MessageOverlay {
+        message: root.inline-message;
+        answered(button) => { root.inline-answered(button); }
     }
 }

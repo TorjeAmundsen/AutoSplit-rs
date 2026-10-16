@@ -1,6 +1,12 @@
 // Widgets drawn like AutoSplit's, which uses Qt's Fusion style: compact gradient buttons and spin
 // boxes and combo boxes with arrows, so text fits at AutoSplit's sizes. Check boxes are Slint's.
 
+// One font on every system, so text takes the same room everywhere. Each window sets it as its
+// default.
+import "../assets/fonts/NotoSans-Regular.ttf";
+import "../assets/fonts/NotoSans-SemiBold.ttf";
+import "../assets/fonts/NotoSans-Bold.ttf";
+
 import { ListView, Palette } from "std-widgets.slint";
 
 export global Theme {
@@ -12,13 +18,30 @@ export global Theme {
     out property <color> field: dark ? #2d2d2d : #ffffff;
     out property <color> text: dark ? #ffffff : #1e1e1e;
     out property <color> disabled-text: dark ? #8c8c8c : #a0a0a0;
+    // Text that says something but is less important, like labels and notes. Darker than
+    // disabled text, so it reads well on white
+    out property <color> secondary-text: dark ? #a8a8a8 : #6b6b6b;
     out property <color> arrow: dark ? #bebebe : #4a4a4a;
     out property <color> focus: dark ? #2a82da : #308cc6;
     out property <color> frame: dark ? #ffffff : #a0a0a0;
     out property <color> selection: dark ? #2a82da : #308cc6;
     out property <color> link: dark ? #5aa0ff : #2a6fd6;
+    // A similarity that reaches its threshold
+    out property <color> reached: dark ? #6cd688 : #1e8c3a;
+    // A similarity that hasn't reached its threshold yet, in the Live Tester's meter
+    out property <color> meter: dark ? #3d9bff : #1f6fe0;
+    // The highest similarity's mark in the Live Tester's meter
+    out property <color> highest: dark ? #ffb84d : #d97706;
+    // Something that's ignored, like a value in a split image's name
+    out property <color> warning: dark ? #e0a040 : #a65f00;
+    // Something that has to be fixed, like a split without a mask
+    out property <color> error: dark ? #ff7070 : #c42b1c;
     out property <color> tooltip: dark ? #2d2d2d : #ffffdc;
     out property <color> item-hover: dark ? #3d3d3d : #e5e5e5;
+    // Between items in a list, like the splits in Make Split Images
+    out property <color> separator: dark ? #3a3a3a : #e0e0e0;
+    // Every other item in a list, to tell them apart
+    out property <color> stripe: dark ? #333333 : #f4f4f4;
     out property <color> tab: dark ? Palette.background.darker(20%) : Palette.background.darker(10%);
     // The light line inside the current tab and along the top of its page
     out property <color> tab-highlight: dark ? Palette.background.brighter(80%) : #ffffff;
@@ -30,20 +53,61 @@ export global WindowFocus {
     in-out property <bool> active: true;
 }
 
+// The name of the key shortcuts are held with, for tooltips: Cmd on macOS, Ctrl elsewhere, like
+// the shortcuts themselves.
+export global Keys {
+    out property <string> primary: Platform.os == OperatingSystemType.macos ? "Cmd" : "Ctrl";
+}
+
+// Whether a ComboBox's list is showing. Escape closes it then, not the window or what the window
+// would cancel with it, which Rust checks here.
+export global OpenList {
+    in-out property <bool> showing;
+}
+
+// Behind everything else in a window: a click where nothing else takes it, like on a label or
+// empty space, takes the focus from the field or button that has it, so no outline stays behind.
+// Keys it gets are left to the window.
+export component ClickAway inherits FocusScope {
+    width: 100%;
+    height: 100%;
+
+    TouchArea {
+        pointer-event(event) => {
+            if (event.kind == PointerEventKind.down) {
+                root.focus();
+            }
+        }
+    }
+}
+
 // A tooltip's content, drawn like Qt's: plain text in a box. Used as `Tooltip { Tip { text: ... } }`.
+// Slint draws tooltips inside the window and cuts off what's past its edge, so long text wraps at
+// a width that fits the narrowest windows that have tooltips, like Settings.
 export component Tip inherits Rectangle {
     in property <string> text;
     background: Theme.tooltip;
     border-width: 1px;
     border-color: Theme.outline;
+    // The tooltip's popup takes the preferred size, not the size
+    preferred-width: min(unwrapped.preferred-width, 300px) + 8px;
+    preferred-height: body.preferred-height + 8px;
+    width: self.preferred-width;
+    height: self.preferred-height;
 
-    VerticalLayout {
-        padding: 4px;
+    // Only measures the text on one line, for short tips that don't need the whole width
+    unwrapped := Text {
+        visible: false;
+        text: root.text;
+    }
 
-        Text {
-            text: root.text;
-            color: Theme.text;
-        }
+    body := Text {
+        x: 4px;
+        y: 4px;
+        width: parent.width - 8px;
+        text: root.text;
+        wrap: word-wrap;
+        color: Theme.text;
     }
 }
 
@@ -51,6 +115,50 @@ export component Label inherits Text {
     vertical-alignment: center;
     overflow: elide;
     color: Theme.text;
+}
+
+// A preview area: the image stretched to fill it like AutoSplit's, or a message. The outline is
+// drawn just outside, so the image gets the whole size.
+export component Preview inherits Rectangle {
+    in property <image> source;
+    in property <string> message;
+    // Shown behind the image, like a transparency grid
+    in property <image> backdrop;
+
+    Image {
+        width: 100%;
+        height: 100%;
+        source: root.backdrop;
+        image-fit: fill;
+        visible: root.message == "";
+    }
+
+    Image {
+        width: 100%;
+        height: 100%;
+        source: root.source;
+        image-fit: fill;
+        visible: root.message == "";
+    }
+
+    Rectangle {
+        x: -1px;
+        y: -1px;
+        width: parent.width + 2px;
+        height: parent.height + 2px;
+        border-width: 1px;
+        border-color: Theme.frame;
+    }
+
+    Text {
+        width: 100%;
+        height: 100%;
+        text: root.message;
+        wrap: word-wrap;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        color: Theme.text;
+    }
 }
 
 // The face of a button or a spin box arrow: Fusion's gradient with a light top edge.
@@ -93,6 +201,8 @@ component Face inherits Rectangle {
     in property <bool> pressed;
     in property <bool> hovered;
     in property <color> outline-color: Theme.outline;
+    // Laid over the face, like for a suggested button
+    in property <color> tint: transparent;
 
     Rectangle {
         x: 1px;
@@ -102,6 +212,10 @@ component Face inherits Rectangle {
         background: root.pressed
             ? @linear-gradient(180deg, Theme.button-bottom 0%, Theme.button-bottom 100%)
             : @linear-gradient(180deg, root.hovered ? Theme.button-top.brighter(8%) : Theme.button-top 0%, Theme.button-bottom 100%);
+
+        Rectangle {
+            background: root.tint;
+        }
     }
 
     Rectangle {
@@ -123,8 +237,13 @@ component Face inherits Rectangle {
 export component Button inherits Rectangle {
     in property <string> text;
     in property <bool> enabled: true;
-    // The default button of a dialog, drawn with a focus color
+    // The default button of a dialog, which Enter presses, drawn with the focus color
     in property <bool> primary;
+    // The likely next step, like Grab, tinted with the focus color but outlined like the others,
+    // so only the focus has its outline
+    in property <bool> suggested;
+    // Its tooltip, or none when empty
+    in property <string> tip;
     callback clicked();
     preferred-width: max(75px, label.preferred-width + 20px);
     preferred-height: 24px;
@@ -141,6 +260,7 @@ export component Button inherits Rectangle {
         pressed: touch.pressed && root.enabled;
         hovered: touch.has-hover && root.enabled;
         outline-color: root.primary || focus.has-focus ? Theme.focus : Theme.outline;
+        tint: root.suggested && root.enabled ? Theme.focus.with-alpha(0.18) : transparent;
     }
 
     label := Text {
@@ -176,6 +296,110 @@ export component Button inherits Rectangle {
             reject
         }
     }
+
+    if root.tip != "": Tooltip {
+        Tip {
+            text: root.tip;
+        }
+    }
+}
+
+// A small button that stays pressed while it's on, drawn like Button, with an icon its children
+// draw in the middle, like the Output Preview's toggles.
+export component IconToggle inherits Rectangle {
+    in-out property <bool> checked;
+    // What it toggles, for screen readers
+    in property <string> label;
+    // Its tooltip, or none when empty
+    in property <string> tip;
+    callback toggled();
+    width: 24px;
+    height: 20px;
+    forward-focus: focus;
+    accessible-role: checkbox;
+    accessible-checked: root.checked;
+    accessible-label: root.label;
+
+    function toggle() {
+        root.checked = !root.checked;
+        root.toggled();
+    }
+
+    Face {
+        width: 100%;
+        height: 100%;
+        pressed: root.checked || touch.pressed;
+        hovered: touch.has-hover;
+        outline-color: focus.has-focus ? Theme.focus : Theme.outline;
+        tint: root.checked ? Theme.focus.with-alpha(0.25) : transparent;
+    }
+
+    @children
+
+    touch := TouchArea {
+        mouse-cursor: default;
+        clicked => {
+            root.toggle();
+        }
+    }
+
+    // Zero width, so a click reaches the touch area instead of taking the focus first
+    focus := FocusScope {
+        x: 0;
+        width: 0px;
+        focus-on-click: false;
+        key-pressed(event) => {
+            if (event.text == " " || event.text == "\n") {
+                root.toggle();
+                return accept;
+            }
+            reject
+        }
+    }
+
+    if root.tip != "": Tooltip {
+        Tip {
+            text: root.tip;
+        }
+    }
+}
+
+// A checkerboard, for the transparency grid's toggle
+export component GridIcon inherits Rectangle {
+    width: 12px;
+    height: 12px;
+    border-width: 1px;
+    border-color: Theme.arrow;
+
+    for cell in [0, 2, 4, 6, 8]: Rectangle {
+        x: mod(cell, 3) * 4px;
+        y: floor(cell / 3) * 4px;
+        width: 4px;
+        height: 4px;
+        background: Theme.arrow;
+    }
+}
+
+// A dark tile with a light hole, like a mask that keeps the middle, for the mask's toggle
+export component MaskIcon inherits Rectangle {
+    width: 14px;
+    height: 12px;
+    background: Theme.arrow;
+
+    Rectangle {
+        width: 8px;
+        height: 8px;
+        border-radius: 4px;
+        background: Theme.field;
+    }
+}
+
+// A red dot, like a camera's live light, for the live capture's toggle
+export component LiveIcon inherits Rectangle {
+    width: 9px;
+    height: 9px;
+    border-radius: 4.5px;
+    background: Theme.dark ? #ff5a52 : #d93025;
 }
 
 // A drop-down list drawn like Fusion's: a button face with the current item and an arrow, and a
@@ -185,9 +409,14 @@ export component ComboBox inherits Rectangle {
     in-out property <int> current-index;
     in property <bool> enabled: true;
     callback selected(string);
+    property <bool> list-showing: popup.is-open;
     preferred-height: 24px;
     forward-focus: focus;
     accessible-role: combobox;
+
+    changed list-showing => {
+        OpenList.showing = self.list-showing;
+    }
     accessible-value: root.model[root.current-index];
 
     function select(index: int) {
@@ -428,6 +657,8 @@ export component TextField inherits Rectangle {
     in property <bool> enabled: true;
     in property <bool> read-only;
     in property <string> placeholder-text;
+    // What's in it has to change, shown with a red frame
+    in property <bool> error;
     out property <bool> has-focus: input.has-focus;
     callback edited(string);
     callback accepted(string);
@@ -438,6 +669,11 @@ export component TextField inherits Rectangle {
         height: 100%;
         focused: input.has-focus;
         enabled: root.enabled;
+    }
+
+    if root.error: Rectangle {
+        border-width: 1px;
+        border-color: Theme.error;
     }
 
     Rectangle {
@@ -476,6 +712,69 @@ export component TextField inherits Rectangle {
     }
 }
 
+// A text box of several lines, drawn like TextField. The text wraps, and when it's taller than
+// the box, it scrolls to keep the cursor in view.
+export component TextArea inherits Rectangle {
+    in-out property <string> text <=> input.text;
+    in property <bool> enabled: true;
+    in property <string> placeholder-text;
+    callback edited(string);
+    forward-focus: input;
+    // A line's height, to keep the cursor's whole line in view
+    property <length> line-height: 18px;
+
+    FieldFrame {
+        width: 100%;
+        height: 100%;
+        focused: input.has-focus;
+        enabled: root.enabled;
+    }
+
+    flick := Flickable {
+        x: 4px;
+        y: 3px;
+        width: parent.width - 8px;
+        height: parent.height - 6px;
+        content-width: self.width;
+        content-height: max(self.height, input.preferred-height);
+
+        input := TextInput {
+            width: flick.width;
+            height: max(flick.height, self.preferred-height);
+            single-line: false;
+            wrap: word-wrap;
+            read-only: !root.enabled;
+            enabled: root.enabled;
+            color: root.enabled ? Theme.text : Theme.disabled-text;
+            selection-background-color: Theme.selection;
+            edited => {
+                root.edited(self.text);
+            }
+            cursor-position-changed(position) => {
+                if (position.y + flick.content-y < 0) {
+                    flick.content-y = -position.y;
+                }
+                if (position.y + root.line-height + flick.content-y > flick.height) {
+                    flick.content-y = flick.height - position.y - root.line-height;
+                }
+            }
+        }
+    }
+
+    Text {
+        x: 4px;
+        y: 3px;
+        width: parent.width - 8px;
+        height: parent.height - 6px;
+        vertical-alignment: top;
+        wrap: word-wrap;
+        overflow: elide;
+        text: root.placeholder-text;
+        color: Theme.disabled-text;
+        visible: input.text == "" && !input.has-focus;
+    }
+}
+
 // A spin box: a number field with up and down arrows, like Qt's. The value is corrected into
 // the range when editing ends. Arrows repeat while held, and the mouse wheel and PageUp and
 // PageDown step too.
@@ -486,10 +785,18 @@ export component SpinBox inherits Rectangle {
     in property <float> step: 1;
     in property <int> decimals: 0;
     in property <bool> enabled: true;
+    // Off: typing only reports on Enter or leaving the field, for values that are costly to apply
+    in property <bool> live: true;
+    // Changes when the field is filled with another thing's value, like another split's: what was
+    // typed before is dropped instead of reported for it
+    in property <int> generation;
     callback edited(float);
     forward-focus: input;
     // The arrow held down: 1 up, -1 down, 0 none
     property <int> holding;
+    // Something was typed since the value was last shown, while generation was typed-at
+    property <bool> typed;
+    property <int> typed-at;
 
     function shown(number: float) -> string {
         return root.decimals == 0 ? round(number) : number.to-fixed(root.decimals);
@@ -498,6 +805,7 @@ export component SpinBox inherits Rectangle {
     // Sets a value, corrected into the range, and reports it when it changed
     function set(number: float) {
         let corrected = max(root.minimum, min(root.maximum, number));
+        root.typed = false;
         input.text = root.shown(corrected);
         if (corrected != root.value) {
             root.value = corrected;
@@ -505,12 +813,20 @@ export component SpinBox inherits Rectangle {
         }
     }
 
+    // Only what was typed is reported: the shown text is rounded, and reporting it would change a
+    // value that's only been looked at
     function commit() {
-        if (input.text.is-float()) {
+        if (root.typed && root.typed-at == root.generation && input.text.is-float()) {
             root.set(input.text.to-float());
         } else {
+            root.typed = false;
             input.text = root.shown(root.value);
         }
+    }
+
+    changed generation => {
+        root.typed = false;
+        input.text = root.shown(root.value);
     }
 
     // Typing replaces the binding to value, so changes from elsewhere are shown by hand
@@ -556,7 +872,9 @@ export component SpinBox inherits Rectangle {
             selection-background-color: Theme.selection;
             text: root.shown(root.value);
             edited => {
-                if (self.text.is-float() && self.text.to-float() >= root.minimum && self.text.to-float() <= root.maximum && self.text.to-float() != root.value) {
+                root.typed = true;
+                root.typed-at = root.generation;
+                if (root.live && self.text.is-float() && self.text.to-float() >= root.minimum && self.text.to-float() <= root.maximum && self.text.to-float() != root.value) {
                     root.value = self.text.to-float();
                     root.edited(root.value);
                 }
@@ -605,11 +923,13 @@ export component SpinBox inherits Rectangle {
         }
     }
 
+    // Inside the field's frame, which goes around them too, so it stays whole when it's
+    // focused instead of showing through the arrows' rounded corners
     for arrow[index] in [{ up: true }, { up: false }]: Rectangle {
         x: parent.width - 16px;
-        y: index == 0 ? 0px : parent.height / 2;
-        width: 16px;
-        height: parent.height / 2;
+        y: index == 0 ? 1px : parent.height / 2;
+        width: 15px;
+        height: parent.height / 2 - 1px;
         // Greyed at the end of the range, like Qt's
         property <bool> usable: root.enabled && (arrow.up ? root.value < root.maximum : root.value > root.minimum);
 
@@ -642,6 +962,119 @@ export component SpinBox inherits Rectangle {
                     root.holding = 0;
                 }
             }
+        }
+    }
+}
+
+// A part of a split image's file name, as the split image loader reads it. `kind` is what it does:
+// Text, Number, Keyword, Threshold, Pause, Delay, Loops, Method, Flags or Extension.
+// What a part of a split image's file name is, like the parser's PartKind.
+export enum NameKind { text, number, keyword, threshold, pause, delay, loops, method, flags, extension }
+
+export struct NamePart {
+    text: string,
+    kind: NameKind,
+    meaning: string,
+    ignored: bool,
+}
+
+// The colors of the file name's parts, so each kind of value stands out.
+global NameColors {
+    public pure function of(part: NamePart) -> color {
+        if part.ignored {
+            return Theme.warning;
+        }
+        if part.kind == NameKind.number || part.kind == NameKind.extension {
+            return Theme.secondary-text;
+        }
+        if part.kind == NameKind.keyword {
+            return Theme.dark ? #f1948a : #b03a2e;
+        }
+        if part.kind == NameKind.threshold {
+            return Theme.reached;
+        }
+        if part.kind == NameKind.pause {
+            return Theme.meter;
+        }
+        if part.kind == NameKind.delay {
+            return Theme.dark ? #4dd0e1 : #00838f;
+        }
+        if part.kind == NameKind.loops {
+            return Theme.dark ? #9fa8da : #283593;
+        }
+        if part.kind == NameKind.method {
+            return Theme.dark ? #f48fb1 : #c2185b;
+        }
+        if part.kind == NameKind.flags {
+            return Theme.dark ? #c39bd3 : #8e44ad;
+        }
+        return Theme.text;
+    }
+}
+
+// A split image's file name, each part colored by what it does, with what it does on hover.
+// Without parts, `file` is shown plainly.
+export component FileName inherits HorizontalLayout {
+    in property <[NamePart]> parts;
+    in property <string> file;
+    // Shown on hover over the plain parts
+    in property <string> path;
+    alignment: start;
+
+    if root.parts.length == 0: Label {
+        text: root.file;
+    }
+
+    for part in root.parts: Rectangle {
+        width: text.preferred-width;
+
+        text := Text {
+            vertical-alignment: center;
+            text: part.text;
+            font-weight: part.kind == NameKind.text ? 400 : 600;
+            color: NameColors.of(part);
+        }
+
+        Tooltip {
+            Tip {
+                text: part.meaning != "" ? part.meaning : root.path;
+            }
+        }
+    }
+}
+
+// Something was saved: what's under it dims behind a green check mark at once, then both fade out
+// when `shown` turns off.
+export component SavedCheck inherits Rectangle {
+    in property <bool> shown;
+    width: 100%;
+    height: 100%;
+    background: #000000.with-alpha(0.45);
+    opacity: 0;
+
+    states [
+        saved when root.shown: {
+            opacity: 1;
+            out {
+                animate opacity { duration: 300ms; easing: ease-out; }
+            }
+        }
+    ]
+
+    Rectangle {
+        width: 64px;
+        height: 64px;
+        border-radius: 32px;
+        background: #2ea44f;
+
+        Path {
+            width: 32px;
+            height: 24px;
+            viewbox-width: 32;
+            viewbox-height: 24;
+            commands: "M 3 12 L 12 21 L 29 3";
+            stroke: white;
+            stroke-width: 5px;
         }
     }
 }

@@ -22,7 +22,7 @@ fn press(hotkey: &str) -> Vec<Output> {
 
 #[test_case(Command::Split, profile() => press("num 1"); "split presses the split hotkey")]
 #[test_case(Command::Start, profile() => press("num 1"); "start presses the split hotkey")]
-#[test_case(Command::Start, UserProfile { start_also_resets: true, ..profile() } => press("num 3"); "start presses the reset hotkey when start also resets")]
+#[test_case(Command::Start, UserProfile { start_also_resets: true, ..profile() } => vec![Output::PressHotkey("num 3".into()), Output::PressHotkey("num 1".into())]; "start presses the reset hotkey then the split hotkey when start also resets")]
 #[test_case(Command::Reset, profile() => press("num 3"); "reset presses the reset hotkey")]
 #[test_case(Command::Pause, profile() => press("num 5"); "pause presses the pause hotkey")]
 #[test_case(Command::Skip, profile() => press("num 2"); "skip presses the skip hotkey")]

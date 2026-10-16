@@ -133,7 +133,7 @@ impl Drop for Console {
 
 fn log_paths() -> Vec<PathBuf> {
     let next_to_exe = std::env::current_exe().ok().map(|exe| exe.with_file_name("autosplit.log"));
-    next_to_exe.into_iter().chain([std::env::temp_dir().join("autosplit.log")]).collect()
+    next_to_exe.into_iter().chain([crate::platform::temp_folder().join("autosplit.log")]).collect()
 }
 
 /// Appends, so an AutoSplit that LiveSplit started while the previous one was still closing

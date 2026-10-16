@@ -134,6 +134,21 @@ impl SplitImage {
         self.flags & PAUSE_FLAG != 0
     }
 
+    /// Whether the file name sets the threshold, instead of the profile.
+    pub fn names_threshold(&self) -> bool {
+        self.similarity_threshold.is_some()
+    }
+
+    /// Whether the file name sets the comparison method, instead of the profile.
+    pub fn names_comparison_method(&self) -> bool {
+        self.comparison_method.is_some()
+    }
+
+    /// Whether the file name sets the delay, instead of the profile.
+    pub fn names_delay(&self) -> bool {
+        self.delay_time.is_some()
+    }
+
     pub fn delay_time_ms(&self, defaults: &SplitDefaults) -> i64 {
         self.delay_time.unwrap_or(defaults.delay_time)
     }

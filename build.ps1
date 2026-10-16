@@ -123,14 +123,17 @@ function BuildTriple($triple) {
 
 # Compress-Archive drops the executable bit, so Linux and macOS binaries are added with Unix
 # permissions set
-function Zip($directory, $zip, $executable) {
+function Zip($directory, $zip, $executables) {
     Add-Type -AssemblyName System.IO.Compression
     $stream = [System.IO.File]::Open($zip, [System.IO.FileMode]::Create)
     $archive = [System.IO.Compression.ZipArchive]::new($stream, [System.IO.Compression.ZipArchiveMode]::Create)
     try {
-        foreach ($file in Get-ChildItem $directory -File) {
-            $entry = $archive.CreateEntry($file.Name, [System.IO.Compression.CompressionLevel]::Optimal)
-            $mode = if ($file.Name -eq $executable) { 0x81ED } else { 0x81A4 }
+        $root = (Resolve-Path $directory).Path
+        foreach ($file in Get-ChildItem $directory -File -Recurse) {
+            # Entries in folders, like presets/, by their path with forward slashes
+            $name = $file.FullName.Substring($root.Length).TrimStart('\', '/').Replace('\', '/')
+            $entry = $archive.CreateEntry($name, [System.IO.Compression.CompressionLevel]::Optimal)
+            $mode = if ($executables -contains $name) { 0x81ED } else { 0x81A4 }
             $entry.ExternalAttributes = $mode -shl 16
             $writer = $entry.Open()
             try {
@@ -159,11 +162,12 @@ function Build($name) {
 
     $folders = @($targets[$name] | ForEach-Object { BuildTriple $_ })
     if ((OsOf $targets[$name][0]) -eq "windows") {
-        # autosplit.exe is a GUI program, so the command prompt doesn't wait for it. Typing
-        # autosplit runs autosplit.com first, which runs autosplit.exe as a console program.
-        $binaryName = "autosplit.exe"
-        Copy-Item "$($folders[0])/$binaryName" "$output/$binaryName"
-        Copy-Item "$($folders[0])/autosplit-console.exe" "$output/autosplit.com"
+        # AutoSplit.exe is a GUI program, so the command prompt doesn't wait for it. Typing
+        # autosplit runs AutoSplit.com first, which runs AutoSplit.exe as a console program.
+        # Named like AutoSplit's, where Cargo names them in lowercase.
+        $binaryName = "AutoSplit.exe"
+        Copy-Item "$($folders[0])/autosplit.exe" "$output/$binaryName"
+        Copy-Item "$($folders[0])/autosplit-console.exe" "$output/AutoSplit.com"
     }
     else {
         $binaryName = "autosplit"
@@ -175,13 +179,23 @@ function Build($name) {
             Copy-Item "$($folders[0])/$binaryName" "$output/$binaryName"
         }
     }
-    # The licenses have to ship with the binaries
-    foreach ($file in @("LICENSE", "THIRD_PARTY_NOTICES.txt")) {
-        Copy-Item "$PSScriptRoot/$file" $output
+    # The split image presets, which are read from next to the binary. A preset with a WIP.txt is
+    # a work in progress and stays out. The splits library stays out until it can be imported.
+    New-Item -ItemType Directory -Path "$output/presets" | Out-Null
+    foreach ($preset in Get-ChildItem "$PSScriptRoot/presets" -Directory) {
+        if (Test-Path (Join-Path $preset.FullName "WIP.txt")) { continue }
+        Copy-Item $preset.FullName "$output/presets" -Recurse
+    }
+    # Adds it to the app menu on Linux, with the icon
+    $executables = @($binaryName)
+    if ((OsOf $targets[$name][0]) -eq "linux") {
+        Copy-Item "$PSScriptRoot/crates/autosplit-cli/assets/icon.png" "$output/icon.png"
+        Copy-Item "$PSScriptRoot/crates/autosplit-cli/assets/install-desktop-entry.sh" "$output/install-desktop-entry.sh"
+        $executables += "install-desktop-entry.sh"
     }
 
     $zip = "$PSScriptRoot/build/AutoSplit-v$version-$name.zip"
-    Zip $output $zip $binaryName
+    Zip $output $zip $executables
     Write-Host "  Zipped: $zip"
 }
 

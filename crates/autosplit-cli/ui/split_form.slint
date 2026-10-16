@@ -1,0 +1,436 @@
+// The edit form of Make Split Images: the selected split's fields. Its values go both ways with
+// the window's properties, and each field says it was edited with split-edited.
+
+import { CheckBox } from "std-widgets.slint";
+import { Button, ComboBox, Label, SpinBox, TextArea, TextField, Theme, Tip } from "widgets.slint";
+
+// A field of the split form, which says it was edited. Its value is in its property.
+export enum SplitField { name, kind, threshold, delay, pause, dummy, below, with-previous, instructions }
+
+// What the form shows of the selected split besides its fields, while editing.
+export struct SplitForm {
+    // A split, named by its Name, not a start or reset image, which their type names
+    named: bool,
+    // What has to be fixed in each field, one problem a line, or empty
+    name-problem: string,
+    mask-problem: string,
+    group-problem: string,
+    mask: string,
+    savestate: string,
+    // Full paths, for the tooltips
+    mask-path: string,
+    savestate-path: string,
+    // Picked from outside the preset's folder, so saving copies it in
+    mask-copied: bool,
+    savestate-copied: bool,
+    // Compared together with others, or a second reset or start image, which the profile has
+    // turned off
+    grouping-off: bool,
+    // There's a split above that it can be compared with
+    can-join: bool,
+    // Why not, for the greyed out checkbox's tooltip
+    why-not-joined: string,
+}
+
+// A field's problems under it, lined up with the field and wrapped so all of them show. Also a
+// note about the field, in another color.
+component FieldProblem inherits HorizontalLayout {
+    in property <length> label-width;
+    in property <string> text;
+    in property <color> color: Theme.error;
+    spacing: 6px;
+
+    Rectangle {
+        width: root.label-width;
+    }
+
+    Text {
+        color: root.color;
+        text: root.text;
+        wrap: word-wrap;
+    }
+}
+
+// The selected split's values in the form, which Rust fills and reads. The form binds to them
+// directly, so the window doesn't pass each one on.
+export global SplitValues {
+    // Changes when the form is filled with another split's values, which drops what was typed
+    in-out property <int> generation;
+    in-out property <string> name;
+    in-out property <int> kind;
+    // Unticked, the profile's default applies, which the value shows
+    in-out property <bool> has-threshold;
+    in-out property <float> threshold;
+    in-out property <bool> has-delay;
+    // Milliseconds
+    in-out property <float> delay;
+    in-out property <bool> has-pause;
+    // Seconds
+    in-out property <float> pause;
+    in-out property <bool> dummy;
+    in-out property <bool> below;
+    in-out property <bool> with-previous;
+    in-out property <string> instructions;
+}
+
+export component SplitFormPanel inherits VerticalLayout {
+    in property <length> label-width;
+    in property <bool> has-split;
+    in property <SplitForm> form;
+    in property <[string]> kinds;
+    // Raised to move the focus to the Name field, like after Add
+    in property <int> name-focus-request;
+    callback split-edited(SplitField);
+    callback choose-mask();
+    callback choose-savestate();
+    callback clear-savestate();
+    spacing: 6px;
+
+    if !root.has-split: Label {
+        vertical-stretch: 1;
+        horizontal-alignment: center;
+        color: Theme.secondary-text;
+        text: "Add a split to edit it.";
+    }
+
+    if root.has-split: VerticalLayout {
+        vertical-stretch: 1;
+        spacing: 6px;
+
+        HorizontalLayout {
+            height: 24px;
+            spacing: 6px;
+
+            Label {
+                width: root.label-width;
+                text: "Type:";
+            }
+
+            ComboBox {
+                width: 140px;
+                model: root.kinds;
+                current-index <=> SplitValues.kind;
+                selected => { root.split-edited(SplitField.kind); }
+
+                Tooltip {
+                    Tip {
+                        text: "A split, or the image that starts the timer or resets the run. AutoSplit reads it from the name, start_auto_splitter or reset, which this sets.";
+                    }
+                }
+            }
+
+            Rectangle {
+                horizontal-stretch: 1;
+            }
+        }
+
+        // The field, then what it says about it, close under it
+        VerticalLayout {
+            spacing: 2px;
+
+            HorizontalLayout {
+                height: 24px;
+                spacing: 6px;
+
+                Label {
+                    width: root.label-width;
+                    text: "Name:";
+                }
+
+                // A start or reset image's name is what makes it one
+                TextField {
+                    property <int> focus-request: root.name-focus-request;
+                    error: root.form.name-problem != "";
+                    enabled: root.form.named;
+                    text <=> SplitValues.name;
+                    edited => { root.split-edited(SplitField.name); }
+                    changed focus-request => {
+                        self.focus();
+                    }
+
+                    Tooltip {
+                        Tip {
+                            text: root.form.named ? "The split's name in its file name, which AutoSplit shows as the current image" : "Start and reset images are named by their type, which AutoSplit reads from the name. Change the Type to name it.";
+                        }
+                    }
+                }
+            }
+
+            if root.form.name-problem != "": FieldProblem {
+                label-width: root.label-width;
+                text: root.form.name-problem;
+            }
+        }
+
+        VerticalLayout {
+            spacing: 2px;
+
+            HorizontalLayout {
+                height: 24px;
+                spacing: 6px;
+
+                Label {
+                    width: root.label-width;
+                    text: "Mask:";
+                }
+
+                Label {
+                    horizontal-stretch: 1;
+                    color: root.form.mask-problem != "" ? Theme.error : root.form.mask == "" ? Theme.secondary-text : Theme.text;
+                    text: root.form.mask == "" ? "None yet" : root.form.mask;
+
+                    Tooltip {
+                        Tip {
+                            text: "The part of the screen that's compared: where the mask is opaque. The output preview shows it on the capture." + (root.form.mask-path == "" ? "" : "\n\n" + root.form.mask-path) + (root.form.mask-copied ? "\n\nSaving copies it into the preset's folder." : "");
+                        }
+                    }
+                }
+
+                Button {
+                    width: 80px;
+                    text: "Choose...";
+                    suggested: root.form.mask == "";
+                    clicked => { root.choose-mask(); }
+                }
+            }
+
+            if root.form.mask-problem != "": FieldProblem {
+                label-width: root.label-width;
+                text: root.form.mask-problem;
+            }
+
+            if root.form.mask-copied: FieldProblem {
+                label-width: root.label-width;
+                color: Theme.secondary-text;
+                // One line, so the form fits without scrolling; the tooltip says where
+                text: "Copied into the preset when saved.";
+            }
+        }
+
+        HorizontalLayout {
+            height: 24px;
+            spacing: 6px;
+
+            CheckBox {
+                width: root.label-width;
+                text: "Threshold";
+                checked <=> SplitValues.has-threshold;
+                toggled => { root.split-edited(SplitField.threshold); }
+
+                Tooltip {
+                    Tip {
+                        text: "How similar the capture has to be to split. Unchecked uses the profile's default similarity threshold.";
+                    }
+                }
+            }
+
+            // Editing the value ticks the box, so it's the split's own
+            SpinBox {
+                width: 64px;
+                height: 22px;
+                minimum: 0;
+                maximum: 1;
+                step: 0.01;
+                decimals: 2;
+                generation: SplitValues.generation;
+                value <=> SplitValues.threshold;
+                edited => {
+                    SplitValues.has-threshold = true;
+                    root.split-edited(SplitField.threshold);
+                }
+            }
+
+            Rectangle {
+                horizontal-stretch: 1;
+            }
+
+            CheckBox {
+                text: "Delay";
+                checked <=> SplitValues.has-delay;
+                toggled => { root.split-edited(SplitField.delay); }
+
+                Tooltip {
+                    Tip {
+                        text: "How long to wait after the image matches before splitting, in milliseconds. Unchecked uses the profile's default delay time.";
+                    }
+                }
+            }
+
+            SpinBox {
+                width: 74px;
+                height: 22px;
+                minimum: 0;
+                maximum: 600000;
+                step: 100;
+                generation: SplitValues.generation;
+                value <=> SplitValues.delay;
+                edited => {
+                    SplitValues.has-delay = true;
+                    root.split-edited(SplitField.delay);
+                }
+            }
+        }
+
+        HorizontalLayout {
+            height: 24px;
+            spacing: 6px;
+
+            CheckBox {
+                width: root.label-width;
+                text: "Pause";
+                checked <=> SplitValues.has-pause;
+                toggled => { root.split-edited(SplitField.pause); }
+
+                Tooltip {
+                    Tip {
+                        text: "How long to stop comparing after the split. Unchecked uses the profile's default pause time.";
+                    }
+                }
+            }
+
+            SpinBox {
+                width: 64px;
+                height: 22px;
+                minimum: 0;
+                maximum: 3600;
+                step: 0.5;
+                decimals: 2;
+                generation: SplitValues.generation;
+                value <=> SplitValues.pause;
+                edited => {
+                    SplitValues.has-pause = true;
+                    root.split-edited(SplitField.pause);
+                }
+            }
+
+            // Unticked, the value is the profile's default, like Threshold and Delay show theirs
+            Label {
+                color: SplitValues.has-pause ? Theme.text : Theme.secondary-text;
+                text: "seconds";
+            }
+        }
+
+        // Dummy in the label column, like Threshold and Pause, so the other fits beside it
+        HorizontalLayout {
+            height: 24px;
+            spacing: 6px;
+
+            CheckBox {
+                width: root.label-width;
+                text: "Dummy";
+                checked <=> SplitValues.dummy;
+                toggled => { root.split-edited(SplitField.dummy); }
+
+                Tooltip {
+                    Tip {
+                        text: "Matching it moves on to the next image without splitting, for screens that come before the real split";
+                    }
+                }
+            }
+
+            CheckBox {
+                text: "Split below threshold";
+                checked <=> SplitValues.below;
+                toggled => { root.split-edited(SplitField.below); }
+
+                Tooltip {
+                    Tip {
+                        text: "Split when the similarity drops back below the threshold after reaching it, like when a screen goes away";
+                    }
+                }
+            }
+        }
+
+        VerticalLayout {
+            spacing: 2px;
+
+            HorizontalLayout {
+                height: 24px;
+                spacing: 12px;
+
+                Rectangle {
+                    width: root.label-width - 6px;
+                }
+
+                CheckBox {
+                    text: "Same split as the one above";
+                    enabled: root.form.can-join || SplitValues.with-previous;
+                    checked <=> SplitValues.with-previous;
+                    toggled => { root.split-edited(SplitField.with-previous); }
+
+                    Tooltip {
+                        Tip {
+                            text: (root.form.why-not-joined == "" ? "" : root.form.why-not-joined + "\n\n") + "Compare it for the same split as the split above, so either one matching splits, like a boss that dies in one of two rooms. They get the same number. Up to 4 splits together. Needs Compare images with the same number for one split, in Settings.";
+                        }
+                    }
+                }
+            }
+
+            if root.form.group-problem != "": FieldProblem {
+                label-width: root.label-width;
+                text: root.form.group-problem;
+            }
+
+            if root.form.group-problem == "" && root.form.grouping-off: FieldProblem {
+                label-width: root.label-width;
+                color: Theme.secondary-text;
+                text: "Grouping is off in the profile. Turn it on in Settings after saving.";
+            }
+        }
+
+        VerticalLayout {
+            spacing: 2px;
+
+            HorizontalLayout {
+                height: 24px;
+                spacing: 6px;
+
+                Label {
+                    width: root.label-width;
+                    text: "Savestate:";
+                }
+
+                Label {
+                    horizontal-stretch: 1;
+                    color: root.form.savestate == "" ? Theme.secondary-text : Theme.text;
+                    text: root.form.savestate == "" ? "None" : root.form.savestate;
+
+                    Tooltip {
+                        Tip {
+                            text: "A savestate at the split's screen, for taking its screenshot, made with a practice tool that loads savestates on the console, like gz for Ocarina of Time (.gzs). Copy Savestates puts them on the clipboard." + (root.form.savestate-path == "" ? "" : "\n\n" + root.form.savestate-path) + (root.form.savestate-copied ? "\n\nSaving copies it into the preset's savestates folder." : "");
+                        }
+                    }
+                }
+
+                Button {
+                    width: 80px;
+                    text: "Choose...";
+                    clicked => { root.choose-savestate(); }
+                }
+
+                Button {
+                    width: 50px;
+                    text: "Clear";
+                    enabled: root.form.savestate != "";
+                    clicked => { root.clear-savestate(); }
+                }
+            }
+
+            if root.form.savestate-copied: FieldProblem {
+                label-width: root.label-width;
+                color: Theme.secondary-text;
+                text: "Copied into the preset when saved.";
+            }
+        }
+
+        // Always two lines, however much is above it
+        TextArea {
+            vertical-stretch: 1;
+            min-height: 42px;
+            enabled: root.form.savestate != "";
+            placeholder-text: root.form.savestate == "" ? "Instructions for the savestate, once there is one" : "What to do after loading the savestate, if anything";
+            text <=> SplitValues.instructions;
+            edited => { root.split-edited(SplitField.instructions); }
+        }
+    }
+}

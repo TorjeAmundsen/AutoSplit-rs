@@ -1,11 +1,11 @@
-//! autosplit.com on Windows: a console program that runs autosplit.exe, a GUI program, inside
-//! the terminal and waits for it. Terminals pick autosplit.com over autosplit.exe when you type
+//! AutoSplit.com on Windows: a console program that runs AutoSplit.exe, a GUI program, inside
+//! the terminal and waits for it. Terminals pick AutoSplit.com over AutoSplit.exe when you type
 //! `autosplit`, so they show its output in order, wait for it, and pass Ctrl+C to it. Without
 //! arguments it only opens the window, so it returns to the prompt at once.
 
 use std::process::{Command, Stdio};
 
-/// Lets Ctrl+C through to autosplit.exe, which shares the console, while this one keeps waiting
+/// Lets Ctrl+C through to AutoSplit.exe, which shares the console, while this one keeps waiting
 /// for it. A handler isn't inherited, unlike ignoring Ctrl+C with no handler.
 #[cfg(windows)]
 unsafe extern "system" fn keep_waiting(_event: u32) -> windows::core::BOOL {
@@ -14,7 +14,7 @@ unsafe extern "system" fn keep_waiting(_event: u32) -> windows::core::BOOL {
 
 fn main() {
     let Ok(launcher) = std::env::current_exe() else { std::process::exit(1) };
-    let program = launcher.with_file_name(if cfg!(windows) { "autosplit.exe" } else { "autosplit" });
+    let program = launcher.with_file_name(if cfg!(windows) { "AutoSplit.exe" } else { "autosplit" });
     let arguments: Vec<_> = std::env::args_os().skip(1).collect();
     let mut command = Command::new(&program);
     command.args(&arguments);

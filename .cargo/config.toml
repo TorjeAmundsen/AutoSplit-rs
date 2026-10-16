@@ -1,0 +1,5 @@
+[env]
+# The oldest macOS the binary starts on, checked by the loader instead of failing later at run
+# time. Apple Silicon starts at 11.0 anyway, so both halves of the universal binary match. Also
+# read by the C dependencies' builds. Matches LSMinimumSystemVersion in crates/autosplit-cli/build.rs.
+MACOSX_DEPLOYMENT_TARGET = "11.0"

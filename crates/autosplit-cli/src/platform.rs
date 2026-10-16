@@ -16,7 +16,7 @@ pub fn decode_ansi(bytes: &[u8]) -> String {
     String::from_utf8_lossy(bytes).into_owned()
 }
 
-/// When a console program that LiveSplit started (an older build, or autosplit.com) runs
+/// When a console program that LiveSplit started (an older build, or AutoSplit.com) runs
 /// AutoSplit, Windows opens an empty console window that closes AutoSplit when closed. Detaches
 /// from it when nothing else uses it, which leaves a console AutoSplit was started from alone.
 pub fn leave_own_console() {
@@ -34,6 +34,10 @@ pub fn leave_own_console() {
 /// up to its timer tick (15.6 ms by default), which would make comparisons uneven and splits
 /// late, and macOS's App Nap stretches them while the window is hidden. The precision costs a
 /// little power, so it's only asked for while comparing.
+///
+/// On macOS it's also kept while a split waits out a delay or pause, when nothing is compared:
+/// App Nap would otherwise stretch the wait until just before it ends, from which precision is
+/// asked for, by seconds, and the split or the next comparison would come late.
 #[derive(Default)]
 pub struct PreciseTimer {
     #[cfg_attr(not(windows), allow(dead_code))]
@@ -48,7 +52,9 @@ use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
 
 impl PreciseTimer {
-    pub fn set(&mut self, precise: bool) {
+    /// `precise` while comparing and just before the run's next wakeup, `waiting` while the run
+    /// waits for one at all, like during a delay or pause.
+    pub fn set(&mut self, precise: bool, waiting: bool) {
         #[cfg(windows)]
         if precise != self.active {
             use windows::Win32::Media::{timeBeginPeriod, timeEndPeriod};
@@ -61,6 +67,10 @@ impl PreciseTimer {
             }
             self.active = precise;
         }
+        #[cfg(target_os = "macos")]
+        let precise = precise || waiting;
+        #[cfg(not(target_os = "macos"))]
+        let _ = waiting;
         #[cfg(target_os = "macos")]
         if precise != self.activity.is_some() {
             use objc2_foundation::{NSActivityOptions, NSProcessInfo, NSString};
@@ -83,12 +93,12 @@ impl PreciseTimer {
 
 impl Drop for PreciseTimer {
     fn drop(&mut self) {
-        self.set(false);
+        self.set(false, false);
     }
 }
 
-/// On Windows, where `autosplit.exe` is a GUI program, writes to the console of the terminal it
-/// was started from: autosplit.com's, or the terminal's when started directly. Returns whether
+/// On Windows, where `AutoSplit.exe` is a GUI program, writes to the console of the terminal it
+/// was started from: AutoSplit.com's, or the terminal's when started directly. Returns whether
 /// there was one; elsewhere, whether stderr is a terminal.
 pub fn attach_console() -> bool {
     #[cfg(windows)]
@@ -136,16 +146,39 @@ pub fn show_error(message: &str) {
         .show();
 }
 
+/// Opens a file or link with its default app, like AutoSplit's `open_file` (`os.startfile` on
+/// Windows). Paths may have forward slashes, like folders picked in AutoSplit's window.
+#[cfg(windows)]
+pub fn open(target: impl AsRef<std::ffi::OsStr>) -> std::io::Result<()> {
+    use std::os::windows::ffi::OsStrExt;
+
+    use windows::Win32::UI::Shell::ShellExecuteW;
+    use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+    use windows::core::{PCWSTR, w};
+
+    let target = target.as_ref();
+    let link = target.to_string_lossy().contains("://");
+    let wide: Vec<u16> = target
+        .encode_wide()
+        .map(|unit| if !link && unit == u16::from(b'/') { u16::from(b'\\') } else { unit })
+        .chain([0])
+        .collect();
+    // SAFETY: the strings are null-terminated and outlive the call
+    let result = unsafe {
+        ShellExecuteW(None, w!("open"), PCWSTR(wide.as_ptr()), PCWSTR::null(), PCWSTR::null(), SW_SHOWNORMAL)
+    };
+    // Values above 32 mean it worked
+    if result.0 as usize <= 32 {
+        return Err(std::io::Error::last_os_error());
+    }
+    Ok(())
+}
+
 /// Opens a file or link with its default app, like AutoSplit's `open_file`, without waiting
 /// for the app.
+#[cfg(not(windows))]
 pub fn open(target: impl AsRef<std::ffi::OsStr>) -> std::io::Result<()> {
-    let opener = if cfg!(windows) {
-        "explorer"
-    } else if cfg!(target_os = "macos") {
-        "open"
-    } else {
-        "xdg-open"
-    };
+    let opener = if cfg!(target_os = "macos") { "open" } else { "xdg-open" };
     let mut child = std::process::Command::new(opener)
         .arg(target)
         .stdin(std::process::Stdio::null())
@@ -155,6 +188,57 @@ pub fn open(target: impl AsRef<std::ffi::OsStr>) -> std::io::Result<()> {
     // Reaped in the background, so it doesn't stay a zombie
     std::thread::spawn(move || child.wait());
     Ok(())
+}
+
+#[cfg(target_os = "macos")]
+thread_local! {
+    /// The menu bar taken away by [`hold_menu_shortcuts`].
+    static HELD_MENU: std::cell::RefCell<Option<Retained<objc2_app_kit::NSMenu>>> = const { std::cell::RefCell::new(None) };
+}
+
+/// Takes the menu bar away while `held` on macOS, where AppKit gives keys held with Cmd to its
+/// shortcuts first, so recording Cmd+Q as a hotkey would quit, and Cmd+H would hide the app. The
+/// menu bar is empty meanwhile. Does nothing elsewhere.
+pub fn hold_menu_shortcuts(held: bool) {
+    #[cfg(target_os = "macos")]
+    {
+        let Some(main_thread) = objc2::MainThreadMarker::new() else { return };
+        let app = objc2_app_kit::NSApplication::sharedApplication(main_thread);
+        HELD_MENU.with_borrow_mut(|menu| {
+            if held {
+                if menu.is_none() {
+                    *menu = app.mainMenu();
+                    app.setMainMenu(None);
+                }
+            } else if let Some(menu) = menu.take() {
+                // Unless the window set its own meanwhile
+                if app.mainMenu().is_none() {
+                    app.setMainMenu(Some(&menu));
+                }
+            }
+        });
+    }
+    #[cfg(not(target_os = "macos"))]
+    let _ = held;
+}
+
+/// The folder for files AutoSplit writes for other programs to open or paste, and for the log
+/// when it can't be next to the program. The temp folder is each user's own on Windows and
+/// macOS, but on Linux every user shares `/tmp`, where a file another user left there can't be
+/// replaced. There it's `~/.cache/autosplit` (or under `XDG_CACHE_HOME`) instead.
+pub fn temp_folder() -> std::path::PathBuf {
+    #[cfg(target_os = "linux")]
+    {
+        let absolute =
+            |name: &str| std::env::var_os(name).map(std::path::PathBuf::from).filter(|path| path.is_absolute());
+        let cache = absolute("XDG_CACHE_HOME").or_else(|| absolute("HOME").map(|home| home.join(".cache")));
+        if let Some(folder) = cache.map(|cache| cache.join("autosplit"))
+            && std::fs::create_dir_all(&folder).is_ok()
+        {
+            return folder;
+        }
+    }
+    std::env::temp_dir()
 }
 
 /// Lets the menus that open from the menu bar follow the system's dark mode on Windows. The bar

@@ -57,26 +57,51 @@ pub enum Answer {
 
 pub type Answered = Box<dyn FnOnce(Answer)>;
 
-/// A message box to show: its text and buttons.
-pub type Shown = (String, Buttons);
+/// A message box to show.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Shown {
+    pub text: String,
+    pub buttons: Buttons,
+    /// The buttons' texts, by their place in [`Buttons::labels`]. An empty one isn't shown.
+    pub labels: [&'static str; 3],
+    /// The button Enter picks.
+    pub default: usize,
+}
 
 pub struct Message {
-    text: String,
-    buttons: Buttons,
+    shown: Shown,
     answered: Option<Answered>,
 }
 
 impl Message {
+    fn new(text: impl Into<String>, buttons: Buttons, answered: Option<Answered>) -> Self {
+        let shown = Shown { text: text.into(), buttons, labels: buttons.labels(), default: 0 };
+        Self { shown, answered }
+    }
+
     pub fn error(text: impl Into<String>) -> Self {
-        Self { text: text.into(), buttons: Buttons::Ok, answered: None }
+        Self::new(text, Buttons::Ok, None)
     }
 
     pub fn warning(text: impl Into<String>) -> Self {
-        Self { text: text.into(), buttons: Buttons::Warning, answered: None }
+        Self::new(text, Buttons::Warning, None)
     }
 
     pub fn question(text: impl Into<String>, answered: impl FnOnce(Answer) + 'static) -> Self {
-        Self { text: text.into(), buttons: Buttons::YesNoCancel, answered: Some(Box::new(answered)) }
+        Self::new(text, Buttons::YesNoCancel, Some(Box::new(answered)))
+    }
+
+    /// A question whose buttons say what they do instead of Yes, No and Cancel. They answer by
+    /// their place: Yes, No, Cancel. `default` is the one Enter picks.
+    pub fn choice(
+        text: impl Into<String>,
+        labels: [&'static str; 3],
+        default: usize,
+        answered: impl FnOnce(Answer) + 'static,
+    ) -> Self {
+        let mut message = Self::question(text, answered);
+        (message.shown.labels, message.shown.default) = (labels, default);
+        message
     }
 }
 
@@ -114,7 +139,7 @@ impl MessageQueue {
             return None;
         }
         let message = self.waiting.pop_front()?;
-        self.showing = Some((message.buttons, message.answered));
-        Some((message.text, message.buttons))
+        self.showing = Some((message.shown.buttons, message.answered));
+        Some(message.shown)
     }
 }

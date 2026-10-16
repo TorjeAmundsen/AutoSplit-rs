@@ -5,6 +5,8 @@ use std::time::Duration;
 use crate::commands::Command;
 use crate::runner::{ImageRef, ResetReading, Showing, StartStatus, Status};
 use crate::split_folder::MAX_GROUP_SIZE;
+use crate::split_image::ImageType;
+use crate::tester::{Phase, Tester, Trigger, TriggerKind};
 
 /// Truncates to 3 decimals, so a similarity just under a threshold never shows as reaching it.
 ///
@@ -87,12 +89,17 @@ pub struct WindowTexts {
 
 /// AutoSplit's main window texts. `idle` is shown when there's no image to show. Without a
 /// capture, the live similarities show as `-` instead of the 0 that comparing nothing gives.
-pub fn window_texts(status: &Status, now: Duration, idle: &str, capture: bool) -> WindowTexts {
+/// Without `pause_timer` (the profile's `display_pause_timer`), pauses and split delays don't
+/// show the seconds left, like AutoSplit.
+pub fn window_texts(status: &Status, now: Duration, idle: &str, capture: bool, pause_timer: bool) -> WindowTexts {
     let left = |until: Duration| seconds_remaining_text(until.saturating_sub(now).as_secs_f64());
+    let with_timer = |message: &str, until: Duration| {
+        if pause_timer { format!("{message} {}", left(until)) } else { message.to_owned() }
+    };
     let current_message = match status.showing {
         Showing::StartDelay { until } => format!("Delayed Before Starting:\n {}", left(until)),
-        Showing::Pause { until } => format!("None (Paused). {}", left(until)),
-        Showing::SplitDelay { until } => format!("Delayed Split: {}", left(until)),
+        Showing::Pause { until } => with_timer("None (Paused).", until),
+        Showing::SplitDelay { until } => with_timer("Delayed Split:", until),
         Showing::Image(_) => String::new(),
         Showing::Nothing => idle.to_owned(),
     };
@@ -165,6 +172,97 @@ impl Compared {
             format!(" ({filename} dropped to {similarity}, below {threshold})")
         } else {
             format!(" ({filename} at {similarity} / {threshold})")
+        }
+    }
+}
+
+/// The name of the cell that says what the image does, which has the most to say.
+pub const ACTS_CELL: &str = "ACTS";
+
+/// One cell of the Live Tester's information about its image.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct InfoCell {
+    pub name: &'static str,
+    pub value: String,
+    /// Where the value comes from, when that's the profile, or why it doesn't apply.
+    pub note: String,
+}
+
+/// What the Live Tester's image does and how it's compared, one cell per value. The values its name
+/// leaves out come from the profile.
+pub fn tester_info(tester: &Tester) -> Vec<InfoCell> {
+    let image = tester.image();
+    let defaults = tester.defaults();
+    let cell = |name, value: String, note: &str| InfoCell { name, value, note: note.to_owned() };
+    let from_profile = |named: bool| if named { "" } else { "from profile" };
+    let reset = image.image_type == ImageType::Reset;
+    let action = match action(tester) {
+        action if tester.below() => format!("{action} once it drops back below"),
+        action => action.to_owned(),
+    };
+    let delay = match tester.delay() {
+        _ if reset => cell("DELAY", "none".into(), "reset images don't wait"),
+        _ if image.is_dummy() => cell("DELAY", "none".into(), "dummies don't wait"),
+        0 => cell("DELAY", "none".into(), from_profile(image.names_delay())),
+        delay => cell("DELAY", format!("{delay} ms"), from_profile(image.names_delay())),
+    };
+    vec![
+        cell(ACTS_CELL, action, if image.is_dummy() { "dummy" } else { "" }),
+        match image.comparison_method(defaults) {
+            Some(method) => cell("METHOD", method.name().into(), from_profile(image.names_comparison_method())),
+            None => cell("METHOD", "unknown".into(), "always compares as 0"),
+        },
+        cell("THRESHOLD", decimal(tester.threshold()), from_profile(image.names_threshold())),
+        delay,
+    ]
+}
+
+/// The values in the Live Tester's image's name that are ignored, or nothing.
+pub fn tester_ignored(tester: &Tester) -> String {
+    let warnings: Vec<String> = tester.image().warnings.iter().map(ToString::to_string).collect();
+    if warnings.is_empty() { String::new() } else { format!("Ignored in the name: {}", warnings.join("; ")) }
+}
+
+/// What the Live Tester's image does when it triggers, as in "it {action}".
+fn action(tester: &Tester) -> &'static str {
+    let image = tester.image();
+    match image.image_type {
+        ImageType::Start if image.is_dummy() => "starts the run without the start hotkey",
+        ImageType::Start => "starts the run",
+        ImageType::Reset => "resets the run",
+        ImageType::Split if image.is_dummy() => "moves to the next image without splitting",
+        ImageType::Split if image.is_pause() => "pauses",
+        ImageType::Split => "splits",
+    }
+}
+
+/// The caption of a frame the Live Tester kept.
+pub fn trigger_caption(tester: &Tester, trigger: &Trigger) -> String {
+    let image = tester.image();
+    let similarity = decimal(trigger.similarity);
+    let acted = match image.image_type {
+        ImageType::Start => "Start",
+        ImageType::Reset => "Reset",
+        ImageType::Split if image.is_dummy() => "Next image",
+        ImageType::Split if image.is_pause() => "Pause",
+        ImageType::Split => "Split",
+    };
+    match trigger.kind {
+        TriggerKind::Reached => format!("Reached: {similarity}"),
+        TriggerKind::DroppedBelow => format!("Dropped below: {similarity}"),
+        TriggerKind::Acted { delay } if delay > 0 => format!("{acted} +{delay} ms: {similarity}"),
+        TriggerKind::Acted { .. } => format!("{acted}: {similarity}"),
+    }
+}
+
+/// What the Live Tester is waiting for.
+pub fn tester_status(tester: &Tester) -> String {
+    match tester.phase() {
+        Phase::Waiting => "Waiting for the similarity to reach the threshold.".into(),
+        Phase::Armed => "Reached the threshold. Waiting for it to drop back below.".into(),
+        Phase::Delaying { delay, .. } => format!("Waiting for the {delay} ms delay."),
+        Phase::Done => {
+            format!("Done: this is where it {}. Press Start Over to watch for the next match.", action(tester))
         }
     }
 }

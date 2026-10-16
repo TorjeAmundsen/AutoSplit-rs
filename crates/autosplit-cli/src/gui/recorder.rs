@@ -22,6 +22,10 @@ pub fn pressed_key(event: &KeyEvent) -> Option<KeyCode> {
     }
 }
 
+/// The modifier shortcuts are held with: Command on macOS, like its own shortcuts, and Control
+/// elsewhere.
+pub const PRIMARY: Modifiers = if cfg!(target_os = "macos") { Modifiers::META } else { Modifiers::CONTROL };
+
 pub fn modifiers_held(state: ModifiersState) -> Modifiers {
     let mut held = Modifiers::empty();
     for (on, flag) in [

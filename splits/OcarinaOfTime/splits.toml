@@ -1,0 +1,50 @@
+game = "The Legend of Zelda: Ocarina of Time"
+
+[[split]]
+name = "reset"
+mask = "reset.png"
+description = "Automatically reset when pressing C-up in Link's house"
+base_image = "base_links_house.png"
+threshold = 0.96
+pause = 0.1
+
+[[split]]
+name = "start_auto_splitter"
+mask = "start.png"
+description = "Starts the auto splitter when you move after pressing C-up"
+base_image = "base_links_house.png"
+threshold = 0.96
+pause = 10.0
+below = true
+
+[[split]]
+name = "Escape"
+mask = "escape.png"
+description = "Aqua escape, splits on full white fade"
+base_image = "base_aqua_escape.png"
+threshold = 0.97
+delay = 150
+
+[[split]]
+name = "Bottle"
+mask = "bottle.png"
+description = "Splits on bottle model over head, common manual split timing"
+base_image = "base_bottle.png"
+threshold = 0.93
+pause = 35.0
+delay = 1100
+below = true
+
+[[split]]
+name = "Full white fade"
+mask = "full_fade.png"
+description = "Generic white fade transition or white flash after successful wrong warp"
+base_image = "base_white_fade.png"
+threshold = 0.97
+
+[[split]]
+name = "Ganon"
+mask = "final_slash_zelda.png"
+description = "Final slash on Ganon"
+base_image = "base_ganon.png"
+threshold = 0.92

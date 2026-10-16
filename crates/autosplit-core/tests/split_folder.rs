@@ -8,7 +8,7 @@ use autosplit_core::profile::UserProfile;
 use autosplit_core::split_folder::{
     ValidationContext, ValidationError, load_profile_folder_to_start, load_split_folder,
 };
-use autosplit_core::split_image::LoadWarning;
+use autosplit_core::split_image::{LoadWarning, SplitImage};
 use tempfile::TempDir;
 use test_case::test_case;
 
@@ -50,6 +50,10 @@ fn validation_error(names: &[&str], context: ValidationContext) -> Option<Valida
 #[test_case(&["1_{p}.png"], NO_HOTKEYS => Some(ValidationError::PauseWithoutPauseHotkey("1_{p}.png".into())); "pause flag without pause hotkey")]
 #[test_case(&["1.png", "reset.png", "reset_2.png"], ALL_HOTKEYS => Some(ValidationError::MultipleKeywordImages("reset")); "two reset images")]
 #[test_case(&["1.png", "start_auto_splitter.png", "start_auto_splitter_2.png"], ALL_HOTKEYS => Some(ValidationError::MultipleKeywordImages("start_auto_splitter")); "two start images")]
+#[test_case(&["1.png", "reset.png", "reset_2.png"], GROUPED => None; "two reset images when grouped")]
+#[test_case(&["1.png", "start_auto_splitter.png", "start_auto_splitter_2.png"], GROUPED => None; "two start images when grouped")]
+#[test_case(&["1.png", "reset.png", "reset_2.png", "reset_3.png", "reset_4.png"], GROUPED => None; "four reset images")]
+#[test_case(&["1.png", "reset.png", "reset_2.png", "reset_3.png", "reset_4.png", "reset_5.png"], GROUPED => Some(ValidationError::TooManyKeywordImages("reset")); "five reset images")]
 #[test_case(&["1.png", "2.bmp"], ALL_HOTKEYS => None; "non png file is ignored")]
 #[test_case(&["1.png", "2.txt"], ALL_HOTKEYS => None; "ocr split file is ignored")]
 #[test_case(&["2.bmp"], ALL_HOTKEYS => Some(ValidationError::NoSplitImage); "only ignored files")]
@@ -65,6 +69,8 @@ fn validation_error(names: &[&str], context: ValidationContext) -> Option<Valida
 #[test_case(&["1.png", "boss.png"], GROUPED => Some(ValidationError::NoNumberPrefix("boss.png".into())); "grouped image without a number")]
 #[test_case(&["1.png", "boss.png"], ALL_HOTKEYS => None; "ungrouped images need no number")]
 #[test_case(&["1_a.png", "1_b_@2@.png"], GROUPED => Some(ValidationError::GroupLoopsDiffer("1".into())); "different loop counts in a group")]
+#[test_case(&["1_@1000000000@.png"], ALL_HOTKEYS => Some(ValidationError::TooManySplits(1_000_000_000)); "mistyped loop count")]
+#[test_case(&["1_@50000@.png", "2_@50000@.png"], ALL_HOTKEYS => None; "as many splits as a run can have")]
 #[test_case(&["start_auto_splitter.png", "reset.png", "1.png"], GROUPED => None; "start and reset images need no number")]
 fn folder_validation(names: &[&str], context: ValidationContext) -> Option<ValidationError> {
     // Arrange, Act
@@ -155,9 +161,14 @@ fn ignored_files_are_listed_in_one_message() {
     let message = load_split_folder(directory.path(), &ALL_HOTKEYS).ignored_files_message();
 
     // Assert
-    assert_eq!(message.as_deref(), Some("These files aren't PNG split images and will be ignored:
+    assert_eq!(
+        message.as_deref(),
+        Some(
+            "These files aren't PNG split images and will be ignored:
 2.jpg
-notes"));
+notes"
+        )
+    );
 }
 
 #[test]
@@ -201,4 +212,30 @@ fn ignored_filename_values_are_reported_without_failing_the_folder() {
         warning: FilenameWarning::OutOfRange { setting: Setting::Threshold, value: "1.5".into() },
     };
     assert_eq!((load.result.is_ok(), load.warnings), (true, vec![expected]));
+}
+
+#[test]
+fn start_and_reset_images_are_in_file_name_order() {
+    // Arrange
+    let directory = folder(&[
+        "1.png",
+        "reset_(0.9).png",
+        "reset_2_(0.95).png",
+        "start_auto_splitter_2.png",
+        "start_auto_splitter.png",
+    ]);
+
+    // Act
+    let set = load_split_folder(directory.path(), &GROUPED).result.unwrap();
+
+    // Assert
+    let names = |images: &[SplitImage]| images.iter().map(|image| image.filename.clone()).collect::<Vec<_>>();
+    assert_eq!(
+        (names(&set.start), names(&set.reset), set.splits.len()),
+        (
+            vec!["start_auto_splitter.png".to_owned(), "start_auto_splitter_2.png".to_owned()],
+            vec!["reset_(0.9).png".to_owned(), "reset_2_(0.95).png".to_owned()],
+            1
+        )
+    );
 }

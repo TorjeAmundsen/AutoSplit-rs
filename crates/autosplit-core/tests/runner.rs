@@ -65,11 +65,8 @@ impl Harness {
 
     /// Split images with the same number are compared for the same split.
     fn grouped(files: &[(&str, Bgr)], settings: RunnerSettings) -> Self {
-        let mut harness = Self::new(files, settings);
-        harness.context.group_split_images = true;
-        let images = harness.load();
-        harness.runner.arm(images, Duration::ZERO);
-        harness
+        let context = ValidationContext { group_split_images: true, ..ALL_HOTKEYS_SET };
+        Self::with_context(files, settings, false, context)
     }
 
     /// Driven by LiveSplit or LiveSplit One, which report the timer's splits.
@@ -78,6 +75,15 @@ impl Harness {
     }
 
     fn with_link(files: &[(&str, Bgr)], settings: RunnerSettings, timer_synced: bool) -> Self {
+        Self::with_context(files, settings, timer_synced, ALL_HOTKEYS_SET)
+    }
+
+    fn with_context(
+        files: &[(&str, Bgr)],
+        settings: RunnerSettings,
+        timer_synced: bool,
+        context: ValidationContext,
+    ) -> Self {
         let directory = tempfile::tempdir().unwrap();
         for (name, color) in files {
             std::fs::write(directory.path().join(name), solid(*color).encode_png().unwrap()).unwrap();
@@ -90,7 +96,7 @@ impl Harness {
             effects: Vec::new(),
             next_sequence: 0,
             new_frame_every_tick: false,
-            context: ALL_HOTKEYS_SET,
+            context,
         };
         let images = harness.load();
         harness.runner.arm(images, Duration::ZERO);
@@ -1065,4 +1071,83 @@ fn each_image_of_a_group_has_its_own_reading() {
         .map(|reading| (reading.similarity == Some(1.0), reading.highest == Some(1.0), reading.threshold))
         .collect();
     assert_eq!(readings, [(true, true, 0.95), (false, false, 0.9)]);
+}
+
+#[test]
+fn any_reset_image_resets_the_run() {
+    // Arrange
+    let mut harness =
+        Harness::grouped(&[("1.png", RED), ("2.png", BLUE), ("reset.png", BLACK), ("reset_2.png", GREEN)], defaults());
+    harness.start();
+
+    // Act
+    harness.feed(Some(GREEN), ms(50));
+
+    // Assert
+    assert_eq!((harness.sent(), harness.stopped()), (vec![Command::Reset], true));
+}
+
+#[test]
+fn each_reset_image_waits_for_its_own_pause_time() {
+    // Arrange: the first is paused for 3 seconds, the second isn't
+    let mut harness = Harness::grouped(&[("1.png", RED), ("reset_[3].png", BLACK), ("reset_2.png", GREEN)], defaults());
+    harness.start();
+
+    // Act
+    harness.feed(Some(BLACK), SECOND);
+
+    // Assert: the second is compared, and doesn't match
+    assert_eq!(
+        (
+            harness.sent(),
+            harness.runner.status().reset_similarity.is_some_and(|reading| reading != ResetReading::Paused)
+        ),
+        (vec![], true)
+    );
+}
+
+#[test]
+fn reset_images_are_paused_until_the_shortest_pause_is_over() {
+    // Arrange
+    let mut harness =
+        Harness::grouped(&[("1.png", RED), ("reset_[3].png", BLACK), ("reset_2_[2].png", GREEN)], defaults());
+    harness.start();
+
+    // Act
+    harness.feed(Some(BLACK), ms(1900));
+
+    // Assert
+    assert_eq!(harness.runner.status().reset_similarity, Some(ResetReading::Paused));
+}
+
+#[test]
+fn any_start_image_starts_the_run_with_its_own_pause_time() {
+    // Arrange: the first start image would pause for 2 seconds
+    let mut harness = Harness::grouped(
+        &[("start_auto_splitter_[2].png", GREEN), ("start_auto_splitter_2.png", BLUE), ("1.png", RED)],
+        defaults(),
+    );
+
+    // Act
+    harness.feed(Some(BLUE), ms(100));
+    harness.feed(Some(RED), ms(100));
+
+    // Assert
+    assert_eq!(harness.sent(), [Command::Start, Command::Split]);
+}
+
+#[test]
+fn each_start_image_has_its_own_reading() {
+    // Arrange
+    let mut harness = Harness::grouped(
+        &[("start_auto_splitter.png", GREEN), ("start_auto_splitter_2_(0.9).png", BLUE), ("1.png", RED)],
+        defaults(),
+    );
+
+    // Act
+    harness.feed(Some(RED), ms(100));
+
+    // Assert
+    let thresholds: Vec<f64> = harness.runner.status().group.iter().map(|reading| reading.threshold).collect();
+    assert_eq!((thresholds, harness.sent()), (vec![0.95, 0.9], vec![]));
 }

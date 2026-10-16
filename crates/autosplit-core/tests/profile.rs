@@ -4,7 +4,9 @@ use std::path::{Path, PathBuf};
 
 use autosplit_core::commands::Command;
 use autosplit_core::image::Rect;
-use autosplit_core::profile::{ProfileError, Region, RegionFit, TimerConnection, UserProfile, capture_method_name};
+use autosplit_core::profile::{
+    NEW_PROFILE_REGION, ProfileError, Region, RegionFit, TimerConnection, UserProfile, capture_method_name,
+};
 use test_case::test_case;
 
 fn fixture(name: &str) -> PathBuf {
@@ -279,4 +281,33 @@ fn resolves_split_folder_against_the_profile(directory: &str, expected: &str) {
 fn names_capture_methods(method: &str) -> &str {
     // Act, with the expected value checked by test_case
     capture_method_name(method)
+}
+
+#[test_case(1920, 1080 => (240, 0, 1440, 1080); "a 16:9 canvas")]
+#[test_case(1280, 720 => (160, 0, 960, 720); "720p")]
+#[test_case(640, 480 => (0, 0, 640, 480); "already 4:3")]
+#[test_case(1080, 1080 => (0, 135, 1080, 810); "narrower than 4:3")]
+#[test_case(1366, 768 => (171, 0, 1024, 768); "rounded")]
+fn crops_to_the_4_3_picture_in_the_middle(width: usize, height: usize) -> (i64, i64, i64, i64) {
+    // Act
+    let region = Region::centered_4_3(width, height);
+
+    // Assert, with the expected value checked by test_case
+    (region.x, region.y, region.width, region.height)
+}
+
+#[test_case("OBS Virtual Camera", NEW_PROFILE_REGION, (1920, 1080) => Some((1920, 1080)); "a new profile's region")]
+#[test_case("OBS Virtual Camera", Region::default(), (1920, 1080) => Some((1920, 1080)); "no region")]
+#[test_case("OBS Virtual Camera", Region { x: 100, y: 50, width: 640, height: 480 }, (1920, 1080) => None; "a region that was set")]
+#[test_case("Game Capture HD60 S", NEW_PROFILE_REGION, (1920, 1080) => None; "another device")]
+#[test_case("OBS Virtual Camera", NEW_PROFILE_REGION, (640, 480) => None; "a frame it already is")]
+fn obs_virtual_camera_gets_its_whole_frame(device: &str, region: Region, frame: (usize, usize)) -> Option<(i64, i64)> {
+    // Arrange
+    let profile = UserProfile { capture_device_name: device.into(), capture_region: region, ..UserProfile::default() };
+
+    // Act
+    let full = profile.obs_full_frame_region(frame);
+
+    // Assert, with the expected value checked by test_case
+    full.map(|region| (region.width, region.height))
 }

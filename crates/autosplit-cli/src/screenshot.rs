@@ -7,13 +7,43 @@ use std::path::{Path, PathBuf};
 use autosplit_core::image::BgraImage;
 use autosplit_core::profile::UserProfile;
 
+/// How saving a screenshot in the background went.
+#[derive(Debug, PartialEq)]
+pub enum Saved {
+    Written(PathBuf),
+    /// Written, but "Open screenshots on capture" couldn't open it.
+    NotOpened(PathBuf, String),
+    Failed(String),
+}
+
+impl Saved {
+    /// The screenshot's file, when it was written.
+    pub fn path(&self) -> Option<&Path> {
+        match self {
+            Self::Written(path) | Self::NotOpened(path, _) => Some(path),
+            Self::Failed(_) => None,
+        }
+    }
+
+    /// The line for the log, an error when something went wrong.
+    pub fn message(&self) -> Result<String, String> {
+        match self {
+            Self::Written(path) => Ok(format!("Saved screenshot {}", path.display())),
+            Self::NotOpened(path, error) => {
+                Err(format!("Saved screenshot {}, but couldn't open it: {error}", path.display()))
+            }
+            Self::Failed(error) => Err(error.clone()),
+        }
+    }
+}
+
 /// Saves `image` in the background, since encoding a large frame takes a while, which
-/// comparisons shouldn't wait for. `done` gets the message for the log. Fails right away when
-/// there's nowhere to save it.
+/// comparisons shouldn't wait for. `done` gets how it went. Fails right away when there's
+/// nowhere to save it.
 pub fn save(
     profile: &UserProfile,
     image: Option<BgraImage>,
-    done: impl FnOnce(Result<String, String>) + Send + 'static,
+    done: impl FnOnce(Saved) + Send + 'static,
 ) -> Result<(), String> {
     let directory = if profile.screenshot_directory.is_empty() {
         &profile.split_image_directory
@@ -41,13 +71,21 @@ pub fn save(
             .and_then(|png| (&file).write_all(&png).map_err(|error| error.to_string()));
         done(match written {
             Ok(()) => match open.then(|| crate::platform::open(&path)) {
-                Some(Err(error)) => Err(format!("Saved screenshot {}, but couldn't open it: {error}", path.display())),
-                _ => Ok(format!("Saved screenshot {}", path.display())),
+                Some(Err(error)) => Saved::NotOpened(path, error.to_string()),
+                _ => Saved::Written(path),
             },
-            Err(error) => Err(format!("Screenshot: couldn't write {}: {error}", path.display())),
+            Err(error) => Saved::Failed(format!("Screenshot: couldn't write {}: {error}", path.display())),
         });
     });
     Ok(())
+}
+
+/// Whether `name` is a screenshot's, `NNN_SplitImage.png`.
+pub fn is_screenshot_name(name: &str) -> bool {
+    let lower = name.to_ascii_lowercase();
+    lower
+        .strip_suffix("_splitimage.png")
+        .is_some_and(|number| !number.is_empty() && number.bytes().all(|byte| byte.is_ascii_digit()))
 }
 
 /// The next free `NNN_SplitImage.png`, created so a second screenshot can't take it too.
