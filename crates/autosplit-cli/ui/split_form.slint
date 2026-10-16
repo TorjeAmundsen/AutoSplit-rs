@@ -78,6 +78,8 @@ export component SplitFormPanel inherits VerticalLayout {
     in property <bool> has-split;
     in property <SplitForm> form;
     in property <[string]> kinds;
+    // Raised to move the focus to the Name field, like after Add
+    in property <int> name-focus-request;
     callback split-edited(SplitField);
     callback choose-mask();
     callback choose-savestate();
@@ -137,10 +139,14 @@ export component SplitFormPanel inherits VerticalLayout {
 
                 // A start or reset image's name is what makes it one
                 TextField {
+                    property <int> focus-request: root.name-focus-request;
                     error: root.form.name-problem != "";
                     enabled: root.form.named;
                     text <=> SplitValues.name;
                     edited => { root.split-edited(SplitField.name); }
+                    changed focus-request => {
+                        self.focus();
+                    }
 
                     Tooltip {
                         Tip {

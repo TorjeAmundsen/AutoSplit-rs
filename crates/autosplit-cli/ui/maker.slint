@@ -31,7 +31,8 @@ export struct MakerRow {
 }
 
 export component MakerWindow inherits Window {
-    title: "Make Split Images";
+    // While editing, the preset's name too, with a * while it has unsaved changes
+    title: !root.editing ? "Make Split Images" : (root.edit-changed ? "*" : "") + "Editing " + (root.edit-name == "" ? "a new preset" : root.edit-name) + " - Make Split Images";
     icon: @image-url("../assets/icon.png");
     default-font-family: "Noto Sans";
     default-font-size: 12px;
@@ -106,6 +107,10 @@ export component MakerWindow inherits Window {
     in property <int> problem-split: -1;
     in property <bool> has-problems;
     in property <bool> can-save-preset;
+    // The preset being edited differs from how it was opened
+    in property <bool> edit-changed;
+    // Raised to move the focus to the Name field, like after Add
+    in property <int> name-focus-request;
     // The preset is saved already, so there's a folder to delete
     // The preset being edited was saved before, so it can be deleted or saved as another
     in property <bool> saved-preset;
@@ -626,6 +631,7 @@ export component MakerWindow inherits Window {
                     content-width: self.visible-width;
 
                     form-panel := SplitFormPanel {
+                        name-focus-request: root.name-focus-request;
 
                         width: form-scroll.visible-width;
                         height: form-scroll.content-height;

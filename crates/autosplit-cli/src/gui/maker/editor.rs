@@ -81,6 +81,9 @@ impl Gui {
         on!(weak, maker, on_add_split, () gui => {
             let selected = gui.selected_split();
             gui.change_splits(|draft| Some(draft.add(selected)));
+            // The new split's name is what's typed next
+            let window = &gui.windows.maker;
+            window.set_name_focus_request(window.get_name_focus_request() + 1);
         });
         on!(weak, maker, on_duplicate_split, () gui => {
             let selected = gui.selected_split();
@@ -451,6 +454,7 @@ impl Gui {
         window.set_problem_split(next.map_or(-1, |&index| index as i32));
         window.set_has_problems(!problems.is_empty());
         window.set_can_save_preset(problems.is_empty() && edit.draft.can_save());
+        window.set_edit_changed(edit.draft.has_changes());
         window.set_saved_preset(edit.source.is_some());
         problem_flags(&problems, splits.len())
     }
