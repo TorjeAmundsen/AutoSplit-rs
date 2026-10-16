@@ -3,7 +3,7 @@
 // clicking a card selects its split there.
 
 import { ScrollView } from "std-widgets.slint";
-import { Label, Theme } from "widgets.slint";
+import { Theme } from "widgets.slint";
 
 export struct InstructionCard {
     // The split's place in the preset, which Make Split Images selects it by
@@ -81,23 +81,29 @@ export component InstructionsWindow inherits Window {
                     }
                 }
 
+                // Bigger than the other windows' text, to read at a glance while at the console
                 VerticalLayout {
-                    padding: 8px;
+                    padding: 10px;
                     spacing: 4px;
 
-                    Label {
+                    Text {
                         text: card.heading;
+                        font-size: 16px;
                         font-weight: 600;
+                        color: Theme.text;
+                        overflow: elide;
                     }
 
-                    Label {
+                    Text {
                         text: card.savestate;
-                        font-size: 10px;
+                        font-size: 12px;
                         color: Theme.secondary-text;
+                        overflow: elide;
                     }
 
                     Text {
                         text: card.text;
+                        font-size: 16px;
                         wrap: word-wrap;
                         color: Theme.text;
                     }
