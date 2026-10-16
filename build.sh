@@ -100,7 +100,12 @@ run_cargo() {
 # Builds one Rust target. Its binaries end up in $target_dir/<triple>/release.
 build_triple() {
     local triple=$1 os native=false
-    rustup target add "$triple"
+    if command -v rustup > /dev/null 2>&1; then
+        rustup target add "$triple"
+    elif [ "$triple" != "$(rustc -vV | sed -n 's/^host: //p')" ]; then
+        # A Rust from the system's packages builds for this machine only
+        fail "rustup is needed to build for $triple. Install Rust from https://rustup.rs"
+    fi
     os=$(os_of "$triple")
     # macOS toolchains build for both architectures, Linux needs a cross linker
     if [ "$os" = "$host_os" ] && { [ "$os" != linux ] || [ "${triple%%-*}" = "$host_arch" ]; }; then
@@ -259,6 +264,7 @@ else
 fi
 
 [ ${#selected[@]} -gt 0 ] || fail "There's no target this machine can build."
+command -v cargo > /dev/null 2>&1 || fail "Rust is needed. Install it from https://rustup.rs, then open a new terminal."
 
 target_dir=$(cargo metadata --format-version 1 --no-deps --manifest-path "$root/Cargo.toml" |
     grep -o '"target_directory":"[^"]*"' | sed 's/^"target_directory":"//; s/"$//')
