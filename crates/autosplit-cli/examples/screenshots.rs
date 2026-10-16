@@ -6,14 +6,14 @@ use std::rc::Rc;
 use autosplit::gui::messages::Buttons;
 use autosplit::gui::preset_form::{MASK_NAME_CHARS, SAVESTATE_NAME_CHARS, elide_middle};
 use autosplit::gui::ui::{
-    AboutWindow, HotkeyRow, InfoCell, InlineMessage, InstructionCard, InstructionsWindow, LogWindow, MainWindow,
-    MakerRow, MakerWindow, MessageWindow, SettingsWindow, SimilarityRow, SplitForm, SplitValues, TesterReading,
-    TesterWindow,
+    AboutWindow, HotkeyRow, InfoCell, InlineMessage, InstructionCard, InstructionsWindow, LibraryCard, LibraryStep,
+    LibraryWindow, LogWindow, MainWindow, MakerRow, MakerWindow, MessageWindow, SettingsWindow, SimilarityRow,
+    SplitForm, SplitValues, TesterReading, TesterWindow,
 };
-use autosplit::gui::{HOTKEY_ROWS, file_name_parts, thumbnail, transparency_grid};
+use autosplit::gui::{HOTKEY_ROWS, file_name_parts, library_file_parts, thumbnail, transparency_grid};
 use slint::platform::software_renderer::{MinimalSoftwareWindow, RepaintBufferType, Rgb565Pixel};
 use slint::platform::{Platform, WindowAdapter};
-use slint::{ComponentHandle, PhysicalSize};
+use slint::{ComponentHandle, Model, PhysicalSize};
 
 struct Headless {
     window: Rc<MinimalSoftwareWindow>,
@@ -339,6 +339,10 @@ Replace them?",
     maker.set_has_problems(true);
     maker.set_saved_preset(true);
     save(&window, PhysicalSize::new(828, 672), &folder.join("maker-edit.png"));
+    // Where a ready-made split from Split Library would go
+    maker.set_drop_line(3);
+    save(&window, PhysicalSize::new(828, 672), &folder.join("maker-edit-drop.png"));
+    maker.set_drop_line(-1);
     // Without the savestate note, all of the form fits
     maker.set_form(SplitForm { savestate_copied: false, ..maker.get_form() });
     save(&window, PhysicalSize::new(828, 672), &folder.join("maker-edit-plain.png"));
@@ -380,6 +384,98 @@ Replace them?",
     instructions.show().unwrap();
     save(&window, PhysicalSize::new(520, 200), &folder.join("instructions.png"));
     instructions.hide().unwrap();
+
+    // The bundled library's base images, and a boss that takes two images, then one that's in
+    // the preset already and one that can't be added
+    let library = LibraryWindow::new().unwrap();
+    let base = |file: &str| {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../splits/OcarinaOfTime").join(file);
+        slint::Image::load_from_path(&path).unwrap()
+    };
+    let step =
+        |heading: &str, file: &str, [threshold, delay, pause]: [&str; 3], dummy: bool, below: bool, name: &str| {
+            LibraryStep {
+                file_parts: library_file_parts(name),
+                file: name.into(),
+                heading: heading.into(),
+                thumb: base(file),
+                threshold: threshold.into(),
+                delay: delay.into(),
+                pause: pause.into(),
+                dummy,
+                below,
+            }
+        };
+    let library_card =
+        |heading: &str, description: &str, steps: Vec<LibraryStep>, in_preset: bool, blocker: &str| LibraryCard {
+            in_preset: if in_preset {
+                file_name_parts("05_Bottle_(0.93)_[35]_#1100#_{b}.png").row_data(0).unwrap()
+            } else {
+                Default::default()
+            },
+            in_preset_file: if in_preset { "05_Bottle_(0.93)_[35]_#1100#_{b}.png".into() } else { "".into() },
+            in_preset_note: if in_preset { "Already in the preset, as split 05.".into() } else { "".into() },
+            ready_made: 0,
+            heading: heading.into(),
+            description: description.into(),
+            steps: std::rc::Rc::new(slint::VecModel::from(steps)).into(),
+            blocker: blocker.into(),
+        };
+    let cards = vec![
+        library_card(
+            "Ganon",
+            "Final slash on Ganon: the intro text, then the flash",
+            vec![
+                step("Ganon intro", "base_collapse_cs.png", ["", "", ""], true, false, "XX_Ganon intro_{d}.png"),
+                step("Ganon", "base_ganon.png", ["0.92", "", ""], false, false, "XX_Ganon_(0.92).png"),
+            ],
+            false,
+            "",
+        ),
+        library_card(
+            "Bottle",
+            "Splits on bottle model over head, common manual split timing",
+            vec![step(
+                "Bottle",
+                "base_bottle.png",
+                ["0.93", "1100 ms", "35 s"],
+                false,
+                true,
+                "XX_Bottle_(0.93)_[35]_#1100#_{b}.png",
+            )],
+            true,
+            "",
+        ),
+        library_card(
+            "Reset Image",
+            "Automatically reset when pressing C-up in Link's house",
+            vec![step(
+                "Reset Image",
+                "base_links_house.png",
+                ["0.96", "", "0.1 s"],
+                false,
+                false,
+                "reset_(0.96)_[0.1].png",
+            )],
+            false,
+            "A preset can have up to 4 reset images, and this one has 4.",
+        ),
+    ];
+    library.set_cards(std::rc::Rc::new(slint::VecModel::from(cards)).into());
+    library.set_window_title("Split Library - The Legend of Zelda: Ocarina of Time".into());
+    library.set_errors("A splits library couldn't be read.".into());
+    library.set_selected(0);
+    library.show().unwrap();
+    save(&window, PhysicalSize::new(600, 520), &folder.join("library.png"));
+    library.set_selected(1);
+    save(&window, PhysicalSize::new(600, 420), &folder.join("library-single.png"));
+    save(&window, PhysicalSize::new(480, 300), &folder.join("library-narrow.png"));
+    library.set_cards(std::rc::Rc::new(slint::VecModel::from(Vec::<LibraryCard>::new())).into());
+    library.set_errors("".into());
+    library.set_search_text("ganon bottle".into());
+    library.set_empty_message("No ready-made splits match ganon bottle.".into());
+    save(&window, PhysicalSize::new(600, 300), &folder.join("library-empty.png"));
+    library.hide().unwrap();
 
     let log = LogWindow::new().unwrap();
     log.set_log("    0.001s  Loaded settings.toml\n    0.002s  Timer: hotkeys (split num 1)".into());

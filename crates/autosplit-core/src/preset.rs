@@ -236,6 +236,10 @@ pub struct LibrarySplit {
     /// A screenshot the mask fits, relative to the library's folder.
     #[serde(default)]
     pub base_image: String,
+    /// The next image of the ready-made split above, like the boss's flash after a dummy for its
+    /// intro text. They're imported together, in order.
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub then: bool,
 }
 
 /// The keys a preset's `[[split]]` table can have, which are [`PresetSplit`]'s fields.
@@ -243,7 +247,7 @@ pub const SPLIT_KEYS: &[&str] =
     &["name", "with_previous", "mask", "threshold", "pause", "delay", "dummy", "below", "savestate", "instructions"];
 
 /// The keys a splits library's `[[split]]` table can have besides [`SPLIT_KEYS`].
-const LIBRARY_SPLIT_KEYS: &[&str] = &["description", "base_image"];
+const LIBRARY_SPLIT_KEYS: &[&str] = &["description", "base_image", "then"];
 
 fn is_default<T: Default + PartialEq>(value: &T) -> bool {
     *value == T::default()
@@ -329,7 +333,22 @@ impl Preset {
 
 impl SplitLibrary {
     pub fn load(path: &Path) -> Result<Self, PresetError> {
-        parse_with_splits(&read(path)?, path, &[SPLIT_KEYS, LIBRARY_SPLIT_KEYS])
+        Self::parse(&read(path)?, path)
+    }
+
+    /// `path` is only for the errors.
+    pub fn parse(text: &str, path: &Path) -> Result<Self, PresetError> {
+        let library: Self = parse_with_splits(text, path, &[SPLIT_KEYS, LIBRARY_SPLIT_KEYS])?;
+        if let Some(first) = library.splits.first().filter(|first| first.then) {
+            let reason = format!("split 1 ({}) has `then`, but there's no split above it to follow", first.split.name);
+            return Err(PresetError::Invalid { path: path.to_owned(), reason });
+        }
+        Ok(library)
+    }
+
+    /// The ready-made splits: each split with the ones that follow it with `then`.
+    pub fn ready_made(&self) -> impl Iterator<Item = &[LibrarySplit]> {
+        self.splits.chunk_by(|_, next| next.then)
     }
 }
 

@@ -29,6 +29,7 @@ use super::{Gui, Tool, exe_folder, file_name_parts, with_gui};
 use crate::session::UiCommand;
 
 mod editor;
+mod library;
 mod preview;
 mod savestates;
 mod write;
@@ -98,6 +99,8 @@ pub(super) struct Maker {
     working: usize,
     /// Split images are being written, which other saves wait for.
     saving: bool,
+    /// What Split Library adds from.
+    library: library::Library,
     /// Splits to save once the ones being saved are, for the preset of that generation.
     queued: Option<(u64, Vec<usize>)>,
 }
@@ -326,6 +329,7 @@ impl Gui {
             slint::CloseRequestResponse::KeepWindowShown
         });
         self.connect_editor();
+        self.connect_library();
     }
 
     /// Opens Make Split Images beside the main window, with the presets read again.
@@ -527,6 +531,7 @@ impl Gui {
         window.set_has_savestates(view.has_savestates);
         window.set_has_instructions(view.has_instructions);
         self.show_maker_preview();
+        self.refresh_library();
     }
 
     /// What the editor would ask to fix in the chosen preset, like splits compared together

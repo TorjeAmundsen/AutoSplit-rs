@@ -43,8 +43,9 @@ use self::placement::{Area, centered_over};
 use self::recorder::{PRIMARY, key_character, modifiers_held, pressed_key};
 use self::settings_form::SettingEdit;
 use self::ui::{
-    AboutWindow, HotkeyRow, InfoCell, InlineMessage, InstructionsWindow, LogWindow, MainWindow, MakerRow, MakerWindow,
-    MessageWindow, NameKind, NamePart, Setting, SettingsWindow, SimilarityRow, TesterWindow, WindowFocus,
+    AboutWindow, HotkeyRow, InfoCell, InlineMessage, InstructionsWindow, LibraryWindow, LogWindow, MainWindow,
+    MakerRow, MakerWindow, MessageWindow, NameKind, NamePart, Setting, SettingsWindow, SimilarityRow, TesterWindow,
+    WindowFocus,
 };
 use self::view::{GuiView, Picture, Update};
 use crate::console::Console;
@@ -324,6 +325,19 @@ fn with_gui(action: impl FnOnce(&Rc<Gui>) + Send + 'static) {
     });
 }
 
+/// A ready-made split's file name in parts, like [`file_name_parts`], with the `XX` that stands
+/// for its number colored like a number.
+pub fn library_file_parts(file: &str) -> ModelRc<NamePart> {
+    let Some(rest) = file.strip_prefix("XX") else { return file_name_parts(file) };
+    let parts = file_name_parts(&format!("0{rest}"));
+    if let Some(mut number) = parts.row_data(0).filter(|part| part.kind == NameKind::Number) {
+        number.text = "XX".into();
+        number.meaning = "Its number, which comes from where it's put".into();
+        parts.set_row_data(0, number);
+    }
+    parts
+}
+
 /// A split image's file name in parts, for the windows to color by what each part does.
 pub fn file_name_parts(name: &str) -> ModelRc<NamePart> {
     use autosplit_core::filename::PartKind;
@@ -408,6 +422,7 @@ struct Windows {
     tester: TesterWindow,
     maker: MakerWindow,
     instructions: InstructionsWindow,
+    library: LibraryWindow,
 }
 
 /// The app id windows get on Linux, which desktops match to the .desktop file named after it, for
@@ -430,6 +445,7 @@ fn open_windows() -> anyhow::Result<Windows> {
         tester: TesterWindow::new()?,
         maker: MakerWindow::new()?,
         instructions: InstructionsWindow::new()?,
+        library: LibraryWindow::new()?,
     })
 }
 
@@ -910,6 +926,7 @@ impl Gui {
             (self.windows.about.window(), true),
             (self.windows.log.window(), false),
             (self.windows.instructions.window(), false),
+            (self.windows.library.window(), false),
         ];
         for (window, enter_too) in windows {
             let weak = self.me.clone();
@@ -1039,6 +1056,7 @@ impl Gui {
             windows.tester.window(),
             windows.maker.window(),
             windows.instructions.window(),
+            windows.library.window(),
         ] {
             let _ = window.hide();
         }

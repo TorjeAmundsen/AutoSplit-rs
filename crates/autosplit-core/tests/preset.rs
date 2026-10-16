@@ -8,7 +8,7 @@ use autosplit_core::filename::{
 };
 use autosplit_core::image::BgraImage;
 use autosplit_core::preset::{
-    PRESET_FILE, Preset, PresetError, PresetSplit, SPLIT_KEYS, game_key, load_libraries, load_presets,
+    PRESET_FILE, Preset, PresetError, PresetSplit, SPLIT_KEYS, SplitLibrary, game_key, load_libraries, load_presets,
 };
 use autosplit_core::profile::{ProfileError, UserProfile};
 use autosplit_core::split_folder::{ValidationContext, load_split_folder};
@@ -360,4 +360,46 @@ fn names_windows_files_would_share_are_the_same(name: &str) -> Option<usize> {
 
     // Act
     preset.same_name_in_group(1)
+}
+
+#[test]
+fn library_splits_with_then_follow_the_split_above() {
+    // Arrange: a boss's intro text as a dummy, then its flash, and a split of its own
+    let text = r#"
+        [[split]]
+        name = "Boss intro"
+        mask = "intro.png"
+        dummy = true
+        [[split]]
+        name = "Boss"
+        mask = "flash.png"
+        then = true
+        [[split]]
+        name = "Door"
+        mask = "door.png"
+    "#;
+
+    // Act
+    let library = SplitLibrary::parse(text, Path::new("splits.toml")).unwrap();
+
+    // Assert
+    let names: Vec<Vec<&str>> =
+        (library.ready_made()).map(|steps| steps.iter().map(|step| step.split.name.as_str()).collect()).collect();
+    assert_eq!(names, [vec!["Boss intro", "Boss"], vec!["Door"]]);
+}
+
+#[test]
+fn a_library_cant_start_with_then() {
+    // Arrange
+    let text = "[[split]]
+name = \"Boss\"
+mask = \"flash.png\"
+then = true
+";
+
+    // Act
+    let error = SplitLibrary::parse(text, Path::new("splits.toml")).unwrap_err();
+
+    // Assert
+    assert!(error.to_string().contains("no split above it to follow"), "{error}");
 }

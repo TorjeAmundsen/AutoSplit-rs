@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use autosplit_core::mask::Mask;
-use autosplit_core::preset::{Preset, delete_preset, new_preset_folder, save_preset};
+use autosplit_core::preset::{Preset, PresetSplit, delete_preset, new_preset_folder, save_preset};
 use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
 
 use super::super::Gui;
@@ -55,6 +55,11 @@ impl Editing {
     /// The preset as edited so far.
     pub(super) fn preset(&self) -> &Preset {
         &self.draft.preset
+    }
+
+    /// The preset as edited so far, with what's done to it.
+    pub(super) fn draft(&self) -> &Draft {
+        &self.draft
     }
 
     /// The folder the preset was read from, or none for a new preset.
@@ -257,6 +262,8 @@ impl Gui {
         maker.live_mask = None;
         drop(maker);
         self.windows.maker.set_editing(false);
+        // Its splits are added to the preset being edited
+        let _ = self.windows.library.hide();
         Some(edit)
     }
 
@@ -355,6 +362,27 @@ impl Gui {
         let Some((select, change)) = change(&mut edit.draft) else { return };
         edit.reorders += 1;
         change.mirror(&mut maker.splits);
+        drop(maker);
+        self.choose_split(select);
+    }
+
+    /// Puts a ready-made split's `steps` from the splits library in `folder` at `at`. With
+    /// `keep_selected`, for ones put above the selected split, it stays selected, so the next
+    /// one goes between them. Otherwise the last step is selected, so the next one goes after it.
+    /// Either way they end up in the order they're put in.
+    pub(super) fn import_library_split(&self, steps: &[PresetSplit], folder: &Path, at: usize, keep_selected: bool) {
+        let selected = self.selected_split();
+        let mut maker = self.maker.borrow_mut();
+        let Some(edit) = maker.edit.as_mut() else { return };
+        let changes = edit.draft.import(at, steps, folder);
+        let select = match selected {
+            Some(selected) if keep_selected && at <= selected => selected + steps.len(),
+            _ => (at + steps.len()).saturating_sub(1),
+        };
+        edit.reorders += 1;
+        for change in changes {
+            change.mirror(&mut maker.splits);
+        }
         drop(maker);
         self.choose_split(select);
     }

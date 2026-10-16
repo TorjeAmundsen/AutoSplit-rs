@@ -32,7 +32,7 @@ Toufool's AutoSplit has none of these:
 - Two more timer connections besides hotkeys and LiveSplit: LiveSplit One over a WebSocket, and Molok through POSIX signals on Linux. The settings window has a fourth tab, Other, to pick one and set the LiveSplit One port. It's disabled when LiveSplit started AutoSplit-rs.
 - Up to 4 split images compared for one split, grouped by their number, and up to 4 start and reset images, off by default. A 2x2 grid can show a split's images.
 - The Live Tester, which compares one split image with the capture outside of a run. It replaces AutoMask's tester.
-- Make Split Images, which applies a preset's masks to the capture or to screenshots and saves the split images, with savestates to copy for a practice tool. It replaces AutoMask, and its preset editor replaces AutoMask's.
+- Make Split Images, which applies a preset's masks to the capture or to screenshots and saves the split images, with savestates to copy for a practice tool. It replaces AutoMask, and its preset editor replaces AutoMask's, with a split library of ready-made splits to insert, including ones that take several images in a row.
 - Commands that work without the window: `devices`, `grab`, `run`, `check`, `compare`, `replay` and `bench`. See [Command line](MANUAL.md#command-line).
 
 ## Tests

@@ -23,6 +23,7 @@ export global Theme {
     out property <color> secondary-text: dark ? #a8a8a8 : #6b6b6b;
     out property <color> arrow: dark ? #bebebe : #4a4a4a;
     out property <color> focus: dark ? #2a82da : #308cc6;
+    // Only around the capture and image previews, which it sets apart
     out property <color> frame: dark ? #ffffff : #a0a0a0;
     out property <color> selection: dark ? #2a82da : #308cc6;
     out property <color> link: dark ? #5aa0ff : #2a6fd6;
@@ -244,6 +245,8 @@ export component Button inherits Rectangle {
     in property <bool> suggested;
     // Its tooltip, or none when empty
     in property <string> tip;
+    // The pointer is over it while it can be clicked
+    out property <bool> hovered: touch.has-hover && root.enabled;
     callback clicked();
     preferred-width: max(75px, label.preferred-width + 20px);
     preferred-height: 24px;
@@ -979,7 +982,7 @@ export struct NamePart {
 }
 
 // The colors of the file name's parts, so each kind of value stands out.
-global NameColors {
+export global NameColors {
     public pure function of(part: NamePart) -> color {
         if part.ignored {
             return Theme.warning;

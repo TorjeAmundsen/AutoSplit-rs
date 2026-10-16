@@ -1,0 +1,506 @@
+// Split Library: the ready-made splits of the edited preset's game, listed by name beside the
+// chosen one in full, narrowed by the search field. Insert Above and Insert Below put the chosen
+// split, with every image it takes, in the preset around the split selected in Make Split
+// Images, and a split can be dragged by its grip into its split list too. Make Split Images
+// shows where it goes with a line. The window stays open for the next one.
+
+import { ScrollView } from "std-widgets.slint";
+import { Button, FileName, NameColors, NameKind, NamePart, TextField, Theme, Tip } from "widgets.slint";
+
+// One image of a ready-made split, which can take several in a row, like a dummy for a boss's
+// intro text, then its flash
+export struct LibraryStep {
+    heading: string,
+    // The screenshot its mask is made for, shown at its own size, or empty until it's read
+    thumb: image,
+    // Each setting as shown, or empty for the profile's default
+    threshold: string,
+    delay: string,
+    pause: string,
+    dummy: bool,
+    below: bool,
+    // The file name it gets, with XX for its number, which comes from where it's put
+    file-parts: [NamePart],
+    file: string,
+}
+
+export struct LibraryCard {
+    // Its place among all the game's ready-made splits, which inserting says, whatever the search
+    // shows
+    ready-made: int,
+    heading: string,
+    description: string,
+    steps: [LibraryStep],
+    // Where a split with its name is in the preset already: the start of its file name, its
+    // number or its keyword, colored like the split list's file names, with empty text when it
+    // isn't, and the whole file name, and a line saying where
+    in-preset: NamePart,
+    in-preset-file: string,
+    in-preset-note: string,
+    // Why it can't be added, or empty
+    blocker: string,
+}
+
+// A setting: its name, then its value in the file name's color for it, or Default in gray when
+// the split leaves it to the profile, lined up with the others
+component Setting inherits HorizontalLayout {
+    in property <string> label;
+    in property <string> value;
+    in property <NameKind> kind;
+    // What it shows without a value
+    in property <string> empty: "Default";
+    spacing: 6px;
+
+    Text {
+        width: 58px;
+        color: Theme.secondary-text;
+        text: root.label;
+    }
+
+    Text {
+        font-weight: root.value == "" ? 400 : 600;
+        color: root.value == "" ? Theme.secondary-text : NameColors.of({ kind: root.kind });
+        text: root.value == "" ? root.empty : root.value;
+    }
+}
+
+// Every setting an image can have, a line each, so they're always in the same place
+component Settings inherits VerticalLayout {
+    in property <LibraryStep> step;
+    alignment: start;
+    spacing: 1px;
+
+    Setting {
+        label: "Threshold";
+        value: root.step.threshold;
+        kind: NameKind.threshold;
+    }
+
+    Setting {
+        label: "Delay";
+        value: root.step.delay;
+        kind: NameKind.delay;
+    }
+
+    Setting {
+        label: "Pause";
+        value: root.step.pause;
+        kind: NameKind.pause;
+    }
+
+    // Named like the split form's checkboxes, in the flags' color. The profile has none to
+    // default to, so without any it's None
+    Setting {
+        label: "Flags";
+        empty: "None";
+        value: (root.step.dummy ? "Dummy" : "") + (root.step.dummy && root.step.below ? ", " : "") + (root.step.below ? "Below threshold" : "");
+        kind: NameKind.flags;
+    }
+
+    // Colored like the split list's file names, cut off when the pane is narrow
+    HorizontalLayout {
+        spacing: 6px;
+
+        Text {
+            width: 58px;
+            color: Theme.secondary-text;
+            text: "File";
+        }
+
+        Rectangle {
+            clip: true;
+            height: 16px;
+
+            FileName {
+                parts: root.step.file-parts;
+                file: root.step.file;
+            }
+        }
+    }
+}
+
+// Where a split is dragged from: two columns of dots at the start of its row
+component Grip inherits Rectangle {
+    in property <bool> enabled;
+    in property <bool> dragging;
+    callback pressed(length, length);
+    callback moved(length, length);
+    callback released();
+    width: 14px;
+    background: root.enabled && (touch.has-hover || root.dragging) ? Theme.item-hover : transparent;
+
+    for dot[index] in 6: Rectangle {
+        x: (root.width - 6px) / 2 + mod(index, 2) * 4px;
+        y: (root.height - 10px) / 2 + floor(index / 2) * 4px;
+        width: 2px;
+        height: 2px;
+        background: root.enabled ? Theme.secondary-text : Theme.disabled-text;
+    }
+
+    touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: root.enabled ? MouseCursor.grab : MouseCursor.default;
+        pointer-event(event) => {
+            if (event.button == PointerEventButton.left && event.kind == PointerEventKind.down) {
+                root.pressed(self.mouse-x, self.mouse-y);
+            }
+            if (event.button == PointerEventButton.left && event.kind == PointerEventKind.up) {
+                root.released();
+            }
+        }
+        moved => {
+            root.moved(self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
+        }
+    }
+
+    if root.enabled: Tooltip {
+        Tip {
+            text: "Drag it into the split list in Make Split Images";
+        }
+    }
+}
+
+export component LibraryWindow inherits Window {
+    in property <string> window-title: "Split Library";
+    title: root.window-title;
+    icon: @image-url("../assets/icon.png");
+    preferred-width: 600px;
+    preferred-height: 520px;
+    min-width: 480px;
+    min-height: 280px;
+    default-font-family: "Noto Sans";
+    default-font-size: 12px;
+    forward-focus: search;
+
+    in property <[LibraryCard]> cards;
+    // The one shown in full, by its place in the list, or -1
+    in-out property <int> selected: -1;
+    in-out property <string> search-text;
+    // Shown instead of the list when it's empty
+    in property <string> empty-message;
+    // Libraries that couldn't be read, short, and each one's reason
+    in property <string> errors;
+    in property <string> error-details;
+    // Another split is shown in full, by its place among the game's ready-made splits
+    callback chosen(int);
+    // The chosen split goes above or below the selected split
+    callback insert(int, bool);
+    // The pointer went over Insert Above or Insert Below, or left it
+    callback insert-hovered(bool, bool);
+    // A split is dragged, with the pointer at this place in the window, which can be outside it
+    callback card-dragged(int, length, length);
+    // The split being dragged was let go
+    callback card-dropped(int);
+    // Dragging works where windows know their place on the screen, which they don't under Wayland
+    in property <bool> can-drag: true;
+    callback search-edited(string);
+    callback close-clicked();
+
+    property <length> row-height: 26px;
+    property <bool> has-card: root.selected >= 0 && root.selected < root.cards.length;
+    property <LibraryCard> card: root.has-card ? root.cards[root.selected] : { };
+
+    // Shows split `index` in full, scrolled into view in the list
+    function choose(index: int) {
+        root.selected = index;
+        root.chosen(root.cards[index].ready-made);
+        if (index * root.row-height < -list.content-y) {
+            list.content-y = -index * root.row-height;
+        }
+        if ((index + 1) * root.row-height > -list.content-y + list.visible-height) {
+            list.content-y = -((index + 1) * root.row-height - list.visible-height);
+        }
+    }
+
+    VerticalLayout {
+        padding: 8px;
+        spacing: 6px;
+
+        search := TextField {
+            height: 24px;
+            text <=> root.search-text;
+            placeholder-text: "Search names and descriptions";
+            edited(text) => { root.search-edited(text); }
+        }
+
+        HorizontalLayout {
+            vertical-stretch: 1;
+            spacing: 8px;
+
+            // The names, one row each
+            Rectangle {
+                width: 190px;
+                background: Theme.field;
+                border-width: 1px;
+                border-color: Theme.outline;
+
+                if root.cards.length == 0: Text {
+                    x: 8px;
+                    width: parent.width - 16px;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                    wrap: word-wrap;
+                    color: Theme.secondary-text;
+                    text: root.empty-message;
+                }
+
+                list-keys := FocusScope {
+                    x: 1px;
+                    y: 1px;
+                    width: parent.width - 2px;
+                    height: parent.height - 2px;
+                    key-pressed(event) => {
+                        if (event.text == Key.UpArrow && root.selected > 0) {
+                            root.choose(root.selected - 1);
+                            return accept;
+                        }
+                        if (event.text == Key.DownArrow && root.selected < root.cards.length - 1) {
+                            root.choose(root.selected + 1);
+                            return accept;
+                        }
+                        reject
+                    }
+
+                    list := ScrollView {
+                        content-height: root.cards.length * root.row-height;
+                        content-width: self.visible-width;
+
+                        for card[index] in root.cards: row := Rectangle {
+                            property <bool> dragging;
+                            property <length> press-x;
+                            property <length> press-y;
+                            y: index * root.row-height;
+                            height: root.row-height;
+                            width: parent.width;
+                            background: row.dragging || index == root.selected ? Theme.selection.with-alpha(list-keys.has-focus || row.dragging ? 0.35 : 0.2) : transparent;
+
+                            TouchArea {
+                                clicked => {
+                                    list-keys.focus();
+                                    root.choose(index);
+                                }
+                            }
+
+                            HorizontalLayout {
+                                padding-right: 18px;
+                                spacing: 4px;
+
+                                // Dragged into the split list once it's moved a little
+                                Grip {
+                                    enabled: root.can-drag && card.blocker == "";
+                                    dragging: row.dragging;
+                                    pressed(x, y) => {
+                                        row.press-x = x;
+                                        row.press-y = y;
+                                        root.choose(index);
+                                    }
+                                    moved(x, y) => {
+                                        if (!row.dragging && (abs(x - self.absolute-position.x - row.press-x) > 4px || abs(y - self.absolute-position.y - row.press-y) > 4px)) {
+                                            row.dragging = true;
+                                        }
+                                        if (row.dragging) {
+                                            root.card-dragged(card.ready-made, x, y);
+                                        }
+                                    }
+                                    released => {
+                                        if (row.dragging) {
+                                            row.dragging = false;
+                                            root.card-dropped(card.ready-made);
+                                        }
+                                    }
+                                }
+
+                                Text {
+                                    horizontal-stretch: 1;
+                                    vertical-alignment: center;
+                                    color: card.blocker == "" ? Theme.text : Theme.disabled-text;
+                                    text: card.heading;
+                                    overflow: elide;
+                                }
+
+                                // How many images it takes, when it's more than one
+                                if card.steps.length > 1: Text {
+                                    vertical-alignment: center;
+                                    font-size: 11px;
+                                    color: Theme.secondary-text;
+                                    text: card.steps.length + " images";
+                                }
+
+                                // In the preset already: where, as its file name starts
+                                if card.in-preset.text != "": Text {
+                                    vertical-alignment: center;
+                                    font-size: 11px;
+                                    font-weight: 600;
+                                    color: NameColors.of(card.in-preset);
+                                    text: card.in-preset.text;
+
+                                    Tooltip {
+                                        Tip {
+                                            text: "In the preset already, as " + card.in-preset-file;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // The chosen split in full, with what's done with it
+            Rectangle {
+                horizontal-stretch: 1;
+                background: Theme.field;
+                border-width: 1px;
+                border-color: Theme.outline;
+
+                // From the top: what it is, the same height whatever its description, so the
+                // pictures stay put going through the list, then what it's for. It scrolls when
+                // the window is short, under where it goes and the buttons, which stay
+                if root.has-card: VerticalLayout {
+                    top-scroll := ScrollView {
+                        vertical-stretch: 1;
+                        content-width: self.visible-width;
+                        content-height: max(self.visible-height, top.preferred-height);
+
+                        top := VerticalLayout {
+                            width: top-scroll.visible-width;
+                            height: top-scroll.content-height;
+                            alignment: start;
+                            padding: 10px;
+                            spacing: 8px;
+
+                            Text {
+                                font-size: 14px;
+                                font-weight: 600;
+                                color: Theme.text;
+                                text: root.card.heading;
+                                overflow: elide;
+                            }
+
+                            // Each image at its own size, beside what it sets, numbered when there are
+                            // several, in a box that keeps its place until it's read
+                            for step[step-index] in root.card.steps: HorizontalLayout {
+                                spacing: 10px;
+
+                                VerticalLayout {
+                                    alignment: start;
+
+                                    Rectangle {
+                                        width: max(64px, thumb.preferred-width) + 2px;
+                                        height: max(48px, thumb.preferred-height) + 2px;
+                                        border-width: 1px;
+                                        border-color: Theme.separator;
+
+                                        thumb := Image {
+                                            source: step.thumb;
+                                            image-rendering: pixelated;
+                                        }
+                                    }
+                                }
+
+                                VerticalLayout {
+                                    horizontal-stretch: 1;
+                                    alignment: start;
+                                    spacing: 3px;
+
+                                    if root.card.steps.length > 1: Text {
+                                        font-weight: 600;
+                                        color: Theme.text;
+                                        text: (step-index + 1) + ". " + step.heading;
+                                        overflow: elide;
+                                    }
+
+                                    Settings {
+                                        step: step;
+                                    }
+                                }
+                            }
+
+                            if root.card.description != "": Text {
+                                wrap: word-wrap;
+                                color: Theme.text;
+                                text: root.card.description;
+                            }
+                        }
+                    }
+
+                    // Only as tall as it needs, so the part above gets the rest
+                    VerticalLayout {
+                        vertical-stretch: 0;
+                        padding: 10px;
+                        padding-top: 4px;
+                        spacing: 8px;
+
+
+                    // Said once, over the buttons it's about: why they're off, or that inserting
+                    // it would make a second one
+                    if root.card.blocker != "": Text {
+                        wrap: word-wrap;
+                        color: Theme.error;
+                        text: root.card.blocker;
+                    }
+
+                    if root.card.blocker == "" && root.card.in-preset-note != "": Text {
+                        wrap: word-wrap;
+                        color: Theme.secondary-text;
+                        text: root.card.in-preset-note;
+                    }
+
+                    HorizontalLayout {
+                        alignment: start;
+                        spacing: 6px;
+
+                        Button {
+                            width: 100px;
+                            text: "Insert Above";
+                            enabled: root.card.blocker == "";
+                            clicked => { root.insert(root.card.ready-made, true); }
+                            changed hovered => { root.insert-hovered(true, self.hovered); }
+                            tip: "Put it in the preset above the selected split, with " + (root.card.steps.length > 1 ? "its " + root.card.steps.length + " images as splits in this order" : "its mask and settings") + ". The selected split stays selected, so the next one goes after it.";
+                        }
+
+                        Button {
+                            width: 100px;
+                            text: "Insert Below";
+                            enabled: root.card.blocker == "";
+                            clicked => { root.insert(root.card.ready-made, false); }
+                            changed hovered => { root.insert-hovered(false, self.hovered); }
+                            tip: "Put it in the preset below the selected split, with " + (root.card.steps.length > 1 ? "its " + root.card.steps.length + " images as splits in this order" : "its mask and settings") + ", and select it, so the next one goes after it.";
+                        }
+                    }
+                }
+                    }
+            }
+        }
+
+        HorizontalLayout {
+            height: 24px;
+            spacing: 6px;
+
+            if root.errors == "": Rectangle {
+                horizontal-stretch: 1;
+            }
+
+            if root.errors != "": Text {
+                horizontal-stretch: 1;
+                vertical-alignment: center;
+                color: Theme.error;
+                text: root.errors;
+                overflow: elide;
+
+                Tooltip {
+                    Tip {
+                        text: root.error-details;
+                    }
+                }
+            }
+
+            Button {
+                width: 70px;
+                text: "Close";
+                clicked => { root.close-clicked(); }
+                tip: "Close the window (Escape)";
+            }
+        }
+    }
+}

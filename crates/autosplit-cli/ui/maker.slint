@@ -111,6 +111,8 @@ export component MakerWindow inherits Window {
     in property <bool> edit-changed;
     // Raised to move the focus to the Name field, like after Add
     in property <int> name-focus-request;
+    // Where a split from Split Library would go, as the gap before that row, or -1
+    in property <int> drop-line: -1;
     // The preset is saved already, so there's a folder to delete
     // The preset being edited was saved before, so it can be deleted or saved as another
     in property <bool> saved-preset;
@@ -130,6 +132,7 @@ export component MakerWindow inherits Window {
     callback choose-savestate();
     callback clear-savestate();
     callback add-split();
+    callback open-library();
     callback duplicate-split();
     callback remove-split();
     callback move-split(bool);
@@ -159,6 +162,15 @@ export component MakerWindow inherits Window {
         root.selected = index;
         root.scroll-to(index);
         root.split-chosen(index);
+    }
+
+    // The gap between rows of the split list nearest to `x` and `y` in the window, from 0 above
+    // the first to the number of rows below the last, or -1 when they're outside the list
+    public function drop-gap(x: length, y: length) -> int {
+        if (x < list.absolute-position.x || x >= list.absolute-position.x + list.width || y < list.absolute-position.y || y >= list.absolute-position.y + list.height) {
+            return -1;
+        }
+        return clamp(round((y - list.absolute-position.y - list.content-y) / root.row-height), 0, root.rows.length);
     }
 
     // Scrolls split `index` into view, like after it's added or moved
@@ -299,7 +311,8 @@ export component MakerWindow inherits Window {
                     text: "Splits";
                 }
 
-                // The outline is outside, like the previews', so their edges line up
+                // The outline is outside, like the previews', so their edges line up. It's a field's,
+                // since the white one is for the capture and image previews
                 Rectangle {
                     vertical-stretch: 1;
                     background: Theme.field;
@@ -310,7 +323,7 @@ export component MakerWindow inherits Window {
                         width: parent.width + 2px;
                         height: parent.height + 2px;
                         border-width: 1px;
-                        border-color: Theme.frame;
+                        border-color: Theme.outline;
                     }
 
                     // Up and Down pick the split above or below, scrolled into view
@@ -376,7 +389,7 @@ export component MakerWindow inherits Window {
                                             width: 48px;
                                             height: 36px;
                                             border-width: 1px;
-                                            border-color: Theme.frame;
+                                            border-color: Theme.separator;
 
                                             if row.has-thumb: Image {
                                                 x: 1px;
@@ -430,6 +443,24 @@ export component MakerWindow inherits Window {
                                             text: row.saved ? "saved" : "";
                                         }
                                     }
+                                }
+                            }
+
+                            // Where a split from Split Library goes: a line between the rows, with
+                            // a dot at its start, over the separator
+                            if root.drop-line >= 0: Rectangle {
+                                y: clamp(root.drop-line * root.row-height - 1px, 0px, max(0px, root.rows.length * root.row-height - 2px));
+                                height: 2px;
+                                width: parent.width;
+                                background: Theme.focus;
+
+                                Rectangle {
+                                    x: 2px;
+                                    y: (parent.height - self.height) / 2;
+                                    width: 8px;
+                                    height: 8px;
+                                    border-radius: 4px;
+                                    background: Theme.focus;
                                 }
                             }
                         }
@@ -505,6 +536,13 @@ export component MakerWindow inherits Window {
                         enabled: root.has-split;
                         clicked => { root.duplicate-split(); }
                         tip: "Add a copy of the selected split after it, with the same mask";
+                    }
+
+                    Button {
+                        width: 64px;
+                        text: "Library";
+                        clicked => { root.open-library(); }
+                        tip: "Open the split library: ready-made splits for the preset's game, with their masks and settings, to insert around the selected split";
                     }
 
                     Button {

@@ -2,8 +2,9 @@
 
 use autosplit::gui::preset_form::{
     Draft, Field, InstructionText, ListChange, Problem, SplitEdit, SplitKind, discard_question, elide_middle,
-    field_problems, field_value, instruction_cards, known_game, next_problem_split, problem_flags, problem_list,
-    problem_summary, saved_preset_name, split_heading, status_line,
+    field_problems, field_value, import_blocker, in_preset, instruction_cards, known_game, library_file_name,
+    library_heading, matches_search, next_problem_split, problem_flags, problem_list, problem_summary,
+    saved_preset_name, split_heading, status_line,
 };
 use autosplit_core::preset::{Preset, PresetSplit};
 use test_case::test_case;
@@ -753,4 +754,167 @@ fn leaving_unsaved_changes_says_what_is_lost(name: &str, saved_before: bool) -> 
 fn long_file_names_keep_their_start_and_end(name: &str, max: usize) -> String {
     // Act, with the expected value checked by test_case
     elide_middle(name, max)
+}
+
+fn library_split(name: &str) -> PresetSplit {
+    PresetSplit {
+        name: name.into(),
+        mask: "escape.png".into(),
+        threshold: Some(0.97),
+        delay: Some(150),
+        with_previous: true,
+        ..PresetSplit::default()
+    }
+}
+
+#[test]
+fn imported_splits_go_after_the_selected_one_with_their_files_in_the_library() {
+    // Arrange
+    let mut draft = draft(&["Boss", "Door"]);
+    let library = std::env::temp_dir().join("splits").join("Game");
+
+    // Act
+    let imported = draft.import(draft.place_after(Some(0)), &[library_split("Escape")], &library);
+
+    // Assert: settings kept as the library has them, a split of its own
+    let expected = PresetSplit {
+        mask: library.join("escape.png").display().to_string(),
+        with_previous: false,
+        ..library_split("Escape")
+    };
+    assert_eq!((imported, &draft.preset.splits[1]), (vec![ListChange::Insert(1)], &expected));
+}
+
+#[test]
+fn imported_savestates_point_into_the_library_too() {
+    // Arrange
+    let mut draft = draft(&["Boss"]);
+    let library = std::env::temp_dir().join("splits").join("Game");
+    let split = PresetSplit { savestate: "escape.gzs".into(), ..library_split("Escape") };
+
+    // Act
+    draft.import(draft.place_after(None), &[split], &library);
+
+    // Assert
+    assert_eq!(draft.preset.splits[1].savestate, library.join("escape.gzs").display().to_string());
+}
+
+#[test]
+fn imported_splits_go_after_the_splits_compared_with_the_selected_one() {
+    // Arrange
+    let mut draft = draft(&["Boss", "Boss 2", "Door"]);
+    draft.preset.splits[1].with_previous = true;
+
+    // Act
+    let place = draft.place_after(Some(0));
+    draft.import(place, &[library_split("Escape")], std::path::Path::new("library"));
+
+    // Assert
+    assert_eq!((place, names(&draft)), (2, vec!["Boss", "Boss 2", "Escape", "Door"]));
+}
+
+#[test_case("reset" => "Reset Image"; "reset image")]
+#[test_case("start_auto_splitter" => "Start Image"; "start image")]
+#[test_case("Escape" => "Escape"; "a split")]
+fn library_splits_are_headed_like_the_split_list(name: &str) -> String {
+    // Act, with the expected value checked by test_case
+    library_heading(&library_split(name))
+}
+
+#[test_case("" => true; "an empty search")]
+#[test_case("ganon" => true; "a name in another case")]
+#[test_case("slash  INTRO" => true; "words in different texts")]
+#[test_case("ganon bottle" => false; "a word in none")]
+#[test_case("flash" => false; "nothing has it")]
+fn searching_needs_every_word_somewhere(search: &str) -> bool {
+    // Act, with the expected value checked by test_case
+    matches_search(&["Ganon", "Ganon intro", "Final slash on Ganon"], search)
+}
+
+#[test_case(&["reset", "reset", "reset"], &["reset"] => None; "room for another")]
+#[test_case(&["reset", "reset", "reset", "reset"], &["reset"] => Some("A preset can have up to 4 reset images, and this one has 4.".to_owned()); "reset images full")]
+#[test_case(&["reset", "reset", "reset"], &["reset", "reset"] => Some("A preset can have up to 4 reset images, and this one has 3.".to_owned()); "steps past the most")]
+#[test_case(&["reset", "reset", "reset", "reset"], &["start_auto_splitter"] => None; "another kind")]
+#[test_case(&["Escape", "Escape", "Escape", "Escape"], &["Escape"] => None; "splits have no limit")]
+fn importing_stops_at_the_most_reset_or_start_images(names: &[&str], steps: &[&str]) -> Option<String> {
+    // Arrange
+    let preset = draft(names).preset;
+    let steps: Vec<PresetSplit> = steps.iter().map(|name| library_split(name)).collect();
+
+    // Act
+    import_blocker(&preset, &steps)
+}
+
+#[test]
+fn ready_made_splits_import_all_their_steps_in_order() {
+    // Arrange: a dummy for the intro text, then the flash, the flash also matching a second look
+    let mut draft = draft(&["Boss", "Door"]);
+    let intro = PresetSplit { dummy: true, ..library_split("Ganon intro") };
+    let flash = PresetSplit { with_previous: false, ..library_split("Ganon") };
+    let other_flash = library_split("Ganon");
+
+    // Act
+    let changes = draft.import(1, &[intro, flash, other_flash], std::path::Path::new("library"));
+
+    // Assert: the first isn't compared with Boss, the last still with the flash before it
+    let joined: Vec<bool> = draft.preset.splits.iter().map(|split| split.with_previous).collect();
+    assert_eq!(
+        (changes, names(&draft), joined),
+        (
+            vec![ListChange::Insert(1), ListChange::Insert(2), ListChange::Insert(3)],
+            vec!["Boss", "Ganon intro", "Ganon", "Ganon", "Door"],
+            vec![false, false, false, true, false]
+        )
+    );
+}
+
+#[test_case(Some(2) => (1, 3); "a split compared with the one above")]
+#[test_case(Some(0) => (0, 1); "a split of its own")]
+#[test_case(None => (4, 4); "nothing selected")]
+fn inserting_above_or_below_goes_around_splits_compared_together(selected: Option<usize>) -> (usize, usize) {
+    // Arrange
+    let draft = grouped(&["Door", "Boss", "+Boss 2", "Exit"]);
+
+    // Act
+    (draft.place_before(selected), draft.place_after(selected))
+}
+
+#[test_case(0 => 0; "above the first")]
+#[test_case(1 => 1; "between splits of their own")]
+#[test_case(2 => 1; "inside a group, nearer its start")]
+#[test_case(4 => 4; "at the end")]
+#[test_case(9 => 4; "past the end")]
+fn drops_never_go_between_splits_compared_together(gap: usize) -> usize {
+    // Act, with the expected value checked by test_case
+    grouped(&["Door", "Boss", "+Boss 2", "Exit"]).drop_place(gap)
+}
+
+#[test]
+fn drops_inside_a_group_go_to_its_nearer_end() {
+    // Arrange: a group of three, so its second gap is nearer the end
+    let draft = grouped(&["Boss", "+Boss 2", "+Boss 3", "Exit"]);
+
+    // Act
+    let places = (draft.drop_place(1), draft.drop_place(2));
+
+    // Assert
+    assert_eq!(places, (0, 3));
+}
+
+#[test_case("Boss" => Some(("2_Boss".to_owned(), "Already in the preset, as split 2.".to_owned())); "a split, numbered like its file")]
+#[test_case("reset" => Some(("reset".to_owned(), "Already in the preset, as its reset image.".to_owned())); "a reset image")]
+#[test_case("Door" => None; "not in it")]
+fn splits_in_the_preset_say_where(name: &str) -> Option<(String, String)> {
+    // Arrange: file names without the mask's extension, which the draft's splits have none of
+    let preset = draft(&["reset", "Intro", "Boss"]).preset;
+
+    // Act
+    in_preset(&preset, name).map(|(file, note)| (file.trim_end_matches(".png").to_owned(), note))
+}
+
+#[test_case("Escape" => "XX_Escape_(0.97)_#150#.png"; "a split, numbered by where it's put")]
+#[test_case("reset" => "reset_(0.97)_#150#.png"; "a reset image, which has no number")]
+fn ready_made_splits_name_their_files_without_a_place(name: &str) -> String {
+    // Act, with the expected value checked by test_case
+    library_file_name(&library_split(name), None)
 }
