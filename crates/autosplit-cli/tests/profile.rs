@@ -69,7 +69,12 @@ fn screenshot_names(name: &str) -> bool {
 fn screenshot_is_saved_into_the_folder() {
     // Arrange
     let folder = tempfile::tempdir().unwrap();
-    let profile = UserProfile { split_image_directory: folder.path().display().to_string(), ..UserProfile::default() };
+    // Not opened, which needs a program to open it with, and would open a window during the tests
+    let profile = UserProfile {
+        split_image_directory: folder.path().display().to_string(),
+        open_screenshot: false,
+        ..UserProfile::default()
+    };
     let image = autosplit_core::image::BgraImage::from_raw(2, 2, vec![255; 16]);
     let (sender, receiver) = std::sync::mpsc::channel();
 

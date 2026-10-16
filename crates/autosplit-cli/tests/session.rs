@@ -372,6 +372,10 @@ fn live_tester_with_an_unusable_image_shows_a_dialog() {
     );
 }
 
+// The shortcut is Cmd+, on macOS, like its other shortcuts
+#[cfg(target_os = "macos")]
+const NO_CAPTURE: &str = "grabbed Err(\"There's no capture to grab. Check the capture device in Settings (Cmd+,).\")";
+#[cfg(not(target_os = "macos"))]
 const NO_CAPTURE: &str = "grabbed Err(\"There's no capture to grab. Check the capture device in Settings (Ctrl+,).\")";
 
 #[test]
