@@ -1,5 +1,8 @@
 //! The window's logic that doesn't need a window: the profile document, message boxes, the
-//! settings fields, key names, the log and where windows open.
+//! settings fields, key names, the log and where windows open, and in `preset_form` the preset
+//! editor's.
+
+mod preset_form;
 
 use std::cell::Cell;
 use std::path::{Path, PathBuf};

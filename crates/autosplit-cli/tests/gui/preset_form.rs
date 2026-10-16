@@ -2,8 +2,8 @@
 
 use autosplit::gui::preset_form::{
     Draft, Field, InstructionText, ListChange, Problem, SplitEdit, SplitKind, discard_question, elide_middle,
-    field_problems, field_value, instruction_cards, known_game, problem_flags, problem_list, problem_summary,
-    saved_preset_name, split_heading,
+    field_problems, field_value, instruction_cards, known_game, next_problem_split, problem_flags, problem_list,
+    problem_summary, saved_preset_name, split_heading, status_line,
 };
 use autosplit_core::preset::{Preset, PresetSplit};
 use test_case::test_case;
@@ -181,17 +181,37 @@ fn splits_move_one_place(index: usize, up: bool) -> Option<(usize, ListChange)> 
 
 #[test]
 fn other_lists_follow_the_splits() {
-    // Arrange: what's been grabbed for each split
+    // Arrange: what's been grabbed for each split, different for each, so every change shows
     let mut draft = draft(&["A", "B", "C"]);
-    let mut grabbed = vec![Some("a"), None, Some("c")];
+    let mut grabbed = vec![Some("a"), Some("b"), Some("c")];
 
-    // Act
+    // Act: C moves above B, A is duplicated, then B is removed
     for change in [draft.move_split(2, true).unwrap().1, draft.duplicate(0).unwrap().1, draft.remove(3).unwrap().1] {
         change.mirror(&mut grabbed);
     }
 
     // Assert: the copy has nothing grabbed yet
     assert_eq!((names(&draft), grabbed), (vec!["A", "A", "C"], vec![Some("a"), None, Some("c")]));
+}
+
+#[test_case(ListChange::Insert(1) => vec!["a", "", "b", "c"]; "insert")]
+#[test_case(ListChange::Insert(9) => vec!["a", "b", "c", ""]; "insert past the end goes last")]
+#[test_case(ListChange::Remove(1) => vec!["a", "c"]; "remove")]
+#[test_case(ListChange::Remove(3) => vec!["a", "b", "c"]; "remove past the end does nothing")]
+#[test_case(ListChange::Swap(0, 2) => vec!["c", "b", "a"]; "swap")]
+#[test_case(ListChange::Swap(0, 3) => vec!["a", "b", "c"]; "swap past the end does nothing")]
+#[test_case(ListChange::Rotate { start: 0, end: 3, left: 1 } => vec!["b", "c", "a"]; "rotate")]
+#[test_case(ListChange::Rotate { start: 1, end: 4, left: 1 } => vec!["a", "b", "c"]; "rotate past the end does nothing")]
+#[test_case(ListChange::Rotate { start: 1, end: 2, left: 2 } => vec!["a", "b", "c"]; "rotate by more than it has does nothing")]
+fn changes_are_made_in_other_lists(change: ListChange) -> Vec<&'static str> {
+    // Arrange
+    let mut items = vec!["a", "b", "c"];
+
+    // Act
+    change.mirror(&mut items);
+
+    // Assert, with the expected value checked by test_case
+    items
 }
 
 #[test]
@@ -619,6 +639,52 @@ fn the_summary_names_the_first_problem_and_counts_the_rest() {
 
     // Assert
     assert_eq!(summary.as_deref(), Some("The preset needs a name. And 2 more problems."));
+}
+
+#[test_case(false => "No changes yet."; "unchanged")]
+#[test_case(true => "Ready to save."; "changed")]
+fn without_problems_the_line_says_whether_theres_something_to_save(changed: bool) -> String {
+    // Arrange
+    let mut draft = draft(&["Boss"]);
+    if changed {
+        draft.edit_split(0, SplitEdit::Name("Door".into()));
+    }
+
+    // Act, with the expected value checked by test_case
+    status_line(&draft.preset, &draft.problems(), draft.has_changes())
+}
+
+#[test]
+fn with_problems_the_line_is_their_summary() {
+    // Arrange
+    let mut draft = draft(&["Boss"]);
+    draft.edit_split(0, SplitEdit::Mask(String::new()));
+    let problems = draft.problems();
+
+    // Act
+    let line = status_line(&draft.preset, &problems, draft.has_changes());
+
+    // Assert
+    assert_eq!(Some(line), problem_summary(&draft.preset, &problems));
+}
+
+#[test_case(0 => Some(2); "the next one")]
+#[test_case(2 => Some(3); "after the selected one")]
+#[test_case(3 => Some(0); "from the top after the last")]
+fn the_problem_line_goes_to_the_next_split_with_a_problem(selected: usize) -> Option<usize> {
+    // Arrange: splits 0, 2 and 3 have no mask
+    let mut draft = draft(&["A", "B", "C", "D"]);
+    for index in [0, 2, 3] {
+        draft.edit_split(index, SplitEdit::Mask(String::new()));
+    }
+
+    // Act, with the expected value checked by test_case
+    next_problem_split(&draft.problems(), selected)
+}
+
+#[test]
+fn without_problems_the_line_goes_nowhere() {
+    assert_eq!(next_problem_split(&draft(&["A"]).problems(), 0), None);
 }
 
 #[test]

@@ -18,7 +18,7 @@ use super::super::preset_form::{
     field_problems, field_value,
 };
 use super::super::preset_form::{
-    discard_question, known_game, problem_flags, problem_list, problem_summary, saved_preset_name,
+    discard_question, known_game, next_problem_split, problem_flags, problem_list, saved_preset_name, status_line,
 };
 use super::super::recorder::PRIMARY;
 use super::super::recorder::key_character;
@@ -37,10 +37,10 @@ struct Removal {
 
 /// A preset being edited, with what the window had before, to go back to on Cancel.
 pub(super) struct Editing {
-    pub(super) draft: Draft,
+    draft: Draft,
     /// The folder the preset was read from, which its masks' relative paths are in. None for a
     /// new preset.
-    pub(super) source: Option<PathBuf>,
+    source: Option<PathBuf>,
     before: Kept,
     /// Which time editing started, from `Maker::edits`.
     id: u64,
@@ -51,11 +51,24 @@ pub(super) struct Editing {
     reorders: u64,
 }
 
+impl Editing {
+    /// The preset as edited so far.
+    pub(super) fn preset(&self) -> &Preset {
+        &self.draft.preset
+    }
+
+    /// The folder the preset was read from, or none for a new preset.
+    pub(super) fn source(&self) -> Option<&Path> {
+        self.source.as_deref()
+    }
+}
+
 /// Whether saving copies a mask or savestate into the preset's folder: it was picked from
-/// somewhere else. Paths in the preset are relative, and picked ones absolute.
+/// somewhere else. Paths in the preset are relative, and picked ones absolute. `source` is the
+/// preset's folder, canonical.
 fn copied_in(source: Option<&Path>, path: &str) -> bool {
     let path = Path::new(path);
-    path.is_absolute() && source.is_none_or(|source| !canonical(path).starts_with(canonical(source)))
+    path.is_absolute() && source.is_none_or(|source| !canonical(path).starts_with(source))
 }
 
 /// A mask or savestate's full path, for its tooltip, or empty without one.
@@ -422,6 +435,7 @@ impl Gui {
         window.set_has_split(selected < splits.len());
         if let Some(split) = splits.get(selected) {
             let why_not_joined = edit.draft.why_not_joined(selected);
+            let source = edit.source.as_deref().map(canonical);
             window.set_form(SplitForm {
                 named: SplitKind::of(split) == SplitKind::Split,
                 name_problem: field_problems(&problems, selected, Field::Name).into(),
@@ -435,8 +449,8 @@ impl Gui {
                 .into(),
                 mask_path: shown_path(&maker, &split.mask).into(),
                 savestate_path: shown_path(&maker, &split.savestate).into(),
-                mask_copied: copied_in(edit.source.as_deref(), &split.mask),
-                savestate_copied: copied_in(edit.source.as_deref(), &split.savestate),
+                mask_copied: copied_in(source.as_deref(), &split.mask),
+                savestate_copied: copied_in(source.as_deref(), &split.savestate),
                 grouping_off: !grouping
                     && (edit.draft.preset.joins_previous(selected)
                         || edit.draft.preset.keyword_place(selected).is_some_and(|place| place > 1)),
@@ -446,17 +460,9 @@ impl Gui {
             // Also when typing the name made it a start or reset image
             window.global::<SplitValues>().set_kind(SplitKind::of(split).index() as i32);
         }
-        let summary = match problem_summary(&edit.draft.preset, &problems) {
-            Some(summary) => summary,
-            None if edit.draft.has_changes() => "Ready to save.".to_owned(),
-            None => "No changes yet.".to_owned(),
-        };
-        window.set_problems(summary.into());
+        window.set_problems(status_line(&edit.draft.preset, &problems, edit.draft.has_changes()).into());
         window.set_problem_list(problem_list(&edit.draft.preset, &problems).into());
-        // The next split with a problem after the selected one, from the top again after the last
-        let with_problems: Vec<usize> = problems.iter().filter_map(|problem| problem.split).collect();
-        let next = with_problems.iter().find(|&&index| index > selected).or(with_problems.first());
-        window.set_problem_split(next.map_or(-1, |&index| index as i32));
+        window.set_problem_split(next_problem_split(&problems, selected).map_or(-1, |index| index as i32));
         window.set_has_problems(!problems.is_empty());
         window.set_can_save_preset(problems.is_empty() && edit.draft.can_save());
         window.set_edit_changed(edit.draft.has_changes());

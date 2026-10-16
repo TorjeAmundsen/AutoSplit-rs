@@ -108,10 +108,13 @@ pub fn screenshots_to_move(done: &[PathBuf], failed: &[PathBuf], keep: &[PathBuf
     let failed: Vec<PathBuf> = failed.iter().map(|path| canonical(path)).collect();
     let keep: Vec<PathBuf> = keep.iter().map(|path| canonical(path)).collect();
     let mut moving: Vec<PathBuf> = Vec::new();
+    // The canonical paths of those moving, to move each file once
+    let mut seen: Vec<PathBuf> = Vec::new();
     for path in done {
         let real = canonical(path);
-        if !failed.contains(&real) && !keep.contains(&real) && !moving.iter().any(|path| canonical(path) == real) {
+        if !failed.contains(&real) && !keep.contains(&real) && !seen.contains(&real) {
             moving.push(path.clone());
+            seen.push(real);
         }
     }
     moving
@@ -144,16 +147,25 @@ pub fn move_to_base(folder: &Path, sources: &[PathBuf]) -> (Vec<(PathBuf, PathBu
 /// Whether each split's saved split image, in `saved`, is in `folder` under the split's file
 /// name in `names`. The saved paths are kept when one isn't, so a name that changes and changes
 /// back, like while editing the preset, counts again.
+/// It runs on every change while a preset is edited, so each folder is made canonical once.
 pub fn saves_in_place(saved: &[Option<PathBuf>], names: &[String], folder: Option<&Path>) -> Vec<bool> {
     let folder = folder.map(canonical);
+    // Each folder a saved split image is in, and whether it's `folder`
+    let mut parents: Vec<(PathBuf, bool)> = Vec::new();
+    let mut in_folder = |parent: &Path| -> bool {
+        if let Some((_, found)) = parents.iter().find(|(known, _)| known == parent) {
+            return *found;
+        }
+        let found = Some(canonical(parent)) == folder;
+        parents.push((parent.to_owned(), found));
+        found
+    };
     (saved.iter().enumerate())
         .map(|(index, saved)| {
             saved.as_ref().is_some_and(|path| {
-                path.is_file()
-                    && path.parent().map(canonical) == folder
-                    && path
-                        .file_name()
-                        .is_some_and(|name| names.get(index).is_some_and(|wanted| name == wanted.as_str()))
+                let named =
+                    path.file_name().is_some_and(|name| names.get(index).is_some_and(|wanted| name == wanted.as_str()));
+                named && path.parent().is_some_and(&mut in_folder) && path.is_file()
             })
         })
         .collect()

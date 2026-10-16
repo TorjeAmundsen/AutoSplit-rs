@@ -285,6 +285,68 @@ fn files_picked_for_splits_with_the_same_name_get_their_own_copies() {
 }
 
 #[test]
+fn masks_of_names_that_sanitize_the_same_get_their_own_copies() {
+    // Arrange: names that only differ in characters file names can't have
+    let picked = tempfile::tempdir().unwrap();
+    let (first, second) = (file(&picked.path().join("a.png"), "a"), file(&picked.path().join("b.png"), "b"));
+    let target = tempfile::tempdir().unwrap();
+
+    // Act
+    let saved =
+        save_preset(None, target.path(), &preset(vec![split("Boss?", &first), split("Boss:", &second)])).unwrap();
+
+    // Assert: one name each, and each copy is its own mask
+    let masks: Vec<&str> = saved.splits.iter().map(|split| split.mask.as_str()).collect();
+    assert_eq!(masks, ["Boss.png", "Boss (1).png"]);
+    let read = |name: &str| std::fs::read_to_string(target.path().join(name)).unwrap();
+    assert_eq!((read("Boss.png"), read("Boss (1).png")), ("a".to_owned(), "b".to_owned()));
+}
+
+#[test]
+fn a_preset_of_only_a_reset_image_saves() {
+    // Arrange: the editor says what such a preset is missing, but saving doesn't refuse it
+    let picked = tempfile::tempdir().unwrap();
+    let target = tempfile::tempdir().unwrap();
+    let reset = split("reset", &file(&picked.path().join("reset.png"), "r"));
+
+    // Act
+    let saved = save_preset(None, target.path(), &preset(vec![reset])).unwrap();
+
+    // Assert
+    assert_eq!(Preset::load(&target.path().join(PRESET_FILE)).unwrap(), saved);
+    assert_eq!(files(target.path()), [PRESET_FILE, "reset.png"]);
+}
+
+#[test]
+fn a_preset_with_every_field_set_reads_back_as_saved() {
+    // Arrange
+    let picked = tempfile::tempdir().unwrap();
+    let target = tempfile::tempdir().unwrap();
+    let first = split("Deku", &file(&picked.path().join("deku.png"), "d"));
+    let second = PresetSplit {
+        name: "Door".into(),
+        with_previous: true,
+        mask: file(&picked.path().join("door.png"), "o"),
+        threshold: Some(0.93),
+        pause: Some(1.5),
+        delay: Some(250),
+        dummy: true,
+        below: true,
+        savestate: file(&picked.path().join("door.gzs"), "s"),
+        instructions: "Advance 1 frame".into(),
+    };
+
+    // Act
+    let saved = save_preset(None, target.path(), &preset(vec![first, second.clone()])).unwrap();
+
+    // Assert: everything but the paths, which became the copies', is as given
+    let read = Preset::load(&target.path().join(PRESET_FILE)).unwrap();
+    assert_eq!(read, saved);
+    let expected = PresetSplit { mask: "Door.png".into(), savestate: "savestates/door.gzs".into(), ..second };
+    assert_eq!(read.splits[1], expected);
+}
+
+#[test]
 fn missing_files_stop_the_save_before_anything_is_written() {
     // Arrange
     let target = tempfile::tempdir().unwrap();

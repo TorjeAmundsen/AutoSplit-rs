@@ -535,6 +535,23 @@ pub fn discard_question(name: &str, saved_before: bool) -> (String, &'static str
     (format!("Discard {preset}? It hasn't been saved yet."), "Discard Preset")
 }
 
+/// The line under the editor: the first of `problems` and how many more there are, or else
+/// whether the preset has changes to save.
+pub fn status_line(preset: &Preset, problems: &[Problem], has_changes: bool) -> String {
+    match problem_summary(preset, problems) {
+        Some(summary) => summary,
+        None if has_changes => "Ready to save.".to_owned(),
+        None => "No changes yet.".to_owned(),
+    }
+}
+
+/// The split clicking the problem line or F8 goes to: the next one after `selected` with a
+/// problem, from the top again after the last. `None` without any.
+pub fn next_problem_split(problems: &[Problem], selected: usize) -> Option<usize> {
+    let with_problems: Vec<usize> = problems.iter().filter_map(|problem| problem.split).collect();
+    with_problems.iter().find(|&&index| index > selected).or(with_problems.first()).copied()
+}
+
 /// The first of `problems`, with the split it's about, and how many more there are. `None` when
 /// there are none.
 pub fn problem_summary(preset: &Preset, problems: &[Problem]) -> Option<String> {

@@ -135,7 +135,7 @@ impl Maker {
     /// The preset the window shows: the one being edited, or the chosen one.
     fn shown(&self) -> Option<&Preset> {
         match &self.edit {
-            Some(edit) => Some(&edit.draft.preset),
+            Some(edit) => Some(edit.preset()),
             None => self.loaded().map(|loaded| &loaded.preset),
         }
     }
@@ -143,7 +143,7 @@ impl Maker {
     /// A mask or savestate of the shown preset: relative to its folder, or picked while editing.
     fn file(&self, path: &str) -> PathBuf {
         let folder = match &self.edit {
-            Some(edit) => edit.source.as_deref(),
+            Some(edit) => edit.source(),
             None => self.loaded().map(|loaded| loaded.folder.as_path()),
         };
         folder.map_or_else(|| PathBuf::from(path), |folder| folder.join(path))

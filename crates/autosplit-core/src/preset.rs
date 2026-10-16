@@ -452,10 +452,6 @@ fn relative_text(path: &Path) -> String {
     path.components().map(|part| part.as_os_str().to_string_lossy().into_owned()).collect::<Vec<_>>().join("/")
 }
 
-fn canonical(path: &Path) -> Option<PathBuf> {
-    std::fs::canonicalize(path).ok()
-}
-
 /// Finds a mask or savestate: relative to `from`, or a picked file's absolute path.
 fn find(from: &Path, path: &str) -> Result<PathBuf, PresetError> {
     let picked = Path::new(path);
@@ -555,7 +551,7 @@ fn write_preset(
     found: Vec<Option<PathBuf>>,
     made: &mut Vec<PathBuf>,
 ) -> Result<Preset, PresetError> {
-    let root = canonical(target).unwrap_or_else(|| target.to_owned());
+    let root = std::fs::canonicalize(target).unwrap_or_else(|_| target.to_owned());
     // Names given to copies in this save, which the folder doesn't have yet
     let mut given: HashSet<String> = HashSet::new();
     let mut copied: HashMap<PathBuf, String> = HashMap::new();
@@ -609,12 +605,13 @@ fn write_preset(
 /// Deletes the masks and savestates `before` used that `now` doesn't, compared as the files they
 /// are, however their paths are written. Files the preset never used aren't its to delete.
 fn remove_unused_files(target: &Path, before: Option<&Preset>, now: &Preset) {
-    let Some(root) = canonical(target) else { return };
+    let Ok(root) = std::fs::canonicalize(target) else { return };
     let paths = |preset: &Preset| -> Vec<PathBuf> {
         (preset.splits.iter())
             .flat_map(|split| [&split.mask, &split.savestate])
             .filter(|path| !path.is_empty())
-            .filter_map(|path| canonical(&root.join(path)))
+            // Missing files are left out: there's nothing to delete
+            .filter_map(|path| std::fs::canonicalize(root.join(path)).ok())
             .collect()
     };
     let used: HashSet<PathBuf> = paths(now).into_iter().collect();
