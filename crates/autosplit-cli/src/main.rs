@@ -34,7 +34,8 @@ const MAX_TICKS_WITHOUT_TIME_PASSING: u32 = 10_000;
     about,
     args_conflicts_with_subcommands = true,
     after_help = "Start with `autosplit devices`, then `autosplit check <profile.toml>`, then `autosplit run \
-                  <profile.toml>`. TUTORIAL.md in the zip explains each step."
+                  <profile.toml>`. MANUAL.md's Command line section explains each command: \
+                  https://github.com/TorjeAmundsen/AutoSplit-rs/blob/main/MANUAL.md#command-line"
 )]
 struct Cli {
     #[command(subcommand)]

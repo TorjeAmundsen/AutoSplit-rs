@@ -91,7 +91,7 @@ const TUTORIAL_URL: &str =
 const IMAGE_SETTINGS_URL: &str = concat!(
     "https://github.com/TorjeAmundsen/AutoSplit-rs/blob/v",
     env!("CARGO_PKG_VERSION"),
-    "/TUTORIAL.md#split-image-file-names"
+    "/MANUAL.md#split-image-file-names"
 );
 /// What to do once the profile is saved.
 type AfterSave = Box<dyn FnOnce(&Rc<Gui>)>;

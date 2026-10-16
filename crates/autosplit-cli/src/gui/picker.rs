@@ -40,7 +40,7 @@ pub fn clear_error() {
 pub fn take_error() -> Option<String> {
     let error = ERROR.lock().unwrap_or_else(PoisonError::into_inner).take()?;
     let help = if cfg!(target_os = "linux") {
-        " File pickers need xdg-desktop-portal, which desktops usually have, or zenity. TUTORIAL.md's Linux section \
+        " File pickers need xdg-desktop-portal, which desktops usually have, or zenity. MANUAL.md's Linux section \
          says more."
     } else {
         ""
