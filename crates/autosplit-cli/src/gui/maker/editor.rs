@@ -17,7 +17,9 @@ use super::super::preset_form::{
     Draft, Field, ListChange, MASK_NAME_CHARS, SAVESTATE_NAME_CHARS, SplitEdit, SplitKind, elide_middle,
     field_problems, field_value,
 };
-use super::super::preset_form::{known_game, problem_flags, problem_list, problem_summary, saved_preset_name};
+use super::super::preset_form::{
+    discard_question, known_game, problem_flags, problem_list, problem_summary, saved_preset_name,
+};
 use super::super::recorder::PRIMARY;
 use super::super::recorder::key_character;
 use super::super::ui::{SplitField, SplitForm, SplitValues};
@@ -261,11 +263,14 @@ impl Gui {
         if !self.has_unsaved_preset() {
             return then(self);
         }
-        let name = self.maker.borrow().edit.as_ref().map(|edit| edit.draft.preset.name.clone()).unwrap_or_default();
+        let (question, discard) = match self.maker.borrow().edit.as_ref() {
+            Some(edit) => discard_question(&edit.draft.preset.name, edit.source.is_some()),
+            None => return then(self),
+        };
         let weak = Rc::downgrade(self);
-        let labels = ["Discard Changes", "", "Keep Editing"];
+        let labels = [discard, "", "Keep Editing"];
         // Enter keeps editing: losing the changes is never the default
-        self.show_message(Message::choice(format!("Discard the changes to {name}?"), labels, 2, move |answer| {
+        self.show_message(Message::choice(question, labels, 2, move |answer| {
             if let (Some(gui), Answer::Yes) = (weak.upgrade(), answer) {
                 then(&gui);
             }

@@ -519,6 +519,19 @@ pub fn instruction_cards(preset: &Preset) -> Vec<InstructionText> {
         .collect()
 }
 
+/// What leaving a preset with unsaved changes asks, and its button that leaves it: for a preset
+/// `saved_before`, its changes, and for a new one, the whole preset, which was never saved.
+/// `name` is what the Name field has, which can be empty.
+pub fn discard_question(name: &str, saved_before: bool) -> (String, &'static str) {
+    let name = name.trim();
+    if saved_before {
+        let preset = if name.is_empty() { "this preset".to_owned() } else { name.to_owned() };
+        return (format!("Discard the changes to {preset}?"), "Discard Changes");
+    }
+    let preset = if name.is_empty() { "the new preset".to_owned() } else { format!("the new preset {name}") };
+    (format!("Discard {preset}? It hasn't been saved yet."), "Discard Preset")
+}
+
 /// The first of `problems`, with the split it's about, and how many more there are. `None` when
 /// there are none.
 pub fn problem_summary(preset: &Preset, problems: &[Problem]) -> Option<String> {

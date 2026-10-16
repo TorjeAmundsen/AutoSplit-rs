@@ -1,9 +1,9 @@
 //! The preset editor's draft: edits, list operations kept in step with other lists, and problems.
 
 use autosplit::gui::preset_form::{
-    Draft, Field, InstructionText, ListChange, Problem, SplitEdit, SplitKind, elide_middle, field_problems,
-    field_value, instruction_cards, known_game, problem_flags, problem_list, problem_summary, saved_preset_name,
-    split_heading,
+    Draft, Field, InstructionText, ListChange, Problem, SplitEdit, SplitKind, discard_question, elide_middle,
+    field_problems, field_value, instruction_cards, known_game, problem_flags, problem_list, problem_summary,
+    saved_preset_name, split_heading,
 };
 use autosplit_core::preset::{Preset, PresetSplit};
 use test_case::test_case;
@@ -668,6 +668,15 @@ fn only_the_type_changes_other_fields() {
 fn typed_games_are_the_known_ones(game: &str) -> Option<&'static str> {
     // Act, with the expected value checked by test_case
     known_game(game, &["", "The Legend of Zelda: Ocarina of Time", "Super Mario 64"])
+}
+
+#[test_case("No Wrong Warp", true => ("Discard the changes to No Wrong Warp?".to_owned(), "Discard Changes"); "saved before")]
+#[test_case(" ", true => ("Discard the changes to this preset?".to_owned(), "Discard Changes"); "saved before, name cleared")]
+#[test_case("Any%", false => ("Discard the new preset Any%? It hasn't been saved yet.".to_owned(), "Discard Preset"); "new")]
+#[test_case("", false => ("Discard the new preset? It hasn't been saved yet.".to_owned(), "Discard Preset"); "new without a name")]
+fn leaving_unsaved_changes_says_what_is_lost(name: &str, saved_before: bool) -> (String, &'static str) {
+    // Act, with the expected value checked by test_case
+    discard_question(name, saved_before)
 }
 
 #[test_case("006 enter deku.gzs", 15 => "006 en...ku.gzs"; "shortened in the middle")]
