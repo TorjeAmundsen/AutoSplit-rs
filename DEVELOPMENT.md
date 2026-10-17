@@ -1,23 +1,122 @@
 # Development
 
-## Building
+How to build AutoSplit-rs, where things are in the code, and how releases are made.
 
-Needs Rust 1.92 or newer. Linux builds also need CMake, plus NASM on x64, to build libjpeg-turbo. The window loads its Linux libraries (X11 or Wayland, xkbcommon, fontconfig) when it opens, so the build doesn't need them.
+## Getting started
 
-`cargo run -p autosplit --example screenshots -- <folder>` draws every window to PNG files without a display, to check the layout.
+You need Rust 1.92 or newer. On Linux you also need CMake, and on x64 Linux NASM too, because libjpeg-turbo is built from source.
 
 ```sh
 cargo build --release
 cargo test --workspace
 ```
 
-The tests need no internet, Python or capture devices. The LiveSplit One tests listen on a local port, and the session tests register global hotkeys for a moment.
+The tests don't need internet, Python or a capture device. Two kinds of test do touch the system for a moment: the LiveSplit One tests listen on a local port, and the session tests register global hotkeys.
+
+To check a window's layout without opening it, draw every window to PNG files:
+
+```sh
+cargo run -p autosplit --example screenshots -- <folder>
+```
+
+On Linux, the window loads its system libraries (X11 or Wayland, xkbcommon, fontconfig) when it opens, so building doesn't need them installed.
+
+## Project layout
+
+The workspace has four crates:
+
+| Crate | What's in it |
+| --- | --- |
+| `crates/autosplit-core` | Everything that doesn't depend on the OS: comparisons, split image file names, profiles, presets, masks and the split library |
+| `crates/autosplit-capture` | Video capture devices, one backend per OS, and the pixel format conversions |
+| `crates/autosplit-input` | Global hotkeys, sending key presses, and AutoSplit's hotkey names |
+| `crates/autosplit-cli` | The `autosplit` program: the window, the terminal mode and the timer connections |
+
+### Where to find things
+
+| Part | Files |
+| --- | --- |
+| The split state machine | `autosplit-core/src/runner.rs` |
+| The Live Tester's decisions | `autosplit-core/src/tester.rs` |
+| Presets and their masks | `autosplit-core/src/preset.rs`, `mask.rs`, `filename.rs` |
+| Writing the split library | `autosplit-core/src/library.rs` |
+| A running session | `autosplit-cli/src/session.rs`, fed by `device.rs` (capture), `hotkeys.rs`, `livesplit.rs`, `livesplit_one.rs` and `molok.rs` |
+| Terminal mode | `autosplit-cli/src/run.rs` |
+| The window | `autosplit-cli/src/gui/`, laid out in `autosplit-cli/ui/*.slint` |
+| Live Tester window | `gui/tester.rs` |
+| Make Split Images | `gui/maker.rs`, with preset editing in `gui/maker/editor.rs` and `gui/preset_form.rs` |
+| Split Library window | `gui/maker/library.rs`, and adding to the library in `gui/maker/library_entry.rs` |
+| Differences between systems | `autosplit-cli/src/platform.rs` (consoles on Windows, App Nap and the menu bar on macOS) |
+| Savestates on the Linux clipboard | `autosplit-cli/src/file_clipboard.rs` |
+| `AutoSplit.com` on Windows | `autosplit-cli/src/bin/autosplit-console.rs` |
+
+A few design notes:
+
+- The runner never blocks. The host calls `tick` with the latest frame when `next_wakeup` is due, then acts on the effects it returns.
+- The Live Tester decides the same way the runner does, for one image, outside of a run.
+- Hotkeys go through livesplit-hotkey on Windows and Linux. On macOS, `autosplit-input/src/macos.rs` has its own listen-only event tap, because livesplit-hotkey's asks for Accessibility permission, which only sending key presses needs.
+
+## Tests
+
+- `autosplit-cli/tests/gui/` tests the window's logic without a window: documents, messages, settings, placement, Make Split Images' plans, the hotkey recorder, and preset editing (`preset_form.rs`).
+- `autosplit-cli/tests/view.rs` tests what a session hands the window.
+- `tests/fixtures` has split images, captures and profiles. `tests/fixtures/real/` has split images made with AutoMask.
+- `tests/golden` has expected values from Toufool's AutoSplit and OpenCV.
+
+`tools/golden/generate.py` regenerates the fixtures and golden values from AutoSplit 2.3.4. Its instructions are at the top of the file. Only run it when you mean to change the baseline.
+
+## Presets and the split library
+
+`presets/` holds the split image presets, and `splits/` the split library, one folder per game. `tools/convert_presets.py` converted both from AutoMask. Release builds put both folders next to the binary. A preset with a `WIP.txt` in its folder is still being made, and is left out of releases.
+
+A library's `splits.toml` has a `game`, and a `[[split]]` table for each image. The tables take the same keys as a preset's splits, plus three of their own:
+
+- `description`: what it splits on, shown in the Split Library.
+- `base_image`: a screenshot the mask fits, shown beside it.
+- `then`: `true` makes it the next image of the split above it. The Split Library shows them as one ready-made split and inserts them together, in order.
+
+For example, a full fade scene entry that has the entrance text for the scene before it as a dummy:
+
+```toml
+game = "The Legend of Zelda: Ocarina of Time"
+
+[[split]]
+name = "HyruleFieldDummy"
+mask = "HyruleFieldText.png"
+dummy = true
+description = "Enter Kakariko after Hyrule Field scene text dummy"
+base_image = "base_HyruleFieldText.png"
+
+[[split]]
+name = "EnterKakariko"
+mask = "FullFade.png"
+threshold = 0.97
+base_image = "base_FullFade.png"
+then = true
+```
+
+### Editing the library
+
+Debug builds (`cargo run`) can write the library, so you don't have to write `splits.toml` by hand. Release builds don't have these buttons.
+
+1. Edit a preset of the game in Make Split Images, and make the splits there.
+2. Select the first split and click **Add to Library...**. For a ready-made split of several images, raise **Images** to take the splits after it too.
+3. Write a description and save.
+
+This copies the masks and savestates into the game's library folder, which is made if the game has none yet. It writes each base image at 64x48 from the split's grab or screenshot, or else from the live capture.
+
+In the Split Library window, **Edit...** changes an entry's description. With **Replace** ticked, it also takes the entry's images and settings from the selected splits again, so you can insert an entry, tune it in the editor, and save it back. **Delete...** removes an entry.
+
+How the writes protect the library:
+
+- Every file is checked before anything is written, and a write that fails partway deletes what it wrote, so the library stays as it was.
+- Files that no entry uses anymore are deleted.
+- Saving refuses if the entry changed since its window opened.
+- Edit and Delete won't write over or delete a file that a split in the preset being edited still uses. Save the preset first, which copies those files into it.
 
 ## Release builds
 
-`build.ps1` (PowerShell 7), or `build.sh` on Linux and macOS without PowerShell, builds release zips into `build/`, named `AutoSplit-v{version}-{target}.zip`. It strips symbols unless you pass `--debug`. Windows zips have `AutoSplit.exe` and `AutoSplit.com`, renamed from Cargo's `autosplit.exe` and `autosplit-console.exe` (see [Command line](MANUAL.md#command-line)). Linux zips also have `icon.png` and `install-desktop-entry.sh`, which adds the program to the desktop's app menu. Every zip has the `presets` folder, apart from presets marked as a work in progress.
-
-The macOS binary is bare, not an `.app`, so `crates/autosplit-cli/build.rs` links an Info.plist into it, with the bundle id and the camera usage text, and `.cargo/config.toml` sets `MACOSX_DEPLOYMENT_TARGET` to 11.0. On Windows, `build.rs` embeds the icon instead. Shell scripts keep LF line endings through `.gitattributes`, since a CR after `#!` breaks them.
+`build.ps1` (PowerShell 7) builds release zips into `build/`, named `AutoSplit-v{version}-{target}.zip`. On Linux and macOS without PowerShell, `build.sh` does the same with bash.
 
 ```sh
 ./build.ps1                  # pick a target from a menu
@@ -27,30 +126,39 @@ The macOS binary is bare, not an `.app`, so `crates/autosplit-cli/build.rs` link
 ./build.sh ...               # the same, with bash
 ```
 
-Targets are `windows-x64`, `windows-arm64`, `linux-x64`, `linux-arm64` and `macos-universal`, one binary for Apple Silicon and Intel Macs. A target for this machine's OS builds natively, and the others cross-compile:
+The targets are `windows-x64`, `windows-arm64`, `linux-x64`, `linux-arm64` and `macos-universal`, which is one binary for both Apple Silicon and Intel Macs. The script installs the Rust targets and cargo tools it needs. A target for this machine's OS builds natively, and the others cross-compile:
 
 | Building on | Linux targets | Windows targets | macOS |
 | --- | --- | --- | --- |
-| Windows | [cargo-zigbuild](https://github.com/rust-cross/cargo-zigbuild), needs [Zig](https://ziglang.org/download) or `pip install ziglang` | native | not possible |
-| Linux | native, or cargo-zigbuild for the other architecture | [cargo-xwin](https://github.com/rust-cross/cargo-xwin), needs clang and lld | not possible |
+| Windows | [cargo-zigbuild](https://github.com/rust-cross/cargo-zigbuild), which needs [Zig](https://ziglang.org/download) or `pip install ziglang` | native | not possible |
+| Linux | native, or cargo-zigbuild for the other architecture | [cargo-xwin](https://github.com/rust-cross/cargo-xwin), which needs clang and lld | not possible |
 | macOS | cargo-zigbuild | cargo-xwin | native |
 
-The script installs the Rust targets and the cargo tools it needs. macOS builds need a Mac, because Apple's SDK may only be used there. Cross-compiled Linux binaries need glibc 2.35 or newer (Ubuntu 22.04). Windows ARM64 builds on Windows need the MSVC ARM64 build tools from the Visual Studio installer.
+- macOS builds need a Mac, because Apple's SDK may only be used there.
+- Cross-compiled Linux binaries need glibc 2.35 or newer (Ubuntu 22.04).
+- Windows ARM64 builds on Windows need the MSVC ARM64 build tools from the Visual Studio installer.
+
+### What's in the zips
+
+- Every zip has the `presets` and `splits` folders.
+- Windows zips have `AutoSplit.exe` and `AutoSplit.com`, renamed from Cargo's `autosplit.exe` and `autosplit-console.exe`. See [Command line](MANUAL.md#command-line) for what each one is for.
+- Linux zips also have `icon.png` and `install-desktop-entry.sh`, which adds the program to the desktop's app menu.
+- Symbols are stripped unless you pass `--debug`.
+
+### Platform details
+
+- The macOS binary is bare, not an `.app`. So `crates/autosplit-cli/build.rs` links an Info.plist into it, with the bundle id and the camera usage text, and `.cargo/config.toml` sets `MACOSX_DEPLOYMENT_TARGET` to 11.0.
+- On Windows, `build.rs` embeds the icon instead.
+- Shell scripts keep LF line endings through `.gitattributes`, since a CR after `#!` breaks them.
 
 ## CI
 
-- `.github/workflows/validate.yml` runs on pull requests, pushes to `main`, and by hand from the Actions tab. It checks formatting and clippy and draws every window without a display. Only runs on `main` save their build caches, which every branch can read. Then it runs the tests, in the `ci` profile (release without link-time optimization, which is quicker to build), and a release build for every target, natively on Windows, Linux and macOS, x64 and ARM64. The x64 half of the macOS build is tested under Rosetta 2.
-- `.github/workflows/release.yml` runs on `v*` tags. It checks that the tag matches the version in `Cargo.toml`, runs the validate workflow, and creates a draft GitHub release with the zips. Tags with a `-` (like `v0.2.0-beta`) become prereleases. Linux release builds run on Ubuntu 22.04, so they work on 22.04 and newer.
+`.github/workflows/validate.yml` runs on pull requests, on pushes to `main`, and by hand from the Actions tab. It:
 
-## Layout
+1. checks formatting and clippy,
+2. draws every window without a display,
+3. runs the tests and a release build for every target, natively on Windows, Linux and macOS, x64 and ARM64. The x64 half of the macOS build is tested under Rosetta 2.
 
-- `crates/autosplit-core`: everything that doesn't depend on the OS. `runner.rs` is the split state machine. It never blocks: the host calls `tick` with the latest frame when `next_wakeup` is due, and acts on the effects it returns. `tester.rs` is the Live Tester, which decides like the runner for one image, outside of a run. `preset.rs` reads and saves the split image presets and `mask.rs` applies their masks, like AutoMask.
-- `crates/autosplit-capture`: video capture devices, one backend per OS, and the pixel format conversions.
-- `crates/autosplit-input`: global hotkeys, sending key presses and AutoSplit's hotkey names. Hotkeys go through livesplit-hotkey on Windows and Linux. On macOS, `macos.rs` has its own listen-only event tap, since livesplit-hotkey's asks for Accessibility, which only pressing keys needs.
-- `crates/autosplit-cli`: the `autosplit` program. `session.rs` drives the runner from capture (`device.rs`), hotkeys (`hotkeys.rs`), LiveSplit (`livesplit.rs`), LiveSplit One (`livesplit_one.rs`) and Molok (`molok.rs`). `run.rs` runs a session in the terminal and `gui/` in the window, laid out in `ui/*.slint`. `gui/tester.rs` is the Live Tester, and `gui/maker.rs` is Make Split Images, with its preset editing in `gui/maker/editor.rs` and `gui/preset_form.rs`, and the Split Library window in `gui/maker/library.rs`. `platform.rs` has what differs between systems, like consoles on Windows and App Nap and the menu bar on macOS, and `file_clipboard.rs` puts savestates on the Linux clipboard in every format file managers paste. It uses the presets and masks in core (`preset.rs`, `mask.rs`, `filename.rs`). `tests/gui/` tests the window logic that doesn't need a window (`document.rs`, `messages.rs`, `settings_form.rs`, `placement.rs`, `maker_plan.rs`, `recorder.rs`), with the preset editing in `tests/gui/preset_form.rs`, and `tests/view.rs` what the session hands the window. `src/bin/autosplit-console.rs` becomes `AutoSplit.com` on Windows.
-- `tests/fixtures`: split images, captures and profiles. `real/` holds split images made with AutoMask.
-- `tests/golden`: expected values from AutoSplit and OpenCV.
-- `tools/golden/generate.py`: regenerates the fixtures and golden values from AutoSplit 2.3.4. Instructions are at the top of the file. Only rerun it when you mean to change the baseline.
-- `presets/` and `splits/`: the split image presets and the splits library. `tools/convert_presets.py` converted them from AutoMask. Release builds put both next to the binary, apart from presets with a `WIP.txt` in their folder, which are still being made. A library's `[[split]]` tables have a preset split's keys, plus `description`, `base_image` (a screenshot the mask fits, shown on the split's card) and `then`. A split with `then = true` is the next image of the split above it, like the flash after a dummy for a boss's intro text: the Split Library window shows them as one and adds them together, in order.
+The tests run in the `ci` profile, which is release without link-time optimization, because that's much quicker to build. Only runs on `main` save their build caches, which every branch can read.
 
-  Debug builds (`cargo run`) can write the library too, so entries aren't written by hand. While editing a preset in Make Split Images, Add to Library... makes a ready-made split from the selected split, and the ones after it for one of several images. It copies their masks into the game's library folder (made when the game has none), writes base images at 64x48 from each split's grab or screenshot, or else the live capture, and adds the `[[split]]` tables. In Split Library, Edit... changes an entry's description, or replaces its images and settings with the selected splits, and Delete... removes it. Files no entry uses anymore are deleted. A write happens whole or not at all, Save refuses when the entry changed since its window opened, and Edit and Delete won't write over or delete a file that a split inserted into the preset being edited still uses, until that preset is saved. Release builds don't have these. `crates/autosplit-core/src/library.rs` does the writing.
+`.github/workflows/release.yml` runs on `v*` tags. It checks that the tag matches the version in `Cargo.toml`, runs the validate workflow, and creates a draft GitHub release with the zips. A tag with a `-`, like `v0.2.0-beta`, becomes a prerelease. Linux release builds run on Ubuntu 22.04, so they work on 22.04 and newer.
