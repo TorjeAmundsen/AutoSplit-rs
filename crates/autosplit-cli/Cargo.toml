@@ -11,9 +11,9 @@ rust-version.workspace = true
 anyhow = "1.0.104"
 # Puts savestate files on the clipboard
 arboard = { version = "3.6.1", default-features = false }
-autosplit-capture = { version = "0.1.0", path = "../autosplit-capture" }
-autosplit-core = { version = "0.1.0", path = "../autosplit-core" }
-autosplit-input = { version = "0.1.0", path = "../autosplit-input" }
+autosplit-capture = { path = "../autosplit-capture" }
+autosplit-core = { path = "../autosplit-core" }
+autosplit-input = { path = "../autosplit-input" }
 clap = { version = "4.6.7", features = ["derive"] }
 ctrlc = "3.5.2"
 # Catches the errors rfd only logs, like when no file picker can open

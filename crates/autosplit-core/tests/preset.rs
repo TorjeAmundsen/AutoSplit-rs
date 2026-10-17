@@ -8,7 +8,7 @@ use autosplit_core::filename::{
 };
 use autosplit_core::image::BgraImage;
 use autosplit_core::preset::{
-    PRESET_FILE, Preset, PresetError, PresetSplit, SPLIT_KEYS, game_key, load_libraries, load_presets,
+    PRESET_FILE, Preset, PresetError, PresetSplit, SPLIT_KEYS, SplitLibrary, game_key, load_libraries, load_presets,
 };
 use autosplit_core::profile::{ProfileError, UserProfile};
 use autosplit_core::split_folder::{ValidationContext, load_split_folder};
@@ -48,12 +48,36 @@ fn bundled_libraries_load_with_all_their_files() {
     let missing: Vec<PathBuf> = libraries
         .iter()
         .flat_map(|loaded| {
-            let files = loaded.library.splits.iter().flat_map(|split| [&split.split.mask, &split.base_image]);
-            files.map(|file| loaded.folder.join(file)).collect::<Vec<_>>()
+            let files = (loaded.library.splits.iter())
+                .flat_map(|split| [&split.split.mask, &split.split.savestate, &split.base_image]);
+            files.filter(|file| !file.is_empty()).map(|file| loaded.folder.join(file)).collect::<Vec<_>>()
         })
         .filter(|path| !path.is_file())
         .collect();
     assert_eq!((libraries.len(), errors, missing), (1, vec![], vec![]));
+}
+
+#[test]
+fn bundled_library_files_have_names_every_system_tells_apart() {
+    // Arrange
+    let (libraries, _) = load_libraries(&bundled("splits"));
+
+    for loaded in libraries {
+        let names: Vec<String> = (std::fs::read_dir(&loaded.folder).unwrap())
+            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+
+        // Act
+        let lowercase: std::collections::HashSet<String> = names.iter().map(|name| name.to_lowercase()).collect();
+        let named: Vec<&String> = (loaded.library.splits.iter())
+            .flat_map(|split| [&split.split.mask, &split.split.savestate, &split.base_image])
+            .filter(|name| !name.is_empty() && !names.contains(name))
+            .collect();
+
+        // Assert: no two files differ only in case, and the library names each as it's written,
+        // which systems that tell case apart need
+        assert_eq!((lowercase.len(), named), (names.len(), Vec::<&String>::new()), "{}", loaded.folder.display());
+    }
 }
 
 #[test]
@@ -360,4 +384,68 @@ fn names_windows_files_would_share_are_the_same(name: &str) -> Option<usize> {
 
     // Act
     preset.same_name_in_group(1)
+}
+
+#[test]
+fn library_splits_with_then_follow_the_split_above() {
+    // Arrange: a boss's intro text as a dummy, then its flash, and a split of its own
+    let text = r#"
+        game = "Game"
+
+        [[split]]
+        name = "Boss intro"
+        mask = "intro.png"
+        dummy = true
+        [[split]]
+        name = "Boss"
+        mask = "flash.png"
+        then = true
+        [[split]]
+        name = "Door"
+        mask = "door.png"
+    "#;
+
+    // Act
+    let library = SplitLibrary::parse(text, Path::new("splits.toml")).unwrap();
+
+    // Assert
+    let names: Vec<Vec<&str>> =
+        (library.ready_made()).map(|steps| steps.iter().map(|step| step.split.name.as_str()).collect()).collect();
+    assert_eq!(names, [vec!["Boss intro", "Boss"], vec!["Door"]]);
+}
+
+#[test]
+fn a_library_cant_start_with_then() {
+    // Arrange
+    let text = "game = \"Game\"
+[[split]]
+name = \"Boss\"
+mask = \"flash.png\"
+then = true
+";
+
+    // Act
+    let error = SplitLibrary::parse(text, Path::new("splits.toml")).unwrap_err();
+
+    // Assert
+    assert!(error.to_string().contains("no split above it to follow"), "{error}");
+}
+
+#[test_case("[[split]]
+name = \"Boss\"
+mask = \"boss.png\"
+" => true; "no game")]
+#[test_case("Game = \"Game\"
+[[split]]
+name = \"Boss\"
+mask = \"boss.png\"
+" => true; "a misspelled game")]
+#[test_case("game = \"Game\"
+[[split]]
+name = \"Boss\"
+mask = \"boss.png\"
+" => false; "a game")]
+fn libraries_need_a_game_and_only_their_keys(text: &str) -> bool {
+    // Act, with the expected value checked by test_case: whether it's an error
+    SplitLibrary::parse(text, Path::new("splits.toml")).is_err()
 }

@@ -1,9 +1,14 @@
 //! A preset being edited in Make Split Images: its changes, the list operations that keep the
-//! window's other per-split lists in step, and what has to be fixed before it can be saved.
+//! window's other per-split lists in step, and what has to be fixed before it can be saved. And
+//! what Split Library shows of ready-made splits next to it: their names, settings and file
+//! names, whether the preset has them already, and whether there's room for them.
 
-use autosplit_core::filename::{RESET_KEYWORD, START_KEYWORD, validate_split_name};
+use std::path::Path;
+
+use autosplit_core::filename::{NamePart, PartKind, RESET_KEYWORD, START_KEYWORD, name_parts, validate_split_name};
 use autosplit_core::preset::{Preset, PresetSplit, game_key};
 use autosplit_core::split_folder::MAX_GROUP_SIZE;
+use autosplit_core::split_image::SplitDefaults;
 
 /// A number field's value as the number it shows: `1.3` stays 1.3 instead of becoming
 /// 1.2999999523162842, which the field's 32-bit float would otherwise give file names.
@@ -267,11 +272,79 @@ impl Draft {
     /// Returns where it is.
     pub fn add(&mut self, selected: Option<usize>) -> (usize, ListChange) {
         self.drop_unused_joins();
-        let count = self.preset.splits.len();
-        let at = selected.filter(|&index| index < count).map_or(count, |index| self.preset.group(index).end);
+        let at = self.place_after(selected);
         let name = self.free_split_name();
         self.preset.splits.insert(at, new_split(&name));
         (at, ListChange::Insert(at))
+    }
+
+    /// A ready-made split from the splits library in `folder`, its `steps` in order, put at
+    /// `at`, a place from [`Self::place_after`], [`Self::place_before`] or [`Self::drop_place`].
+    /// Their masks and savestates are the library's files, which saving copies into the preset.
+    /// The first isn't compared with the split before it, which isn't the library's.
+    pub fn import(&mut self, at: usize, steps: &[PresetSplit], folder: &Path) -> Vec<ListChange> {
+        self.drop_unused_joins();
+        let at = at.min(self.preset.splits.len());
+        let in_library =
+            |path: &str| if path.is_empty() { String::new() } else { folder.join(path).display().to_string() };
+        let mut changes = Vec::new();
+        for (step, split) in steps.iter().enumerate() {
+            let split = PresetSplit {
+                mask: in_library(&split.mask),
+                savestate: in_library(&split.savestate),
+                with_previous: step > 0 && split.with_previous,
+                ..split.clone()
+            };
+            self.preset.splits.insert(at + step, split);
+            changes.push(ListChange::Insert(at + step));
+        }
+        changes
+    }
+
+    /// The split to select once `count` ready-made images went in at `at`, with `selected`
+    /// selected before. Above the selected split, it stays selected, so the next ones go between
+    /// them. Without a selected split they went at the end, and nothing stays selected, so the
+    /// next ones go at the end too. Otherwise the last image is selected, so the next ones go
+    /// after it. Either way they end up in the order they're put in. With nothing selected, it's
+    /// past the last split.
+    pub fn selected_after_import(
+        &self,
+        selected: Option<usize>,
+        at: usize,
+        count: usize,
+        keep_selected: bool,
+    ) -> usize {
+        match selected {
+            Some(selected) if keep_selected && at <= selected => selected + count,
+            None if keep_selected => self.preset.splits.len(),
+            _ => (at + count).saturating_sub(1),
+        }
+    }
+
+    /// Where a split added after `selected` goes: after the splits compared together with it, or
+    /// at the end.
+    pub fn place_after(&self, selected: Option<usize>) -> usize {
+        let count = self.preset.splits.len();
+        selected.filter(|&index| index < count).map_or(count, |index| self.preset.group(index).end)
+    }
+
+    /// Where a split added before `selected` goes: before the splits compared together with it,
+    /// or at the end.
+    pub fn place_before(&self, selected: Option<usize>) -> usize {
+        let count = self.preset.splits.len();
+        selected.filter(|&index| index < count).map_or(count, |index| self.preset.group(index).start)
+    }
+
+    /// Where a split dropped at `gap`, the place between two rows of the list, goes: there, or
+    /// at the nearer end of splits compared together, which it can't go between.
+    pub fn drop_place(&self, gap: usize) -> usize {
+        let count = self.preset.splits.len();
+        let gap = gap.min(count);
+        if gap == count || !self.preset.joins_previous(gap) {
+            return gap;
+        }
+        let group = self.preset.group(gap);
+        if gap - group.start <= group.end - gap { group.start } else { group.end }
     }
 
     /// A copy of split `index` with the same mask and savestate, after the splits compared
@@ -432,6 +505,75 @@ fn preset_level_problems(preset: &Preset) -> Vec<String> {
         problems.push("The preset needs a split besides the start and reset images.".to_owned());
     }
     problems
+}
+
+/// A ready-made split's heading in Split Library, like the split list's.
+pub fn library_heading(split: &PresetSplit) -> String {
+    match SplitKind::of(split) {
+        SplitKind::Split => split.name.clone(),
+        kind => kind.label().to_owned(),
+    }
+}
+
+/// Whether `search` finds a ready-made split with `texts`, its names and description: every
+/// word of it is in one of them, ignoring case. An empty search finds everything.
+pub fn matches_search(texts: &[&str], search: &str) -> bool {
+    let texts: Vec<String> = texts.iter().map(|text| text.to_lowercase()).collect();
+    search.to_lowercase().split_whitespace().all(|word| texts.iter().any(|text| text.contains(word)))
+}
+
+/// The file name a ready-made split's image gets, in its parts, with `XX` for its number,
+/// which depends on where it's put. Reset and start images have none. It follows the profile's
+/// `defaults`, like the split list's.
+pub fn library_file_parts(split: &PresetSplit, defaults: Option<&SplitDefaults>) -> Vec<NamePart> {
+    let alone = Preset { splits: vec![PresetSplit { with_previous: false, ..split.clone() }], ..Preset::default() };
+    let mut parts = name_parts(&alone.file_names(defaults).swap_remove(0));
+    if let Some(number) = parts.first_mut().filter(|part| part.kind == PartKind::Number) {
+        number.text = "XX".to_owned();
+        number.meaning = "Its number, which comes from where it's put".to_owned();
+    }
+    parts
+}
+
+/// The file name a ready-made split's image gets, like [`library_file_parts`] says it.
+pub fn library_file_name(split: &PresetSplit, defaults: Option<&SplitDefaults>) -> String {
+    library_file_parts(split, defaults).into_iter().map(|part| part.text).collect()
+}
+
+/// Where a ready-made split is in the preset already.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct InPreset {
+    /// The file name of the first split with its name, like the split list's.
+    pub file: String,
+    /// A line saying where it is, like as split 05.
+    pub note: String,
+}
+
+/// Where a split named `name` is in `preset` already, with the profile's `defaults` like the
+/// split list's, or none when it isn't.
+pub fn in_preset(preset: &Preset, name: &str, defaults: Option<&SplitDefaults>) -> Option<InPreset> {
+    let index = preset.splits.iter().position(|split| split.name == name)?;
+    let file = preset.file_names(defaults).swap_remove(index);
+    let note = match SplitKind::of(&preset.splits[index]) {
+        SplitKind::Split => {
+            let number: String = file.chars().take_while(char::is_ascii_digit).collect();
+            format!("Already in the preset, as split {number}.")
+        }
+        _ => format!("Already in the preset, as its {} image.", kind_word(&preset.splits[index])),
+    };
+    Some(InPreset { file, note })
+}
+
+/// Why a ready-made split's `steps` can't be imported into `preset`: it would have more reset or
+/// start images than it can.
+pub fn import_blocker(preset: &Preset, steps: &[PresetSplit]) -> Option<String> {
+    let step = steps.iter().filter(|step| step.is_keyword()).find(|step| {
+        let named =
+            |splits: &mut dyn Iterator<Item = &PresetSplit>| splits.filter(|split| split.name == step.name).count();
+        named(&mut preset.splits.iter()) + named(&mut steps.iter()) > MAX_GROUP_SIZE
+    })?;
+    let total = (preset.splits.iter().chain(steps)).filter(|split| split.name == step.name).count();
+    Some(format!("A preset can have up to {MAX_GROUP_SIZE} {} images, and this would make {total}.", kind_word(step)))
 }
 
 /// A split with nothing set, which the default threshold applies to.

@@ -43,8 +43,9 @@ use self::placement::{Area, centered_over};
 use self::recorder::{PRIMARY, key_character, modifiers_held, pressed_key};
 use self::settings_form::SettingEdit;
 use self::ui::{
-    AboutWindow, HotkeyRow, InfoCell, InlineMessage, InstructionsWindow, LogWindow, MainWindow, MakerRow, MakerWindow,
-    MessageWindow, NameKind, NamePart, Setting, SettingsWindow, SimilarityRow, TesterWindow, WindowFocus,
+    AboutWindow, HotkeyRow, InfoCell, InlineMessage, InstructionsWindow, LibraryEntryWindow, LibraryWindow, LogWindow,
+    MainWindow, MakerRow, MakerWindow, MessageWindow, NameKind, NamePart, Setting, SettingsWindow, SimilarityRow,
+    TesterWindow, WindowFocus,
 };
 use self::view::{GuiView, Picture, Update};
 use crate::console::Console;
@@ -326,6 +327,11 @@ fn with_gui(action: impl FnOnce(&Rc<Gui>) + Send + 'static) {
 
 /// A split image's file name in parts, for the windows to color by what each part does.
 pub fn file_name_parts(name: &str) -> ModelRc<NamePart> {
+    name_parts_model(autosplit_core::filename::name_parts(name))
+}
+
+/// A file name's `parts`, like a ready-made split's, for the windows to color.
+pub fn name_parts_model(parts: Vec<autosplit_core::filename::NamePart>) -> ModelRc<NamePart> {
     use autosplit_core::filename::PartKind;
     let kind = |kind: PartKind| match kind {
         PartKind::Text => NameKind::Text,
@@ -345,7 +351,7 @@ pub fn file_name_parts(name: &str) -> ModelRc<NamePart> {
         meaning: part.meaning.into(),
         ignored: part.ignored,
     };
-    let parts: Vec<NamePart> = autosplit_core::filename::name_parts(name).into_iter().map(part).collect();
+    let parts: Vec<NamePart> = parts.into_iter().map(part).collect();
     ModelRc::new(VecModel::from(parts))
 }
 
@@ -361,6 +367,13 @@ fn shown_image(picture: Picture) -> Option<slint::Image> {
         Picture::Clear => Some(slint::Image::default()),
         Picture::Show(pixels) => Some(slint::Image::from_rgba8(pixels)),
     }
+}
+
+/// Sizes a window that sizes itself to what it shows, before it's shown. Its size comes from
+/// what it shows, which is set just before, and some X11 window managers keep the size a window
+/// was made with, which would cut off its bottom.
+fn fit_window(window: &slint::Window, width: f32, height: f32) {
+    window.set_size(slint::LogicalSize::new(width, height));
 }
 
 /// The folder next to the executable, where AutoSplit looks for a profile on open.
@@ -408,6 +421,8 @@ struct Windows {
     tester: TesterWindow,
     maker: MakerWindow,
     instructions: InstructionsWindow,
+    library: LibraryWindow,
+    entry: LibraryEntryWindow,
 }
 
 /// The app id windows get on Linux, which desktops match to the .desktop file named after it, for
@@ -430,6 +445,8 @@ fn open_windows() -> anyhow::Result<Windows> {
         tester: TesterWindow::new()?,
         maker: MakerWindow::new()?,
         instructions: InstructionsWindow::new()?,
+        library: LibraryWindow::new()?,
+        entry: LibraryEntryWindow::new()?,
     })
 }
 
@@ -910,6 +927,8 @@ impl Gui {
             (self.windows.about.window(), true),
             (self.windows.log.window(), false),
             (self.windows.instructions.window(), false),
+            (self.windows.library.window(), false),
+            (self.windows.entry.window(), false),
         ];
         for (window, enter_too) in windows {
             let weak = self.me.clone();
@@ -931,6 +950,12 @@ impl Gui {
                     return EventResult::Propagate;
                 }
                 let _ = window.hide();
+                // Split Library's drag or insert line goes with it
+                if let Some(gui) = weak.upgrade()
+                    && !gui.windows.library.window().is_visible()
+                {
+                    gui.library_hidden();
+                }
                 EventResult::PreventDefault
             });
         }
@@ -1039,6 +1064,8 @@ impl Gui {
             windows.tester.window(),
             windows.maker.window(),
             windows.instructions.window(),
+            windows.library.window(),
+            windows.entry.window(),
         ] {
             let _ = window.hide();
         }
@@ -1448,8 +1475,10 @@ impl Gui {
         }
         let maker = &self.windows.maker;
         let maker_live = std::mem::take(&mut update.maker.live);
-        if let Picture::Show(pixels) = &maker_live {
-            self.maker_live_frame(pixels);
+        match &maker_live {
+            Picture::Show(pixels) => self.maker_live_frame(pixels),
+            Picture::Clear => self.maker_live_cleared(),
+            Picture::Keep => {}
         }
         if let Some(live) = shown_image(maker_live) {
             maker.set_live_image(live);
@@ -1711,7 +1740,9 @@ impl Gui {
         self.windows.message.set_tertiary(tertiary.into());
         self.windows.message.set_default_button(shown.default as i32);
         self.set_all_blocked(true);
-        self.show_window(self.windows.message.window());
+        let message = &self.windows.message;
+        fit_window(message.window(), message.get_fitted_width(), message.get_fitted_height());
+        self.show_window(message.window());
         self.windows.message.window().with_winit_window(|window| window.set_window_level(WindowLevel::AlwaysOnTop));
         self.windows.message.invoke_focus_keys();
         self.focus_message();

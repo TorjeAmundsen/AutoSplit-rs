@@ -179,13 +179,14 @@ function Build($name) {
             Copy-Item "$($folders[0])/$binaryName" "$output/$binaryName"
         }
     }
-    # The split image presets, which are read from next to the binary. A preset with a WIP.txt is
-    # a work in progress and stays out. The splits library stays out until it can be imported.
+    # The split image presets and the splits library, which are read from next to the binary. A
+    # preset with a WIP.txt is a work in progress and stays out.
     New-Item -ItemType Directory -Path "$output/presets" | Out-Null
     foreach ($preset in Get-ChildItem "$PSScriptRoot/presets" -Directory) {
         if (Test-Path (Join-Path $preset.FullName "WIP.txt")) { continue }
         Copy-Item $preset.FullName "$output/presets" -Recurse
     }
+    Copy-Item "$PSScriptRoot/splits" "$output/splits" -Recurse
     # Adds it to the app menu on Linux, with the icon
     $executables = @($binaryName)
     if ((OsOf $targets[$name][0]) -eq "linux") {

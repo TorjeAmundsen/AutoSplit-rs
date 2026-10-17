@@ -6,14 +6,14 @@ use std::rc::Rc;
 use autosplit::gui::messages::Buttons;
 use autosplit::gui::preset_form::{MASK_NAME_CHARS, SAVESTATE_NAME_CHARS, elide_middle};
 use autosplit::gui::ui::{
-    AboutWindow, HotkeyRow, InfoCell, InlineMessage, InstructionCard, InstructionsWindow, LogWindow, MainWindow,
-    MakerRow, MakerWindow, MessageWindow, SettingsWindow, SimilarityRow, SplitForm, SplitValues, TesterReading,
-    TesterWindow,
+    AboutWindow, EntryStep, HotkeyRow, InfoCell, InlineMessage, InstructionCard, InstructionsWindow,
+    LibraryEntryWindow, LibraryItem, LibraryStep, LibraryWindow, LogWindow, MainWindow, MakerRow, MakerWindow,
+    MessageWindow, SettingsWindow, SimilarityRow, SplitForm, SplitValues, TesterReading, TesterWindow,
 };
-use autosplit::gui::{HOTKEY_ROWS, file_name_parts, thumbnail, transparency_grid};
+use autosplit::gui::{HOTKEY_ROWS, file_name_parts, name_parts_model, thumbnail, transparency_grid};
 use slint::platform::software_renderer::{MinimalSoftwareWindow, RepaintBufferType, Rgb565Pixel};
 use slint::platform::{Platform, WindowAdapter};
-use slint::{ComponentHandle, PhysicalSize};
+use slint::{ComponentHandle, Model, PhysicalSize};
 
 struct Headless {
     window: Rc<MinimalSoftwareWindow>,
@@ -42,6 +42,16 @@ fn save(window: &MinimalSoftwareWindow, size: PhysicalSize, path: &std::path::Pa
     image::save_buffer(path, &rgb, size.width, size.height, image::ExtendedColorType::Rgb8).unwrap();
 }
 
+/// A Split Library file name written with `XX` for its number, in the parts the window colors,
+/// the number's like a number's.
+fn library_parts(name: &str) -> slint::ModelRc<autosplit::gui::ui::NamePart> {
+    let mut parts = autosplit_core::filename::name_parts(&name.replacen("XX", "0", 1));
+    if let Some(number) = parts.first_mut().filter(|part| part.kind == autosplit_core::filename::PartKind::Number) {
+        number.text = "XX".to_owned();
+    }
+    name_parts_model(parts)
+}
+
 fn main() {
     let folder = std::path::PathBuf::from(std::env::args().nth(1).unwrap_or_else(|| ".".into()));
     let window = MinimalSoftwareWindow::new(RepaintBufferType::NewBuffer);
@@ -52,7 +62,7 @@ fn main() {
     main.set_live_message("Waiting for capture device...".into());
     main.set_current_image_file("05_Bottle_(0.93)_[35]_#1100#_{b}.png".into());
     main.set_current_image_message("None (Paused). 9.9 seconds remaining".into());
-    main.set_window_title("AutoSplit v0.1.0".into());
+    main.set_window_title("AutoSplit v0.2.0".into());
     main.show().unwrap();
     save(&window, PhysicalSize::new(786, 450), &folder.join("main.png"));
     // A message box drawn in the window, like under Wayland
@@ -116,7 +126,7 @@ fn main() {
     settings.hide().unwrap();
 
     let about = AboutWindow::new().unwrap();
-    about.set_version("0.1.0".into());
+    about.set_version("0.2.0".into());
     about.show().unwrap();
     save(&window, PhysicalSize::new(264, 250), &folder.join("about.png"));
     about.hide().unwrap();
@@ -339,6 +349,10 @@ Replace them?",
     maker.set_has_problems(true);
     maker.set_saved_preset(true);
     save(&window, PhysicalSize::new(828, 672), &folder.join("maker-edit.png"));
+    // Where a ready-made split from Split Library would go
+    maker.set_drop_line(3);
+    save(&window, PhysicalSize::new(828, 672), &folder.join("maker-edit-drop.png"));
+    maker.set_drop_line(-1);
     // Without the savestate note, all of the form fits
     maker.set_form(SplitForm { savestate_copied: false, ..maker.get_form() });
     save(&window, PhysicalSize::new(828, 672), &folder.join("maker-edit-plain.png"));
@@ -380,6 +394,135 @@ Replace them?",
     instructions.show().unwrap();
     save(&window, PhysicalSize::new(520, 200), &folder.join("instructions.png"));
     instructions.hide().unwrap();
+
+    // The bundled library's base images, and a boss that takes two images, then one that's in
+    // the preset already and one that can't be added
+    let library = LibraryWindow::new().unwrap();
+    let base = |file: &str| {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../splits/OcarinaOfTime").join(file);
+        slint::Image::load_from_path(&path).unwrap()
+    };
+    let step =
+        |heading: &str, file: &str, [threshold, delay, pause]: [&str; 3], dummy: bool, below: bool, name: &str| {
+            LibraryStep {
+                file_parts: library_parts(name),
+                file: name.into(),
+                heading: heading.into(),
+                thumb: base(file),
+                threshold: threshold.into(),
+                delay: delay.into(),
+                pause: pause.into(),
+                dummy,
+                below,
+            }
+        };
+    let library_item =
+        |heading: &str, description: &str, steps: Vec<LibraryStep>, in_preset: bool, blocker: &str| LibraryItem {
+            in_preset: if in_preset {
+                file_name_parts("05_Bottle_(0.93)_[35]_#1100#_{b}.png").row_data(0).unwrap()
+            } else {
+                Default::default()
+            },
+            in_preset_file: if in_preset { "05_Bottle_(0.93)_[35]_#1100#_{b}.png".into() } else { "".into() },
+            in_preset_note: if in_preset { "Already in the preset, as split 05.".into() } else { "".into() },
+            ready_made: 0,
+            heading: heading.into(),
+            description: description.into(),
+            steps: std::rc::Rc::new(slint::VecModel::from(steps)).into(),
+            blocker: blocker.into(),
+        };
+    let items = vec![
+        library_item(
+            "Ganon",
+            "Final slash on Ganon: the intro text, then the flash",
+            vec![
+                step("Ganon intro", "base_collapse_cs.png", ["", "", ""], true, false, "XX_Ganon intro_{d}.png"),
+                step("Ganon", "base_ganon.png", ["0.92", "", ""], false, false, "XX_Ganon_(0.92).png"),
+            ],
+            false,
+            "",
+        ),
+        library_item(
+            "Bottle",
+            "Splits on bottle model over head, common manual split timing",
+            vec![step(
+                "Bottle",
+                "base_bottle.png",
+                ["0.93", "1100 ms", "35 s"],
+                false,
+                true,
+                "XX_Bottle_(0.93)_[35]_#1100#_{b}.png",
+            )],
+            true,
+            "",
+        ),
+        library_item(
+            "Reset Image",
+            "Automatically reset when pressing C-up in Link's house",
+            vec![step(
+                "Reset Image",
+                "base_links_house.png",
+                ["0.96", "", "0.1 s"],
+                false,
+                false,
+                "reset_(0.96)_[0.1].png",
+            )],
+            false,
+            "A preset can have up to 4 reset images, and this would make 5.",
+        ),
+    ];
+    library.set_items(std::rc::Rc::new(slint::VecModel::from(items)).into());
+    library.set_window_title("Split Library - The Legend of Zelda: Ocarina of Time".into());
+    library.set_errors("A split library couldn't be read.".into());
+    library.set_selected(0);
+    library.show().unwrap();
+    save(&window, PhysicalSize::new(600, 520), &folder.join("library.png"));
+    library.set_selected(1);
+    // Developer builds can change and delete what's in the library
+    library.set_developer(true);
+    save(&window, PhysicalSize::new(600, 420), &folder.join("library-single.png"));
+    save(&window, PhysicalSize::new(480, 300), &folder.join("library-narrow.png"));
+    library.set_items(std::rc::Rc::new(slint::VecModel::from(Vec::<LibraryItem>::new())).into());
+    library.set_errors("".into());
+    library.set_search_text("ganon bottle".into());
+    library.set_empty_message("No ready-made splits match ganon bottle.".into());
+    save(&window, PhysicalSize::new(600, 300), &folder.join("library-empty.png"));
+    library.hide().unwrap();
+
+    // A boss of two images made from the preset's selected splits
+    let entry = LibraryEntryWindow::new().unwrap();
+    let entry_step = |heading: &str, file: &str, name: &str, source: &str| EntryStep {
+        heading: heading.into(),
+        thumb: base(file),
+        file_parts: library_parts(name),
+        file: name.into(),
+        source: source.into(),
+        picked: source.starts_with("Base image from base_"),
+    };
+    let steps = vec![
+        entry_step(
+            "Ganon intro",
+            "base_collapse_cs.png",
+            "XX_Ganon intro_{d}.png",
+            "Base image from base_ganon_intro.png",
+        ),
+        entry_step("Ganon", "base_ganon.png", "XX_Ganon_(0.92).png", "Base image from the live capture"),
+    ];
+    entry.set_game("The Legend of Zelda: Ocarina of Time".into());
+    entry.set_description_text("Final slash on Ganon: the intro text, then the flash".into());
+    entry.set_images(2.0);
+    entry.set_most_images(4.0);
+    entry.set_steps(std::rc::Rc::new(slint::VecModel::from(steps)).into());
+    entry.show().unwrap();
+    save(&window, PhysicalSize::new(520, 300), &folder.join("library-entry.png"));
+    entry.set_problem(
+        "CrawlspaceRight has no grab or screenshot, and there's no live capture, to make its base image from.".into(),
+    );
+    entry.set_steps(std::rc::Rc::new(slint::VecModel::from(Vec::<EntryStep>::new())).into());
+    entry.set_editing(true);
+    entry.set_replace(true);
+    save(&window, PhysicalSize::new(520, 240), &folder.join("library-entry-problem.png"));
+    entry.hide().unwrap();
 
     let log = LogWindow::new().unwrap();
     log.set_log("    0.001s  Loaded settings.toml\n    0.002s  Timer: hotkeys (split num 1)".into());

@@ -2,9 +2,8 @@ name: Validate
 
 on:
   pull_request:
-  # Off while the repo is private, to save Actions minutes
-  # push:
-  #   branches: [main]
+  push:
+    branches: [main]
   workflow_dispatch:
   # Called by the release workflow, so releases are built and tested the same way
   workflow_call:
@@ -19,7 +18,12 @@ jobs:
         with:
           components: rustfmt, clippy
 
+      # Only main saves, which every branch can read, so pull requests don't push its caches out
+      # of the repo's 10 GB. A run that fails still saves what it compiled.
       - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+          cache-on-failure: true
 
       # libjpeg-turbo is built from source, its x64 SIMD code with NASM (CMake is preinstalled)
       - name: Install NASM
@@ -65,21 +69,25 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.name }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+          cache-on-failure: true
 
       - name: Install NASM
         if: matrix.name == 'linux-x64'
         run: sudo apt-get update && sudo apt-get install -y nasm
 
-      # The lint job only sees Linux code; the Windows and macOS backends are linted here
+      # The lint job only sees Linux code; the Windows and macOS backends are linted here. Linux
+      # x64 is the lint job's own.
       - name: Clippy
+        if: matrix.name != 'linux-x64'
         run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: Test
-        run: cargo test --workspace --release
+        run: cargo test --workspace --profile ci
 
       - name: Test x64 under Rosetta 2
         if: matrix.extra-test-target
-        run: cargo test --workspace --release --target ${{ matrix.extra-test-target }}
+        run: cargo test --workspace --profile ci --target ${{ matrix.extra-test-target }}
 
       - name: Build release zip
         shell: pwsh

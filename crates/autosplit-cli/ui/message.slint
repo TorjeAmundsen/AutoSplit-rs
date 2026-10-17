@@ -9,9 +9,12 @@ export component MessageWindow inherits Window {
     title: root.window-title;
     icon: @image-url("../assets/icon.png");
     // A fixed size, its height from the message once it's wrapped at this width, so the
-    // buttons keep their margin and the box can't be resized
-    width: 380px;
-    height: layout.preferred-height;
+    // buttons keep their margin and the box can't be resized. The window is set to it before
+    // it's shown too, since some X11 window managers keep the size it was made with.
+    out property <length> fitted-width: 380px;
+    out property <length> fitted-height: layout.preferred-height;
+    width: root.fitted-width;
+    height: root.fitted-height;
     default-font-family: "Noto Sans";
     default-font-size: 12px;
 

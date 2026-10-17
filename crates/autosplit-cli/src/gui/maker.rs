@@ -29,6 +29,8 @@ use super::{Gui, Tool, exe_folder, file_name_parts, with_gui};
 use crate::session::UiCommand;
 
 mod editor;
+mod library;
+mod library_entry;
 mod preview;
 mod savestates;
 mod write;
@@ -98,6 +100,13 @@ pub(super) struct Maker {
     working: usize,
     /// Split images are being written, which other saves wait for.
     saving: bool,
+    /// What Split Library adds from.
+    library: library::Library,
+    /// What the window that adds to or edits the split library is for, while it's open.
+    entry: Option<library_entry::Entry>,
+    /// The live capture's latest frame, for a base image for the split library when a split has
+    /// no grab or screenshot.
+    last_live: Option<Pixels>,
     /// Splits to save once the ones being saved are, for the preset of that generation.
     queued: Option<(u64, Vec<usize>)>,
 }
@@ -274,14 +283,23 @@ pub fn transparency_grid(width: u32, height: u32) -> slint::Image {
     slint::Image::from_rgba8(grid)
 }
 
-/// The folder with the bundled presets, next to the program. Builds that aren't installed use
+/// Whether this is a developer build, like from `cargo run`, which can change the split library
+/// next to the program. Release builds don't show how.
+const DEVELOPER: bool = cfg!(debug_assertions);
+
+/// A folder the program comes with, like `presets`, next to it. Builds that aren't installed use
 /// the source tree's.
-fn presets_folder() -> PathBuf {
-    let next_to_program = exe_folder().join("presets");
+fn bundled_folder(name: &str) -> PathBuf {
+    let next_to_program = exe_folder().join(name);
     if next_to_program.is_dir() || !cfg!(debug_assertions) {
         return next_to_program;
     }
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../presets")
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../..").join(name)
+}
+
+/// The folder with the bundled presets.
+fn presets_folder() -> PathBuf {
+    bundled_folder("presets")
 }
 
 impl Gui {
@@ -326,6 +344,8 @@ impl Gui {
             slint::CloseRequestResponse::KeepWindowShown
         });
         self.connect_editor();
+        self.connect_library();
+        self.connect_library_entry();
     }
 
     /// Opens Make Split Images beside the main window, with the presets read again.
@@ -409,6 +429,8 @@ impl Gui {
     pub(super) fn maker_closed(&self) {
         // They're the window's preset's
         let _ = self.windows.instructions.window().hide();
+        // It shows no capture anymore, so its last frame gets old
+        self.maker.borrow_mut().last_live = None;
         self.send(UiCommand::SetMakerOpen(false));
         self.maker_seen.hidden();
     }
@@ -527,6 +549,8 @@ impl Gui {
         window.set_has_savestates(view.has_savestates);
         window.set_has_instructions(view.has_instructions);
         self.show_maker_preview();
+        self.refresh_library();
+        self.refresh_entry();
     }
 
     /// What the editor would ask to fix in the chosen preset, like splits compared together
