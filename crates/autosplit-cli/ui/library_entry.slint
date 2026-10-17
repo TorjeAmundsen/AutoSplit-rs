@@ -136,6 +136,15 @@ export component LibraryEntryWindow inherits Window {
                         source: step.thumb;
                         image-rendering: pixelated;
                     }
+
+                    // No picture to show, like a base image that couldn't be read
+                    if step.thumb.width == 0: Text {
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                        font-size: 10px;
+                        color: Theme.secondary-text;
+                        text: "No image";
+                    }
                 }
             }
 

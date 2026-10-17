@@ -165,7 +165,7 @@ impl Gui {
         if !self.editing() {
             return;
         }
-        self.read_library();
+        let errors = self.read_library();
         let window = &self.windows.library;
         window.set_search_text(SharedString::new());
         window.set_can_drag(!self.under_wayland());
@@ -173,11 +173,16 @@ impl Gui {
         // Shown first, since only an open window is kept up to date
         self.show_window(window.window());
         self.refresh_library();
+        // Why, in a message the keyboard reaches too, like presets that can't be read
+        if !errors.is_empty() {
+            let text = format!("Some split libraries couldn't be read:\n\n{}", errors.join("\n\n"));
+            self.show_message(Message::warning(text));
+        }
     }
 
     /// Reads the libraries and their base images, keeping which one is shown in full, and says
-    /// which couldn't be read.
-    pub(super) fn read_library(&self) {
+    /// which couldn't be read. Returns why.
+    pub(super) fn read_library(&self) -> Vec<String> {
         let (libraries, errors) = load_libraries(&splits_folder());
         let thumbs: HashMap<PathBuf, slint::Image> = (libraries.iter())
             .flat_map(|loaded| {
@@ -195,11 +200,12 @@ impl Gui {
         let errors: Vec<String> = errors.iter().map(ToString::to_string).collect();
         let short = match errors.len() {
             0 => String::new(),
-            1 => "A splits library couldn't be read.".to_owned(),
-            count => format!("{count} splits libraries couldn't be read."),
+            1 => "A split library couldn't be read.".to_owned(),
+            count => format!("{count} split libraries couldn't be read."),
         };
         window.set_errors(short.into());
         window.set_error_details(errors.join("\n\n").into());
+        errors
     }
 
     /// Closes Split Library, from Close, its close button, Escape, or when editing ends.

@@ -555,8 +555,8 @@ pub fn import_blocker(preset: &Preset, steps: &[PresetSplit]) -> Option<String> 
             |splits: &mut dyn Iterator<Item = &PresetSplit>| splits.filter(|split| split.name == step.name).count();
         named(&mut preset.splits.iter()) + named(&mut steps.iter()) > MAX_GROUP_SIZE
     })?;
-    let has = preset.splits.iter().filter(|split| split.name == step.name).count();
-    Some(format!("A preset can have up to {MAX_GROUP_SIZE} {} images, and this one has {has}.", kind_word(step)))
+    let total = (preset.splits.iter().chain(steps)).filter(|split| split.name == step.name).count();
+    Some(format!("A preset can have up to {MAX_GROUP_SIZE} {} images, and this would make {total}.", kind_word(step)))
 }
 
 /// A split with nothing set, which the default threshold applies to.

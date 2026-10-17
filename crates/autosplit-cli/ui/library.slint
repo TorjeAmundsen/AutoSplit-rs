@@ -11,7 +11,8 @@ import { Button, FileName, NameColors, NameKind, NamePart, TextField, Theme, Tip
 // intro text, then its flash
 export struct LibraryStep {
     heading: string,
-    // The screenshot its mask is made for, shown at its own size, or empty until it's read
+    // The screenshot its mask is made for, shown at its own size, or empty when it couldn't
+    // be read
     thumb: image,
     // Each setting as shown, or empty for the profile's default
     threshold: string,
@@ -206,6 +207,14 @@ export component LibraryWindow inherits Window {
     property <bool> has-card: root.selected >= 0 && root.selected < root.cards.length;
     property <LibraryCard> card: root.has-card ? root.cards[root.selected] : { };
 
+    // The focus goes to the list, on the chosen split
+    function to-list() {
+        if (root.cards.length > 0) {
+            list-keys.focus();
+            root.choose(max(root.selected, 0));
+        }
+    }
+
     // Shows split `index` in full, scrolled into view in the list
     function choose(index: int) {
         root.selected = index;
@@ -222,40 +231,51 @@ export component LibraryWindow inherits Window {
         padding: 8px;
         spacing: 6px;
 
-        search := TextField {
+        // Down goes from the search to the list, and Enter too, so typing and choosing go together
+        FocusScope {
             height: 24px;
-            text <=> root.search-text;
-            placeholder-text: "Search names and descriptions";
-            edited(text) => { root.search-edited(text); }
+            capture-key-pressed(event) => {
+                if (event.text == Key.DownArrow && root.cards.length > 0) {
+                    root.to-list();
+                    return accept;
+                }
+                reject
+            }
+
+            search := TextField {
+                height: 24px;
+                text <=> root.search-text;
+                placeholder-text: "Search names and descriptions";
+                edited(text) => { root.search-edited(text); }
+                accepted => { root.to-list(); }
+            }
         }
 
         HorizontalLayout {
             vertical-stretch: 1;
             spacing: 8px;
 
-            // The names, one row each
+            // The names, one row each, outlined like a field while it has the focus
             Rectangle {
                 width: 190px;
                 background: Theme.field;
                 border-width: 1px;
-                border-color: Theme.outline;
+                border-color: list-keys.has-focus ? Theme.focus : Theme.outline;
 
-                if root.cards.length == 0: Text {
-                    x: 8px;
-                    width: parent.width - 16px;
-                    horizontal-alignment: center;
-                    vertical-alignment: center;
-                    wrap: word-wrap;
-                    color: Theme.secondary-text;
-                    text: root.empty-message;
-                }
-
+                // Up and Down choose, and Enter inserts the chosen split below the selected one,
+                // like Insert Below
                 list-keys := FocusScope {
                     x: 1px;
                     y: 1px;
                     width: parent.width - 2px;
                     height: parent.height - 2px;
+                    accessible-role: AccessibleRole.list;
+                    accessible-label: "Ready-made splits";
                     key-pressed(event) => {
+                        if (event.text == Key.Return && root.has-card && root.card.blocker == "") {
+                            root.insert(root.card.ready-made, false);
+                            return accept;
+                        }
                         if (event.text == Key.UpArrow && root.selected > 0) {
                             root.choose(root.selected - 1);
                             return accept;
@@ -282,6 +302,14 @@ export component LibraryWindow inherits Window {
                             y: index * root.row-height;
                             height: root.row-height;
                             width: parent.width;
+                            accessible-role: AccessibleRole.list-item;
+                            accessible-label: card.heading + (card.steps.length > 1 ? ", " + card.steps.length + " images" : "") + (card.in-preset-note != "" ? ". " + card.in-preset-note : "");
+                            accessible-item-selectable: true;
+                            accessible-item-selected: index == root.selected;
+                            accessible-action-default => {
+                                list-keys.focus();
+                                root.choose(index);
+                            }
                             background: row.dragging || index == root.selected ? Theme.selection.with-alpha(list-keys.has-focus || row.dragging ? 0.35 : 0.2) : transparent;
 
                             TouchArea {
@@ -292,12 +320,15 @@ export component LibraryWindow inherits Window {
                             }
 
                             HorizontalLayout {
+                                padding-left: root.can-drag ? 0px : 8px;
                                 padding-right: 18px;
                                 spacing: 4px;
 
-                                // Dragged into the split list once it's moved a little
-                                Grip {
-                                    enabled: root.can-drag && card.blocker == "";
+                                // Dragged into the split list once it's moved a little. None where
+                                // windows can't be dragged between, under Wayland, rather than
+                                // grips that do nothing.
+                                if root.can-drag: Grip {
+                                    enabled: card.blocker == "";
                                     dragging: row.dragging;
                                     pressed(x, y) => {
                                         row.press-x = x;
@@ -366,6 +397,17 @@ export component LibraryWindow inherits Window {
                 // From the top: what it is, the same height whatever its description, so the
                 // pictures stay put going through the list, then what it's for. It scrolls when
                 // the window is short, under where it goes and the buttons, which stay
+                // Why there's nothing to choose, like no match for the search
+                if !root.has-card: Text {
+                    x: 16px;
+                    width: parent.width - 32px;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                    wrap: word-wrap;
+                    color: Theme.secondary-text;
+                    text: root.empty-message;
+                }
+
                 if root.has-card: VerticalLayout {
                     top-scroll := ScrollView {
                         vertical-stretch: 1;
@@ -388,7 +430,7 @@ export component LibraryWindow inherits Window {
                             }
 
                             // Each image at its own size, beside what it sets, numbered when there are
-                            // several, in a box that keeps its place until it's read
+                            // several, in a box that keeps its place when there's no picture
                             for step[step-index] in root.card.steps: HorizontalLayout {
                                 spacing: 10px;
 
@@ -404,6 +446,16 @@ export component LibraryWindow inherits Window {
                                         thumb := Image {
                                             source: step.thumb;
                                             image-rendering: pixelated;
+                                        }
+
+                                        // No picture to show, like a base image that couldn't
+                                        // be read
+                                        if step.thumb.width == 0: Text {
+                                            horizontal-alignment: center;
+                                            vertical-alignment: center;
+                                            font-size: 10px;
+                                            color: Theme.secondary-text;
+                                            text: "No image";
                                         }
                                     }
                                 }

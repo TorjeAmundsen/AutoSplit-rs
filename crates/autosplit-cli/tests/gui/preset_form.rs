@@ -832,8 +832,8 @@ fn searching_needs_every_word_somewhere(search: &str) -> bool {
 }
 
 #[test_case(&["reset", "reset", "reset"], &["reset"] => None; "room for another")]
-#[test_case(&["reset", "reset", "reset", "reset"], &["reset"] => Some("A preset can have up to 4 reset images, and this one has 4.".to_owned()); "reset images full")]
-#[test_case(&["reset", "reset", "reset"], &["reset", "reset"] => Some("A preset can have up to 4 reset images, and this one has 3.".to_owned()); "steps past the most")]
+#[test_case(&["reset", "reset", "reset", "reset"], &["reset"] => Some("A preset can have up to 4 reset images, and this would make 5.".to_owned()); "reset images full")]
+#[test_case(&["reset", "reset", "reset"], &["reset", "reset"] => Some("A preset can have up to 4 reset images, and this would make 5.".to_owned()); "steps past the most")]
 #[test_case(&["reset", "reset", "reset", "reset"], &["start_auto_splitter"] => None; "another kind")]
 #[test_case(&["Escape", "Escape", "Escape", "Escape"], &["Escape"] => None; "splits have no limit")]
 fn importing_stops_at_the_most_reset_or_start_images(names: &[&str], steps: &[&str]) -> Option<String> {

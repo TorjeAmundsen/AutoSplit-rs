@@ -458,12 +458,12 @@ Replace them?",
                 "reset_(0.96)_[0.1].png",
             )],
             false,
-            "A preset can have up to 4 reset images, and this one has 4.",
+            "A preset can have up to 4 reset images, and this would make 5.",
         ),
     ];
     library.set_cards(std::rc::Rc::new(slint::VecModel::from(cards)).into());
     library.set_window_title("Split Library - The Legend of Zelda: Ocarina of Time".into());
-    library.set_errors("A splits library couldn't be read.".into());
+    library.set_errors("A split library couldn't be read.".into());
     library.set_selected(0);
     library.show().unwrap();
     save(&window, PhysicalSize::new(600, 520), &folder.join("library.png"));
