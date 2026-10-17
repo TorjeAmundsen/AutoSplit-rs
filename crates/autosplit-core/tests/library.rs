@@ -15,17 +15,24 @@ const GAME: &str = "The Legend of Zelda: Ocarina of Time";
 fn step(folder: &Path, name: &str) -> NewStep {
     let mask = folder.join(format!("{name}.png"));
     std::fs::write(&mask, BgraImage::from_raw(4, 3, vec![255; 4 * 3 * 4]).encode_png().unwrap()).unwrap();
+    let mut step = using(name, mask);
+    step.split.threshold = Some(0.9);
+    step
+}
+
+/// An image named `name` whose mask is `mask`, a file that's there already, like the library's.
+fn using(name: &str, mask: PathBuf) -> NewStep {
     NewStep {
-        split: PresetSplit {
-            name: name.into(),
-            mask: mask.display().to_string(),
-            threshold: Some(0.9),
-            ..PresetSplit::default()
-        },
+        split: PresetSplit { name: name.into(), mask: mask.display().to_string(), ..PresetSplit::default() },
         mask,
         savestate: None,
-        screenshot: BgraImage::from_raw(320, 240, vec![128; 320 * 240 * 4]),
+        screenshot: screenshot(),
     }
+}
+
+/// A gray picture the size of a grab.
+fn screenshot() -> BgraImage {
+    BgraImage::from_raw(320, 240, vec![128; 320 * 240 * 4])
 }
 
 fn load(folder: &Path) -> SplitLibrary {
@@ -59,12 +66,13 @@ fn with_boss() -> (tempfile::TempDir, tempfile::TempDir, PathBuf) {
 }
 
 #[test]
-fn base_images_are_made_small() {
-    // Act
+fn base_images_are_made_small_and_opaque() {
+    // Act: from a picture that's nearly see-through
     let base = base_image(BgraImage::from_raw(320, 240, vec![10; 320 * 240 * 4]).view());
 
     // Assert
-    assert_eq!((base.width(), base.height()), BASE_IMAGE_SIZE);
+    let opaque = base.data().iter().skip(3).step_by(4).all(|&alpha| alpha == 255);
+    assert_eq!((base.width(), base.height(), opaque), (BASE_IMAGE_SIZE.0, BASE_IMAGE_SIZE.1, true));
 }
 
 #[test]
@@ -160,12 +168,7 @@ fn masks_in_the_library_already_are_used_where_they_are() {
     // Arrange: an image whose mask is the library's own, like after inserting it into a preset
     let (_splits, _preset, folder) = with_boss();
     let mask = folder.join("Ganon.png");
-    let again = NewStep {
-        split: PresetSplit { name: "Ganon".into(), mask: mask.display().to_string(), ..PresetSplit::default() },
-        mask,
-        savestate: None,
-        screenshot: BgraImage::from_raw(320, 240, vec![128; 320 * 240 * 4]),
-    };
+    let again = using("Ganon", mask);
 
     // Act
     change_ready_made(&folder, 0, &entry(&folder, 0), "Just the flash", Some(vec![again]), &[]).unwrap();
@@ -181,12 +184,7 @@ fn masks_in_the_library_already_are_used_where_they_are() {
 fn deleting_a_ready_made_split_deletes_the_files_only_it_used() {
     // Arrange: a second ready-made split that uses the boss's flash mask too
     let (splits, _preset, folder) = with_boss();
-    let flash = NewStep {
-        split: PresetSplit { name: "Flash".into(), ..PresetSplit::default() },
-        mask: folder.join("Ganon.png"),
-        savestate: None,
-        screenshot: BgraImage::from_raw(320, 240, vec![128; 320 * 240 * 4]),
-    };
+    let flash = using("Flash", folder.join("Ganon.png"));
     add_ready_made(splits.path(), GAME, "Any flash", vec![flash]).unwrap();
 
     // Act
@@ -235,15 +233,20 @@ fn savestates_are_copied_into_the_library_too() {
 }
 
 #[test]
-fn later_images_have_no_empty_description_line() {
+fn the_description_is_on_the_first_image_only() {
     // Arrange
     let (_splits, _preset, folder) = with_boss();
 
     // Act
     let text = std::fs::read_to_string(folder.join(LIBRARY_FILE)).unwrap();
 
-    // Assert
-    assert_eq!(text.matches("description").count(), 1, "{text}");
+    // Assert: one line, the first image's, and no empty one for the second
+    let library = load(&folder);
+    assert_eq!(
+        (text.matches("description").count(), library.splits[0].description.as_str()),
+        (1, "The intro text, then the flash"),
+        "{text}"
+    );
 }
 
 #[test]
@@ -275,12 +278,7 @@ fn replaced_images_keep_their_file_names() {
 fn files_other_ready_made_splits_use_are_never_written_over() {
     // Arrange: a flash that uses the boss's mask, then the boss made again from a new mask
     let (splits, preset, folder) = with_boss();
-    let flash = NewStep {
-        split: PresetSplit { name: "Flash".into(), ..PresetSplit::default() },
-        mask: folder.join("Ganon.png"),
-        savestate: None,
-        screenshot: BgraImage::from_raw(320, 240, vec![128; 320 * 240 * 4]),
-    };
+    let flash = using("Flash", folder.join("Ganon.png"));
     add_ready_made(splits.path(), GAME, "Any flash", vec![flash]).unwrap();
 
     // Act
@@ -372,16 +370,10 @@ fn files_a_preset_being_edited_uses_are_kept() {
 fn replacing_with_the_inserted_splits_keeps_their_files() {
     // Arrange: the boss inserted and tuned in a preset, whose splits use the library's masks
     let (_splits, _preset, folder) = with_boss();
-    let inserted = |name: &str, mask: &str| NewStep {
-        split: PresetSplit {
-            name: name.into(),
-            mask: folder.join(mask).display().to_string(),
-            threshold: Some(0.95),
-            ..PresetSplit::default()
-        },
-        mask: folder.join(mask),
-        savestate: None,
-        screenshot: BgraImage::from_raw(320, 240, vec![128; 320 * 240 * 4]),
+    let inserted = |name: &str, mask: &str| {
+        let mut step = using(name, folder.join(mask));
+        step.split.threshold = Some(0.95);
+        step
     };
     let steps = vec![inserted("Ganon intro", "Ganon_intro.png"), inserted("Ganon", "Ganon.png")];
     let in_use = [folder.join("Ganon_intro.png"), folder.join("Ganon.png")];

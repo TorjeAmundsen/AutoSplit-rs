@@ -881,7 +881,7 @@ fn inserting_above_or_below_goes_around_splits_compared_together(selected: Optio
 
 #[test_case(0 => 0; "above the first")]
 #[test_case(1 => 1; "between splits of their own")]
-#[test_case(2 => 1; "inside a group, nearer its start")]
+#[test_case(2 => 1; "in the middle of a group of two, its start")]
 #[test_case(4 => 4; "at the end")]
 #[test_case(9 => 4; "past the end")]
 fn drops_never_go_between_splits_compared_together(gap: usize) -> usize {

@@ -5,8 +5,8 @@
 use autosplit_core::library::{NewStep, add_ready_made, base_image, change_ready_made, delete_ready_made};
 use autosplit_core::preset::{LibrarySplit, PresetSplit};
 
-use super::super::library_file_parts;
-use super::super::preset_form::{library_file_name, library_heading};
+use super::super::name_parts_model;
+use super::super::preset_form::{library_file_name, library_file_parts, library_heading};
 use super::super::ui::EntryStep;
 use super::library::splits_folder;
 use super::*;
@@ -17,7 +17,7 @@ pub(super) struct Entry {
     editing: Option<Edited>,
     /// The live capture as the window opened, for base images of splits without a grab or
     /// screenshot, so the one saved is the one shown.
-    live: Option<Pixels>,
+    live: Option<BgraImage>,
     /// Pictures chosen for the base images, by the image's place in the ready-made split, with
     /// their files. They come before anything else.
     pictures: HashMap<usize, (PathBuf, BgraImage)>,
@@ -79,7 +79,7 @@ impl Gui {
     pub(super) fn connect_library_entry(&self) {
         let weak = self.me.clone();
         let maker = &self.windows.maker;
-        maker.set_developer(cfg!(debug_assertions));
+        maker.set_developer(DEVELOPER);
         on!(weak, maker, on_add_to_library, () gui => gui.open_entry(None));
         let library = &self.windows.library;
         on!(weak, library, on_edit_entry, (index) gui => gui.open_entry(Some(index as usize)));
@@ -101,13 +101,13 @@ impl Gui {
     /// Opens the entry window to add a ready-made split from the selected splits, or to edit the
     /// `index`th of the game's.
     fn open_entry(&self, index: Option<usize>) {
-        if !cfg!(debug_assertions) || !self.editing() {
+        if !DEVELOPER || !self.editing() {
             return;
         }
         let maker = self.maker.borrow();
         let Some(preset) = maker.edit.as_ref().map(editor::Editing::preset) else { return };
         let game = preset.game.clone();
-        let live = maker.last_live.clone();
+        let live = maker.last_live.as_ref().map(frame_image);
         let (editing, description) = match index {
             Some(index) => {
                 let Some((folder, place)) = maker.library.place_of(&game, index) else { return };
@@ -208,7 +208,7 @@ impl Gui {
                     };
                     (Some(source.image().map_err(|error| error.to_string())?.as_ref().clone()), from)
                 }
-                (None, None, Some(frame)) => (Some(frame_image(frame)), "Base image from the live capture".to_owned()),
+                (None, None, Some(frame)) => (Some(frame.clone()), "Base image from the live capture".to_owned()),
                 // Shown without one, so a picture can be chosen for it
                 (None, None, None) => (None, "No picture for its base image yet".to_owned()),
             };
@@ -233,7 +233,7 @@ impl Gui {
             EntryStep {
                 heading: library_heading(split).into(),
                 thumb,
-                file_parts: library_file_parts(&file),
+                file_parts: name_parts_model(library_file_parts(split, Some(&defaults))),
                 file: file.into(),
                 source: source.into(),
                 picked: picked.contains(&place),
@@ -358,7 +358,7 @@ impl Gui {
     /// Asks to delete the `index`th of the game's ready-made splits, then deletes it with the
     /// files only it used.
     fn ask_delete_entry(self: &Rc<Self>, index: usize) {
-        if !cfg!(debug_assertions) {
+        if !DEVELOPER {
             return;
         }
         let maker = self.maker.borrow();

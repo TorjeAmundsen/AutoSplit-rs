@@ -7,9 +7,9 @@ use slint::winit_030::WinitWindowAccessor;
 
 use autosplit_core::split_image::SplitDefaults;
 
-use super::super::library_file_parts;
+use super::super::name_parts_model;
 use super::super::preset_form::{
-    InPreset, import_blocker, in_preset, library_file_name, library_heading, matches_search,
+    InPreset, import_blocker, in_preset, library_file_name, library_file_parts, library_heading, matches_search,
 };
 use super::super::ui::{LibraryItem, LibraryStep, NamePart};
 use super::*;
@@ -92,7 +92,7 @@ fn library_step(step: &LibrarySplit, thumb: Option<slint::Image>, defaults: &Spl
     let split = &step.split;
     let file = library_file_name(split, Some(defaults));
     LibraryStep {
-        file_parts: library_file_parts(&file),
+        file_parts: name_parts_model(library_file_parts(split, Some(defaults))),
         file: file.into(),
         heading: library_heading(split).into(),
         thumb: thumb.unwrap_or_default(),
@@ -160,7 +160,7 @@ impl Gui {
         let window = &self.windows.library;
         window.set_search_text(SharedString::new());
         window.set_can_drag(!self.under_wayland());
-        window.set_developer(cfg!(debug_assertions));
+        window.set_developer(DEVELOPER);
         // Shown first, since only an open window is kept up to date
         self.show_window(window.window());
         self.refresh_library();

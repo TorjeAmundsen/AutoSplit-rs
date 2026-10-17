@@ -10,7 +10,7 @@ use autosplit::gui::ui::{
     LibraryEntryWindow, LibraryItem, LibraryStep, LibraryWindow, LogWindow, MainWindow, MakerRow, MakerWindow,
     MessageWindow, SettingsWindow, SimilarityRow, SplitForm, SplitValues, TesterReading, TesterWindow,
 };
-use autosplit::gui::{HOTKEY_ROWS, file_name_parts, library_file_parts, thumbnail, transparency_grid};
+use autosplit::gui::{HOTKEY_ROWS, file_name_parts, name_parts_model, thumbnail, transparency_grid};
 use slint::platform::software_renderer::{MinimalSoftwareWindow, RepaintBufferType, Rgb565Pixel};
 use slint::platform::{Platform, WindowAdapter};
 use slint::{ComponentHandle, Model, PhysicalSize};
@@ -40,6 +40,16 @@ fn save(window: &MinimalSoftwareWindow, size: PhysicalSize, path: &std::path::Pa
         })
         .collect();
     image::save_buffer(path, &rgb, size.width, size.height, image::ExtendedColorType::Rgb8).unwrap();
+}
+
+/// A Split Library file name written with `XX` for its number, in the parts the window colors,
+/// the number's like a number's.
+fn library_parts(name: &str) -> slint::ModelRc<autosplit::gui::ui::NamePart> {
+    let mut parts = autosplit_core::filename::name_parts(&name.replacen("XX", "0", 1));
+    if let Some(number) = parts.first_mut().filter(|part| part.kind == autosplit_core::filename::PartKind::Number) {
+        number.text = "XX".to_owned();
+    }
+    name_parts_model(parts)
 }
 
 fn main() {
@@ -395,7 +405,7 @@ Replace them?",
     let step =
         |heading: &str, file: &str, [threshold, delay, pause]: [&str; 3], dummy: bool, below: bool, name: &str| {
             LibraryStep {
-                file_parts: library_file_parts(name),
+                file_parts: library_parts(name),
                 file: name.into(),
                 heading: heading.into(),
                 thumb: base(file),
@@ -484,7 +494,7 @@ Replace them?",
     let entry_step = |heading: &str, file: &str, name: &str, source: &str| EntryStep {
         heading: heading.into(),
         thumb: base(file),
-        file_parts: library_file_parts(name),
+        file_parts: library_parts(name),
         file: name.into(),
         source: source.into(),
         picked: source.starts_with("Base image from base_"),

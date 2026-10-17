@@ -325,21 +325,13 @@ fn with_gui(action: impl FnOnce(&Rc<Gui>) + Send + 'static) {
     });
 }
 
-/// A ready-made split's file name in parts, like [`file_name_parts`], with the `XX` that stands
-/// for its number colored like a number.
-pub fn library_file_parts(file: &str) -> ModelRc<NamePart> {
-    let Some(rest) = file.strip_prefix("XX") else { return file_name_parts(file) };
-    let parts = file_name_parts(&format!("0{rest}"));
-    if let Some(mut number) = parts.row_data(0).filter(|part| part.kind == NameKind::Number) {
-        number.text = "XX".into();
-        number.meaning = "Its number, which comes from where it's put".into();
-        parts.set_row_data(0, number);
-    }
-    parts
-}
-
 /// A split image's file name in parts, for the windows to color by what each part does.
 pub fn file_name_parts(name: &str) -> ModelRc<NamePart> {
+    name_parts_model(autosplit_core::filename::name_parts(name))
+}
+
+/// A file name's `parts`, like a ready-made split's, for the windows to color.
+pub fn name_parts_model(parts: Vec<autosplit_core::filename::NamePart>) -> ModelRc<NamePart> {
     use autosplit_core::filename::PartKind;
     let kind = |kind: PartKind| match kind {
         PartKind::Text => NameKind::Text,
@@ -359,7 +351,7 @@ pub fn file_name_parts(name: &str) -> ModelRc<NamePart> {
         meaning: part.meaning.into(),
         ignored: part.ignored,
     };
-    let parts: Vec<NamePart> = autosplit_core::filename::name_parts(name).into_iter().map(part).collect();
+    let parts: Vec<NamePart> = parts.into_iter().map(part).collect();
     ModelRc::new(VecModel::from(parts))
 }
 

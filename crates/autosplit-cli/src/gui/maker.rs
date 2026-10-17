@@ -283,6 +283,10 @@ pub fn transparency_grid(width: u32, height: u32) -> slint::Image {
     slint::Image::from_rgba8(grid)
 }
 
+/// Whether this is a developer build, like from `cargo run`, which can change the split library
+/// next to the program. Release builds don't show how.
+const DEVELOPER: bool = cfg!(debug_assertions);
+
 /// A folder the program comes with, like `presets`, next to it. Builds that aren't installed use
 /// the source tree's.
 fn bundled_folder(name: &str) -> PathBuf {

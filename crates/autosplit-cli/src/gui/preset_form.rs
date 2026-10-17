@@ -5,7 +5,7 @@
 
 use std::path::Path;
 
-use autosplit_core::filename::{RESET_KEYWORD, START_KEYWORD, validate_split_name};
+use autosplit_core::filename::{NamePart, PartKind, RESET_KEYWORD, START_KEYWORD, name_parts, validate_split_name};
 use autosplit_core::preset::{Preset, PresetSplit, game_key};
 use autosplit_core::split_folder::MAX_GROUP_SIZE;
 use autosplit_core::split_image::SplitDefaults;
@@ -522,16 +522,22 @@ pub fn matches_search(texts: &[&str], search: &str) -> bool {
     search.to_lowercase().split_whitespace().all(|word| texts.iter().any(|text| text.contains(word)))
 }
 
-/// The file name a ready-made split's image gets, with `XX` for its number, which depends on
-/// where it's put. Reset and start images have none. It follows the profile's `defaults`, like
-/// the split list's.
-pub fn library_file_name(split: &PresetSplit, defaults: Option<&SplitDefaults>) -> String {
+/// The file name a ready-made split's image gets, in its parts, with `XX` for its number,
+/// which depends on where it's put. Reset and start images have none. It follows the profile's
+/// `defaults`, like the split list's.
+pub fn library_file_parts(split: &PresetSplit, defaults: Option<&SplitDefaults>) -> Vec<NamePart> {
     let alone = Preset { splits: vec![PresetSplit { with_previous: false, ..split.clone() }], ..Preset::default() };
-    let name = alone.file_names(defaults).swap_remove(0);
-    match name.chars().take_while(char::is_ascii_digit).count() {
-        0 => name,
-        digits => format!("XX{}", &name[digits..]),
+    let mut parts = name_parts(&alone.file_names(defaults).swap_remove(0));
+    if let Some(number) = parts.first_mut().filter(|part| part.kind == PartKind::Number) {
+        number.text = "XX".to_owned();
+        number.meaning = "Its number, which comes from where it's put".to_owned();
     }
+    parts
+}
+
+/// The file name a ready-made split's image gets, like [`library_file_parts`] says it.
+pub fn library_file_name(split: &PresetSplit, defaults: Option<&SplitDefaults>) -> String {
+    library_file_parts(split, defaults).into_iter().map(|part| part.text).collect()
 }
 
 /// Where a ready-made split is in the preset already.
