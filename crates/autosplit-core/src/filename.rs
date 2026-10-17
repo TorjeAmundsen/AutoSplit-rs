@@ -4,6 +4,9 @@
 //! `^1^` comparison method, `{dbp}` flags. Values need their closing delimiter. Values that are
 //! missing, invalid or out of range fall back to defaults like in AutoSplit, and
 //! [`filename_warnings`] reports the invalid ones.
+//!
+//! Not in AutoSplit: the `{f}` flag makes a fade image, which splits on a gradual fade to its
+//! color, and `~1000~` is how long that fade takes in milliseconds.
 
 use std::fmt;
 
@@ -13,6 +16,12 @@ use crate::split_image::SplitDefaults;
 pub const DUMMY_FLAG: u32 = 1 << 0;
 pub const BELOW_FLAG: u32 = 1 << 1;
 pub const PAUSE_FLAG: u32 = 1 << 2;
+pub const FADE_FLAG: u32 = 1 << 3;
+
+/// How long a fade takes when the file name doesn't say, in milliseconds.
+pub const DEFAULT_FADE_TIME: i64 = 1000;
+/// Shorter fades can't be told apart from a cut.
+pub const MIN_FADE_TIME: i64 = 150;
 
 pub const START_KEYWORD: &str = "start_auto_splitter";
 pub const RESET_KEYWORD: &str = "reset";
@@ -110,7 +119,12 @@ pub fn comparison_method_from_filename(filename: &str) -> Option<i64> {
     int_value(filename, '^', '^').filter(|value| *value >= 0)
 }
 
-/// `{dbp}`: dummy, below threshold and pause flags. `m` is a legacy flag that's ignored.
+/// `~1000~`: how long a fade image's fade takes, in milliseconds. At least [`MIN_FADE_TIME`].
+pub fn fade_time_from_filename(filename: &str) -> Option<i64> {
+    int_value(filename, '~', '~').filter(|value| *value >= MIN_FADE_TIME)
+}
+
+/// `{dbpf}`: dummy, below threshold, pause and fade flags. `m` is a legacy flag that's ignored.
 /// Any other character, or dummy combined with pause, invalidates all flags.
 pub fn flags_from_filename(filename: &str) -> u32 {
     parse_flags(filename).unwrap_or(0)
@@ -126,6 +140,7 @@ fn parse_flags(filename: &str) -> Result<u32, FilenameWarning> {
             'D' => flags |= DUMMY_FLAG,
             'B' => flags |= BELOW_FLAG,
             'P' => flags |= PAUSE_FLAG,
+            'F' => flags |= FADE_FLAG,
             'M' => {}
             _ => return Err(FilenameWarning::InvalidFlag { flags: raw.to_owned(), invalid: c }),
         }
@@ -160,6 +175,10 @@ pub enum FilenameWarning {
         flags: String,
     },
     UnknownComparisonMethod(i64),
+    /// A value that only fade images (`{f}`) use, on an image without it.
+    FadeOnly(Setting),
+    /// A value that fade images don't use.
+    NotForFade(Setting),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -170,6 +189,7 @@ pub enum Setting {
     Loops,
     ComparisonMethod,
     Flags,
+    FadeTime,
 }
 
 impl Setting {
@@ -182,6 +202,7 @@ impl Setting {
             Self::Loops => ('@', '@'),
             Self::ComparisonMethod => ('^', '^'),
             Self::Flags => ('{', '}'),
+            Self::FadeTime => ('~', '~'),
         }
     }
 
@@ -193,6 +214,7 @@ impl Setting {
             Self::Loops => "loop count",
             Self::ComparisonMethod => "comparison method",
             Self::Flags => "flags",
+            Self::FadeTime => "fade time",
         }
     }
 
@@ -201,7 +223,8 @@ impl Setting {
             Self::Threshold => "between 0 and 1",
             Self::Loops => "1 or more",
             Self::PauseTime | Self::DelayTime | Self::ComparisonMethod => "0 or more",
-            Self::Flags => "d, b, p or m",
+            Self::Flags => "d, b, p, f or m",
+            Self::FadeTime => "150 or more",
         }
     }
 
@@ -209,6 +232,7 @@ impl Setting {
         match self {
             Self::Loops => "the image is used once",
             Self::Flags => "the image has no flags",
+            Self::FadeTime => "the default of 1000 is used",
             _ => "the profile's default is used",
         }
     }
@@ -239,7 +263,7 @@ impl fmt::Display for FilenameWarning {
             },
             Self::InvalidFlag { flags, invalid } => write!(
                 f,
-                "the flags {{{flags}}} contain '{invalid}', which isn't d, b, p or m, so all of the image's flags are ignored"
+                "the flags {{{flags}}} contain '{invalid}', which isn't d, b, p, f or m, so all of the image's flags are ignored"
             ),
             Self::DummyAndPause { flags } => {
                 write!(f, "the flags {{{flags}}} combine dummy and pause, so all of the image's flags are ignored")
@@ -248,12 +272,20 @@ impl fmt::Display for FilenameWarning {
                 f,
                 "comparison method {index} doesn't exist (0 is L2 norm, 1 histograms, 2 pHash), so the image compares as 0, which only matches a threshold of 0"
             ),
+            Self::FadeOnly(setting) => {
+                write!(f, "the {} only applies to fade images, with the {{f}} flag, so it's ignored", setting.name())
+            }
+            Self::NotForFade(setting) => {
+                write!(f, "fade images, with the {{f}} flag, compare by color, so the {} is ignored", setting.name())
+            }
         }
     }
 }
 
 /// Values in `filename` that are ignored.
 pub fn filename_warnings(filename: &str) -> Vec<FilenameWarning> {
+    let flags = parse_flags(filename);
+    let fade = flags.as_ref().is_ok_and(|flags| flags & FADE_FLAG != 0);
     let mut warnings = Vec::new();
     let mut check = |setting: Setting, in_range: &dyn Fn(&str) -> Option<bool>| {
         let (open, close) = setting.delimiters();
@@ -273,17 +305,31 @@ pub fn filename_warnings(filename: &str) -> Vec<FilenameWarning> {
     check(Setting::PauseTime, &|text| parse_float(text).map(|value| value >= 0.0));
     check(Setting::DelayTime, &|text| parse_int(text).map(|value| value >= 0));
     check(Setting::Loops, &|text| parse_int(text).map(|value| value >= 1));
-    check(Setting::ComparisonMethod, &|text| parse_int(text).map(|value| value >= 0));
+    // A fade image's method is ignored, which says enough about it
+    if !fade {
+        check(Setting::ComparisonMethod, &|text| parse_int(text).map(|value| value >= 0));
+    }
+    // Without `{f}`, a lone `~` is part of the name, as it is for AutoSplit
+    if fade {
+        check(Setting::FadeTime, &|text| parse_int(text).map(|value| value >= MIN_FADE_TIME));
+    }
     if let Delimited::Invalid(count, ..) = delimited(filename, '{', '}') {
         warnings.push(FilenameWarning::Delimiters { setting: Setting::Flags, count });
     }
 
-    if let Some(index) =
+    if fade {
+        if !matches!(delimited(filename, '^', '^'), Delimited::Absent) {
+            warnings.push(FilenameWarning::NotForFade(Setting::ComparisonMethod));
+        }
+    } else if let Some(index) =
         comparison_method_from_filename(filename).filter(|index| ComparisonMethod::from_index(*index).is_none())
     {
         warnings.push(FilenameWarning::UnknownComparisonMethod(index));
     }
-    if let Err(warning) = parse_flags(filename) {
+    if !fade && matches!(delimited(filename, '~', '~'), Delimited::Value(..)) {
+        warnings.push(FilenameWarning::FadeOnly(Setting::FadeTime));
+    }
+    if let Err(warning) = flags {
         warnings.push(warning);
     }
     warnings
@@ -304,6 +350,8 @@ pub enum PartKind {
     Loops,
     Method,
     Flags,
+    /// `~1000~`, a fade image's fade time.
+    FadeTime,
     Extension,
 }
 
@@ -333,6 +381,7 @@ pub fn name_parts(filename: &str) -> Vec<NamePart> {
             | FilenameWarning::OutOfRange { setting: of, .. }
             | FilenameWarning::Delimiters { setting: of, .. } => *of == setting,
             FilenameWarning::UnknownComparisonMethod(_) => setting == Setting::ComparisonMethod,
+            FilenameWarning::FadeOnly(of) | FilenameWarning::NotForFade(of) => *of == setting,
             FilenameWarning::InvalidFlag { .. } | FilenameWarning::DummyAndPause { .. } => false,
         })
     };
@@ -355,11 +404,15 @@ pub fn name_parts(filename: &str) -> Vec<NamePart> {
         (PartKind::Loops, Setting::Loops),
         (PartKind::Method, Setting::ComparisonMethod),
         (PartKind::Flags, Setting::Flags),
+        (PartKind::FadeTime, Setting::FadeTime),
     ];
+    let fade = parse_flags(&lower).is_ok_and(|flags| flags & FADE_FLAG != 0);
     for (kind, setting) in values {
         let (open, close) = setting.delimiters();
         let (start, end, raw) = match delimited(&lower, open, close) {
             Delimited::Absent => continue,
+            // A lone `~` is part of the name, unless it's a fade image
+            Delimited::Invalid(..) if setting == Setting::FadeTime && !fade => continue,
             Delimited::Value(raw, first, second) => (first, second + 1, raw),
             // From the first delimiter to the last, since none of it is read
             Delimited::Invalid(_, first, last) => (first, last + 1, ""),
@@ -410,6 +463,7 @@ fn value_meaning(kind: PartKind, raw: &str) -> String {
         PartKind::Pause => format!("pause: stops comparing for {raw} seconds after the split"),
         PartKind::Delay => format!("delay: splits {raw} ms after the match"),
         PartKind::Loops => format!("loops: used {raw} times in a row"),
+        PartKind::FadeTime => format!("fade time: the fade to the color takes about {raw} ms"),
         PartKind::Method => match raw.parse().ok().and_then(ComparisonMethod::from_index) {
             Some(method) => format!("comparison method: {}", method.name()),
             None => format!("comparison method {raw}"),
@@ -424,6 +478,7 @@ fn flags_meaning(flags: u32) -> String {
         (DUMMY_FLAG, "dummy: moves on without splitting"),
         (BELOW_FLAG, "below: splits once the similarity drops back below the threshold"),
         (PAUSE_FLAG, "pause: pauses the timer instead of splitting"),
+        (FADE_FLAG, "fade: reacts to a gradual fade to the image's color, not to a cut"),
     ];
     let meanings: Vec<&str> = named.iter().filter(|(flag, _)| flags & flag != 0).map(|(_, meaning)| *meaning).collect();
     if meanings.is_empty() { "flags: none".into() } else { meanings.join("; ") }

@@ -100,6 +100,14 @@ fn is_default_livesplit_one_port(port: &u16) -> bool {
     *port == DEFAULT_LIVESPLIT_ONE_PORT
 }
 
+/// Levels each channel of a fade image's color may be off by default, which covers capture
+/// setups whose colors are a little off, like analog ones.
+pub const DEFAULT_FADE_COLOR_TOLERANCE: i64 = 10;
+
+fn is_default_fade_color_tolerance(tolerance: &i64) -> bool {
+    *tolerance == DEFAULT_FADE_COLOR_TOLERANCE
+}
+
 /// A settings profile. Field order is the key order AutoSplit writes.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -150,6 +158,10 @@ pub struct UserProfile {
     /// when changed.
     #[serde(skip_serializing_if = "is_default")]
     pub split_image_grid: bool,
+    /// Not in AutoSplit. How many levels each channel of a fade image's color may be off in the
+    /// capture. Only written when changed.
+    #[serde(skip_serializing_if = "is_default_fade_color_tolerance")]
+    pub fade_color_tolerance: i64,
     /// Keys this version doesn't know, kept so saving doesn't drop them.
     #[serde(flatten)]
     pub unknown: toml::Table,
@@ -190,6 +202,7 @@ impl Default for UserProfile {
             livesplit_one_port: DEFAULT_LIVESPLIT_ONE_PORT,
             group_split_images: false,
             split_image_grid: false,
+            fade_color_tolerance: DEFAULT_FADE_COLOR_TOLERANCE,
             unknown: toml::Table::new(),
         }
     }
@@ -301,6 +314,7 @@ impl UserProfile {
             delay_time: self.default_delay_time,
             pause_time: self.default_pause_time,
             fps_limit: self.fps_limit,
+            fade_tolerance: self.fade_color_tolerance,
         }
     }
 }

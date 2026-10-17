@@ -121,7 +121,7 @@ fn main() {
     settings.show().unwrap();
     for tab in 0..4 {
         settings.invoke_show_tab(tab);
-        save(&window, PhysicalSize::new(380, 384), &folder.join(format!("settings{tab}.png")));
+        save(&window, PhysicalSize::new(380, 414), &folder.join(format!("settings{tab}.png")));
     }
     settings.hide().unwrap();
 

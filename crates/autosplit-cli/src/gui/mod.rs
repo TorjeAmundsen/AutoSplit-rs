@@ -343,6 +343,7 @@ pub fn name_parts_model(parts: Vec<autosplit_core::filename::NamePart>) -> Model
         PartKind::Loops => NameKind::Loops,
         PartKind::Method => NameKind::Method,
         PartKind::Flags => NameKind::Flags,
+        PartKind::FadeTime => NameKind::FadeTime,
         PartKind::Extension => NameKind::Extension,
     };
     let part = |part: autosplit_core::filename::NamePart| NamePart {
@@ -1306,6 +1307,7 @@ impl Gui {
         settings.set_default_similarity_threshold(profile.default_similarity_threshold as f32);
         settings.set_default_delay_time(profile.default_delay_time as f32);
         settings.set_default_pause_time(profile.default_pause_time as f32);
+        settings.set_fade_color_tolerance(profile.fade_color_tolerance as f32);
         settings.set_loop_splits(profile.loop_splits);
         settings.set_group_split_images(profile.group_split_images);
         settings.set_split_image_grid(profile.split_image_grid);
@@ -1358,6 +1360,7 @@ impl Gui {
             }
             Setting::DefaultDelayTime => SettingEdit::DefaultDelayTime(settings.get_default_delay_time().into()),
             Setting::DefaultPauseTime => SettingEdit::DefaultPauseTime(settings.get_default_pause_time().into()),
+            Setting::FadeColorTolerance => SettingEdit::FadeColorTolerance(settings.get_fade_color_tolerance().into()),
             Setting::LoopSplits => SettingEdit::LoopSplits(settings.get_loop_splits()),
             Setting::GroupSplitImages => SettingEdit::GroupSplitImages(settings.get_group_split_images()),
             Setting::SplitImageGrid => SettingEdit::SplitImageGrid(settings.get_split_image_grid()),

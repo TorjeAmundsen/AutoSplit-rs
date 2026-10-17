@@ -20,7 +20,7 @@ use autosplit_core::profile::UserProfile;
 use autosplit_core::runner::{Captured, Effect, Runner, RunnerSettings, Showing};
 use autosplit_core::split_folder::{FolderLoad, SplitSet, load_profile_folder, load_profile_folder_to_start};
 use autosplit_core::split_image::{ImageType, SplitContent, SplitImage};
-use autosplit_core::text::{Compared, decimal, decimal_or_dash};
+use autosplit_core::text::{Compared, decimal, decimal_or_dash, hex_color};
 use clap::{Parser, Subcommand};
 
 /// Ticks at one timestamp after which `replay` gives up: the run is splitting in a loop.
@@ -84,15 +84,20 @@ enum CliCommand {
         #[arg(long)]
         split_dir: Option<PathBuf>,
     },
-    /// Compare a split image with a captured frame (PNG) using every comparison method.
+    /// Compare a split image with a captured frame (PNG) using every comparison method. With a
+    /// folder of frames, print each frame's similarities as CSV.
     Compare {
         /// Split image (PNG).
         split_image: PathBuf,
-        /// Captured frame (PNG), for example from `grab --profile`.
+        /// Captured frame (PNG), for example from `grab --profile`, or a folder of PNG frames,
+        /// played in file name order.
         capture: PathBuf,
-        /// Take the default threshold and method from this profile.
+        /// Take the default threshold, method and fade color tolerance from this profile.
         #[arg(long)]
         profile: Option<PathBuf>,
+        /// Frame rate a folder of frames was recorded at, for the CSV's seconds column.
+        #[arg(long, default_value_t = 60.0, value_parser = parse_fps)]
+        fps: f64,
     },
     /// Run the split state machine over recorded frames and print what would be sent.
     Replay {
@@ -186,7 +191,12 @@ fn run_command() -> Result<()> {
             device::grab(&device, &output, skip, profile.as_ref())
         }
         CliCommand::Check { profile, split_dir } => check(&profile, split_dir),
-        CliCommand::Compare { split_image, capture, profile } => compare(&split_image, &capture, profile.as_deref()),
+        CliCommand::Compare { split_image, capture, profile, fps } if capture.is_dir() => {
+            compare_frames(&split_image, &capture, fps, profile.as_deref())
+        }
+        CliCommand::Compare { split_image, capture, profile, .. } => {
+            compare(&split_image, &capture, profile.as_deref())
+        }
         CliCommand::Replay { profile, frames, fps, split_dir, auto_controlled } => {
             replay(&profile, &frames, fps, split_dir, auto_controlled)
         }
@@ -260,19 +270,28 @@ fn check(profile_path: &Path, split_dir: Option<PathBuf>) -> Result<()> {
             ImageType::Reset => "reset",
             ImageType::Split => "split",
         };
-        let letters: String = [(image.is_dummy(), 'd'), (image.is_below(), 'b'), (image.is_pause(), 'p')]
-            .iter()
-            .filter_map(|(set, flag)| set.then_some(*flag))
-            .collect();
+        let letters: String =
+            [(image.is_dummy(), 'd'), (image.is_below(), 'b'), (image.is_pause(), 'p'), (image.is_fade(), 'f')]
+                .iter()
+                .filter_map(|(set, flag)| set.then_some(*flag))
+                .collect();
         let flags = if letters.is_empty() { String::new() } else { format!("{{{letters}}}") };
-        let method = image.comparison_method(&defaults).map_or("never", ComparisonMethod::name);
-        let content = match &image.content {
-            SplitContent::Image { pixels, mask: None, .. } => format!("{}x{}", pixels.width(), pixels.height()),
-            SplitContent::Image { pixels, mask: Some(_), .. } => {
-                format!("{}x{} masked", pixels.width(), pixels.height())
-            }
-            SplitContent::Invalid(_) => "invalid".into(),
+        let method = match image.fade_color() {
+            Some(_) => "fade",
+            None => image.comparison_method(&defaults).map_or("never", ComparisonMethod::name),
         };
+        let fade = match image.fade_color() {
+            Some(color) => format!("fade to {} in {}ms, ", hex_color(color), image.fade_time_ms()),
+            None => String::new(),
+        };
+        let content = fade
+            + &match &image.content {
+                SplitContent::Image { pixels, mask: None, .. } => format!("{}x{}", pixels.width(), pixels.height()),
+                SplitContent::Image { pixels, mask: Some(_), .. } => {
+                    format!("{}x{} masked", pixels.width(), pixels.height())
+                }
+                SplitContent::Invalid(_) => "invalid".into(),
+            };
         println!(
             "{:<44} {:<6} {:>9} {:>7}s {:>6}ms {:>5} {:<10} {:<6} {content}",
             image.display_name(),
@@ -311,7 +330,7 @@ fn compare(split_image: &Path, capture_path: &Path, profile: Option<&Path>) -> R
         Some(path) => load_profile(path, None)?.split_defaults(),
         None => UserProfile::default().split_defaults(),
     };
-    let method = image.comparison_method(&defaults);
+    let method = image.comparison_method(&defaults).filter(|_| !image.is_fade());
     let threshold = image.similarity_threshold(&defaults);
     let default_note = if profile.is_none() && !image.filename.contains('(') {
         ", the default; use --profile for your profile's"
@@ -319,6 +338,16 @@ fn compare(split_image: &Path, capture_path: &Path, profile: Option<&Path>) -> R
         ""
     };
     let mut scratch = CompareScratch::default();
+    if let Some(color) = image.fade_color() {
+        let similarity = image.similarity(Some(capture.view()), &defaults, &mut scratch);
+        let reached = if similarity >= threshold { "reached" } else { "not reached" };
+        println!(
+            "Fade to {} {}  (threshold {}{default_note}: {reached}. It only splits when a fade got it there, not a cut)",
+            hex_color(color),
+            decimal(similarity),
+            decimal(threshold)
+        );
+    }
     for candidate in ComparisonMethod::ALL {
         let similarity = image.compare(Some(capture.view()), Some(candidate), &mut scratch);
         let note = if method == Some(candidate) {
@@ -334,7 +363,7 @@ fn compare(split_image: &Path, capture_path: &Path, profile: Option<&Path>) -> R
         };
         println!("{:<11} {}{note}", candidate.name(), decimal(similarity));
     }
-    if method.is_none() {
+    if method.is_none() && !image.is_fade() {
         println!("This image's comparison method is unknown, so it never matches.");
     }
     if let SplitContent::Image { pixels, .. } = &image.content {
@@ -352,6 +381,33 @@ fn compare(split_image: &Path, capture_path: &Path, profile: Option<&Path>) -> R
                 pixels.height()
             );
         }
+    }
+    Ok(())
+}
+
+/// Every method's similarity for each frame in a folder, as CSV, to see how it changes over time.
+/// A fade image has a column for its color too, with the profile's fade color tolerance.
+fn compare_frames(split_image: &Path, frames: &Path, fps: f64, profile: Option<&Path>) -> Result<()> {
+    let image = load_split_image(split_image)?;
+    let paths = frame_paths(frames)?;
+    let defaults = match profile {
+        Some(path) => load_profile(path, None)?.split_defaults(),
+        None => UserProfile::default().split_defaults(),
+    };
+    let mut scratch = CompareScratch::default();
+    let fade_column = if image.is_fade() { ",fade" } else { "" };
+    println!("frame,file,seconds,l2_norm,histograms,phash{fade_column}");
+    for (index, path) in paths.iter().enumerate() {
+        let capture = BgraImage::open_png(path).with_context(|| format!("loading {}", path.display()))?;
+        let mut similarities: Vec<String> = ComparisonMethod::ALL
+            .iter()
+            .map(|&method| format!("{:.6}", image.compare(Some(capture.view()), Some(method), &mut scratch)))
+            .collect();
+        if image.is_fade() {
+            similarities.push(format!("{:.6}", image.similarity(Some(capture.view()), &defaults, &mut scratch)));
+        }
+        let file = path.file_name().map_or_else(String::new, |name| name.to_string_lossy().into_owned());
+        println!("{index},{file},{:.3},{}", index as f64 / fps, similarities.join(","));
     }
     Ok(())
 }

@@ -4,6 +4,7 @@
 pub mod auto_controlled;
 pub mod commands;
 pub mod compare;
+pub mod fade;
 pub mod filename;
 pub mod hotkeys;
 pub mod image;

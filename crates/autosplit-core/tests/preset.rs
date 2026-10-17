@@ -203,8 +203,14 @@ fn presets_read_back_what_they_write() {
     assert_eq!(reread, presets.into_iter().map(|loaded| loaded.preset).collect::<Vec<_>>());
 }
 
-const PROFILE: SplitDefaults =
-    SplitDefaults { comparison_method: 1, similarity_threshold: 0.9, delay_time: 500, pause_time: 10.0, fps_limit: 60 };
+const PROFILE: SplitDefaults = SplitDefaults {
+    comparison_method: 1,
+    similarity_threshold: 0.9,
+    delay_time: 500,
+    pause_time: 10.0,
+    fps_limit: 60,
+    fade_tolerance: 10,
+};
 
 #[test_case(None; "without a profile")]
 #[test_case(Some(PROFILE); "with a profile")]

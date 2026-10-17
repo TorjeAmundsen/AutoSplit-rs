@@ -17,6 +17,7 @@ const RED: Bgr = [0, 0, 255];
 const BLUE: Bgr = [255, 0, 0];
 const GREEN: Bgr = [0, 255, 0];
 const BLACK: Bgr = [0, 0, 0];
+const GRAY: Bgr = [128, 128, 128];
 
 fn solid(color: Bgr) -> BgraImage {
     let pixel = [color[0], color[1], color[2], 255];
@@ -31,6 +32,7 @@ fn defaults() -> RunnerSettings {
             delay_time: 0,
             pause_time: 0.0,
             fps_limit: 60,
+            fade_tolerance: 10,
         },
         loop_splits: false,
         enable_auto_reset: true,
@@ -133,6 +135,19 @@ impl Harness {
             }
         }
         self.now = end;
+    }
+
+    /// Fades from `from` to `to` over `duration`, a new color every 50 ms like a game drawing at
+    /// 20 FPS.
+    fn feed_fade(&mut self, from: Bgr, to: Bgr, duration: Duration) {
+        let steps = (duration.as_millis() / 50).max(1) as u32;
+        for step in 1..=steps {
+            let color = std::array::from_fn(|channel| {
+                let (from, to) = (i32::from(from[channel]), i32::from(to[channel]));
+                (from + (to - from) * step as i32 / steps as i32) as u8
+            });
+            self.feed(Some(color), duration / steps);
+        }
     }
 
     /// Feeds a zero-size frame, like a minimized window can produce.
@@ -1150,4 +1165,82 @@ fn each_start_image_has_its_own_reading() {
     // Assert
     let thresholds: Vec<f64> = harness.runner.status().group.iter().map(|reading| reading.threshold).collect();
     assert_eq!((thresholds, harness.sent()), (vec![0.95, 0.9], vec![]));
+}
+
+#[test]
+fn fade_flag_splits_on_a_fade_to_the_color() {
+    // Arrange
+    let mut harness = Harness::new(&[("1_(0.97)_{f}.png", BLACK), ("2.png", GREEN)], defaults());
+    harness.start();
+
+    // Act
+    harness.feed(Some(GRAY), SECOND);
+    harness.feed_fade(GRAY, BLACK, SECOND);
+    harness.feed(Some(BLACK), ms(500));
+
+    // Assert
+    assert_eq!(harness.sent(), [Command::Split]);
+}
+
+#[test]
+fn fade_flag_does_not_split_on_a_cut_to_the_color() {
+    // Arrange
+    let mut harness = Harness::new(&[("1_(0.97)_{f}.png", BLACK), ("2.png", GREEN)], defaults());
+    harness.start();
+
+    // Act
+    harness.feed(Some(GRAY), SECOND);
+    harness.feed(Some(BLACK), 2 * SECOND);
+
+    // Assert
+    assert_eq!(harness.sent(), []);
+}
+
+#[test]
+fn fade_and_below_flags_split_when_the_color_goes_away_after_a_fade() {
+    // Arrange
+    let mut harness = Harness::new(&[("1_(0.97)_{bf}.png", BLACK), ("2.png", GREEN)], defaults());
+    harness.start();
+
+    // Act
+    harness.feed(Some(GRAY), SECOND);
+    harness.feed_fade(GRAY, BLACK, SECOND);
+    harness.feed(Some(BLACK), SECOND);
+    let while_black = harness.sent();
+    harness.feed(Some(GRAY), ms(20));
+
+    // Assert
+    assert_eq!((while_black, harness.sent()), (vec![], vec![Command::Split]));
+}
+
+#[test]
+fn fade_and_below_flags_ignore_the_color_going_away_after_a_cut() {
+    // Arrange
+    let mut harness = Harness::new(&[("1_(0.97)_{bf}.png", BLACK), ("2.png", GREEN)], defaults());
+    harness.start();
+
+    // Act
+    harness.feed(Some(GRAY), SECOND);
+    harness.feed(Some(BLACK), SECOND);
+    harness.feed(Some(GRAY), SECOND);
+
+    // Assert
+    assert_eq!(harness.sent(), []);
+}
+
+#[test]
+fn fade_reset_image_resets_on_a_fade_but_not_on_a_cut() {
+    // Arrange
+    let mut harness = Harness::new(&[("reset_(0.97)_{f}.png", BLACK), ("1.png", GREEN)], defaults());
+    harness.start();
+
+    // Act
+    harness.feed(Some(GRAY), SECOND);
+    harness.feed(Some(BLACK), SECOND);
+    let after_cut = harness.sent();
+    harness.feed(Some(GRAY), SECOND);
+    harness.feed_fade(GRAY, BLACK, SECOND);
+
+    // Assert
+    assert_eq!((after_cut, harness.sent()), (vec![], vec![Command::Reset]));
 }

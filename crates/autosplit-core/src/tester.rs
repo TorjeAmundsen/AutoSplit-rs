@@ -5,8 +5,9 @@ use std::path::Path;
 use std::time::Duration;
 
 use crate::compare::CompareScratch;
+use crate::fade::FadeTracker;
 use crate::image::BgraImage;
-use crate::runner::{Captured, interval, next_grid_tick};
+use crate::runner::{Captured, interval, next_grid_tick, reached};
 use crate::split_image::{ImageType, LoadError, SplitDefaults, SplitImage};
 
 /// Where the tester is in the image's trigger sequence.
@@ -59,6 +60,8 @@ pub struct Tester {
     similarity: Option<f64>,
     highest: Option<f64>,
     phase: Phase,
+    /// For a fade image, which only reaches the threshold by a fade.
+    fade: FadeTracker,
     triggers: Vec<Trigger>,
     /// Counts [`Tester::rearm`]s, which clear the kept frames.
     generation: u64,
@@ -81,6 +84,7 @@ impl Tester {
             similarity: None,
             highest: None,
             phase: Phase::Waiting,
+            fade: FadeTracker::default(),
             triggers: Vec::new(),
             generation: 0,
         })
@@ -132,6 +136,7 @@ impl Tester {
     pub fn rearm(&mut self) {
         self.highest = None;
         self.phase = Phase::Waiting;
+        self.fade.clear();
         self.triggers.clear();
         self.generation += 1;
     }
@@ -171,8 +176,7 @@ impl Tester {
             (Some(capture), Some(similarity)) if self.frame == Some(capture.sequence) => similarity,
             (Some(capture), _) => {
                 self.scratch.begin_frame(capture.sequence);
-                let method = self.image.comparison_method(&self.defaults);
-                self.image.compare(Some(capture.view), method, &mut self.scratch)
+                self.image.similarity(Some(capture.view), &self.defaults, &mut self.scratch)
             }
             (None, _) => 0.0,
         };
@@ -180,7 +184,8 @@ impl Tester {
         self.similarity = capture.map(|_| similarity);
         self.highest = Some(self.highest.map_or(similarity, |highest| highest.max(similarity)));
 
-        let reached = similarity >= self.threshold();
+        let threshold = self.threshold();
+        let reached = reached(&self.image, &mut self.fade, now, similarity, threshold);
         let (below, delay) = (self.below(), self.delay());
         let keep = |kind| Trigger { kind, similarity, frame: capture.map(|capture| capture.view.to_image()) };
         // A delay of 0 or less acts on the triggering frame, like the runner
@@ -200,7 +205,9 @@ impl Tester {
             }
             Phase::Waiting if reached => trigger(&mut self.triggers, TriggerKind::Reached),
             // Like the runner, a lost capture doesn't count as dropping below
-            Phase::Armed if !reached && capture.is_some() => trigger(&mut self.triggers, TriggerKind::DroppedBelow),
+            Phase::Armed if similarity < threshold && capture.is_some() => {
+                trigger(&mut self.triggers, TriggerKind::DroppedBelow)
+            }
             // The runner acts when the delay is over, with or without a capture
             Phase::Delaying { until, delay } if now >= until => {
                 self.triggers.push(keep(TriggerKind::Acted { delay }));

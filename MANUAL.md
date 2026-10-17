@@ -437,6 +437,9 @@ autosplit check settings.toml [--split-dir folder]
 # Similarity of a split image against a captured frame, with every method
 autosplit compare "split_(0.95).png" frame.png [--profile settings.toml]
 
+# The same for each frame in a folder of PNG frames, as CSV with a column per method
+autosplit compare "split_(0.95).png" frames/ --fps 60 > similarity.csv
+
 # Run the split logic over a folder of recorded PNG frames
 autosplit replay settings.toml frames/ --fps 60 [--auto-controlled]
 
