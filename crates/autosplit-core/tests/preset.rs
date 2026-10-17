@@ -58,6 +58,29 @@ fn bundled_libraries_load_with_all_their_files() {
 }
 
 #[test]
+fn bundled_library_files_have_names_every_system_tells_apart() {
+    // Arrange
+    let (libraries, _) = load_libraries(&bundled("splits"));
+
+    for loaded in libraries {
+        let names: Vec<String> = (std::fs::read_dir(&loaded.folder).unwrap())
+            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+
+        // Act
+        let lowercase: std::collections::HashSet<String> = names.iter().map(|name| name.to_lowercase()).collect();
+        let named: Vec<&String> = (loaded.library.splits.iter())
+            .flat_map(|split| [&split.split.mask, &split.split.savestate, &split.base_image])
+            .filter(|name| !name.is_empty() && !names.contains(name))
+            .collect();
+
+        // Assert: no two files differ only in case, and the library names each as it's written,
+        // which systems that tell case apart need
+        assert_eq!((lowercase.len(), named), (names.len(), Vec::<&String>::new()), "{}", loaded.folder.display());
+    }
+}
+
+#[test]
 fn presets_are_sorted_by_game_then_name() {
     // Arrange
     let folder = tempfile::tempdir().unwrap();

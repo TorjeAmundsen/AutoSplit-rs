@@ -426,3 +426,61 @@ fn adding_waits_for_a_library_that_cant_be_read() {
     assert!(error.to_string().contains("can't be read"), "{error}");
     assert_eq!(files(splits.path()), ["OcarinaOfTime"]);
 }
+
+#[test]
+fn a_file_named_in_another_case_is_still_used() {
+    // Arrange: a library written by hand, whose two ready-made splits name one mask in two cases.
+    // Where names don't differ by case, like on Windows, they're the same file.
+    let folder = tempfile::tempdir().unwrap();
+    let png = BgraImage::from_raw(4, 3, vec![255; 4 * 3 * 4]).encode_png().unwrap();
+    std::fs::write(folder.path().join("Gohma.png"), png).unwrap();
+    let text = "game = \"Game\"
+
+[[split]]
+name = \"Gohma\"
+mask = \"Gohma.png\"
+
+[[split]]
+name = \"Gohma 2\"
+mask = \"gohma.png\"
+";
+    std::fs::write(folder.path().join(LIBRARY_FILE), text).unwrap();
+
+    // Act: delete the one that names it in lowercase
+    delete_ready_made(folder.path(), 1, &entry(folder.path(), 1), &[]).unwrap();
+
+    // Assert: the other one's mask is still there
+    assert!(folder.path().join("Gohma.png").is_file());
+}
+
+#[test]
+fn new_files_never_share_a_name_in_another_case() {
+    // Arrange: two images whose names differ only in case
+    let (splits, preset) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+    let upper = step(preset.path(), "Gohma");
+    let mut lower = step(preset.path(), "gohma_low");
+    lower.split.name = "gohma".into();
+
+    // Act
+    let folder = add_ready_made(splits.path(), GAME, "Gohma", vec![upper, lower]).unwrap();
+
+    // Assert: each its own mask and base image
+    let names: Vec<String> = load(&folder).splits.iter().map(|step| step.split.mask.to_lowercase()).collect();
+    assert_ne!(names[0], names[1]);
+}
+
+#[test]
+fn a_new_file_named_like_another_in_another_case_gets_a_number() {
+    // Arrange: a library with Gohma.png, and a split named gohma, which on Linux could otherwise
+    // be written beside it and collide once the library is copied to Windows
+    let (splits, preset) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+    let folder = add_ready_made(splits.path(), GAME, "Gohma", vec![step(preset.path(), "Gohma")]).unwrap();
+    let mut lower = step(preset.path(), "gohma_low");
+    lower.split.name = "gohma".into();
+
+    // Act
+    add_ready_made(splits.path(), GAME, "Gohma again", vec![lower]).unwrap();
+
+    // Assert
+    assert_eq!(load(&folder).splits[1].split.mask, "gohma (1).png");
+}

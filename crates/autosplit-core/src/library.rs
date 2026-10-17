@@ -7,7 +7,7 @@
 //! library's file is written to a temporary file and renamed. Only then do the new files take
 //! their names and the old ones go. Anything written before a failure is deleted again.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use crate::image::{BgraImage, BgraView};
@@ -216,12 +216,21 @@ fn store_steps(
         .flat_map(|(mask, savestate)| std::iter::once(mask).chain(savestate))
         .filter_map(|path| inside(path))
         .collect();
-    let taken = |name: &str| root.join(name).exists() && (!replaced.contains(name) || kept.contains(name));
-    // Names given in this write, which the folder doesn't have yet
+    // The folder's files by their names in lowercase. Names that differ only in case are one
+    // file on some systems, like Windows, so a library copied there couldn't have both: a new
+    // file gets a number instead.
+    let existing: HashMap<String, String> = (std::fs::read_dir(&root).into_iter().flatten().flatten())
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
+        .map(|name| (name.to_lowercase(), name))
+        .collect();
+    let taken = |name: &str| {
+        (existing.get(&name.to_lowercase())).is_some_and(|actual| !replaced.contains(actual) || kept.contains(actual))
+    };
+    // Names given in this write, which the folder doesn't have yet, in lowercase too
     let mut given: HashSet<String> = HashSet::new();
     let mut free = |wanted: String| {
-        let name = unique_file_name(&wanted, |name| given.contains(name) || taken(name));
-        given.insert(name.clone());
+        let name = unique_file_name(&wanted, |name| given.contains(&name.to_lowercase()) || taken(name));
+        given.insert(name.to_lowercase());
         name
     };
     let mut pending = Pending::default();
@@ -299,9 +308,16 @@ fn write_library(
     pending: Pending,
     in_use: &[PathBuf],
 ) -> Result<(), PresetError> {
-    let used = library_files(&now.splits);
+    // Compared as the files they are, since names written in another case can be the same file,
+    // like on Windows
+    let file = |name: &String| {
+        let path = folder.join(name);
+        std::fs::canonicalize(&path).unwrap_or(path)
+    };
+    let used: HashSet<PathBuf> = library_files(&now.splits).iter().map(file).collect();
     // Only in the library's own folder
-    let unused: Vec<PathBuf> = (library_files(&before.splits).difference(&used))
+    let unused: Vec<PathBuf> = (library_files(&before.splits).iter())
+        .filter(|old| !used.contains(&file(old)))
         .map(|old| folder.join(old))
         .filter(|path| path.parent().is_some_and(|parent| parent == folder) && path.is_file())
         .collect();
