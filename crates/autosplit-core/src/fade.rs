@@ -13,9 +13,12 @@ const MAX_DISTANCE: f64 = 441.672_955_930_063_7; // 255 * sqrt(3)
 /// How much further from the color than the current frame a fade has to have started, at least.
 /// Lower thresholds ask for more: their `1 - threshold`.
 const MIN_FADE_DEPTH: f64 = 0.08;
-/// The most one sample may make of a fade. A cut makes all of it in one, and a cut that a capture
-/// card blends over a frame half of it.
+/// The most one sample may make of a fade, in the last steps to the threshold. A cut makes all of
+/// it in one, and a cut that a capture card blends over a frame half of it.
 const MAX_STEP_SHARE: f64 = 0.4;
+/// The steps to the threshold that [`MAX_STEP_SHARE`] applies to. Earlier steps can be big, like
+/// when something dark crosses a small region as the fade starts.
+const ARRIVAL_STEPS: usize = 3;
 /// How far a fade may go back from one sample to the next, like a game's fades sometimes do.
 const MAX_DIP: f64 = 0.03;
 const MIN_SAMPLE_INTERVAL: Duration = Duration::from_millis(50);
@@ -63,8 +66,9 @@ pub(crate) fn similarity(color: [u8; 3], capture: &BgraImage, mask: Option<&Mask
 /// Watches a fade image's similarity over time, to tell a fade to its color from a cut.
 ///
 /// The similarity is sampled every quarter of the fade time, between 50 and 100 ms. A frame at
-/// the threshold is a fade when the samples before it came closer to the color step by step, no
-/// step making more than 40% of the way. A cut makes all of the way in one step.
+/// the threshold is a fade when the samples before it came closer to the color step by step, none
+/// of the last three steps to the threshold making more than 40% of the way. A cut makes all of
+/// the way in one step.
 #[derive(Clone, Debug, Default)]
 pub struct FadeTracker {
     /// When each sample was taken, and its similarity.
@@ -105,7 +109,13 @@ impl FadeTracker {
         let start = (1..way.len()).rev().find(|&i| way[i] < way[i - 1] - MAX_DIP).unwrap_or(0);
         let way = &way[start..];
         let depth = similarity - way.iter().copied().fold(f64::INFINITY, f64::min);
-        let largest_step = way.windows(2).map(|pair| pair[1] - pair[0]).fold(0.0, f64::max);
+        // The steps into the first sample at the threshold. Later ones stay at the color, after a
+        // cut too.
+        let Some(arrival) = way.iter().position(|sample| *sample >= threshold).filter(|&arrival| arrival > 0) else {
+            return false;
+        };
+        let last_steps = &way[arrival.saturating_sub(ARRIVAL_STEPS)..=arrival];
+        let largest_step = last_steps.windows(2).map(|pair| pair[1] - pair[0]).fold(0.0, f64::max);
         depth >= MIN_FADE_DEPTH.max(1.0 - threshold) && largest_step <= MAX_STEP_SHARE * depth
     }
 }

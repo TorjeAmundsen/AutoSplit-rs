@@ -211,9 +211,9 @@ impl Draft {
             SplitEdit::Name(name) => split.name = name,
             SplitEdit::Mask(mask) => split.mask = mask,
             // The default isn't written, so the preset keeps following it
-            // Two decimals, like the spin boxes and the profile's defaults
+            // Three decimals, like the spin box, for fade images that need 0.995
             SplitEdit::Threshold(threshold) => {
-                split.threshold = threshold.map(|threshold| (threshold.clamp(0.0, 1.0) * 100.0).round() / 100.0);
+                split.threshold = threshold.map(|threshold| (threshold.clamp(0.0, 1.0) * 1000.0).round() / 1000.0);
             }
             SplitEdit::Pause(pause) => split.pause = pause.map(|pause| (pause.max(0.0) * 100.0).round() / 100.0),
             SplitEdit::Delay(delay) => split.delay = delay.map(|delay| delay.max(0.0).round() as u32),

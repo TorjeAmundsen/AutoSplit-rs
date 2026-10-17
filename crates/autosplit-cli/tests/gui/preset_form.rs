@@ -98,7 +98,7 @@ fn a_new_preset_can_be_saved() {
 
 #[test_case(None => None; "the profile's")]
 #[test_case(Some(0.95) => Some(0.95); "its own, also like the profile's")]
-#[test_case(Some(0.934) => Some(0.93); "rounded like the spin box")]
+#[test_case(Some(0.9954) => Some(0.995); "rounded like the spin box")]
 #[test_case(Some(1.5) => Some(1.0); "at most 1")]
 fn thresholds_are_the_splits_own_or_the_profiles(threshold: Option<f64>) -> Option<f64> {
     // Arrange

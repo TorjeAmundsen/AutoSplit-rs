@@ -101,8 +101,9 @@ fn is_default_livesplit_one_port(port: &u16) -> bool {
 }
 
 /// Levels each channel of a fade image's color may be off by default, which covers capture
-/// setups whose colors are a little off, like analog ones.
-pub const DEFAULT_FADE_COLOR_TOLERANCE: i64 = 10;
+/// setups whose colors are a little off, like analog ones: a GV-USB2 shows OoT's #a0a0a0 with
+/// blue 11 levels low.
+pub const DEFAULT_FADE_COLOR_TOLERANCE: i64 = 15;
 
 fn is_default_fade_color_tolerance(tolerance: &i64) -> bool {
     *tolerance == DEFAULT_FADE_COLOR_TOLERANCE

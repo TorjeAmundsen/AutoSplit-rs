@@ -38,6 +38,14 @@ const CUT: [f64; 120] = {
     trace
 };
 
+/// Similarities against #a0a0a0 of a strip at the bottom of an analog capture (GV-USB2), one
+/// per frame the game draws at 20 FPS, with a fade color tolerance of 15. Something dark crosses
+/// the strip as the fade starts (at 10), so the fade's first steps are big.
+const STRIP_FADE: [f64; 22] = [
+    0.826, 0.827, 0.833, 0.848, 0.857, 0.869, 0.874, 0.885, 0.893, 0.897, 0.769, 0.832, 0.880, 0.909, 0.925, 0.937,
+    0.945, 0.954, 0.965, 0.975, 0.988, 0.996,
+];
+
 /// The first frame of `trace`, played at 60 FPS, that a fade reached `threshold` on.
 fn first_fade(trace: &[f64], threshold: f64, fade_time: i64) -> Option<usize> {
     let mut tracker = FadeTracker::default();
@@ -107,6 +115,36 @@ fn cut_blended_over_one_frame_is_not_a_fade() {
     // Arrange
     let mut trace = vec![0.8; 60];
     trace.push(0.9);
+    trace.extend([1.0; 60]);
+
+    // Act
+    let found = first_fade(&trace, 0.97, 1000);
+
+    // Assert
+    assert_eq!(found, None);
+}
+
+#[test]
+fn fade_with_big_first_steps_is_found_on_its_last_frame() {
+    // Arrange: each game frame shown for 3 capture frames, starting at each of them
+    let traces = [0, 1, 2].map(|phase| {
+        let mut trace = vec![STRIP_FADE[0]; 30 + phase];
+        trace.extend(STRIP_FADE.iter().flat_map(|similarity| [*similarity; 3]));
+        (30 + phase, trace)
+    });
+
+    // Act
+    let found = traces.map(|(start, trace)| first_fade(&trace, 0.995, 1000).map(|frame| (frame - start) / 3));
+
+    // Assert
+    assert_eq!(found, [Some(21); 3]);
+}
+
+#[test]
+fn cut_blended_over_two_frames_is_not_a_fade() {
+    // Arrange
+    let mut trace = vec![0.8; 60];
+    trace.extend([0.87, 0.93]);
     trace.extend([1.0; 60]);
 
     // Act
