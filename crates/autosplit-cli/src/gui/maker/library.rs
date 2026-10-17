@@ -24,6 +24,9 @@ pub(super) struct Library {
     /// Where the card being dragged would go in the split list, which it shows instead. Some
     /// while a card is dragged, with none while it's not over the list.
     dragging: Option<Option<usize>>,
+    /// Where the pointer last was in Make Split Images while a card is dragged, to find what's
+    /// under it again as the split list scrolls under it.
+    drag_point: Option<(f32, f32)>,
     /// The ready-made split shown in full, by its place among the game's.
     chosen: Option<usize>,
 }
@@ -138,6 +141,12 @@ impl Gui {
         });
         on!(weak, library, on_card_dragged, (_index, x, y) gui => gui.card_dragged(x, y));
         on!(weak, library, on_card_dropped, (index) gui => gui.card_dropped(index as usize));
+        on!(weak, maker, on_drag_scrolled, () gui => {
+            let point = gui.maker.borrow().library.drag_point;
+            if let Some((x, y)) = point {
+                gui.drag_over_list(x, y);
+            }
+        });
         on!(weak, library, on_chosen, (index) gui => gui.maker.borrow_mut().library.chosen = Some(index as usize));
         on!(weak, library, on_search_edited, (_text) gui => gui.refresh_library());
         on!(weak, library, on_close_clicked, () gui => gui.close_library());
@@ -206,10 +215,12 @@ impl Gui {
         let mut maker = self.maker.borrow_mut();
         maker.library.hovering = None;
         maker.library.dragging = None;
+        maker.library.drag_point = None;
         drop(maker);
         let window = &self.windows.library;
         window.set_drag_reset(window.get_drag_reset().wrapping_add(1));
         self.windows.maker.set_drop_line(-1);
+        self.windows.maker.invoke_drag_ended();
     }
 
     /// Keeps an open Split Library on the preset being edited, its game and which splits it
@@ -315,14 +326,27 @@ impl Gui {
         // Over Split Library itself, which is in front
         let over_itself =
             inside_x >= 0.0 && inside_y >= 0.0 && inside_x < size.width as f32 && inside_y < size.height as f32;
-        let gap = if over_itself || !to.is_visible() {
-            -1
-        } else {
-            let (from_at, to_at, to_scale) = (inside_position(from), inside_position(to), to.scale_factor());
-            let maker_x = (from_at.x as f32 + inside_x - to_at.x as f32) / to_scale;
-            let maker_y = (from_at.y as f32 + inside_y - to_at.y as f32) / to_scale;
-            self.windows.maker.invoke_drop_gap(maker_x, maker_y)
-        };
+        if over_itself || !to.is_visible() {
+            self.maker.borrow_mut().library.drag_point = None;
+            self.windows.maker.invoke_drag_ended();
+            return self.drag_at(-1);
+        }
+        let (from_at, to_at, to_scale) = (inside_position(from), inside_position(to), to.scale_factor());
+        let maker_x = (from_at.x as f32 + inside_x - to_at.x as f32) / to_scale;
+        let maker_y = (from_at.y as f32 + inside_y - to_at.y as f32) / to_scale;
+        self.maker.borrow_mut().library.drag_point = Some((maker_x, maker_y));
+        self.drag_over_list(maker_x, maker_y);
+    }
+
+    /// The card being dragged is at `x` and `y` in Make Split Images, which scrolls its split list
+    /// when that's near its edge: where it would go there.
+    fn drag_over_list(&self, x: f32, y: f32) {
+        let gap = self.windows.maker.invoke_drag_over(x, y);
+        self.drag_at(gap);
+    }
+
+    /// The card being dragged is over `gap` of the split list, or -1 for none: where it would go.
+    fn drag_at(&self, gap: i32) {
         let mut maker = self.maker.borrow_mut();
         let place =
             (maker.edit.as_ref()).zip(usize::try_from(gap).ok()).map(|(edit, gap)| edit.draft().drop_place(gap));
@@ -333,7 +357,11 @@ impl Gui {
 
     /// The card being dragged was let go: its split goes where the line shows, if anywhere.
     fn card_dropped(&self, index: usize) {
-        let place = self.maker.borrow_mut().library.dragging.take().flatten();
+        let mut maker = self.maker.borrow_mut();
+        maker.library.drag_point = None;
+        let place = maker.library.dragging.take().flatten();
+        drop(maker);
+        self.windows.maker.invoke_drag_ended();
         self.show_insert_line();
         if let Some(place) = place {
             self.import_at(index, place, false);

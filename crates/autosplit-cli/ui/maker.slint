@@ -167,6 +167,55 @@ export component MakerWindow inherits Window {
         root.split-chosen(index);
     }
 
+    // While a split from Split Library is dragged near the split list's top or bottom edge, the
+    // list scrolls that way, -1 up or 1 down, and says so, so the line follows what's under the
+    // pointer. 0 while it's not.
+    property <int> drag-edge;
+    callback drag-scrolled();
+    // How fast it scrolls, and when it last did, so each step goes as far as the time since
+    // the one before, however late a step comes
+    property <length> drag-speed-per-second: 520px;
+    property <duration> drag-scrolled-at;
+
+    changed drag-edge => {
+        root.drag-scrolled-at = animation-tick();
+    }
+
+    // How near the list's top or bottom edge a dragged split scrolls it: a row and a half
+    property <length> drag-edge-zone: root.row-height * 1.5;
+
+    // A split from Split Library is dragged with the pointer at `x` and `y` in the window: the
+    // list scrolls while it's near the list's top or bottom edge. Returns the gap under it, like
+    // drop-gap.
+    public function drag-over(x: length, y: length) -> int {
+        let gap = root.drop-gap(x, y);
+        let inside = y - list.absolute-position.y;
+        root.drag-edge = gap < 0 ? 0 : inside < root.drag-edge-zone ? -1 : inside > list.visible-height - root.drag-edge-zone ? 1 : 0;
+        gap
+    }
+
+    // The drag ended, or left the list: the list stops scrolling
+    public function drag-ended() {
+        root.drag-edge = 0;
+    }
+
+    // Often, so it scrolls smoothly on fast screens
+    Timer {
+        interval: 8ms;
+        running: root.drag-edge != 0;
+        triggered => {
+            let now = animation-tick();
+            // At least the timer's own time, in case the tick hasn't moved on since no frame was
+            // drawn, and at most a few frames' worth after a stall
+            let elapsed = clamp(now - root.drag-scrolled-at, 8ms, 50ms);
+            root.drag-scrolled-at = now;
+            let lowest = min(0px, list.visible-height - root.rows.length * root.row-height);
+            let step = root.drag-speed-per-second * (elapsed / 1s);
+            list.content-y = clamp(list.content-y - root.drag-edge * step, lowest, 0px);
+            root.drag-scrolled();
+        }
+    }
+
     // The gap between rows of the split list nearest to `x` and `y` in the window, from 0 above
     // the first to the number of rows below the last, or -1 when they're outside the list
     public function drop-gap(x: length, y: length) -> int {
