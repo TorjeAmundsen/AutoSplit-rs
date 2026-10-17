@@ -18,6 +18,9 @@ pub(super) struct Entry {
     /// The live capture as the window opened, for base images of splits without a grab or
     /// screenshot, so the one saved is the one shown.
     live: Option<Pixels>,
+    /// Pictures chosen for the base images, by the image's place in the ready-made split, with
+    /// their files. They come before anything else.
+    pictures: HashMap<usize, (PathBuf, BgraImage)>,
 }
 
 /// A ready-made split being edited, as it was when the window opened: the library can change
@@ -31,14 +34,40 @@ struct Edited {
 
 /// An image of the ready-made split as it would be written, with where its base image is from.
 struct Planned {
-    step: NewStep,
+    split: PresetSplit,
+    mask: PathBuf,
+    savestate: Option<PathBuf>,
+    /// None while there's nothing to make its base image from, which a picture can be chosen for.
+    screenshot: Option<BgraImage>,
     source: String,
+}
+
+impl Planned {
+    /// What's written, once it has something to make its base image from.
+    fn step(self) -> Option<NewStep> {
+        let Self { split, mask, savestate, screenshot, .. } = self;
+        Some(NewStep { split, mask, savestate, screenshot: screenshot? })
+    }
+}
+
+/// What to do about the first of `planned` without a base image, if any.
+fn missing_picture(planned: &[Planned]) -> Option<String> {
+    let split = &planned.iter().find(|planned| planned.screenshot.is_none())?.split;
+    Some(format!(
+        "{} needs a picture for its base image. Choose one with Picture..., or give the split a grab or screenshot.",
+        library_heading(split)
+    ))
 }
 
 /// The live capture's latest frame as an image, for a base image without a grab or screenshot.
 fn frame_image(pixels: &Pixels) -> BgraImage {
     let bgra = pixels.as_bytes().as_chunks::<4>().0.iter().flat_map(|&[r, g, b, _]| [b, g, r, 255]).collect();
     BgraImage::from_raw(pixels.width() as usize, pixels.height() as usize, bgra)
+}
+
+/// Where a base image chosen as a picture is from.
+fn picked_from(path: &Path) -> String {
+    format!("Base image from {}", file_name_text(path).unwrap_or_default())
 }
 
 /// A base image as a picture.
@@ -57,6 +86,13 @@ impl Gui {
         on!(weak, library, on_delete_entry, (index) gui => gui.ask_delete_entry(index as usize));
         let entry = &self.windows.entry;
         on!(weak, entry, on_images_edited, (_images) gui => gui.show_entry());
+        on!(weak, entry, on_pick_picture, (index) gui => gui.pick_picture(index as usize));
+        on!(weak, entry, on_clear_picture, (index) gui => {
+            if let Some(entry) = gui.maker.borrow_mut().entry.as_mut() {
+                entry.pictures.remove(&(index as usize));
+            }
+            gui.show_entry();
+        });
         on!(weak, entry, on_replace_toggled, (_replace) gui => gui.show_entry());
         on!(weak, entry, on_save, () gui => gui.save_entry());
         on!(weak, entry, on_cancel, () gui => gui.close_entry());
@@ -89,10 +125,32 @@ impl Gui {
         window.set_images(1.0);
         window.set_description_text(description.into());
         window.set_game(game.trim().into());
-        self.maker.borrow_mut().entry = Some(Entry { editing, live });
+        self.maker.borrow_mut().entry = Some(Entry { editing, live, pictures: HashMap::new() });
         self.show_entry();
         super::super::fit_window(window.window(), window.get_fitted_width(), window.get_fitted_height());
         self.show_window(window.window());
+    }
+
+    /// Asks for a picture for the base image of the image at `index`. It has to read as a PNG.
+    fn pick_picture(self: &Rc<Self>, index: usize) {
+        let folder = self.maker.borrow().edit.as_ref().and_then(|edit| edit.source().map(Path::to_owned));
+        let mut picker = self.file_dialog_over("Select Base Image", self.windows.entry.window());
+        picker = picker.add_filter("PNG image", &["png"]);
+        if let Some(folder) = folder {
+            picker = picker.set_directory(folder);
+        }
+        self.when_picked(picker.pick_file(), move |gui, path| {
+            let image = match BgraImage::open_png(&path) {
+                Ok(image) => image,
+                Err(error) => {
+                    return gui.show_message(Message::error(format!("Couldn't read {}: {error}", path.display())));
+                }
+            };
+            if let Some(entry) = gui.maker.borrow_mut().entry.as_mut() {
+                entry.pictures.insert(index, (path, image));
+            }
+            gui.show_entry();
+        });
     }
 
     /// Keeps an open entry window on the selected splits.
@@ -109,8 +167,9 @@ impl Gui {
     }
 
     /// The images the ready-made split is made of: the selected split and as many after it as
-    /// the window says, each with its mask and a base image from its grab or screenshot, or the
-    /// live capture as the window opened. Or what's missing.
+    /// the window says, each with its mask and a base image from a chosen picture, its grab or
+    /// screenshot, or the live capture as the window opened, or none yet. Or what's missing that
+    /// a picture can't fix, like a mask.
     fn planned_steps(&self) -> Result<Vec<Planned>, String> {
         let images = self.windows.entry.get_images().max(1.0) as usize;
         let maker = self.maker.borrow();
@@ -121,8 +180,9 @@ impl Gui {
         if selected >= preset.splits.len() {
             return Err("Select the split to make it from in Make Split Images.".to_owned());
         }
+        let pictures = maker.entry.as_ref().map(|entry| &entry.pictures);
         let mut planned = Vec::new();
-        for (index, split) in preset.splits.iter().enumerate().skip(selected).take(images) {
+        for (place, (index, split)) in preset.splits.iter().enumerate().skip(selected).take(images).enumerate() {
             if split.mask.is_empty() {
                 return Err(format!("{} needs a mask first.", library_heading(split)));
             }
@@ -134,28 +194,25 @@ impl Gui {
                     return Err(format!("{} uses {}, which doesn't exist.", library_heading(split), path.display()));
                 }
             }
+            let picture = pictures.and_then(|pictures| pictures.get(&place));
             let source = maker.splits.get(index).and_then(|work| work.source.clone());
             let live = maker.entry.as_ref().and_then(|entry| entry.live.as_ref());
-            let (screenshot, from) = match (source, live) {
-                (Some(source), _) => {
+            let (screenshot, from) = match (picture, source, live) {
+                (Some((path, image)), _, _) => (Some(image.clone()), picked_from(path)),
+                (None, Some(source), _) => {
                     let from = match &source {
                         Source::File(path) => {
                             format!("Base image from its screenshot {}", file_name_text(path).unwrap_or_default())
                         }
                         Source::Grabbed(_) => "Base image from its grab".to_owned(),
                     };
-                    (source.image().map_err(|error| error.to_string())?.as_ref().clone(), from)
+                    (Some(source.image().map_err(|error| error.to_string())?.as_ref().clone()), from)
                 }
-                (None, Some(frame)) => (frame_image(frame), "Base image from the live capture".to_owned()),
-                (None, None) => {
-                    return Err(format!(
-                        "{} has no grab or screenshot, and there's no live capture, to make its base image from.",
-                        library_heading(split)
-                    ));
-                }
+                (None, None, Some(frame)) => (Some(frame_image(frame)), "Base image from the live capture".to_owned()),
+                // Shown without one, so a picture can be chosen for it
+                (None, None, None) => (None, "No picture for its base image yet".to_owned()),
             };
-            let step = NewStep { split: split.clone(), mask, savestate, screenshot };
-            planned.push(Planned { step, source: from });
+            planned.push(Planned { split: split.clone(), mask, savestate, screenshot, source: from });
         }
         Ok(planned)
     }
@@ -170,7 +227,8 @@ impl Gui {
         let game = preset.game.clone();
         let most = preset.splits.len().saturating_sub(maker.selected).clamp(1, 8);
         let kept = entry.editing.as_ref().filter(|_| !window.get_replace());
-        let step_row = |split: &PresetSplit, thumb: slint::Image, source: String| {
+        let picked: Vec<usize> = entry.pictures.keys().copied().collect();
+        let step_row = |place: usize, split: &PresetSplit, thumb: slint::Image, source: String| {
             let file = library_file_name(split, Some(&defaults));
             EntryStep {
                 heading: library_heading(split).into(),
@@ -178,14 +236,18 @@ impl Gui {
                 file_parts: library_file_parts(&file),
                 file: file.into(),
                 source: source.into(),
+                picked: picked.contains(&place),
             }
         };
-        // Kept as they are, only the description changes
+        // Kept as they are, only the description changes, and a base image a picture is chosen for
         let kept_rows: Option<Vec<EntryStep>> = kept.map(|edited| {
-            (edited.steps.iter())
-                .map(|step| {
-                    let thumb = maker.library.thumb(&edited.folder, &step.base_image).unwrap_or_default();
-                    step_row(&step.split, thumb, "Kept as it is".to_owned())
+            (edited.steps.iter().enumerate())
+                .map(|(place, step)| match entry.pictures.get(&place) {
+                    Some((path, image)) => step_row(place, &step.split, base_picture(image), picked_from(path)),
+                    None => {
+                        let thumb = maker.library.thumb(&edited.folder, &step.base_image).unwrap_or_default();
+                        step_row(place, &step.split, thumb, "Kept as it is".to_owned())
+                    }
                 })
                 .collect()
         });
@@ -194,12 +256,14 @@ impl Gui {
             Some(rows) => (rows, String::new()),
             None => match self.planned_steps() {
                 Ok(planned) => {
-                    let rows = (planned.into_iter())
-                        .map(|planned| {
-                            step_row(&planned.step.split, base_picture(&planned.step.screenshot), planned.source)
+                    let problem = missing_picture(&planned).unwrap_or_default();
+                    let rows = (planned.into_iter().enumerate())
+                        .map(|(place, planned)| {
+                            let thumb = planned.screenshot.as_ref().map(base_picture).unwrap_or_default();
+                            step_row(place, &planned.split, thumb, planned.source)
                         })
                         .collect();
-                    (rows, String::new())
+                    (rows, problem)
                 }
                 Err(problem) => (Vec::new(), problem),
             },
@@ -223,9 +287,15 @@ impl Gui {
         let window = &self.windows.entry;
         let description = window.get_description_text().trim().to_owned();
         let steps = match (&editing, window.get_replace()) {
-            (Some(_), false) => None,
+            (Some((folder, _, kept)), false) => match self.kept_steps(folder, kept) {
+                Ok(steps) => steps,
+                Err(problem) => return self.show_message(Message::error(problem)),
+            },
             _ => match self.planned_steps() {
-                Ok(planned) => Some(planned.into_iter().map(|planned| planned.step).collect()),
+                Ok(planned) => match missing_picture(&planned) {
+                    Some(problem) => return self.show_message(Message::error(problem)),
+                    None => Some(planned.into_iter().filter_map(Planned::step).collect()),
+                },
                 Err(problem) => return self.show_message(Message::error(problem)),
             },
         };
@@ -242,6 +312,35 @@ impl Gui {
         self.close_entry();
         self.read_library();
         self.refresh_library();
+    }
+
+    /// The images of a ready-made split being edited, kept as they are but for base images a
+    /// picture is chosen for, or none when nothing but the description changes.
+    fn kept_steps(&self, folder: &Path, kept: &[LibrarySplit]) -> Result<Option<Vec<NewStep>>, String> {
+        let maker = self.maker.borrow();
+        let Some(entry) = &maker.entry else { return Ok(None) };
+        if entry.pictures.is_empty() {
+            return Ok(None);
+        }
+        let mut steps = Vec::new();
+        for (place, step) in kept.iter().enumerate() {
+            let screenshot = match entry.pictures.get(&place) {
+                Some((_, image)) => image.clone(),
+                // The base image it has, which is written again as it is
+                None => BgraImage::open_png(&folder.join(&step.base_image)).map_err(|error| {
+                    let name = library_heading(&step.split);
+                    format!("{name}'s base image can't be read, so choose a picture for it: {error}")
+                })?,
+            };
+            let savestate = (!step.split.savestate.is_empty()).then(|| folder.join(&step.split.savestate));
+            steps.push(NewStep {
+                split: step.split.clone(),
+                mask: folder.join(&step.split.mask),
+                savestate,
+                screenshot,
+            });
+        }
+        Ok(Some(steps))
     }
 
     /// The masks and savestates of the preset being edited, which it takes from where they are

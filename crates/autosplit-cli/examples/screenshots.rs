@@ -487,9 +487,15 @@ Replace them?",
         file_parts: library_file_parts(name),
         file: name.into(),
         source: source.into(),
+        picked: source.starts_with("Base image from base_"),
     };
     let steps = vec![
-        entry_step("Ganon intro", "base_collapse_cs.png", "XX_Ganon intro_{d}.png", "Base image from its grab"),
+        entry_step(
+            "Ganon intro",
+            "base_collapse_cs.png",
+            "XX_Ganon intro_{d}.png",
+            "Base image from base_ganon_intro.png",
+        ),
         entry_step("Ganon", "base_ganon.png", "XX_Ganon_(0.92).png", "Base image from the live capture"),
     ];
     entry.set_game("The Legend of Zelda: Ocarina of Time".into());

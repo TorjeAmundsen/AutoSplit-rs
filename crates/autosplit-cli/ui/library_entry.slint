@@ -16,6 +16,8 @@ export struct EntryStep {
     file: string,
     // Where its base image comes from, or what's missing
     source: string,
+    // Its base image is a picture chosen for it, instead of the split's grab or screenshot
+    picked: bool,
 }
 
 export component LibraryEntryWindow inherits Window {
@@ -48,6 +50,9 @@ export component LibraryEntryWindow inherits Window {
     // What has to be fixed before saving, or empty
     in property <string> problem;
     callback images-edited(float);
+    // A picture is chosen for the base image of the image at this place, or that's undone
+    callback pick-picture(int);
+    callback clear-picture(int);
     callback replace-toggled(bool);
     callback save();
     callback cancel();
@@ -119,8 +124,9 @@ export component LibraryEntryWindow inherits Window {
             }
         }
 
-        // Each image as it's written: its base image, name, file name and where the picture's from
-        for step in root.steps: HorizontalLayout {
+        // Each image as it's written: its base image, name, file name and where the picture's from,
+        // with another picture to choose for it
+        for step[index] in root.steps: HorizontalLayout {
             spacing: 10px;
 
             VerticalLayout {
@@ -173,6 +179,25 @@ export component LibraryEntryWindow inherits Window {
                     color: Theme.secondary-text;
                     text: step.source;
                     overflow: elide;
+                }
+            }
+
+            VerticalLayout {
+                alignment: center;
+                spacing: 4px;
+
+                Button {
+                    width: 70px;
+                    text: "Picture...";
+                    clicked => { root.pick-picture(index); }
+                    tip: "Choose a screenshot for its base image, instead of the split's grab or screenshot";
+                }
+
+                if step.picked: Button {
+                    width: 70px;
+                    text: "Clear";
+                    clicked => { root.clear-picture(index); }
+                    tip: "Use the split's own picture again";
                 }
             }
         }
