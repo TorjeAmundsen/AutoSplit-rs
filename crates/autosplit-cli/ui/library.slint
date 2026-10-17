@@ -25,7 +25,7 @@ export struct LibraryStep {
     file: string,
 }
 
-export struct LibraryCard {
+export struct LibraryItem {
     // Its place among all the game's ready-made splits, which inserting says, whatever the search
     // shows
     ready-made: int,
@@ -173,7 +173,7 @@ export component LibraryWindow inherits Window {
     default-font-size: 12px;
     forward-focus: search;
 
-    in property <[LibraryCard]> cards;
+    in property <[LibraryItem]> items;
     // The one shown in full, by its place in the list, or -1
     in-out property <int> selected: -1;
     in-out property <string> search-text;
@@ -189,9 +189,9 @@ export component LibraryWindow inherits Window {
     // The pointer went over Insert Above or Insert Below, or left it
     callback insert-hovered(bool, bool);
     // A split is dragged, with the pointer at this place in the window, which can be outside it
-    callback card-dragged(int, length, length);
+    callback item-dragged(int, length, length);
     // The split being dragged was let go
-    callback card-dropped(int);
+    callback item-dropped(int);
     // Developer builds can change and delete what's in the library
     in property <bool> developer;
     callback edit-entry(int);
@@ -204,12 +204,12 @@ export component LibraryWindow inherits Window {
     callback close-clicked();
 
     property <length> row-height: 26px;
-    property <bool> has-card: root.selected >= 0 && root.selected < root.cards.length;
-    property <LibraryCard> card: root.has-card ? root.cards[root.selected] : { };
+    property <bool> has-item: root.selected >= 0 && root.selected < root.items.length;
+    property <LibraryItem> item: root.has-item ? root.items[root.selected] : { };
 
     // The focus goes to the list, on the chosen split
     function to-list() {
-        if (root.cards.length > 0) {
+        if (root.items.length > 0) {
             list-keys.focus();
             root.choose(max(root.selected, 0));
         }
@@ -218,7 +218,7 @@ export component LibraryWindow inherits Window {
     // Shows split `index` in full, scrolled into view in the list
     function choose(index: int) {
         root.selected = index;
-        root.chosen(root.cards[index].ready-made);
+        root.chosen(root.items[index].ready-made);
         if (index * root.row-height < -list.content-y) {
             list.content-y = -index * root.row-height;
         }
@@ -235,7 +235,7 @@ export component LibraryWindow inherits Window {
         FocusScope {
             height: 24px;
             capture-key-pressed(event) => {
-                if (event.text == Key.DownArrow && root.cards.length > 0) {
+                if (event.text == Key.DownArrow && root.items.length > 0) {
                     root.to-list();
                     return accept;
                 }
@@ -272,15 +272,15 @@ export component LibraryWindow inherits Window {
                     accessible-role: AccessibleRole.list;
                     accessible-label: "Ready-made splits";
                     key-pressed(event) => {
-                        if (event.text == Key.Return && root.has-card && root.card.blocker == "") {
-                            root.insert(root.card.ready-made, false);
+                        if (event.text == Key.Return && root.has-item && root.item.blocker == "") {
+                            root.insert(root.item.ready-made, false);
                             return accept;
                         }
                         if (event.text == Key.UpArrow && root.selected > 0) {
                             root.choose(root.selected - 1);
                             return accept;
                         }
-                        if (event.text == Key.DownArrow && root.selected < root.cards.length - 1) {
+                        if (event.text == Key.DownArrow && root.selected < root.items.length - 1) {
                             root.choose(root.selected + 1);
                             return accept;
                         }
@@ -288,10 +288,10 @@ export component LibraryWindow inherits Window {
                     }
 
                     list := ScrollView {
-                        content-height: root.cards.length * root.row-height;
+                        content-height: root.items.length * root.row-height;
                         content-width: self.visible-width;
 
-                        for card[index] in root.cards: row := Rectangle {
+                        for item[index] in root.items: row := Rectangle {
                             property <bool> dragging;
                             property <int> reset: root.drag-reset;
                             changed reset => {
@@ -303,7 +303,7 @@ export component LibraryWindow inherits Window {
                             height: root.row-height;
                             width: parent.width;
                             accessible-role: AccessibleRole.list-item;
-                            accessible-label: card.heading + (card.steps.length > 1 ? ", " + card.steps.length + " images" : "") + (card.in-preset-note != "" ? ". " + card.in-preset-note : "");
+                            accessible-label: item.heading + (item.steps.length > 1 ? ", " + item.steps.length + " images" : "") + (item.in-preset-note != "" ? ". " + item.in-preset-note : "");
                             accessible-item-selectable: true;
                             accessible-item-selected: index == root.selected;
                             accessible-action-default => {
@@ -328,7 +328,7 @@ export component LibraryWindow inherits Window {
                                 // windows can't be dragged between, under Wayland, rather than
                                 // grips that do nothing.
                                 if root.can-drag: Grip {
-                                    enabled: card.blocker == "";
+                                    enabled: item.blocker == "";
                                     dragging: row.dragging;
                                     pressed(x, y) => {
                                         row.press-x = x;
@@ -340,13 +340,13 @@ export component LibraryWindow inherits Window {
                                             row.dragging = true;
                                         }
                                         if (row.dragging) {
-                                            root.card-dragged(card.ready-made, x, y);
+                                            root.item-dragged(item.ready-made, x, y);
                                         }
                                     }
                                     released => {
                                         if (row.dragging) {
                                             row.dragging = false;
-                                            root.card-dropped(card.ready-made);
+                                            root.item-dropped(item.ready-made);
                                         }
                                     }
                                 }
@@ -354,30 +354,30 @@ export component LibraryWindow inherits Window {
                                 Text {
                                     horizontal-stretch: 1;
                                     vertical-alignment: center;
-                                    color: card.blocker == "" ? Theme.text : Theme.disabled-text;
-                                    text: card.heading;
+                                    color: item.blocker == "" ? Theme.text : Theme.disabled-text;
+                                    text: item.heading;
                                     overflow: elide;
                                 }
 
                                 // How many images it takes, when it's more than one
-                                if card.steps.length > 1: Text {
+                                if item.steps.length > 1: Text {
                                     vertical-alignment: center;
                                     font-size: 11px;
                                     color: Theme.secondary-text;
-                                    text: card.steps.length + " images";
+                                    text: item.steps.length + " images";
                                 }
 
                                 // In the preset already: where, as its file name starts
-                                if card.in-preset.text != "": Text {
+                                if item.in-preset.text != "": Text {
                                     vertical-alignment: center;
                                     font-size: 11px;
                                     font-weight: 600;
-                                    color: NameColors.of(card.in-preset);
-                                    text: card.in-preset.text;
+                                    color: NameColors.of(item.in-preset);
+                                    text: item.in-preset.text;
 
                                     Tooltip {
                                         Tip {
-                                            text: "Already in the preset, as " + card.in-preset-file;
+                                            text: "Already in the preset, as " + item.in-preset-file;
                                         }
                                     }
                                 }
@@ -398,7 +398,7 @@ export component LibraryWindow inherits Window {
                 // pictures stay put going through the list, then what it's for. It scrolls when
                 // the window is short, under where it goes and the buttons, which stay
                 // Why there's nothing to choose, like no match for the search
-                if !root.has-card: Text {
+                if !root.has-item: Text {
                     x: 16px;
                     width: parent.width - 32px;
                     horizontal-alignment: center;
@@ -408,7 +408,7 @@ export component LibraryWindow inherits Window {
                     text: root.empty-message;
                 }
 
-                if root.has-card: VerticalLayout {
+                if root.has-item: VerticalLayout {
                     top-scroll := ScrollView {
                         vertical-stretch: 1;
                         content-width: self.visible-width;
@@ -425,13 +425,13 @@ export component LibraryWindow inherits Window {
                                 font-size: 14px;
                                 font-weight: 600;
                                 color: Theme.text;
-                                text: root.card.heading;
+                                text: root.item.heading;
                                 overflow: elide;
                             }
 
                             // Each image at its own size, beside what it sets, numbered when there are
                             // several, in a box that keeps its place when there's no picture
-                            for step[step-index] in root.card.steps: HorizontalLayout {
+                            for step[step-index] in root.item.steps: HorizontalLayout {
                                 spacing: 10px;
 
                                 VerticalLayout {
@@ -465,7 +465,7 @@ export component LibraryWindow inherits Window {
                                     alignment: start;
                                     spacing: 3px;
 
-                                    if root.card.steps.length > 1: Text {
+                                    if root.item.steps.length > 1: Text {
                                         font-weight: 600;
                                         color: Theme.text;
                                         text: (step-index + 1) + ". " + step.heading;
@@ -478,10 +478,10 @@ export component LibraryWindow inherits Window {
                                 }
                             }
 
-                            if root.card.description != "": Text {
+                            if root.item.description != "": Text {
                                 wrap: word-wrap;
                                 color: Theme.text;
-                                text: root.card.description;
+                                text: root.item.description;
                             }
                         }
                     }
@@ -496,16 +496,16 @@ export component LibraryWindow inherits Window {
 
                     // Said once, over the buttons it's about: why they're off, or that inserting
                     // it would make a second one
-                    if root.card.blocker != "": Text {
+                    if root.item.blocker != "": Text {
                         wrap: word-wrap;
                         color: Theme.error;
-                        text: root.card.blocker;
+                        text: root.item.blocker;
                     }
 
-                    if root.card.blocker == "" && root.card.in-preset-note != "": Text {
+                    if root.item.blocker == "" && root.item.in-preset-note != "": Text {
                         wrap: word-wrap;
                         color: Theme.secondary-text;
-                        text: root.card.in-preset-note;
+                        text: root.item.in-preset-note;
                     }
 
                     HorizontalLayout {
@@ -515,19 +515,19 @@ export component LibraryWindow inherits Window {
                         Button {
                             width: 100px;
                             text: "Insert Above";
-                            enabled: root.card.blocker == "";
-                            clicked => { root.insert(root.card.ready-made, true); }
+                            enabled: root.item.blocker == "";
+                            clicked => { root.insert(root.item.ready-made, true); }
                             changed hovered => { root.insert-hovered(true, self.hovered); }
-                            tip: (root.card.steps.length > 1 ? "Insert its " + root.card.steps.length + " images" : "Insert it") + " above the selected split, which stays selected, so the next one goes between them";
+                            tip: (root.item.steps.length > 1 ? "Insert its " + root.item.steps.length + " images" : "Insert it") + " above the selected split, which stays selected, so the next one goes between them";
                         }
 
                         Button {
                             width: 100px;
                             text: "Insert Below";
-                            enabled: root.card.blocker == "";
-                            clicked => { root.insert(root.card.ready-made, false); }
+                            enabled: root.item.blocker == "";
+                            clicked => { root.insert(root.item.ready-made, false); }
                             changed hovered => { root.insert-hovered(false, self.hovered); }
-                            tip: (root.card.steps.length > 1 ? "Insert its " + root.card.steps.length + " images" : "Insert it") + " below the selected split and select it, so the next one goes after it";
+                            tip: (root.item.steps.length > 1 ? "Insert its " + root.item.steps.length + " images" : "Insert it") + " below the selected split and select it, so the next one goes after it";
                         }
 
                     }
@@ -560,17 +560,17 @@ export component LibraryWindow inherits Window {
 
             // Changing the library itself, in developer builds, down here where there's room for
             // them at any width
-            if root.developer && root.has-card: Button {
+            if root.developer && root.has-item: Button {
                 width: 60px;
                 text: "Edit...";
-                clicked => { root.edit-entry(root.card.ready-made); }
+                clicked => { root.edit-entry(root.item.ready-made); }
                 tip: "Change its description, or replace it with the splits selected in Make Split Images";
             }
 
-            if root.developer && root.has-card: Button {
+            if root.developer && root.has-item: Button {
                 width: 70px;
                 text: "Delete...";
-                clicked => { root.delete-entry(root.card.ready-made); }
+                clicked => { root.delete-entry(root.item.ready-made); }
                 tip: "Delete it from the split library, with the files nothing else uses";
             }
 

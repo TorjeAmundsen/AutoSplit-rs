@@ -8,8 +8,10 @@ use slint::winit_030::WinitWindowAccessor;
 use autosplit_core::split_image::SplitDefaults;
 
 use super::super::library_file_parts;
-use super::super::preset_form::{import_blocker, in_preset, library_file_name, library_heading, matches_search};
-use super::super::ui::{LibraryCard, LibraryStep, NamePart};
+use super::super::preset_form::{
+    InPreset, import_blocker, in_preset, library_file_name, library_heading, matches_search,
+};
+use super::super::ui::{LibraryItem, LibraryStep, NamePart};
 use super::*;
 
 /// The splits libraries, read when Split Library opens, with their base images.
@@ -21,10 +23,10 @@ pub(super) struct Library {
     /// The pointer is over Insert Above (true) or Insert Below (false), whose place the split
     /// list shows.
     hovering: Option<bool>,
-    /// Where the card being dragged would go in the split list, which it shows instead. Some
-    /// while a card is dragged, with none while it's not over the list.
+    /// Where the split being dragged would go in the split list, which it shows instead. Some
+    /// while a split is dragged, with none while it's not over the list.
     dragging: Option<Option<usize>>,
-    /// Where the pointer last was in Make Split Images while a card is dragged, to find what's
+    /// Where the pointer last was in Make Split Images while a split is dragged, to find what's
     /// under it again as the split list scrolls under it.
     drag_point: Option<(f32, f32)>,
     /// The ready-made split shown in full, by its place among the game's.
@@ -32,34 +34,28 @@ pub(super) struct Library {
 }
 
 impl Library {
-    /// The ready-made splits for `game`, each with its steps and its library's folder, in the
-    /// order the cards show them.
-    fn splits_for(&self, game: &str) -> Vec<(&Path, &[LibrarySplit])> {
+    /// The ready-made splits for `game`, in the order the list shows them, each with its
+    /// library's folder, its place among that library's, and its images.
+    fn splits_for(&self, game: &str) -> Vec<(&Path, usize, &[LibrarySplit])> {
         let key = game_key(game);
         (self.libraries.iter())
             .filter(|loaded| !key.is_empty() && game_key(&loaded.library.game) == key)
-            .flat_map(|loaded| loaded.library.ready_made().map(|steps| (loaded.folder.as_path(), steps)))
+            .flat_map(|loaded| {
+                let folder = loaded.folder.as_path();
+                loaded.library.ready_made().enumerate().map(move |(place, steps)| (folder, place, steps))
+            })
             .collect()
     }
 
     /// Where the `index`th of `game`'s ready-made splits is: its library's folder, and its place
     /// among that library's.
     pub(super) fn place_of(&self, game: &str, index: usize) -> Option<(PathBuf, usize)> {
-        let key = game_key(game);
-        let mut left = index;
-        for loaded in self.libraries.iter().filter(|loaded| !key.is_empty() && game_key(&loaded.library.game) == key) {
-            let count = loaded.library.ready_made().count();
-            if left < count {
-                return Some((loaded.folder.clone(), left));
-            }
-            left -= count;
-        }
-        None
+        self.splits_for(game).get(index).map(|&(folder, place, _)| (folder.to_owned(), place))
     }
 
     /// The `index`th of `game`'s ready-made splits, its images in order.
     pub(super) fn steps_of(&self, game: &str, index: usize) -> Option<Vec<LibrarySplit>> {
-        self.splits_for(game).get(index).map(|(_, steps)| steps.to_vec())
+        self.splits_for(game).get(index).map(|(_, _, steps)| steps.to_vec())
     }
 
     /// The picture of a base image, once it's read.
@@ -85,26 +81,21 @@ fn png_image(path: &Path) -> Option<slint::Image> {
     Some(slint::Image::from_rgba8(rgba(image.view())))
 }
 
-/// The folder with the splits library, next to the program. Builds that aren't installed use
-/// the source tree's.
+/// The folder with the split library.
 pub(super) fn splits_folder() -> PathBuf {
-    let next_to_program = exe_folder().join("splits");
-    if next_to_program.is_dir() || !cfg!(debug_assertions) {
-        return next_to_program;
-    }
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../splits")
+    bundled_folder("splits")
 }
 
-/// A ready-made split's image as its card shows it: the settings it has, or empty for the
+/// A ready-made split's image as Split Library shows it: the settings it has, or empty for the
 /// profile's `defaults`, and its file name without its number.
-fn library_step(step: &LibrarySplit, thumb: Option<&slint::Image>, defaults: &SplitDefaults) -> LibraryStep {
+fn library_step(step: &LibrarySplit, thumb: Option<slint::Image>, defaults: &SplitDefaults) -> LibraryStep {
     let split = &step.split;
     let file = library_file_name(split, Some(defaults));
     LibraryStep {
         file_parts: library_file_parts(&file),
         file: file.into(),
         heading: library_heading(split).into(),
-        thumb: thumb.cloned().unwrap_or_default(),
+        thumb: thumb.unwrap_or_default(),
         threshold: split.threshold.map(|threshold| threshold.to_string()).unwrap_or_default().into(),
         delay: split.delay.map(|delay| format!("{delay} ms")).unwrap_or_default().into(),
         pause: split.pause.map(|pause| format!("{pause} s")).unwrap_or_default().into(),
@@ -115,8 +106,8 @@ fn library_step(step: &LibrarySplit, thumb: Option<&slint::Image>, defaults: &Sp
 
 /// The start of a file name, its number or keyword, as the split list colors it, or an empty
 /// part without one.
-fn in_preset_part(in_preset: &Option<(String, String)>) -> NamePart {
-    let parts = in_preset.as_ref().map(|(file, _)| file_name_parts(file));
+fn in_preset_part(in_preset: &Option<InPreset>) -> NamePart {
+    let parts = in_preset.as_ref().map(|in_preset| file_name_parts(&in_preset.file));
     parts.and_then(|parts| parts.row_data(0)).unwrap_or_default()
 }
 
@@ -139,8 +130,8 @@ impl Gui {
             drop(maker);
             gui.show_insert_line();
         });
-        on!(weak, library, on_card_dragged, (_index, x, y) gui => gui.card_dragged(x, y));
-        on!(weak, library, on_card_dropped, (index) gui => gui.card_dropped(index as usize));
+        on!(weak, library, on_item_dragged, (_index, x, y) gui => gui.item_dragged(x, y));
+        on!(weak, library, on_item_dropped, (index) gui => gui.item_dropped(index as usize));
         on!(weak, maker, on_drag_scrolled, () gui => {
             let point = gui.maker.borrow().library.drag_point;
             if let Some((x, y)) = point {
@@ -241,31 +232,35 @@ impl Gui {
         let maker = self.maker.borrow();
         let Some(preset) = maker.edit.as_ref().map(editor::Editing::preset) else { return };
         let ready_made = maker.library.splits_for(&preset.game);
-        let cards: Vec<LibraryCard> = (ready_made.iter().enumerate())
-            .filter(|(_, (_, steps))| {
+        let items: Vec<LibraryItem> = (ready_made.iter().enumerate())
+            .filter(|(_, (_, _, steps))| {
                 let headings: Vec<String> = steps.iter().map(|step| library_heading(&step.split)).collect();
                 let names = steps.iter().map(|step| step.split.name.as_str());
                 let descriptions = steps.iter().map(|step| step.description.as_str());
                 let texts: Vec<&str> = names.chain(headings.iter().map(String::as_str)).chain(descriptions).collect();
                 matches_search(&texts, &search)
             })
-            .map(|(index, &(folder, steps))| {
+            .map(|(index, &(folder, _, steps))| {
                 let splits: Vec<PresetSplit> = steps.iter().map(|step| step.split.clone()).collect();
                 let shown: Vec<LibraryStep> = (steps.iter())
-                    .map(|step| library_step(step, maker.library.thumbs.get(&folder.join(&step.base_image)), &defaults))
+                    .map(|step| library_step(step, maker.library.thumb(folder, &step.base_image), &defaults))
                     .collect();
                 // The split it's for is its last image, which the ones before lead up to
                 let last = splits.last();
                 let in_preset = last.and_then(|last| in_preset(preset, &last.name, Some(&defaults)));
                 let description = steps.iter().map(|step| step.description.as_str()).find(|text| !text.is_empty());
-                LibraryCard {
+                LibraryItem {
                     ready_made: index as i32,
                     heading: last.map(library_heading).unwrap_or_default().into(),
                     description: description.unwrap_or_default().into(),
                     steps: ModelRc::new(VecModel::from(shown)),
                     in_preset: in_preset_part(&in_preset),
-                    in_preset_file: in_preset.as_ref().map(|(file, _)| file.as_str()).unwrap_or_default().into(),
-                    in_preset_note: in_preset.map(|(_, note)| note).unwrap_or_default().into(),
+                    in_preset_file: in_preset
+                        .as_ref()
+                        .map(|in_preset| in_preset.file.as_str())
+                        .unwrap_or_default()
+                        .into(),
+                    in_preset_note: in_preset.map(|in_preset| in_preset.note).unwrap_or_default().into(),
                     blocker: import_blocker(preset, &splits).unwrap_or_default().into(),
                 }
             })
@@ -281,20 +276,20 @@ impl Gui {
         };
         // The one shown in full stays, while it's listed, and the first is shown otherwise
         let chosen = maker.library.chosen;
-        let selected = (cards.iter().position(|card| Some(card.ready_made as usize) == chosen))
-            .or_else(|| (!cards.is_empty()).then_some(0));
+        let selected = (items.iter().position(|item| Some(item.ready_made as usize) == chosen))
+            .or_else(|| (!items.is_empty()).then_some(0));
         drop(maker);
-        self.maker.borrow_mut().library.chosen = selected.map(|selected| cards[selected].ready_made as usize);
+        self.maker.borrow_mut().library.chosen = selected.map(|selected| items[selected].ready_made as usize);
         window.set_empty_message(empty.into());
         window.set_window_title(title.into());
-        let model = window.get_cards();
-        if model.row_count() == cards.len() {
+        let model = window.get_items();
+        if model.row_count() == items.len() {
             // In place, so the list keeps its place
-            for (index, card) in cards.into_iter().enumerate() {
-                model.set_row_data(index, card);
+            for (index, item) in items.into_iter().enumerate() {
+                model.set_row_data(index, item);
             }
         } else {
-            window.set_cards(ModelRc::new(VecModel::from(cards)));
+            window.set_items(ModelRc::new(VecModel::from(items)));
         }
         window.set_selected(selected.map_or(-1, |selected| selected as i32));
         self.show_insert_line();
@@ -317,10 +312,10 @@ impl Gui {
         self.windows.maker.set_drop_line(line.map_or(-1, |line| line as i32));
     }
 
-    /// A card is dragged with the pointer at `x` and `y` in Split Library: where it would go in
+    /// A split is dragged with the pointer at `x` and `y` in Split Library: where it would go in
     /// the split list, when it's over it. Make Split Images is found from where both windows'
     /// insides are on the screen.
-    fn card_dragged(&self, x: f32, y: f32) {
+    fn item_dragged(&self, x: f32, y: f32) {
         let from = self.windows.library.window();
         // A move that comes after it's hidden, which ended the drag
         if !from.is_visible() {
@@ -344,14 +339,14 @@ impl Gui {
         self.drag_over_list(maker_x, maker_y);
     }
 
-    /// The card being dragged is at `x` and `y` in Make Split Images, which scrolls its split list
+    /// The split being dragged is at `x` and `y` in Make Split Images, which scrolls its split list
     /// when that's near its edge: where it would go there.
     fn drag_over_list(&self, x: f32, y: f32) {
         let gap = self.windows.maker.invoke_drag_over(x, y);
         self.drag_at(gap);
     }
 
-    /// The card being dragged is over `gap` of the split list, or -1 for none: where it would go.
+    /// The split being dragged is over `gap` of the split list, or -1 for none: where it would go.
     fn drag_at(&self, gap: i32) {
         let mut maker = self.maker.borrow_mut();
         let place =
@@ -361,8 +356,8 @@ impl Gui {
         self.show_insert_line();
     }
 
-    /// The card being dragged was let go: its split goes where the line shows, if anywhere.
-    fn card_dropped(&self, index: usize) {
+    /// The split being dragged was let go: its split goes where the line shows, if anywhere.
+    fn item_dropped(&self, index: usize) {
         let mut maker = self.maker.borrow_mut();
         maker.library.drag_point = None;
         let place = maker.library.dragging.take().flatten();
@@ -374,7 +369,7 @@ impl Gui {
         }
     }
 
-    /// Insert Above or Insert Below on a card, by its place among the game's ready-made splits.
+    /// Insert Above or Insert Below on a split, by its place among the game's ready-made splits.
     fn insert_split(&self, index: usize, above: bool) {
         let maker = self.maker.borrow();
         let Some(edit) = &maker.edit else { return };
@@ -392,7 +387,7 @@ impl Gui {
         }
         let maker = self.maker.borrow();
         let Some(preset) = maker.edit.as_ref().map(editor::Editing::preset) else { return };
-        let Some((folder, steps)) = maker.library.splits_for(&preset.game).get(index).copied() else { return };
+        let Some((folder, _, steps)) = maker.library.splits_for(&preset.game).get(index).copied() else { return };
         let steps: Vec<PresetSplit> = steps.iter().map(|step| step.split.clone()).collect();
         if import_blocker(preset, &steps).is_some() {
             return;

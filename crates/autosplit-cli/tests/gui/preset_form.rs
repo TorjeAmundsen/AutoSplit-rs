@@ -909,7 +909,7 @@ fn splits_in_the_preset_say_where(name: &str) -> Option<(String, String)> {
     let preset = draft(&["reset", "Intro", "Boss"]).preset;
 
     // Act
-    in_preset(&preset, name, None).map(|(file, note)| (file.trim_end_matches(".png").to_owned(), note))
+    in_preset(&preset, name, None).map(|found| (found.file.trim_end_matches(".png").to_owned(), found.note))
 }
 
 #[test_case("Escape" => "XX_Escape_(0.97)_#150#.png"; "a split, numbered by where it's put")]
@@ -971,7 +971,7 @@ fn splits_in_the_preset_are_named_like_the_split_list() {
     };
 
     // Act
-    let shown = in_preset(&preset, "Boss", Some(&defaults)).map(|(file, _)| file);
+    let shown = in_preset(&preset, "Boss", Some(&defaults)).map(|found| found.file);
 
     // Assert
     assert_eq!(shown, preset.file_names(Some(&defaults)).get(1).cloned());

@@ -6,9 +6,9 @@ use std::rc::Rc;
 use autosplit::gui::messages::Buttons;
 use autosplit::gui::preset_form::{MASK_NAME_CHARS, SAVESTATE_NAME_CHARS, elide_middle};
 use autosplit::gui::ui::{
-    AboutWindow, EntryStep, HotkeyRow, InfoCell, InlineMessage, InstructionCard, InstructionsWindow, LibraryCard,
-    LibraryEntryWindow, LibraryStep, LibraryWindow, LogWindow, MainWindow, MakerRow, MakerWindow, MessageWindow,
-    SettingsWindow, SimilarityRow, SplitForm, SplitValues, TesterReading, TesterWindow,
+    AboutWindow, EntryStep, HotkeyRow, InfoCell, InlineMessage, InstructionCard, InstructionsWindow,
+    LibraryEntryWindow, LibraryItem, LibraryStep, LibraryWindow, LogWindow, MainWindow, MakerRow, MakerWindow,
+    MessageWindow, SettingsWindow, SimilarityRow, SplitForm, SplitValues, TesterReading, TesterWindow,
 };
 use autosplit::gui::{HOTKEY_ROWS, file_name_parts, library_file_parts, thumbnail, transparency_grid};
 use slint::platform::software_renderer::{MinimalSoftwareWindow, RepaintBufferType, Rgb565Pixel};
@@ -406,8 +406,8 @@ Replace them?",
                 below,
             }
         };
-    let library_card =
-        |heading: &str, description: &str, steps: Vec<LibraryStep>, in_preset: bool, blocker: &str| LibraryCard {
+    let library_item =
+        |heading: &str, description: &str, steps: Vec<LibraryStep>, in_preset: bool, blocker: &str| LibraryItem {
             in_preset: if in_preset {
                 file_name_parts("05_Bottle_(0.93)_[35]_#1100#_{b}.png").row_data(0).unwrap()
             } else {
@@ -421,8 +421,8 @@ Replace them?",
             steps: std::rc::Rc::new(slint::VecModel::from(steps)).into(),
             blocker: blocker.into(),
         };
-    let cards = vec![
-        library_card(
+    let items = vec![
+        library_item(
             "Ganon",
             "Final slash on Ganon: the intro text, then the flash",
             vec![
@@ -432,7 +432,7 @@ Replace them?",
             false,
             "",
         ),
-        library_card(
+        library_item(
             "Bottle",
             "Splits on bottle model over head, common manual split timing",
             vec![step(
@@ -446,7 +446,7 @@ Replace them?",
             true,
             "",
         ),
-        library_card(
+        library_item(
             "Reset Image",
             "Automatically reset when pressing C-up in Link's house",
             vec![step(
@@ -461,7 +461,7 @@ Replace them?",
             "A preset can have up to 4 reset images, and this would make 5.",
         ),
     ];
-    library.set_cards(std::rc::Rc::new(slint::VecModel::from(cards)).into());
+    library.set_items(std::rc::Rc::new(slint::VecModel::from(items)).into());
     library.set_window_title("Split Library - The Legend of Zelda: Ocarina of Time".into());
     library.set_errors("A split library couldn't be read.".into());
     library.set_selected(0);
@@ -472,7 +472,7 @@ Replace them?",
     library.set_developer(true);
     save(&window, PhysicalSize::new(600, 420), &folder.join("library-single.png"));
     save(&window, PhysicalSize::new(480, 300), &folder.join("library-narrow.png"));
-    library.set_cards(std::rc::Rc::new(slint::VecModel::from(Vec::<LibraryCard>::new())).into());
+    library.set_items(std::rc::Rc::new(slint::VecModel::from(Vec::<LibraryItem>::new())).into());
     library.set_errors("".into());
     library.set_search_text("ganon bottle".into());
     library.set_empty_message("No ready-made splits match ganon bottle.".into());

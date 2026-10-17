@@ -1,5 +1,7 @@
 //! A preset being edited in Make Split Images: its changes, the list operations that keep the
-//! window's other per-split lists in step, and what has to be fixed before it can be saved.
+//! window's other per-split lists in step, and what has to be fixed before it can be saved. And
+//! what Split Library shows of ready-made splits next to it: their names, settings and file
+//! names, whether the preset has them already, and whether there's room for them.
 
 use std::path::Path;
 
@@ -532,9 +534,18 @@ pub fn library_file_name(split: &PresetSplit, defaults: Option<&SplitDefaults>) 
     }
 }
 
-/// Where a split named `name` is in `preset` already: the first one's file name, with the
-/// profile's `defaults` like the split list's, and a line saying it, or none when it isn't.
-pub fn in_preset(preset: &Preset, name: &str, defaults: Option<&SplitDefaults>) -> Option<(String, String)> {
+/// Where a ready-made split is in the preset already.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct InPreset {
+    /// The file name of the first split with its name, like the split list's.
+    pub file: String,
+    /// A line saying where it is, like as split 05.
+    pub note: String,
+}
+
+/// Where a split named `name` is in `preset` already, with the profile's `defaults` like the
+/// split list's, or none when it isn't.
+pub fn in_preset(preset: &Preset, name: &str, defaults: Option<&SplitDefaults>) -> Option<InPreset> {
     let index = preset.splits.iter().position(|split| split.name == name)?;
     let file = preset.file_names(defaults).swap_remove(index);
     let note = match SplitKind::of(&preset.splits[index]) {
@@ -544,7 +555,7 @@ pub fn in_preset(preset: &Preset, name: &str, defaults: Option<&SplitDefaults>) 
         }
         _ => format!("Already in the preset, as its {} image.", kind_word(&preset.splits[index])),
     };
-    Some((file, note))
+    Some(InPreset { file, note })
 }
 
 /// Why a ready-made split's `steps` can't be imported into `preset`: it would have more reset or

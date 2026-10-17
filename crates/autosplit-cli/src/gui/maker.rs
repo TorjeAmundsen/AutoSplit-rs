@@ -283,14 +283,19 @@ pub fn transparency_grid(width: u32, height: u32) -> slint::Image {
     slint::Image::from_rgba8(grid)
 }
 
-/// The folder with the bundled presets, next to the program. Builds that aren't installed use
+/// A folder the program comes with, like `presets`, next to it. Builds that aren't installed use
 /// the source tree's.
-fn presets_folder() -> PathBuf {
-    let next_to_program = exe_folder().join("presets");
+fn bundled_folder(name: &str) -> PathBuf {
+    let next_to_program = exe_folder().join(name);
     if next_to_program.is_dir() || !cfg!(debug_assertions) {
         return next_to_program;
     }
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../presets")
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../..").join(name)
+}
+
+/// The folder with the bundled presets.
+fn presets_folder() -> PathBuf {
+    bundled_folder("presets")
 }
 
 impl Gui {
