@@ -377,6 +377,13 @@ fn shown_image(picture: Picture) -> Option<slint::Image> {
     }
 }
 
+/// Sizes a window that sizes itself to what it shows, before it's shown. Its size comes from
+/// what it shows, which is set just before, and some X11 window managers keep the size a window
+/// was made with, which would cut off its bottom.
+fn fit_window(window: &slint::Window, width: f32, height: f32) {
+    window.set_size(slint::LogicalSize::new(width, height));
+}
+
 /// The folder next to the executable, where AutoSplit looks for a profile on open.
 fn exe_folder() -> PathBuf {
     std::env::current_exe().ok().and_then(|exe| exe.parent().map(Path::to_owned)).unwrap_or_else(|| ".".into())
@@ -1741,7 +1748,9 @@ impl Gui {
         self.windows.message.set_tertiary(tertiary.into());
         self.windows.message.set_default_button(shown.default as i32);
         self.set_all_blocked(true);
-        self.show_window(self.windows.message.window());
+        let message = &self.windows.message;
+        fit_window(message.window(), message.get_fitted_width(), message.get_fitted_height());
+        self.show_window(message.window());
         self.windows.message.window().with_winit_window(|window| window.set_window_level(WindowLevel::AlwaysOnTop));
         self.windows.message.invoke_focus_keys();
         self.focus_message();

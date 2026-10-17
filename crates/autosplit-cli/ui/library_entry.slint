@@ -22,8 +22,14 @@ export component LibraryEntryWindow inherits Window {
     in property <string> window-title: "Add to Library";
     title: root.window-title;
     icon: @image-url("../assets/icon.png");
-    preferred-width: 520px;
-    min-width: 420px;
+    // A fixed width, and its height from what it shows once that's wrapped at this width, like
+    // the message box, so a problem that takes two lines doesn't push the buttons out of it.
+    // The window is set to it before it's shown too, since some X11 window managers keep the
+    // size it was made with.
+    out property <length> fitted-width: 520px;
+    out property <length> fitted-height: layout.preferred-height;
+    width: root.fitted-width;
+    height: root.fitted-height;
     default-font-family: "Noto Sans";
     default-font-size: 12px;
     forward-focus: description;
@@ -49,7 +55,7 @@ export component LibraryEntryWindow inherits Window {
     // The images come from the selected splits, so how many is up to them
     property <bool> from-splits: !root.editing || root.replace;
 
-    VerticalLayout {
+    layout := VerticalLayout {
         padding: 10px;
         spacing: 8px;
 
@@ -163,6 +169,8 @@ export component LibraryEntryWindow inherits Window {
         }
 
         if root.problem != "": Text {
+            // Measured at the width it's drawn at, for the window's height
+            width: root.width - 20px;
             wrap: word-wrap;
             color: Theme.error;
             text: root.problem;

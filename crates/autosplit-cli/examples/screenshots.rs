@@ -499,11 +499,13 @@ Replace them?",
     entry.set_steps(std::rc::Rc::new(slint::VecModel::from(steps)).into());
     entry.show().unwrap();
     save(&window, PhysicalSize::new(520, 300), &folder.join("library-entry.png"));
-    entry.set_problem("Split3 needs a mask first.".into());
+    entry.set_problem(
+        "CrawlspaceRight has no grab or screenshot, and there's no live capture, to make its base image from.".into(),
+    );
     entry.set_steps(std::rc::Rc::new(slint::VecModel::from(Vec::<EntryStep>::new())).into());
     entry.set_editing(true);
     entry.set_replace(true);
-    save(&window, PhysicalSize::new(520, 220), &folder.join("library-entry-problem.png"));
+    save(&window, PhysicalSize::new(520, 240), &folder.join("library-entry-problem.png"));
     entry.hide().unwrap();
 
     let log = LogWindow::new().unwrap();

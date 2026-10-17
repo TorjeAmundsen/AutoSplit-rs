@@ -91,6 +91,7 @@ impl Gui {
         window.set_game(game.trim().into());
         self.maker.borrow_mut().entry = Some(Entry { editing, live });
         self.show_entry();
+        super::super::fit_window(window.window(), window.get_fitted_width(), window.get_fitted_height());
         self.show_window(window.window());
     }
 

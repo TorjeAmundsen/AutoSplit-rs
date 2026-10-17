@@ -709,7 +709,8 @@ export component TextField inherits Rectangle {
             vertical-alignment: center;
             text: root.placeholder-text;
             color: Theme.disabled-text;
-            visible: input.text == "" && !input.has-focus;
+            // Until something is typed, even with the focus, like Qt's
+            visible: input.text == "";
             overflow: elide;
         }
     }
@@ -774,7 +775,8 @@ export component TextArea inherits Rectangle {
         overflow: elide;
         text: root.placeholder-text;
         color: Theme.disabled-text;
-        visible: input.text == "" && !input.has-focus;
+        // Until something is typed, even with the focus, like Qt's
+        visible: input.text == "";
     }
 }
 
