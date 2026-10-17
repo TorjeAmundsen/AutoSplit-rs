@@ -1476,8 +1476,10 @@ impl Gui {
         }
         let maker = &self.windows.maker;
         let maker_live = std::mem::take(&mut update.maker.live);
-        if let Picture::Show(pixels) = &maker_live {
-            self.maker_live_frame(pixels);
+        match &maker_live {
+            Picture::Show(pixels) => self.maker_live_frame(pixels),
+            Picture::Clear => self.maker_live_cleared(),
+            Picture::Keep => {}
         }
         if let Some(live) = shown_image(maker_live) {
             maker.set_live_image(live);

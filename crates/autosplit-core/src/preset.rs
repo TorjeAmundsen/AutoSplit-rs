@@ -217,10 +217,11 @@ impl Preset {
     }
 }
 
-/// The ready-made splits of a game.
+/// The ready-made splits of a game. A key it doesn't have is an error, like in a preset: a
+/// misspelled `game` would otherwise leave it without one, which no preset is for.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SplitLibrary {
-    #[serde(default)]
     pub game: String,
     #[serde(rename = "split")]
     pub splits: Vec<LibrarySplit>,

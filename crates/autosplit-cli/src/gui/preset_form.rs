@@ -532,11 +532,11 @@ pub fn library_file_name(split: &PresetSplit, defaults: Option<&SplitDefaults>) 
     }
 }
 
-/// Where a split named `name` is in `preset` already: the first one's file name, without the
-/// profile's defaults, and a line saying it, or none when it isn't.
-pub fn in_preset(preset: &Preset, name: &str) -> Option<(String, String)> {
+/// Where a split named `name` is in `preset` already: the first one's file name, with the
+/// profile's `defaults` like the split list's, and a line saying it, or none when it isn't.
+pub fn in_preset(preset: &Preset, name: &str, defaults: Option<&SplitDefaults>) -> Option<(String, String)> {
     let index = preset.splits.iter().position(|split| split.name == name)?;
-    let file = preset.file_names(None).swap_remove(index);
+    let file = preset.file_names(defaults).swap_remove(index);
     let note = match SplitKind::of(&preset.splits[index]) {
         SplitKind::Split => {
             let number: String = file.chars().take_while(char::is_ascii_digit).collect();

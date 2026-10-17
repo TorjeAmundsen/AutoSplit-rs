@@ -404,3 +404,25 @@ fn replacing_with_the_inserted_splits_keeps_their_files() {
         )
     );
 }
+
+#[test]
+fn adding_waits_for_a_library_that_cant_be_read() {
+    // Arrange: a library folder whose file is broken, which may be this game's
+    let (splits, preset) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+    std::fs::create_dir(splits.path().join("OcarinaOfTime")).unwrap();
+    std::fs::write(
+        splits.path().join("OcarinaOfTime").join(LIBRARY_FILE),
+        "gmae = \"typo\"
+[[split]]
+",
+    )
+    .unwrap();
+
+    // Act
+    let error =
+        add_ready_made(splits.path(), GAME, "Enter the Deku Tree", vec![step(preset.path(), "EnterDeku")]).unwrap_err();
+
+    // Assert: no second library beside it
+    assert!(error.to_string().contains("can't be read"), "{error}");
+    assert_eq!(files(splits.path()), ["OcarinaOfTime"]);
+}

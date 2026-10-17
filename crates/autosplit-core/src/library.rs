@@ -49,10 +49,21 @@ pub fn add_ready_made(
     description: &str,
     steps: Vec<NewStep>,
 ) -> Result<PathBuf, PresetError> {
-    let (libraries, _) = load_libraries(directory);
+    let (libraries, errors) = load_libraries(directory);
     let found = libraries.into_iter().find(|loaded| game_key(&loaded.library.game) == game_key(game));
     let (folder, before, new_folder) = match found {
         Some(loaded) => (loaded.folder, loaded.library, false),
+        // One that can't be read may be this game's, which a new one would be made beside
+        None if !errors.is_empty() => {
+            let errors: Vec<String> = errors.iter().map(ToString::to_string).collect();
+            return Err(PresetError::Invalid {
+                path: directory.to_owned(),
+                reason: format!(
+                    "a library there can't be read, and it may be this game's. Fix it first:\n\n{}",
+                    errors.join("\n\n")
+                ),
+            });
+        }
         None => {
             let folder = new_preset_folder(directory, game);
             std::fs::create_dir_all(&folder).map_err(|error| unwritable(&folder, error))?;

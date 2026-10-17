@@ -367,6 +367,8 @@ fn names_windows_files_would_share_are_the_same(name: &str) -> Option<usize> {
 fn library_splits_with_then_follow_the_split_above() {
     // Arrange: a boss's intro text as a dummy, then its flash, and a split of its own
     let text = r#"
+        game = "Game"
+
         [[split]]
         name = "Boss intro"
         mask = "intro.png"
@@ -392,7 +394,8 @@ fn library_splits_with_then_follow_the_split_above() {
 #[test]
 fn a_library_cant_start_with_then() {
     // Arrange
-    let text = "[[split]]
+    let text = "game = \"Game\"
+[[split]]
 name = \"Boss\"
 mask = \"flash.png\"
 then = true
@@ -403,4 +406,23 @@ then = true
 
     // Assert
     assert!(error.to_string().contains("no split above it to follow"), "{error}");
+}
+
+#[test_case("[[split]]
+name = \"Boss\"
+mask = \"boss.png\"
+" => true; "no game")]
+#[test_case("Game = \"Game\"
+[[split]]
+name = \"Boss\"
+mask = \"boss.png\"
+" => true; "a misspelled game")]
+#[test_case("game = \"Game\"
+[[split]]
+name = \"Boss\"
+mask = \"boss.png\"
+" => false; "a game")]
+fn libraries_need_a_game_and_only_their_keys(text: &str) -> bool {
+    // Act, with the expected value checked by test_case: whether it's an error
+    SplitLibrary::parse(text, Path::new("splits.toml")).is_err()
 }

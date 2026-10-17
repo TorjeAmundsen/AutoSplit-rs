@@ -420,6 +420,8 @@ impl Gui {
     pub(super) fn maker_closed(&self) {
         // They're the window's preset's
         let _ = self.windows.instructions.window().hide();
+        // It shows no capture anymore, so its last frame gets old
+        self.maker.borrow_mut().last_live = None;
         self.send(UiCommand::SetMakerOpen(false));
         self.maker_seen.hidden();
     }

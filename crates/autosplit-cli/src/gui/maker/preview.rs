@@ -157,6 +157,11 @@ impl Gui {
 
     /// The capture's preview shows a message instead, which the split image's preview shows too
     /// while it's previewed from the capture.
+    /// The capture stopped, so there's no live frame to make a library base image from.
+    pub(in crate::gui) fn maker_live_cleared(&self) {
+        self.maker.borrow_mut().last_live = None;
+    }
+
     pub(in crate::gui) fn maker_live_message(&self, message: &str) {
         if self.previews_capture() {
             self.windows.maker.set_preview_message(message.into());

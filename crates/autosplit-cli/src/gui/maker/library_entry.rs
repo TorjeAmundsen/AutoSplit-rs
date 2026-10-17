@@ -15,6 +15,9 @@ use super::*;
 pub(super) struct Entry {
     /// The ready-made split being edited, or none when one is added.
     editing: Option<Edited>,
+    /// The live capture as the window opened, for base images of splits without a grab or
+    /// screenshot, so the one saved is the one shown.
+    live: Option<Pixels>,
 }
 
 /// A ready-made split being edited, as it was when the window opened: the library can change
@@ -68,6 +71,7 @@ impl Gui {
         let maker = self.maker.borrow();
         let Some(preset) = maker.edit.as_ref().map(editor::Editing::preset) else { return };
         let game = preset.game.clone();
+        let live = maker.last_live.clone();
         let (editing, description) = match index {
             Some(index) => {
                 let Some((folder, place)) = maker.library.place_of(&game, index) else { return };
@@ -85,7 +89,7 @@ impl Gui {
         window.set_images(1.0);
         window.set_description_text(description.into());
         window.set_game(game.trim().into());
-        self.maker.borrow_mut().entry = Some(Entry { editing });
+        self.maker.borrow_mut().entry = Some(Entry { editing, live });
         self.show_entry();
         self.show_window(window.window());
     }
@@ -105,7 +109,7 @@ impl Gui {
 
     /// The images the ready-made split is made of: the selected split and as many after it as
     /// the window says, each with its mask and a base image from its grab or screenshot, or the
-    /// live capture. Or what's missing.
+    /// live capture as the window opened. Or what's missing.
     fn planned_steps(&self) -> Result<Vec<Planned>, String> {
         let images = self.windows.entry.get_images().max(1.0) as usize;
         let maker = self.maker.borrow();
@@ -130,7 +134,8 @@ impl Gui {
                 }
             }
             let source = maker.splits.get(index).and_then(|work| work.source.clone());
-            let (screenshot, from) = match (source, &maker.last_live) {
+            let live = maker.entry.as_ref().and_then(|entry| entry.live.as_ref());
+            let (screenshot, from) = match (source, live) {
                 (Some(source), _) => {
                     let from = match &source {
                         Source::File(path) => {

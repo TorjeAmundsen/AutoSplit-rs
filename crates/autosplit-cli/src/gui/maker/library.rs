@@ -3,6 +3,7 @@
 
 use autosplit_core::preset::{LibrarySplit, LoadedLibrary, PresetSplit, game_key, load_libraries};
 use slint::Model;
+use slint::winit_030::WinitWindowAccessor;
 
 use autosplit_core::split_image::SplitDefaults;
 
@@ -62,6 +63,16 @@ impl Library {
     pub(super) fn thumb(&self, folder: &Path, base_image: &str) -> Option<slint::Image> {
         self.thumbs.get(&folder.join(base_image)).cloned()
     }
+}
+
+/// Where `window`'s inside is on the screen, below its title bar and inside its frame. Those
+/// differ between windows on screens of different scales, so where the windows themselves are
+/// isn't enough to find a point of one in the other. Where the window is, when there's no inside
+/// to ask about.
+fn inside_position(window: &slint::Window) -> slint::PhysicalPosition {
+    (window.with_winit_window(|winit| winit.inner_position().ok()).flatten())
+        .map(|at| slint::PhysicalPosition::new(at.x, at.y))
+        .unwrap_or_else(|| window.position())
 }
 
 /// A PNG as a picture, read each time: Slint keeps pictures loaded by path, which would show a
@@ -228,7 +239,7 @@ impl Gui {
                     .collect();
                 // The split it's for is its last image, which the ones before lead up to
                 let last = splits.last();
-                let in_preset = last.and_then(|last| in_preset(preset, &last.name));
+                let in_preset = last.and_then(|last| in_preset(preset, &last.name, Some(&defaults)));
                 let description = steps.iter().map(|step| step.description.as_str()).find(|text| !text.is_empty());
                 LibraryCard {
                     ready_made: index as i32,
@@ -290,9 +301,8 @@ impl Gui {
     }
 
     /// A card is dragged with the pointer at `x` and `y` in Split Library: where it would go in
-    /// the split list, when it's over it. Make Split Images is found from where both windows are
-    /// on the screen. Their title bars are alike, so the difference between their positions,
-    /// which include the title bar, is the difference between their insides too.
+    /// the split list, when it's over it. Make Split Images is found from where both windows'
+    /// insides are on the screen.
     fn card_dragged(&self, x: f32, y: f32) {
         let from = self.windows.library.window();
         // A move that comes after it's hidden, which ended the drag
@@ -308,7 +318,7 @@ impl Gui {
         let gap = if over_itself || !to.is_visible() {
             -1
         } else {
-            let (from_at, to_at, to_scale) = (from.position(), to.position(), to.scale_factor());
+            let (from_at, to_at, to_scale) = (inside_position(from), inside_position(to), to.scale_factor());
             let maker_x = (from_at.x as f32 + inside_x - to_at.x as f32) / to_scale;
             let maker_y = (from_at.y as f32 + inside_y - to_at.y as f32) / to_scale;
             self.windows.maker.invoke_drop_gap(maker_x, maker_y)

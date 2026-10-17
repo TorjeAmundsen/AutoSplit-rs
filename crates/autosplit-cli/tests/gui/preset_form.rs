@@ -909,7 +909,7 @@ fn splits_in_the_preset_say_where(name: &str) -> Option<(String, String)> {
     let preset = draft(&["reset", "Intro", "Boss"]).preset;
 
     // Act
-    in_preset(&preset, name).map(|(file, note)| (file.trim_end_matches(".png").to_owned(), note))
+    in_preset(&preset, name, None).map(|(file, note)| (file.trim_end_matches(".png").to_owned(), note))
 }
 
 #[test_case("Escape" => "XX_Escape_(0.97)_#150#.png"; "a split, numbered by where it's put")]
@@ -955,4 +955,24 @@ fn inserting_above_with_nothing_selected_keeps_click_order() {
 
     // Assert
     assert_eq!(names(&draft), ["A", "B"]);
+}
+
+#[test]
+fn splits_in_the_preset_are_named_like_the_split_list() {
+    // Arrange: a profile that compares with histograms, which the split list's names say for
+    // splits that keep the L2 norm
+    let preset = draft(&["Intro", "Boss"]).preset;
+    let defaults = autosplit_core::split_image::SplitDefaults {
+        comparison_method: 1,
+        similarity_threshold: 0.95,
+        delay_time: 0,
+        pause_time: 10.0,
+        fps_limit: 60,
+    };
+
+    // Act
+    let shown = in_preset(&preset, "Boss", Some(&defaults)).map(|(file, _)| file);
+
+    // Assert
+    assert_eq!(shown, preset.file_names(Some(&defaults)).get(1).cloned());
 }
