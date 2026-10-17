@@ -112,10 +112,13 @@ Edit, next to the preset, edits it, and New starts a new preset for the same gam
   - Insert Above and Insert Below put it around the selected split. While the pointer is over them, a line in the split list shows where. Enter in the list does the same as Insert Below. Insert Below selects the new split and Insert Above keeps the selected one, so either way the next one goes after the last one inserted.
   - You can also drag a split by the dots at the start of its row into the split list. The line follows the pointer, and the list scrolls when you drag near or past its top or bottom. Under Wayland, where windows don't know their place on the screen, only the buttons and keys work.
   - Splits compared together are never split up: a split goes before or after them.
-  - Some ready-made splits take several images in a row, like a dummy for a boss's intro text and then its flash. They're inserted together, a split for each image.
+  - Some ready-made splits take several images in a row, like a dummy for a boss's intro text and then its death. They're inserted together, a split for each image.
   - If the preset already has a split with the same name, its row shows where: that split's number, colored like in the split list's file names, or `reset` or `start` for a reset or start image.
   - A grayed-out name can't be inserted, like a fifth reset image. When you pick it, a red line above the buttons says why.
   - The window stays open. Saving the preset copies the masks and savestates of inserted splits into it.
+
+  ![Split Library: the ready-made splits listed on the left, with where the preset has them already, and EnterDeku picked on the right, its dummy and its split each with a screenshot, settings and file name, above Insert Above and Insert Below](docs/split-library.png)
+
 - Grabs and screenshots stay with their splits while you change them. Grab itself is hidden while editing, since a split's file name and mask aren't settled until the preset is saved.
 
 Each split has:
