@@ -3,7 +3,7 @@ resolver = "3"
 members = ["crates/autosplit-core", "crates/autosplit-cli", "crates/autosplit-capture", "crates/autosplit-input"]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 license = "GPL-3.0-only"
 # Slint 1.18 needs 1.92
