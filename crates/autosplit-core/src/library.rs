@@ -14,7 +14,7 @@ use crate::image::{BgraImage, BgraView};
 use crate::imgproc::stretch_to_rgba;
 use crate::preset::{
     LIBRARY_FILE, LibrarySplit, PresetError, PresetSplit, SplitLibrary, game_key, load_libraries, new_preset_folder,
-    sanitize_file_name, unique_file_name,
+    relative_text, sanitize_file_name, unique_file_name, unwritable,
 };
 
 /// The size base images are made at, which the Split Library shows them at.
@@ -210,7 +210,7 @@ fn store_steps(
         let savestate = step.savestate.as_deref().map(found).transpose()?;
         sources.push((found(&step.mask)?, savestate));
     }
-    let inside = |path: &Path| path.strip_prefix(&root).ok().map(|inside| inside.to_string_lossy().replace('\\', "/"));
+    let inside = |path: &Path| path.strip_prefix(&root).ok().map(relative_text);
     // Used where they are, so never written over
     let kept: HashSet<String> = (sources.iter())
         .flat_map(|(mask, savestate)| std::iter::once(mask).chain(savestate))
@@ -356,8 +356,4 @@ fn library_files(splits: &[LibrarySplit]) -> HashSet<String> {
         .filter(|path| !path.is_empty())
         .cloned()
         .collect()
-}
-
-fn unwritable(path: &Path, error: std::io::Error) -> PresetError {
-    PresetError::Unwritable { path: path.to_owned(), reason: error.to_string() }
 }

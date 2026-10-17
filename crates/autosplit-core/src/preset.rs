@@ -468,7 +468,7 @@ pub fn new_preset_folder(presets: &Path, name: &str) -> PathBuf {
 }
 
 /// A path inside a preset's folder, as presets write it: relative, with `/`.
-fn relative_text(path: &Path) -> String {
+pub(crate) fn relative_text(path: &Path) -> String {
     path.components().map(|part| part.as_os_str().to_string_lossy().into_owned()).collect::<Vec<_>>().join("/")
 }
 
@@ -559,7 +559,7 @@ pub fn delete_preset(folder: &Path) -> Result<(), PresetError> {
     Ok(())
 }
 
-fn unwritable(path: &Path, error: std::io::Error) -> PresetError {
+pub(crate) fn unwritable(path: &Path, error: std::io::Error) -> PresetError {
     PresetError::Unwritable { path: path.to_owned(), reason: error.to_string() }
 }
 
