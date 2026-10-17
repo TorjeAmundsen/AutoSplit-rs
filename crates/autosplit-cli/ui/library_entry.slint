@@ -1,0 +1,192 @@
+// Add to Library and Edit Library Entry, in developer builds: a ready-made split made from the
+// split selected in Make Split Images, and the ones after it when it takes several images, or
+// the description of one already in the library. Its base images are made small from each
+// split's grab or screenshot, or the live capture.
+
+import { Button, FileName, NamePart, SpinBox, TextField, Theme } from "widgets.slint";
+import { CheckBox } from "std-widgets.slint";
+
+// One image of the ready-made split as it would be written
+export struct EntryStep {
+    heading: string,
+    // Its base image, at the size it's written at, or empty without one
+    thumb: image,
+    // Its file name, with XX for its number
+    file-parts: [NamePart],
+    file: string,
+    // Where its base image comes from, or what's missing
+    source: string,
+}
+
+export component LibraryEntryWindow inherits Window {
+    in property <string> window-title: "Add to Library";
+    title: root.window-title;
+    icon: @image-url("../assets/icon.png");
+    preferred-width: 520px;
+    min-width: 420px;
+    default-font-family: "Noto Sans";
+    default-font-size: 12px;
+    forward-focus: description;
+
+    // The library it goes in
+    in property <string> game;
+    in-out property <string> description-text;
+    // Editing one in the library instead of adding one
+    in property <bool> editing;
+    // While editing: its images and settings are made again from the selected splits
+    in-out property <bool> replace;
+    // How many splits from the selected one it takes, and the most it can
+    in-out property <float> images: 1;
+    in property <float> most-images: 1;
+    in property <[EntryStep]> steps;
+    // What has to be fixed before saving, or empty
+    in property <string> problem;
+    callback images-edited(float);
+    callback replace-toggled(bool);
+    callback save();
+    callback cancel();
+
+    // The images come from the selected splits, so how many is up to them
+    property <bool> from-splits: !root.editing || root.replace;
+
+    VerticalLayout {
+        padding: 10px;
+        spacing: 8px;
+
+        Text {
+            color: Theme.secondary-text;
+            text: "In the split library for " + (root.game == "" ? "the preset's game" : root.game);
+            overflow: elide;
+        }
+
+        HorizontalLayout {
+            spacing: 6px;
+
+            Text {
+                width: 80px;
+                vertical-alignment: center;
+                text: "Description:";
+            }
+
+            description := TextField {
+                height: 24px;
+                text <=> root.description-text;
+                placeholder-text: "What it splits on, like Splits on the full white fade";
+                accepted => {
+                    if (root.problem == "" && root.description-text != "") {
+                        root.save();
+                    }
+                }
+            }
+        }
+
+        if root.editing: CheckBox {
+            text: "Replace its images and settings with the selected splits";
+            checked <=> root.replace;
+            toggled => { root.replace-toggled(self.checked); }
+        }
+
+        if root.from-splits: HorizontalLayout {
+            spacing: 6px;
+
+            Text {
+                width: 80px;
+                vertical-alignment: center;
+                text: "Images:";
+            }
+
+            SpinBox {
+                width: 64px;
+                height: 22px;
+                minimum: 1;
+                maximum: root.most-images;
+                value <=> root.images;
+                edited(value) => { root.images-edited(value); }
+            }
+
+            Text {
+                horizontal-stretch: 1;
+                vertical-alignment: center;
+                color: Theme.secondary-text;
+                text: "From the selected split on, like a dummy, then the split";
+                overflow: elide;
+            }
+        }
+
+        // Each image as it's written: its base image, name, file name and where the picture's from
+        for step in root.steps: HorizontalLayout {
+            spacing: 10px;
+
+            VerticalLayout {
+                alignment: start;
+
+                Rectangle {
+                    width: 66px;
+                    height: 50px;
+                    border-width: 1px;
+                    border-color: Theme.separator;
+
+                    Image {
+                        source: step.thumb;
+                        image-rendering: pixelated;
+                    }
+                }
+            }
+
+            VerticalLayout {
+                horizontal-stretch: 1;
+                alignment: center;
+                spacing: 2px;
+
+                Text {
+                    font-weight: 600;
+                    text: step.heading;
+                    overflow: elide;
+                }
+
+                Rectangle {
+                    clip: true;
+                    height: 16px;
+
+                    FileName {
+                        parts: step.file-parts;
+                        file: step.file;
+                    }
+                }
+
+                Text {
+                    color: Theme.secondary-text;
+                    text: step.source;
+                    overflow: elide;
+                }
+            }
+        }
+
+        if root.problem != "": Text {
+            wrap: word-wrap;
+            color: Theme.error;
+            text: root.problem;
+        }
+
+        HorizontalLayout {
+            alignment: end;
+            spacing: 6px;
+
+            Button {
+                width: 70px;
+                text: "Cancel";
+                clicked => { root.cancel(); }
+                tip: "Close it without changing the library (Escape)";
+            }
+
+            Button {
+                width: 70px;
+                text: "Save";
+                primary: true;
+                enabled: root.problem == "" && root.description-text != "";
+                clicked => { root.save(); }
+                tip: root.problem != "" ? root.problem : root.description-text == "" ? "Write what it splits on first" : "Write it into the split library, with its masks and base images";
+            }
+        }
+    }
+}

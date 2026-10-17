@@ -43,9 +43,9 @@ use self::placement::{Area, centered_over};
 use self::recorder::{PRIMARY, key_character, modifiers_held, pressed_key};
 use self::settings_form::SettingEdit;
 use self::ui::{
-    AboutWindow, HotkeyRow, InfoCell, InlineMessage, InstructionsWindow, LibraryWindow, LogWindow, MainWindow,
-    MakerRow, MakerWindow, MessageWindow, NameKind, NamePart, Setting, SettingsWindow, SimilarityRow, TesterWindow,
-    WindowFocus,
+    AboutWindow, HotkeyRow, InfoCell, InlineMessage, InstructionsWindow, LibraryEntryWindow, LibraryWindow, LogWindow,
+    MainWindow, MakerRow, MakerWindow, MessageWindow, NameKind, NamePart, Setting, SettingsWindow, SimilarityRow,
+    TesterWindow, WindowFocus,
 };
 use self::view::{GuiView, Picture, Update};
 use crate::console::Console;
@@ -423,6 +423,7 @@ struct Windows {
     maker: MakerWindow,
     instructions: InstructionsWindow,
     library: LibraryWindow,
+    entry: LibraryEntryWindow,
 }
 
 /// The app id windows get on Linux, which desktops match to the .desktop file named after it, for
@@ -446,6 +447,7 @@ fn open_windows() -> anyhow::Result<Windows> {
         maker: MakerWindow::new()?,
         instructions: InstructionsWindow::new()?,
         library: LibraryWindow::new()?,
+        entry: LibraryEntryWindow::new()?,
     })
 }
 
@@ -927,6 +929,7 @@ impl Gui {
             (self.windows.log.window(), false),
             (self.windows.instructions.window(), false),
             (self.windows.library.window(), false),
+            (self.windows.entry.window(), false),
         ];
         for (window, enter_too) in windows {
             let weak = self.me.clone();
@@ -1057,6 +1060,7 @@ impl Gui {
             windows.maker.window(),
             windows.instructions.window(),
             windows.library.window(),
+            windows.entry.window(),
         ] {
             let _ = window.hide();
         }

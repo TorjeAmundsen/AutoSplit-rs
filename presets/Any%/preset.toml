@@ -1,0 +1,54 @@
+name = "Any%"
+game = "The Legend of Zelda: Ocarina of Time"
+
+[[split]]
+name = "reset"
+mask = "reset.png"
+threshold = 0.96
+pause = 0.1
+
+[[split]]
+name = "start_auto_splitter"
+mask = "start_auto_splitter.png"
+threshold = 0.96
+pause = 10.0
+below = true
+
+[[split]]
+name = "KokiriSwordRight"
+mask = "KokiriSwordRight.png"
+threshold = 0.93
+savestate = "savestates/000-kokiri_forest.gzs"
+
+[[split]]
+name = "KokiriSwordLeft"
+with_previous = true
+mask = "KokiriSwordLeft.png"
+threshold = 0.93
+savestate = "savestates/001-kokiri_forest.gzs"
+
+[[split]]
+name = "NutDummy"
+mask = "NutDummy.png"
+threshold = 0.95
+pause = 1.0
+dummy = true
+savestate = "savestates/002-kokiri_shop.gzs"
+
+[[split]]
+name = "ExitKokiriShop"
+mask = "ExitKokiriShop.png"
+threshold = 0.97
+savestate = "savestates/003-kokiri_forest.gzs"
+
+[[split]]
+name = "CrawlspaceLeft"
+mask = "CrawlspaceLeft.png"
+threshold = 0.94
+savestate = "savestates/004-kokiri_forest.gzs"
+
+[[split]]
+name = "CrawlspaceRight"
+with_previous = true
+mask = "CrawlspaceRight.png"
+threshold = 0.94

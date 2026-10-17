@@ -48,8 +48,9 @@ fn bundled_libraries_load_with_all_their_files() {
     let missing: Vec<PathBuf> = libraries
         .iter()
         .flat_map(|loaded| {
-            let files = loaded.library.splits.iter().flat_map(|split| [&split.split.mask, &split.base_image]);
-            files.map(|file| loaded.folder.join(file)).collect::<Vec<_>>()
+            let files = (loaded.library.splits.iter())
+                .flat_map(|split| [&split.split.mask, &split.split.savestate, &split.base_image]);
+            files.filter(|file| !file.is_empty()).map(|file| loaded.folder.join(file)).collect::<Vec<_>>()
         })
         .filter(|path| !path.is_file())
         .collect();

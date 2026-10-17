@@ -191,6 +191,10 @@ export component LibraryWindow inherits Window {
     callback card-dragged(int, length, length);
     // The split being dragged was let go
     callback card-dropped(int);
+    // Developer builds can change and delete what's in the library
+    in property <bool> developer;
+    callback edit-entry(int);
+    callback delete-entry(int);
     // Dragging works where windows know their place on the screen, which they don't under Wayland
     in property <bool> can-drag: true;
     callback search-edited(string);
@@ -447,7 +451,6 @@ export component LibraryWindow inherits Window {
                     }
 
                     HorizontalLayout {
-                        alignment: start;
                         spacing: 6px;
 
                         Button {
@@ -466,6 +469,25 @@ export component LibraryWindow inherits Window {
                             clicked => { root.insert(root.card.ready-made, false); }
                             changed hovered => { root.insert-hovered(false, self.hovered); }
                             tip: "Put it in the preset below the selected split, with " + (root.card.steps.length > 1 ? "its " + root.card.steps.length + " images as splits in this order" : "its mask and settings") + ", and select it, so the next one goes after it.";
+                        }
+
+                        Rectangle {
+                            horizontal-stretch: 1;
+                        }
+
+                        // Changing the library itself, in developer builds
+                        if root.developer: Button {
+                            width: 60px;
+                            text: "Edit...";
+                            clicked => { root.edit-entry(root.card.ready-made); }
+                            tip: "Change its description, or replace its images and settings with the splits selected in Make Split Images (developer builds only)";
+                        }
+
+                        if root.developer: Button {
+                            width: 70px;
+                            text: "Delete...";
+                            clicked => { root.delete-entry(root.card.ready-made); }
+                            tip: "Delete it from the split library, with the files only it uses (developer builds only)";
                         }
                     }
                 }

@@ -30,6 +30,7 @@ use crate::session::UiCommand;
 
 mod editor;
 mod library;
+mod library_entry;
 mod preview;
 mod savestates;
 mod write;
@@ -101,6 +102,11 @@ pub(super) struct Maker {
     saving: bool,
     /// What Split Library adds from.
     library: library::Library,
+    /// What the window that adds to or edits the split library is for, while it's open.
+    entry: Option<library_entry::Entry>,
+    /// The live capture's latest frame, for a base image for the split library when a split has
+    /// no grab or screenshot.
+    last_live: Option<Pixels>,
     /// Splits to save once the ones being saved are, for the preset of that generation.
     queued: Option<(u64, Vec<usize>)>,
 }
@@ -330,6 +336,7 @@ impl Gui {
         });
         self.connect_editor();
         self.connect_library();
+        self.connect_library_entry();
     }
 
     /// Opens Make Split Images beside the main window, with the presets read again.
@@ -532,6 +539,7 @@ impl Gui {
         window.set_has_instructions(view.has_instructions);
         self.show_maker_preview();
         self.refresh_library();
+        self.refresh_entry();
     }
 
     /// What the editor would ask to fix in the chosen preset, like splits compared together

@@ -37,11 +37,43 @@ impl Library {
             .flat_map(|loaded| loaded.library.ready_made().map(|steps| (loaded.folder.as_path(), steps)))
             .collect()
     }
+
+    /// Where the `index`th of `game`'s ready-made splits is: its library's folder, and its place
+    /// among that library's.
+    pub(super) fn place_of(&self, game: &str, index: usize) -> Option<(PathBuf, usize)> {
+        let key = game_key(game);
+        let mut left = index;
+        for loaded in self.libraries.iter().filter(|loaded| !key.is_empty() && game_key(&loaded.library.game) == key) {
+            let count = loaded.library.ready_made().count();
+            if left < count {
+                return Some((loaded.folder.clone(), left));
+            }
+            left -= count;
+        }
+        None
+    }
+
+    /// The `index`th of `game`'s ready-made splits, its images in order.
+    pub(super) fn steps_of(&self, game: &str, index: usize) -> Option<Vec<LibrarySplit>> {
+        self.splits_for(game).get(index).map(|(_, steps)| steps.to_vec())
+    }
+
+    /// The picture of a base image, once it's read.
+    pub(super) fn thumb(&self, folder: &Path, base_image: &str) -> Option<slint::Image> {
+        self.thumbs.get(&folder.join(base_image)).cloned()
+    }
+}
+
+/// A PNG as a picture, read each time: Slint keeps pictures loaded by path, which would show a
+/// base image written again under the same name as it was.
+fn png_image(path: &Path) -> Option<slint::Image> {
+    let image = BgraImage::open_png(path).ok()?;
+    Some(slint::Image::from_rgba8(rgba(image.view())))
 }
 
 /// The folder with the splits library, next to the program. Builds that aren't installed use
 /// the source tree's.
-fn splits_folder() -> PathBuf {
+pub(super) fn splits_folder() -> PathBuf {
     let next_to_program = exe_folder().join("splits");
     if next_to_program.is_dir() || !cfg!(debug_assertions) {
         return next_to_program;
@@ -106,6 +138,19 @@ impl Gui {
         if !self.editing() {
             return;
         }
+        self.read_library();
+        let window = &self.windows.library;
+        window.set_search_text(SharedString::new());
+        window.set_can_drag(!self.under_wayland());
+        window.set_developer(cfg!(debug_assertions));
+        // Shown first, since only an open window is kept up to date
+        self.show_window(window.window());
+        self.refresh_library();
+    }
+
+    /// Reads the libraries and their base images, keeping which one is shown in full, and says
+    /// which couldn't be read.
+    pub(super) fn read_library(&self) {
         let (libraries, errors) = load_libraries(&splits_folder());
         let thumbs: HashMap<PathBuf, slint::Image> = (libraries.iter())
             .flat_map(|loaded| {
@@ -113,9 +158,12 @@ impl Gui {
                 splits.map(|split| loaded.folder.join(&split.base_image))
             })
             // One that can't be read keeps its empty box
-            .filter_map(|path| Some((path.clone(), slint::Image::load_from_path(&path).ok()?)))
+            .filter_map(|path| Some((path.clone(), png_image(&path)?)))
             .collect();
-        self.maker.borrow_mut().library = Library { libraries, thumbs, ..Library::default() };
+        let mut maker = self.maker.borrow_mut();
+        let chosen = maker.library.chosen;
+        maker.library = Library { libraries, thumbs, chosen, ..Library::default() };
+        drop(maker);
         let window = &self.windows.library;
         let errors: Vec<String> = errors.iter().map(ToString::to_string).collect();
         let short = match errors.len() {
@@ -125,11 +173,6 @@ impl Gui {
         };
         window.set_errors(short.into());
         window.set_error_details(errors.join("\n\n").into());
-        window.set_search_text(SharedString::new());
-        window.set_can_drag(!self.under_wayland());
-        // Shown first, since only an open window is kept up to date
-        self.show_window(window.window());
-        self.refresh_library();
     }
 
     /// Keeps an open Split Library on the preset being edited, its game and which splits it

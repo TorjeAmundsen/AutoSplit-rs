@@ -6,9 +6,9 @@ use std::rc::Rc;
 use autosplit::gui::messages::Buttons;
 use autosplit::gui::preset_form::{MASK_NAME_CHARS, SAVESTATE_NAME_CHARS, elide_middle};
 use autosplit::gui::ui::{
-    AboutWindow, HotkeyRow, InfoCell, InlineMessage, InstructionCard, InstructionsWindow, LibraryCard, LibraryStep,
-    LibraryWindow, LogWindow, MainWindow, MakerRow, MakerWindow, MessageWindow, SettingsWindow, SimilarityRow,
-    SplitForm, SplitValues, TesterReading, TesterWindow,
+    AboutWindow, EntryStep, HotkeyRow, InfoCell, InlineMessage, InstructionCard, InstructionsWindow, LibraryCard,
+    LibraryEntryWindow, LibraryStep, LibraryWindow, LogWindow, MainWindow, MakerRow, MakerWindow, MessageWindow,
+    SettingsWindow, SimilarityRow, SplitForm, SplitValues, TesterReading, TesterWindow,
 };
 use autosplit::gui::{HOTKEY_ROWS, file_name_parts, library_file_parts, thumbnail, transparency_grid};
 use slint::platform::software_renderer::{MinimalSoftwareWindow, RepaintBufferType, Rgb565Pixel};
@@ -468,6 +468,8 @@ Replace them?",
     library.show().unwrap();
     save(&window, PhysicalSize::new(600, 520), &folder.join("library.png"));
     library.set_selected(1);
+    // Developer builds can change and delete what's in the library
+    library.set_developer(true);
     save(&window, PhysicalSize::new(600, 420), &folder.join("library-single.png"));
     save(&window, PhysicalSize::new(480, 300), &folder.join("library-narrow.png"));
     library.set_cards(std::rc::Rc::new(slint::VecModel::from(Vec::<LibraryCard>::new())).into());
@@ -476,6 +478,33 @@ Replace them?",
     library.set_empty_message("No ready-made splits match ganon bottle.".into());
     save(&window, PhysicalSize::new(600, 300), &folder.join("library-empty.png"));
     library.hide().unwrap();
+
+    // A boss of two images made from the preset's selected splits
+    let entry = LibraryEntryWindow::new().unwrap();
+    let entry_step = |heading: &str, file: &str, name: &str, source: &str| EntryStep {
+        heading: heading.into(),
+        thumb: base(file),
+        file_parts: library_file_parts(name),
+        file: name.into(),
+        source: source.into(),
+    };
+    let steps = vec![
+        entry_step("Ganon intro", "base_collapse_cs.png", "XX_Ganon intro_{d}.png", "Base image from its grab"),
+        entry_step("Ganon", "base_ganon.png", "XX_Ganon_(0.92).png", "Base image from the live capture"),
+    ];
+    entry.set_game("The Legend of Zelda: Ocarina of Time".into());
+    entry.set_description_text("Final slash on Ganon: the intro text, then the flash".into());
+    entry.set_images(2.0);
+    entry.set_most_images(4.0);
+    entry.set_steps(std::rc::Rc::new(slint::VecModel::from(steps)).into());
+    entry.show().unwrap();
+    save(&window, PhysicalSize::new(520, 300), &folder.join("library-entry.png"));
+    entry.set_problem("Split3 needs a mask first.".into());
+    entry.set_steps(std::rc::Rc::new(slint::VecModel::from(Vec::<EntryStep>::new())).into());
+    entry.set_editing(true);
+    entry.set_replace(true);
+    save(&window, PhysicalSize::new(520, 220), &folder.join("library-entry-problem.png"));
+    entry.hide().unwrap();
 
     let log = LogWindow::new().unwrap();
     log.set_log("    0.001s  Loaded settings.toml\n    0.002s  Timer: hotkeys (split num 1)".into());

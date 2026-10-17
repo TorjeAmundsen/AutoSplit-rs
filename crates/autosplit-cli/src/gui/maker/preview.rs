@@ -124,6 +124,7 @@ impl Gui {
     /// A frame of the capture's preview: until something's set to make the selected split's
     /// split image from, it's previewed from the capture, masked like a grab would be.
     pub(in crate::gui) fn maker_live_frame(&self, pixels: &Pixels) {
+        self.maker.borrow_mut().last_live = Some(pixels.clone());
         if !self.previews_capture() {
             return;
         }

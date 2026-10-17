@@ -9,6 +9,7 @@ pub mod hotkeys;
 pub mod image;
 #[doc(hidden)]
 pub mod imgproc;
+pub mod library;
 pub mod livesplit_one;
 pub mod mask;
 #[cfg(target_os = "linux")]

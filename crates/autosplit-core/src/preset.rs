@@ -231,10 +231,10 @@ pub struct SplitLibrary {
 pub struct LibrarySplit {
     #[serde(flatten)]
     pub split: PresetSplit,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub description: String,
     /// A screenshot the mask fits, relative to the library's folder.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub base_image: String,
     /// The next image of the ready-made split above, like the boss's flash after a dummy for its
     /// intro text. They're imported together, in order.

@@ -133,6 +133,9 @@ export component MakerWindow inherits Window {
     callback clear-savestate();
     callback add-split();
     callback open-library();
+    // Developer builds can add the selected splits to the split library
+    in property <bool> developer;
+    callback add-to-library();
     callback duplicate-split();
     callback remove-split();
     callback move-split(bool);
@@ -761,6 +764,15 @@ export component MakerWindow inherits Window {
                 if root.editing: HorizontalLayout {
                     height: 24px;
                     alignment: end;
+                    spacing: 6px;
+
+                    if root.developer: Button {
+                        width: 110px;
+                        text: "Add to Library...";
+                        enabled: root.has-split;
+                        clicked => { root.add-to-library(); }
+                        tip: "Make a ready-made split for the split library from the selected split, and the ones after it for one of several images (developer builds only)";
+                    }
 
                     Button {
                         width: 110px;

@@ -1,0 +1,5 @@
+Don't copy the savestates from this folder yourself.
+
+Presets reuse savestates for several splits, and their file names aren't in the order of the splits.
+Use Copy Savestates in Make Split Images instead. It copies each split's savestate, numbered and
+named like its split image.
