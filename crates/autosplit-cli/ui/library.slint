@@ -195,6 +195,8 @@ export component LibraryWindow inherits Window {
     in property <bool> developer;
     callback edit-entry(int);
     callback delete-entry(int);
+    // Raised when the window is hidden, which ends a drag its release won't reach
+    in property <int> drag-reset;
     // Dragging works where windows know their place on the screen, which they don't under Wayland
     in property <bool> can-drag: true;
     callback search-edited(string);
@@ -271,6 +273,10 @@ export component LibraryWindow inherits Window {
 
                         for card[index] in root.cards: row := Rectangle {
                             property <bool> dragging;
+                            property <int> reset: root.drag-reset;
+                            changed reset => {
+                                self.dragging = false;
+                            }
                             property <length> press-x;
                             property <length> press-y;
                             y: index * root.row-height;

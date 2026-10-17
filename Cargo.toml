@@ -13,3 +13,10 @@ rust-version = "1.92"
 lto = "fat"
 strip = true
 codegen-units = 1
+
+# The tests in CI: as fast as release where the golden tests need it, without the link-time
+# optimization that only the shipped binary needs, which makes every test binary slow to build
+[profile.ci]
+inherits = "release"
+lto = false
+codegen-units = 16

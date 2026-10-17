@@ -129,7 +129,14 @@ impl Gui {
         on!(weak, library, on_card_dropped, (index) gui => gui.card_dropped(index as usize));
         on!(weak, library, on_chosen, (index) gui => gui.maker.borrow_mut().library.chosen = Some(index as usize));
         on!(weak, library, on_search_edited, (_text) gui => gui.refresh_library());
-        on!(weak, library, on_close_clicked, () gui => { let _ = gui.windows.library.hide(); });
+        on!(weak, library, on_close_clicked, () gui => gui.close_library());
+        let close = weak.clone();
+        library.window().on_close_requested(move || {
+            if let Some(gui) = close.upgrade() {
+                gui.close_library();
+            }
+            slint::CloseRequestResponse::KeepWindowShown
+        });
     }
 
     /// Opens Split Library with the libraries read again, in case they changed, and the search
@@ -173,6 +180,25 @@ impl Gui {
         };
         window.set_errors(short.into());
         window.set_error_details(errors.join("\n\n").into());
+    }
+
+    /// Closes Split Library, from Close, its close button, Escape, or when editing ends.
+    pub(in crate::gui) fn close_library(&self) {
+        let _ = self.windows.library.hide();
+        self.library_hidden();
+    }
+
+    /// Split Library is hidden, so a split it was dragging or about to insert goes nowhere: the
+    /// line it showed in the split list goes, and the row being dragged stops being dragged. The
+    /// pointer's release or leaving Insert, which would do that, never reaches a hidden window.
+    pub(in crate::gui) fn library_hidden(&self) {
+        let mut maker = self.maker.borrow_mut();
+        maker.library.hovering = None;
+        maker.library.dragging = None;
+        drop(maker);
+        let window = &self.windows.library;
+        window.set_drag_reset(window.get_drag_reset().wrapping_add(1));
+        self.windows.maker.set_drop_line(-1);
     }
 
     /// Keeps an open Split Library on the preset being edited, its game and which splits it
@@ -269,6 +295,10 @@ impl Gui {
     /// which include the title bar, is the difference between their insides too.
     fn card_dragged(&self, x: f32, y: f32) {
         let from = self.windows.library.window();
+        // A move that comes after it's hidden, which ended the drag
+        if !from.is_visible() {
+            return;
+        }
         let to = self.windows.maker.window();
         let (scale, size) = (from.scale_factor(), from.size());
         let (inside_x, inside_y) = (x * scale, y * scale);

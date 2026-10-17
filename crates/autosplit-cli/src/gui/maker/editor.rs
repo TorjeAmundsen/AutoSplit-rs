@@ -263,7 +263,7 @@ impl Gui {
         drop(maker);
         self.windows.maker.set_editing(false);
         // Its splits are added to the preset being edited, and taken from it
-        let _ = self.windows.library.hide();
+        self.close_library();
         self.close_entry();
         Some(edit)
     }

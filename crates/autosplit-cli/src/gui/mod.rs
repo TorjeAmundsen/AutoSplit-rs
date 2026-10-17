@@ -951,6 +951,12 @@ impl Gui {
                     return EventResult::Propagate;
                 }
                 let _ = window.hide();
+                // Split Library's drag or insert line goes with it
+                if let Some(gui) = weak.upgrade()
+                    && !gui.windows.library.window().is_visible()
+                {
+                    gui.library_hidden();
+                }
                 EventResult::PreventDefault
             });
         }
