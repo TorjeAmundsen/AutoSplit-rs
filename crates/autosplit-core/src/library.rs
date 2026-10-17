@@ -142,17 +142,17 @@ fn expected_chunks(
     expected: &[LibrarySplit],
 ) -> Result<Vec<Vec<LibrarySplit>>, PresetError> {
     let chunks: Vec<Vec<LibrarySplit>> = library.ready_made().map(<[LibrarySplit]>::to_vec).collect();
-    match chunks.get(index) {
-        Some(chunk) if chunk.as_slice() == expected => Ok(chunks),
-        Some(_) => Err(PresetError::Invalid {
-            path: folder.join(LIBRARY_FILE),
-            reason: format!("its ready-made split {} changed meanwhile. Open it again", index + 1),
-        }),
-        None => Err(PresetError::Invalid {
-            path: folder.join(LIBRARY_FILE),
-            reason: format!("it has no ready-made split {}", index + 1),
-        }),
+    if chunks.get(index).is_some_and(|chunk| chunk.as_slice() == expected) {
+        return Ok(chunks);
     }
+    // Named by the split it's for, its last image, like Split Library names it
+    let name = expected.last().map(|step| step.split.name.as_str()).unwrap_or("The ready-made split");
+    Err(PresetError::Unwritable {
+        path: folder.join(LIBRARY_FILE),
+        reason: format!(
+            "{name} changed in it since you opened it, so nothing was written. Open it again and try once more."
+        ),
+    })
 }
 
 /// The description on the first image, which the Split Library shows, and none on the others.

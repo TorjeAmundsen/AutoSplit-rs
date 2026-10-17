@@ -1,6 +1,7 @@
 //! Split Library: the ready-made splits of the edited preset's game, from the splits library
 //! next to the program, added to the preset one at a time.
 
+use autosplit_core::filename::START_KEYWORD;
 use autosplit_core::preset::{LibrarySplit, LoadedLibrary, PresetSplit, game_key, load_libraries};
 use slint::Model;
 use slint::winit_030::WinitWindowAccessor;
@@ -108,7 +109,12 @@ fn library_step(step: &LibrarySplit, thumb: Option<slint::Image>, defaults: &Spl
 /// part without one.
 fn in_preset_part(in_preset: &Option<InPreset>) -> NamePart {
     let parts = in_preset.as_ref().map(|in_preset| file_name_parts(&in_preset.file));
-    parts.and_then(|parts| parts.row_data(0)).unwrap_or_default()
+    let mut part = parts.and_then(|parts| parts.row_data(0)).unwrap_or_default();
+    // A start image's keyword is long for a row, so it's shortened like reset's length
+    if part.text == START_KEYWORD {
+        part.text = "start".into();
+    }
+    part
 }
 
 impl Gui {
@@ -132,6 +138,7 @@ impl Gui {
         });
         on!(weak, library, on_item_dragged, (_index, x, y) gui => gui.item_dragged(x, y));
         on!(weak, library, on_item_dropped, (index) gui => gui.item_dropped(index as usize));
+        on!(weak, library, on_drag_cancelled, () gui => gui.drag_cancelled());
         on!(weak, maker, on_drag_scrolled, () gui => {
             let point = gui.maker.borrow().library.drag_point;
             if let Some((x, y)) = point {
@@ -155,6 +162,11 @@ impl Gui {
     fn open_library(&self) {
         if !self.editing() {
             return;
+        }
+        // Open already: brought forward, with its search as it is
+        let window = self.windows.library.window();
+        if window.is_visible() {
+            return self.show_window(window);
         }
         let errors = self.read_library();
         let window = &self.windows.library;
@@ -292,6 +304,17 @@ impl Gui {
             window.set_items(ModelRc::new(VecModel::from(items)));
         }
         window.set_selected(selected.map_or(-1, |selected| selected as i32));
+        self.show_insert_line();
+    }
+
+    /// The split being dragged was let go of without dropping it, like when another mouse button
+    /// ended the drag: no line, no scrolling, nothing inserted.
+    fn drag_cancelled(&self) {
+        let mut maker = self.maker.borrow_mut();
+        maker.library.dragging = None;
+        maker.library.drag_point = None;
+        drop(maker);
+        self.windows.maker.invoke_drag_ended();
         self.show_insert_line();
     }
 

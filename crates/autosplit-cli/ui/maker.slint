@@ -187,11 +187,17 @@ export component MakerWindow inherits Window {
     // A split from Split Library is dragged with the pointer at `x` and `y` in the window: the
     // list scrolls while it's near the list's top or bottom edge. Returns the gap under it, like
     // drop-gap.
+    // Past the list's top or bottom, but over its width, it keeps scrolling, with the line at
+    // the gap nearest the pointer, since going past the edge is how a list is scrolled.
     public function drag-over(x: length, y: length) -> int {
-        let gap = root.drop-gap(x, y);
+        let left = list.absolute-position.x;
+        if (x < left || x >= left + list.width) {
+            root.drag-edge = 0;
+            return -1;
+        }
         let inside = y - list.absolute-position.y;
-        root.drag-edge = gap < 0 ? 0 : inside < root.drag-edge-zone ? -1 : inside > list.visible-height - root.drag-edge-zone ? 1 : 0;
-        gap
+        root.drag-edge = inside < root.drag-edge-zone ? -1 : inside > list.visible-height - root.drag-edge-zone ? 1 : 0;
+        root.drop-gap(x, list.absolute-position.y + clamp(inside, 0px, list.height - 1px))
     }
 
     // The drag ended, or left the list: the list stops scrolling

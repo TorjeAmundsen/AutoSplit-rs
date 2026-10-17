@@ -207,7 +207,7 @@ fn a_ready_made_split_that_isnt_there_is_an_error() {
     let error = delete_ready_made(&folder, 5, &[], &[]).unwrap_err();
 
     // Assert
-    assert!(error.to_string().contains("no ready-made split 6"), "{error}");
+    assert!(error.to_string().contains("changed in it since you opened it"), "{error}");
 }
 
 #[test]
@@ -343,7 +343,7 @@ fn a_ready_made_split_that_changed_meanwhile_isnt_changed() {
 
     // Assert
     assert_eq!(
-        (error.to_string().contains("changed meanwhile"), load(&folder).splits[0].description.as_str()),
+        (error.to_string().contains("changed in it since you opened it"), load(&folder).splits[0].description.as_str()),
         (true, "Changed meanwhile")
     );
 }

@@ -127,6 +127,8 @@ component Grip inherits Rectangle {
     callback pressed(length, length);
     callback moved(length, length);
     callback released();
+    // The drag ended without its release: another button was released, or Slint cancelled it
+    callback cancelled();
     width: 14px;
     background: root.enabled && (touch.has-hover || root.dragging) ? Theme.item-hover : transparent;
 
@@ -147,6 +149,10 @@ component Grip inherits Rectangle {
             }
             if (event.button == PointerEventButton.left && event.kind == PointerEventKind.up) {
                 root.released();
+            }
+            // The left button's own release won't come anymore
+            if ((event.button != PointerEventButton.left && event.kind == PointerEventKind.up) || event.kind == PointerEventKind.cancel) {
+                root.cancelled();
             }
         }
         moved => {
@@ -192,6 +198,8 @@ export component LibraryWindow inherits Window {
     callback item-dragged(int, length, length);
     // The split being dragged was let go
     callback item-dropped(int);
+    // The drag ended without dropping it anywhere
+    callback drag-cancelled();
     // Developer builds can change and delete what's in the library
     in property <bool> developer;
     callback edit-entry(int);
@@ -331,6 +339,12 @@ export component LibraryWindow inherits Window {
                                     enabled: item.blocker == "";
                                     dragging: row.dragging;
                                     pressed(x, y) => {
+                                        // A drag that never got its release is over, so this
+                                        // press only starts a new one
+                                        if (row.dragging) {
+                                            row.dragging = false;
+                                            root.drag-cancelled();
+                                        }
                                         row.press-x = x;
                                         row.press-y = y;
                                         root.choose(index);
@@ -349,14 +363,27 @@ export component LibraryWindow inherits Window {
                                             root.item-dropped(item.ready-made);
                                         }
                                     }
+                                    cancelled => {
+                                        if (row.dragging) {
+                                            row.dragging = false;
+                                            root.drag-cancelled();
+                                        }
+                                    }
                                 }
 
-                                Text {
+                                row-name := Text {
                                     horizontal-stretch: 1;
                                     vertical-alignment: center;
                                     color: item.blocker == "" ? Theme.text : Theme.disabled-text;
                                     text: item.heading;
                                     overflow: elide;
+
+                                    // The whole name, when the row cuts it off
+                                    if row-name.preferred-width > row-name.width: Tooltip {
+                                        Tip {
+                                            text: item.heading;
+                                        }
+                                    }
                                 }
 
                                 // How many images it takes, when it's more than one
@@ -426,7 +453,8 @@ export component LibraryWindow inherits Window {
                                 font-weight: 600;
                                 color: Theme.text;
                                 text: root.item.heading;
-                                overflow: elide;
+                                // A long name wraps instead of being cut off
+                                wrap: word-wrap;
                             }
 
                             // Each image at its own size, beside what it sets, numbered when there are

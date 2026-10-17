@@ -258,12 +258,17 @@ fn is_default<T: Default + PartialEq>(value: &T) -> bool {
 pub enum PresetError {
     #[error("'{}' couldn't be read: {reason}", .path.display())]
     Unreadable { path: PathBuf, reason: String },
-    #[error("'{}' isn't a valid preset: {reason}", .path.display())]
+    #[error("'{}' isn't a valid {}: {reason}", .path.display(), kind_of(.path))]
     Invalid { path: PathBuf, reason: String },
-    #[error("'{}' isn't a split image preset: it has no [[split]] tables.", .path.display())]
+    #[error("'{}' isn't a {}: it has no [[split]] tables.", .path.display(), kind_of(.path))]
     NotAPreset { path: PathBuf },
     #[error("'{}' couldn't be written: {reason}", .path.display())]
     Unwritable { path: PathBuf, reason: String },
+}
+
+/// What a file of splits is called in its errors: a split library's `splits.toml`, or a preset.
+fn kind_of(path: &Path) -> &'static str {
+    if path.file_name().is_some_and(|name| name == LIBRARY_FILE) { "split library" } else { "split image preset" }
 }
 
 /// A preset and the folder its masks and savestates are in.
