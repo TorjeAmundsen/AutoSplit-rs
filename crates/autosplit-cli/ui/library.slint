@@ -466,7 +466,7 @@ export component LibraryWindow inherits Window {
                             enabled: root.card.blocker == "";
                             clicked => { root.insert(root.card.ready-made, true); }
                             changed hovered => { root.insert-hovered(true, self.hovered); }
-                            tip: "Put it in the preset above the selected split, with " + (root.card.steps.length > 1 ? "its " + root.card.steps.length + " images as splits in this order" : "its mask and settings") + ". The selected split stays selected, so the next one goes after it.";
+                            tip: (root.card.steps.length > 1 ? "Insert its " + root.card.steps.length + " images" : "Insert it") + " above the selected split, which stays selected, so the next one goes between them";
                         }
 
                         Button {
@@ -475,7 +475,7 @@ export component LibraryWindow inherits Window {
                             enabled: root.card.blocker == "";
                             clicked => { root.insert(root.card.ready-made, false); }
                             changed hovered => { root.insert-hovered(false, self.hovered); }
-                            tip: "Put it in the preset below the selected split, with " + (root.card.steps.length > 1 ? "its " + root.card.steps.length + " images as splits in this order" : "its mask and settings") + ", and select it, so the next one goes after it.";
+                            tip: (root.card.steps.length > 1 ? "Insert its " + root.card.steps.length + " images" : "Insert it") + " below the selected split and select it, so the next one goes after it";
                         }
 
                     }
@@ -512,14 +512,14 @@ export component LibraryWindow inherits Window {
                 width: 60px;
                 text: "Edit...";
                 clicked => { root.edit-entry(root.card.ready-made); }
-                tip: "Change the chosen split's description, or replace its images and settings with the splits selected in Make Split Images (developer builds only)";
+                tip: "Change its description, or replace it with the splits selected in Make Split Images";
             }
 
             if root.developer && root.has-card: Button {
                 width: 70px;
                 text: "Delete...";
                 clicked => { root.delete-entry(root.card.ready-made); }
-                tip: "Delete the chosen split from the split library, with the files only it uses (developer builds only)";
+                tip: "Delete it from the split library, with the files nothing else uses";
             }
 
             Button {
