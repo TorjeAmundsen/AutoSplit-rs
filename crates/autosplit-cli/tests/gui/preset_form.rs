@@ -918,3 +918,41 @@ fn ready_made_splits_name_their_files_without_a_place(name: &str) -> String {
     // Act, with the expected value checked by test_case
     library_file_name(&library_split(name), None)
 }
+
+#[test_case(Some(1), 1, 2, true => 3; "above the selected split, which stays selected")]
+#[test_case(Some(1), 2, 2, false => 3; "below it, the last new one")]
+#[test_case(None, 3, 1, true => 4; "above with none selected, still none")]
+#[test_case(None, 3, 1, false => 3; "below with none selected, the new one")]
+fn inserted_splits_keep_the_order_they_are_put_in(
+    selected: Option<usize>,
+    at: usize,
+    count: usize,
+    above: bool,
+) -> usize {
+    // Arrange: the draft with the new splits in
+    let mut draft = draft(&["A", "B", "C"]);
+    for n in 0..count {
+        draft.preset.splits.insert(at + n, split("New"));
+    }
+
+    // Act
+    draft.selected_after_import(selected, at, count, above)
+}
+
+#[test]
+fn inserting_above_with_nothing_selected_keeps_click_order() {
+    // Arrange: an empty preset, so nothing is selected
+    let mut draft = draft(&[]);
+    let mut selected = None;
+
+    // Act: Insert Above A, then B, as the window does
+    for name in ["A", "B"] {
+        let at = draft.place_before(selected);
+        draft.import(at, &[split(name)], std::path::Path::new("library"));
+        let select = draft.selected_after_import(selected, at, 1, true);
+        selected = (select < draft.preset.splits.len()).then_some(select);
+    }
+
+    // Assert
+    assert_eq!(names(&draft), ["A", "B"]);
+}

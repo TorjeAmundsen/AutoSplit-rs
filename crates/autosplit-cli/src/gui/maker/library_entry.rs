@@ -3,7 +3,7 @@
 //! program, and changed or deleted from Split Library.
 
 use autosplit_core::library::{NewStep, add_ready_made, base_image, change_ready_made, delete_ready_made};
-use autosplit_core::preset::PresetSplit;
+use autosplit_core::preset::{LibrarySplit, PresetSplit};
 
 use super::super::library_file_parts;
 use super::super::preset_form::{library_file_name, library_heading};
@@ -13,9 +13,17 @@ use super::*;
 
 /// What the entry window is for, while it's open.
 pub(super) struct Entry {
-    /// The ready-made split being edited, by its library's folder and its place there, and its
-    /// place among the game's, or none when one is added.
-    editing: Option<(PathBuf, usize, usize)>,
+    /// The ready-made split being edited, or none when one is added.
+    editing: Option<Edited>,
+}
+
+/// A ready-made split being edited, as it was when the window opened: the library can change
+/// meanwhile, which saving finds out instead of changing another one.
+struct Edited {
+    /// Its library's folder, and its place among that library's.
+    folder: PathBuf,
+    place: usize,
+    steps: Vec<LibrarySplit>,
 }
 
 /// An image of the ready-made split as it would be written, with where its base image is from.
@@ -63,9 +71,9 @@ impl Gui {
         let (editing, description) = match index {
             Some(index) => {
                 let Some((folder, place)) = maker.library.place_of(&game, index) else { return };
-                let steps = maker.library.steps_of(&game, index).unwrap_or_default();
+                let Some(steps) = maker.library.steps_of(&game, index) else { return };
                 let description = steps.iter().map(|step| step.description.clone()).find(|text| !text.is_empty());
-                (Some((folder, place, index)), description.unwrap_or_default())
+                (Some(Edited { folder, place, steps }), description.unwrap_or_default())
             }
             None => (None, String::new()),
         };
@@ -113,6 +121,14 @@ impl Gui {
             if split.mask.is_empty() {
                 return Err(format!("{} needs a mask first.", library_heading(split)));
             }
+            // Missing files are said here, before anything is written
+            let (mask, savestate) =
+                (maker.file(&split.mask), (!split.savestate.is_empty()).then(|| maker.file(&split.savestate)));
+            for path in std::iter::once(&mask).chain(&savestate) {
+                if !path.is_file() {
+                    return Err(format!("{} uses {}, which doesn't exist.", library_heading(split), path.display()));
+                }
+            }
             let source = maker.splits.get(index).and_then(|work| work.source.clone());
             let (screenshot, from) = match (source, &maker.last_live) {
                 (Some(source), _) => {
@@ -132,8 +148,7 @@ impl Gui {
                     ));
                 }
             };
-            let savestate = (!split.savestate.is_empty()).then(|| maker.file(&split.savestate));
-            let step = NewStep { split: split.clone(), mask: maker.file(&split.mask), savestate, screenshot };
+            let step = NewStep { split: split.clone(), mask, savestate, screenshot };
             planned.push(Planned { step, source: from });
         }
         Ok(planned)
@@ -148,7 +163,7 @@ impl Gui {
         let Some(preset) = maker.edit.as_ref().map(editor::Editing::preset) else { return };
         let game = preset.game.clone();
         let most = preset.splits.len().saturating_sub(maker.selected).clamp(1, 8);
-        let kept = entry.editing.as_ref().filter(|_| !window.get_replace()).map(|(_, _, index)| *index);
+        let kept = entry.editing.as_ref().filter(|_| !window.get_replace());
         let step_row = |split: &PresetSplit, thumb: slint::Image, source: String| {
             let file = library_file_name(split, Some(&defaults));
             EntryStep {
@@ -160,11 +175,10 @@ impl Gui {
             }
         };
         // Kept as they are, only the description changes
-        let kept_rows: Option<Vec<EntryStep>> = kept.map(|index| {
-            let folder = entry.editing.as_ref().map(|(folder, _, _)| folder.clone()).unwrap_or_default();
-            (maker.library.steps_of(&game, index).unwrap_or_default().iter())
+        let kept_rows: Option<Vec<EntryStep>> = kept.map(|edited| {
+            (edited.steps.iter())
                 .map(|step| {
-                    let thumb = maker.library.thumb(&folder, &step.base_image).unwrap_or_default();
+                    let thumb = maker.library.thumb(&edited.folder, &step.base_image).unwrap_or_default();
                     step_row(&step.split, thumb, "Kept as it is".to_owned())
                 })
                 .collect()
@@ -196,9 +210,10 @@ impl Gui {
     fn save_entry(&self) {
         let maker = self.maker.borrow();
         let Some(entry) = &maker.entry else { return };
-        let editing = entry.editing.clone();
+        let editing = entry.editing.as_ref().map(|edited| (edited.folder.clone(), edited.place, edited.steps.clone()));
         let game = maker.edit.as_ref().map(|edit| edit.preset().game.trim().to_owned()).unwrap_or_default();
         drop(maker);
+        let in_use = self.files_in_use();
         let window = &self.windows.entry;
         let description = window.get_description_text().trim().to_owned();
         let steps = match (&editing, window.get_replace()) {
@@ -209,7 +224,9 @@ impl Gui {
             },
         };
         let written = match (editing, steps) {
-            (Some((folder, place, _)), steps) => change_ready_made(&folder, place, &description, steps),
+            (Some((folder, place, expected)), steps) => {
+                change_ready_made(&folder, place, &expected, &description, steps, &in_use)
+            }
             (None, Some(steps)) => add_ready_made(&splits_folder(), &game, &description, steps).map(|_| ()),
             (None, None) => return,
         };
@@ -219,6 +236,18 @@ impl Gui {
         self.close_entry();
         self.read_library();
         self.refresh_library();
+    }
+
+    /// The masks and savestates of the preset being edited, which it takes from where they are
+    /// until it's saved, like the library's for a split inserted from it.
+    fn files_in_use(&self) -> Vec<PathBuf> {
+        let maker = self.maker.borrow();
+        let Some(preset) = maker.edit.as_ref().map(editor::Editing::preset) else { return Vec::new() };
+        (preset.splits.iter())
+            .flat_map(|split| [&split.mask, &split.savestate])
+            .filter(|path| !path.is_empty())
+            .map(|path| maker.file(path))
+            .collect()
     }
 
     /// Asks to delete the `index`th of the game's ready-made splits, then deletes it with the
@@ -233,13 +262,14 @@ impl Gui {
         let steps = maker.library.steps_of(&preset.game, index).unwrap_or_default();
         let name = steps.last().map(|step| library_heading(&step.split)).unwrap_or_default();
         drop(maker);
+        let in_use = self.files_in_use();
         let text = format!(
             "Delete {name} from the split library? Its masks and base images are deleted too, unless another ready-made split uses them."
         );
         let weak = Rc::downgrade(self);
         self.show_message(Message::choice(text, ["Delete", "", "Cancel"], 2, move |answer| {
             let (Some(gui), Answer::Yes) = (weak.upgrade(), answer) else { return };
-            if let Err(error) = delete_ready_made(&folder, place) {
+            if let Err(error) = delete_ready_made(&folder, place, &steps, &in_use) {
                 return gui.show_message(Message::error(format!("Couldn't write the split library. {error}")));
             }
             gui.read_library();

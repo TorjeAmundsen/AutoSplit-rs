@@ -367,19 +367,15 @@ impl Gui {
         self.choose_split(select);
     }
 
-    /// Puts a ready-made split's `steps` from the splits library in `folder` at `at`. With
-    /// `keep_selected`, for ones put above the selected split, it stays selected, so the next
-    /// one goes between them. Otherwise the last step is selected, so the next one goes after it.
-    /// Either way they end up in the order they're put in.
+    /// Puts a ready-made split's `steps` from the splits library in `folder` at `at`, and selects
+    /// what `Draft::selected_after_import` says, so the next ones keep the order they're put in.
+    /// `keep_selected` is for ones put above the selected split.
     pub(super) fn import_library_split(&self, steps: &[PresetSplit], folder: &Path, at: usize, keep_selected: bool) {
         let selected = self.selected_split();
         let mut maker = self.maker.borrow_mut();
         let Some(edit) = maker.edit.as_mut() else { return };
         let changes = edit.draft.import(at, steps, folder);
-        let select = match selected {
-            Some(selected) if keep_selected && at <= selected => selected + steps.len(),
-            _ => (at + steps.len()).saturating_sub(1),
-        };
+        let select = edit.draft.selected_after_import(selected, at, steps.len(), keep_selected);
         edit.reorders += 1;
         for change in changes {
             change.mirror(&mut maker.splits);

@@ -299,6 +299,26 @@ impl Draft {
         changes
     }
 
+    /// The split to select once `count` ready-made images went in at `at`, with `selected`
+    /// selected before. Above the selected split, it stays selected, so the next ones go between
+    /// them. Without a selected split they went at the end, and nothing stays selected, so the
+    /// next ones go at the end too. Otherwise the last image is selected, so the next ones go
+    /// after it. Either way they end up in the order they're put in. With nothing selected, it's
+    /// past the last split.
+    pub fn selected_after_import(
+        &self,
+        selected: Option<usize>,
+        at: usize,
+        count: usize,
+        keep_selected: bool,
+    ) -> usize {
+        match selected {
+            Some(selected) if keep_selected && at <= selected => selected + count,
+            None if keep_selected => self.preset.splits.len(),
+            _ => (at + count).saturating_sub(1),
+        }
+    }
+
     /// Where a split added after `selected` goes: after the splits compared together with it, or
     /// at the end.
     pub fn place_after(&self, selected: Option<usize>) -> usize {
