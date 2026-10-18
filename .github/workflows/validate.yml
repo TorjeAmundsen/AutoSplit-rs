@@ -9,7 +9,49 @@ on:
   workflow_call:
 
 jobs:
+  # What a pull request or push to main changed, so jobs that can't be affected are skipped.
+  # Releases and manual runs skip the filter, and its outputs fall back to true.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.filter.outputs.code || 'true' }}
+      data: ${{ steps.filter.outputs.data || 'true' }}
+    steps:
+      # Two commits, so a pull request's merge commit has its base as HEAD^1
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+
+      # code: a changed file isn't docs, presets, splits or a script nothing in CI runs.
+      # data: presets, splits or what checks them changed.
+      - name: Sort the changed files
+        id: filter
+        if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          base=HEAD^1
+          if [ "$GITHUB_EVENT_NAME" = push ]; then
+            base=$BEFORE
+            # A force push can leave nothing to compare with
+            if ! git fetch --depth=1 origin "$base"; then
+              echo "code=true" >> "$GITHUB_OUTPUT"
+              echo "data=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+          files=$(git diff --name-only "$base" HEAD)
+          echo "$files"
+          code=false
+          data=false
+          grep -qvE '(\.md$|^docs/|^presets/|^splits/|^tools/)' <<< "$files" && code=true
+          grep -qE '^(presets/|splits/|tools/check_savestates\.py$|\.github/workflows/validate\.yml$)' <<< "$files" && data=true
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "data=$data" >> "$GITHUB_OUTPUT"
+
   lint:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -39,7 +81,46 @@ jobs:
       - name: Render the windows
         run: cargo run -p autosplit --example screenshots -- "$RUNNER_TEMP"
 
+  # gz 0.3.7 loads savestates from newer gz builds without complaint, then crashes the game
+  savestates:
+    needs: changes
+    if: needs.changes.outputs.data == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check savestates were saved with gz 0.3.7
+        run: python3 tools/check_savestates.py
+
+  # The tests that read presets/ and splits/, for changes to only those. The data is the same on
+  # every platform, so Linux x64 is enough. A code change runs them in the build job instead.
+  preset-tests:
+    needs: changes
+    if: needs.changes.outputs.data == 'true' && needs.changes.outputs.code != 'true'
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      # Reads the linux-x64 build job's cache and never saves, so it can't replace that cache
+      # with one that only has these tests
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: linux-x64
+          save-if: false
+
+      - name: Install NASM
+        run: sudo apt-get update && sudo apt-get install -y nasm
+
+      - name: Test presets and splits
+        run: |
+          cargo test --profile ci -p autosplit-core --test preset --test mask
+          cargo test --profile ci -p autosplit --test gui bundled_presets
+
   build:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -66,9 +147,10 @@ jobs:
           targets: ${{ matrix.extra-test-target }}
           components: clippy
 
+      # Shared by name instead of keyed by job, so preset-tests can read the linux-x64 one
       - uses: Swatinem/rust-cache@v2
         with:
-          key: ${{ matrix.name }}
+          shared-key: ${{ matrix.name }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
           cache-on-failure: true
 
@@ -108,3 +190,15 @@ jobs:
           name: build-${{ matrix.name }}
           path: build/AutoSplit-*-${{ matrix.name }}.zip
           if-no-files-found: error
+
+  # The one check for branch protection to require. Skipped jobs pass, failed or cancelled ones
+  # don't, so it holds whatever the changes job picked.
+  ci-passed:
+    name: CI passed
+    needs: [changes, lint, savestates, preset-tests, build]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check no job failed
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: exit 1
