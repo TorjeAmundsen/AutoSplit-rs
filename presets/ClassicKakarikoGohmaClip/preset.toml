@@ -72,7 +72,7 @@ threshold = 0.93
 pause = 1.0
 dummy = true
 below = true
-savestate = "savestates/005-deku_tree.gzs"
+savestate = "savestates/013-deku tree.gzs"
 
 [[split]]
 name = "ScrubsDummyHigh"
@@ -82,7 +82,7 @@ threshold = 0.93
 pause = 1.0
 dummy = true
 below = true
-savestate = "savestates/006-deku_tree.gzs"
+savestate = "savestates/014-deku tree.gzs"
 
 [[split]]
 name = "Scrubs"
