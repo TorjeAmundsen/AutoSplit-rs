@@ -24,6 +24,11 @@ const ARRIVAL_STEPS: usize = 3;
 /// with a cut, makes all of it in one. Without this, the earlier cut would count toward the
 /// fade's depth and make the later one look small.
 const MAX_ARRIVAL_SHARE: f64 = 0.75;
+/// How much bigger than the steps after it a step of a fade may be. A fade's steps grow or shrink
+/// a little at a time, while a cut is a jump between small ones. So a cut that lands just under the
+/// threshold and then creeps up to it doesn't count as the gradual part of a fade, which has to be
+/// [`MIN_FADE_DEPTH`] deep on its own.
+const MAX_STEP_GROWTH: f64 = 4.0;
 /// How far a fade may go back from one sample to the next, like a game's fades sometimes do.
 const MAX_DIP: f64 = 0.03;
 const MIN_SAMPLE_INTERVAL: Duration = Duration::from_millis(50);
@@ -73,7 +78,8 @@ pub(crate) fn similarity(color: [u8; 3], capture: &BgraImage, mask: Option<&Mask
 /// The similarity is sampled every quarter of the fade time, between 50 and 100 ms. A frame at
 /// the threshold is a fade when the samples before it came closer to the color step by step, none
 /// of the last three steps to the threshold making more than 40% of the way, or most of those
-/// three steps' rise. A cut makes all of the way in one step.
+/// three steps' rise, and enough of the way came without a jump. A cut makes all of the way in one
+/// step.
 #[derive(Clone, Debug, Default)]
 pub struct FadeTracker {
     /// When each sample was taken, and its similarity.
@@ -119,10 +125,20 @@ impl FadeTracker {
         let Some(arrival) = way.iter().position(|sample| *sample >= threshold).filter(|&arrival| arrival > 0) else {
             return false;
         };
-        let last_steps = &way[arrival.saturating_sub(ARRIVAL_STEPS)..=arrival];
+        let first = arrival.saturating_sub(ARRIVAL_STEPS);
+        let last_steps = &way[first..=arrival];
         let largest_step = last_steps.windows(2).map(|pair| pair[1] - pair[0]).fold(0.0, f64::max);
         let rise = last_steps[last_steps.len() - 1] - last_steps[0];
-        depth >= MIN_FADE_DEPTH.max(1.0 - threshold)
+        // The gradual part: back from those steps until a step jumps far past the ones after it
+        let (mut gradual, mut seen) = (first, largest_step.max(f64::EPSILON));
+        while gradual > 0 && way[gradual] - way[gradual - 1] <= MAX_STEP_GROWTH * seen {
+            seen = seen.max(way[gradual] - way[gradual - 1]);
+            gradual -= 1;
+        }
+        let gradual_depth = similarity - way[gradual..].iter().copied().fold(f64::INFINITY, f64::min);
+        let min_depth = MIN_FADE_DEPTH.max(1.0 - threshold);
+        depth >= min_depth
+            && gradual_depth >= min_depth
             && largest_step <= MAX_STEP_SHARE * depth
             && largest_step <= MAX_ARRIVAL_SHARE * rise
     }

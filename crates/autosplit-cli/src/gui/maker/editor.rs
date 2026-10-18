@@ -475,6 +475,7 @@ impl Gui {
                 name_problem: field_problems(&problems, selected, Field::Name).into(),
                 mask_problem: field_problems(&problems, selected, Field::Mask).into(),
                 color_problem: field_problems(&problems, selected, Field::Color).into(),
+                drops_savestate: split.is_fade() && !split.savestate.is_empty(),
                 fade_color: split.fade_color().map_or(slint::Color::from_argb_u8(0, 0, 0, 0), |[red, green, blue]| {
                     slint::Color::from_rgb_u8(red, green, blue)
                 }),

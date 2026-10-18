@@ -182,6 +182,13 @@ pub enum FilenameWarning {
     FadeOnly(Setting),
     /// A value that fade images don't use.
     NotForFade(Setting),
+    /// A fade image whose fade time is too short for the profile's FPS limit: it's compared too
+    /// seldom to tell the fade from a cut. Not from the file name alone, so `filename_warnings`
+    /// never gives it.
+    FadeTooShortForFps {
+        fade_time: i64,
+        fps_limit: i64,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -280,6 +287,15 @@ impl fmt::Display for FilenameWarning {
             }
             Self::NotForFade(setting) => {
                 write!(f, "fade images, with the {{f}} flag, compare by color, so the {} is ignored", setting.name())
+            }
+            Self::FadeTooShortForFps { fade_time, fps_limit } => {
+                // A fade needs about 3 comparisons to tell it from a cut
+                let needed = (3000 + fade_time - 1) / *fade_time.max(&1);
+                write!(
+                    f,
+                    "the FPS limit of {fps_limit} compares too seldom to tell a fade of {fade_time} ms from a cut, so it \
+                     may never split. Raise the FPS limit to at least {needed}, or the fade time."
+                )
             }
         }
     }
@@ -385,6 +401,7 @@ pub fn name_parts(filename: &str) -> Vec<NamePart> {
             | FilenameWarning::Delimiters { setting: of, .. } => *of == setting,
             FilenameWarning::UnknownComparisonMethod(_) => setting == Setting::ComparisonMethod,
             FilenameWarning::FadeOnly(of) | FilenameWarning::NotForFade(of) => *of == setting,
+            FilenameWarning::FadeTooShortForFps { .. } => false,
             FilenameWarning::InvalidFlag { .. } | FilenameWarning::DummyAndPause { .. } => false,
         })
     };

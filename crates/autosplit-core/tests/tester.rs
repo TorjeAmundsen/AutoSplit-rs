@@ -370,7 +370,7 @@ fn info_shows_a_fade_image_s_color_and_fade_time() {
     let info = harness.info();
 
     // Assert
-    assert_eq!(info[1], "METHOD: fade to #ff0000 (about 600 ms, tolerance 10)");
+    assert_eq!(info[1], "METHOD: fade to #ff0000 (about 600 ms, tolerance 10 levels)");
 }
 
 #[test]
@@ -397,4 +397,16 @@ fn status_says_why_a_cut_to_a_fade_image_s_color_does_nothing() {
             "Faded to the color. Waiting for it to drop back below."
         )
     );
+}
+
+#[test]
+fn info_shows_the_fade_tolerance_comparisons_use() {
+    // Arrange: a hand-edited profile's tolerance, past the 255 levels a channel has
+    let harness = Harness::with_defaults("1_split_~600~_{f}.png", SplitDefaults { fade_tolerance: 300, ..DEFAULTS });
+
+    // Act
+    let info = harness.info();
+
+    // Assert
+    assert_eq!(info[1], "METHOD: fade to #ff0000 (about 600 ms, tolerance 255 levels)");
 }

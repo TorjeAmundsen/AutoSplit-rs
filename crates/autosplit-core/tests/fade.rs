@@ -168,6 +168,34 @@ fn cut_soon_after_another_cut_is_not_a_fade(parts: &[(f64, usize)]) {
     assert_eq!(found, [None; 2]);
 }
 
+#[test_case(&[(0.3, 60), (0.990, 6), (0.991, 6), (0.993, 6), (0.996, 60)]; "straight to just under it")]
+#[test_case(&[(0.3, 60), (0.85, 6), (0.990, 6), (0.991, 6), (0.993, 6), (0.996, 60)]; "through a dark frame")]
+#[test_case(&[(0.5, 60), (0.98, 6), (0.984, 6), (0.988, 6), (0.992, 6), (0.996, 60)]; "a longer creep")]
+fn cut_that_creeps_up_to_the_threshold_is_not_a_fade(parts: &[(f64, usize)]) {
+    // Arrange: a cut to just under the color, then a few samples creeping up to it, like an analog
+    // capture's black level settling
+    let trace: Vec<f64> = parts.iter().flat_map(|&(similarity, frames)| vec![similarity; frames]).collect();
+
+    // Act
+    let found = first_fade(&trace, 0.995, 1000);
+
+    // Assert
+    assert_eq!(found, None);
+}
+
+#[test]
+fn fade_soon_after_a_cut_to_a_dark_room_is_found() {
+    // Arrange: a cut to a dark room, and half a second later a fade to the color
+    let mut trace = vec![0.3; 60];
+    trace.extend(fade_trace(0.91, 1.0, 0.5, 1.0));
+
+    // Act
+    let found = first_fade(&trace, 0.99, 1000);
+
+    // Assert
+    assert!(found.is_some());
+}
+
 #[test]
 fn cut_after_a_dark_room_that_flickers_is_not_a_fade() {
     // Arrange: a cut to a dark room whose similarity moves a little, then a cut to the color

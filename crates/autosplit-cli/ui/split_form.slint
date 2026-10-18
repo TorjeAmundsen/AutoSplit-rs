@@ -18,6 +18,8 @@ export struct SplitForm {
     group-problem: string,
     // A fade split's color, transparent while it isn't written right
     fade-color: color,
+    // A fade split with a savestate from before, which isn't saved with it
+    drops-savestate: bool,
     mask: string,
     savestate: string,
     // Full paths, for the tooltips
@@ -210,6 +212,13 @@ export component SplitFormPanel inherits VerticalLayout {
                 label-width: root.label-width;
                 text: root.form.color-problem;
             }
+
+            // Its savestate row is hidden, so this says where it went
+            if root.form.drops-savestate: FieldProblem {
+                label-width: root.label-width;
+                color: Theme.secondary-text;
+                text: "Its savestate isn't saved with a fade split. Switch back to Screenshot to keep it.";
+            }
         }
 
         // The field, then what it says about it, close under it
@@ -282,11 +291,10 @@ export component SplitFormPanel inherits VerticalLayout {
                     clicked => { root.choose-mask(); }
                 }
 
-                // A fade split without a mask compares the whole screen
-                if SplitValues.compare == 1: Button {
+                // A fade split without a mask compares the whole screen, which then has the room
+                if SplitValues.compare == 1 && root.form.mask != "": Button {
                     width: 50px;
                     text: "Clear";
-                    enabled: root.form.mask != "";
                     clicked => { root.clear-mask(); }
                 }
             }

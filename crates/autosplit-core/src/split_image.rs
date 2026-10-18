@@ -71,6 +71,13 @@ pub struct SplitDefaults {
     pub fade_tolerance: i64,
 }
 
+impl SplitDefaults {
+    /// The fade tolerance comparisons use: a hand-edited profile can have one outside 0 to 255.
+    pub fn fade_tolerance_levels(&self) -> u8 {
+        self.fade_tolerance.clamp(0, 255) as u8
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct SplitImage {
     pub path: PathBuf,
@@ -208,7 +215,7 @@ impl SplitImage {
     pub fn similarity(&self, capture: Option<BgraView>, defaults: &SplitDefaults, scratch: &mut CompareScratch) -> f64 {
         match self.fade_color {
             Some(color) => {
-                let tolerance = defaults.fade_tolerance.clamp(0, 255) as u8;
+                let tolerance = defaults.fade_tolerance_levels();
                 self.compare_resized(capture, scratch, |resized, mask, _| {
                     fade::similarity(color, resized, mask, tolerance)
                 })

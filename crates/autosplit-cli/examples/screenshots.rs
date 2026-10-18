@@ -339,6 +339,7 @@ Replace them?",
         name_problem: "".into(),
         mask_problem: "".into(),
         color_problem: "".into(),
+        drops_savestate: false,
         group_problem: "".into(),
         fade_color: Default::default(),
         mask: elide_middle("006_a_button_flip_after_the_door.png", MASK_NAME_CHARS).into(),
@@ -369,6 +370,8 @@ Replace them?",
     maker.set_form(SplitForm {
         mask: "".into(),
         fade_color: slint::Color::from_rgb_u8(0xa0, 0xa0, 0xa0),
+        // Its savestate from before, which saving leaves out
+        drops_savestate: true,
         ..maker.get_form()
     });
     save(&window, PhysicalSize::new(828, 672), &folder.join("maker-edit-fade.png"));
@@ -382,6 +385,7 @@ Replace them?",
     values.set_threshold(0.92);
     maker.set_form(SplitForm {
         mask: elide_middle("006_a_button_flip_after_the_door.png", MASK_NAME_CHARS).into(),
+        drops_savestate: false,
         ..maker.get_form()
     });
     // Compared with the split above while the profile has grouping off

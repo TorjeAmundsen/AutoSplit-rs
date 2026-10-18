@@ -215,7 +215,8 @@ pub fn tester_info(tester: &Tester) -> Vec<InfoCell> {
         cell(ACTS_CELL, action, if image.is_dummy() { "dummy" } else { "" }),
         match (image.fade_color(), image.comparison_method(defaults)) {
             (Some(color), _) => {
-                let note = format!("about {} ms, tolerance {}", image.fade_time_ms(), defaults.fade_tolerance);
+                let note =
+                    format!("about {} ms, tolerance {} levels", image.fade_time_ms(), defaults.fade_tolerance_levels());
                 cell("METHOD", format!("fade to {}", hex_color(color)), &note)
             }
             (None, Some(method)) => cell("METHOD", method.name().into(), from_profile(image.names_comparison_method())),
