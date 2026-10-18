@@ -31,12 +31,12 @@ pub fn seconds_remaining_text(seconds: f64) -> String {
     format!("{shown} second{plural} remaining")
 }
 
-/// [`decimal`], or `-` for no value.
 /// `#rrggbb`, from RGB.
 pub fn hex_color([red, green, blue]: [u8; 3]) -> String {
     format!("#{red:02x}{green:02x}{blue:02x}")
 }
 
+/// [`decimal`], or `-` for no value.
 pub fn decimal_or_dash(value: Option<f64>) -> String {
     value.map_or("-".into(), decimal)
 }

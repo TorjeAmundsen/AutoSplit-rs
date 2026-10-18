@@ -22,6 +22,8 @@ pub const FADE_FLAG: u32 = 1 << 3;
 pub const DEFAULT_FADE_TIME: i64 = 1000;
 /// Shorter fades can't be told apart from a cut.
 pub const MIN_FADE_TIME: i64 = 150;
+/// Longer ones would keep a long history of the similarity, which no game's fade needs.
+pub const MAX_FADE_TIME: i64 = 10_000;
 
 pub const START_KEYWORD: &str = "start_auto_splitter";
 pub const RESET_KEYWORD: &str = "reset";
@@ -119,9 +121,10 @@ pub fn comparison_method_from_filename(filename: &str) -> Option<i64> {
     int_value(filename, '^', '^').filter(|value| *value >= 0)
 }
 
-/// `~1000~`: how long a fade image's fade takes, in milliseconds. At least [`MIN_FADE_TIME`].
+/// `~1000~`: how long a fade image's fade takes, in milliseconds. From [`MIN_FADE_TIME`] to
+/// [`MAX_FADE_TIME`].
 pub fn fade_time_from_filename(filename: &str) -> Option<i64> {
-    int_value(filename, '~', '~').filter(|value| *value >= MIN_FADE_TIME)
+    int_value(filename, '~', '~').filter(|value| (MIN_FADE_TIME..=MAX_FADE_TIME).contains(value))
 }
 
 /// `{dbpf}`: dummy, below threshold, pause and fade flags. `m` is a legacy flag that's ignored.
@@ -224,7 +227,7 @@ impl Setting {
             Self::Loops => "1 or more",
             Self::PauseTime | Self::DelayTime | Self::ComparisonMethod => "0 or more",
             Self::Flags => "d, b, p, f or m",
-            Self::FadeTime => "150 or more",
+            Self::FadeTime => "between 150 and 10000",
         }
     }
 
@@ -311,7 +314,7 @@ pub fn filename_warnings(filename: &str) -> Vec<FilenameWarning> {
     }
     // Without `{f}`, a lone `~` is part of the name, as it is for AutoSplit
     if fade {
-        check(Setting::FadeTime, &|text| parse_int(text).map(|value| value >= MIN_FADE_TIME));
+        check(Setting::FadeTime, &|text| parse_int(text).map(|value| (MIN_FADE_TIME..=MAX_FADE_TIME).contains(&value)));
     }
     if let Delimited::Invalid(count, ..) = delimited(filename, '{', '}') {
         warnings.push(FilenameWarning::Delimiters { setting: Setting::Flags, count });

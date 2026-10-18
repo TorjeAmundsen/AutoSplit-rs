@@ -177,7 +177,7 @@ fn split_keys_are_the_fields_of_a_split() {
         savestate: "deku.gzs".into(),
         instructions: "Load it".into(),
         // Only the editor's, never written
-        threshold_before_fade: None,
+        remembered: Default::default(),
     };
     let preset = Preset { name: "Any%".into(), splits: vec![split.clone()], ..Preset::default() };
 
@@ -469,6 +469,7 @@ fn libraries_need_a_game_and_only_their_keys(text: &str) -> bool {
 #[test_case("a0a0a0" => None; "without the hash")]
 #[test_case("#a0a0a" => None; "too short")]
 #[test_case("#g0a0a0" => None; "not hex")]
+#[test_case("#+a+a+a" => None; "signs, which number parsing takes")]
 #[test_case("#ÆØa0a0" => None; "not ascii")]
 fn colors(text: &str) -> Option<[u8; 3]> {
     // Act, with the expected value checked by test_case

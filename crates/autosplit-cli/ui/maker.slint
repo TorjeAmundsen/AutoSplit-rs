@@ -133,6 +133,7 @@ export component MakerWindow inherits Window {
     callback choose-mask();
     callback choose-savestate();
     callback clear-savestate();
+    callback clear-mask();
     callback add-split();
     callback open-library();
     // Developer builds can add the selected splits to the split library
@@ -544,9 +545,10 @@ export component MakerWindow inherits Window {
                     Button {
                         width: 120px;
                         text: "Use Screenshots...";
-                        enabled: root.preset-problem == "";
+                        // A fade split is made from its color, so it takes no screenshot
+                        enabled: root.preset-problem == "" && !root.grab-fade;
                         clicked => { root.use-screenshots(); }
-                        tip: "Make split images from screenshot files instead: one for the selected split, or several for the splits in order from the first";
+                        tip: root.grab-fade ? "The selected split is a fade split, which is made from its color, not a screenshot. Select another split to use screenshots." : "Make split images from screenshot files instead: one for the selected split, or several for the splits in order from the first";
                     }
 
                     Rectangle {
@@ -742,6 +744,7 @@ export component MakerWindow inherits Window {
                         choose-mask => { root.choose-mask(); }
                         choose-savestate => { root.choose-savestate(); }
                         clear-savestate => { root.clear-savestate(); }
+                        clear-mask => { root.clear-mask(); }
                     }
                 }
 

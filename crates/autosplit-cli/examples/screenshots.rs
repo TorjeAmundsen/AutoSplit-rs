@@ -4,7 +4,7 @@
 use std::rc::Rc;
 
 use autosplit::gui::messages::Buttons;
-use autosplit::gui::preset_form::{MASK_NAME_CHARS, SAVESTATE_NAME_CHARS, elide_middle};
+use autosplit::gui::preset_form::{FADE_MASK_NAME_CHARS, MASK_NAME_CHARS, SAVESTATE_NAME_CHARS, elide_middle};
 use autosplit::gui::ui::{
     AboutWindow, EntryStep, HotkeyRow, InfoCell, InlineMessage, InstructionCard, InstructionsWindow,
     LibraryEntryWindow, LibraryItem, LibraryStep, LibraryWindow, LogWindow, MainWindow, MakerRow, MakerWindow,
@@ -372,6 +372,12 @@ Replace them?",
         ..maker.get_form()
     });
     save(&window, PhysicalSize::new(828, 672), &folder.join("maker-edit-fade.png"));
+    // A fade split of part of the screen, whose mask can be cleared
+    maker.set_form(SplitForm {
+        mask: elide_middle("deku_without_the_title.png", FADE_MASK_NAME_CHARS).into(),
+        ..maker.get_form()
+    });
+    save(&window, PhysicalSize::new(828, 672), &folder.join("maker-edit-fade-mask.png"));
     values.set_compare(0);
     values.set_threshold(0.92);
     maker.set_form(SplitForm {

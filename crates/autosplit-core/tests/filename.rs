@@ -44,6 +44,7 @@ fn out_of_range(setting: Setting, value: &str) -> Vec<FilenameWarning> {
 ]; "several problems")]
 #[test_case("x_~500~_{f}.png" => Vec::<FilenameWarning>::new(); "fade image with a fade time")]
 #[test_case("x_~100~_{f}.png" => out_of_range(Setting::FadeTime, "100"); "fade time too short to tell from a cut")]
+#[test_case("x_~3600000~_{f}.png" => out_of_range(Setting::FadeTime, "3600000"); "fade time too long")]
 #[test_case("x_~fast~_{f}.png" => not_a_number(Setting::FadeTime, "fast"); "fade time that isn't a number")]
 #[test_case("x_~1000~.png" => vec![FilenameWarning::FadeOnly(Setting::FadeTime)]; "fade time without the fade flag")]
 #[test_case("boss~2.png" => Vec::<FilenameWarning>::new(); "lone tilde in a name")]
@@ -240,6 +241,8 @@ fn split_names(name: &str) -> Result<(), NameError> {
 
 #[test_case("x_~500~_{f}.png" => Some(500); "fade time")]
 #[test_case("x_~100~_{f}.png" => None; "too short")]
+#[test_case("x_~10001~_{f}.png" => None; "too long")]
+#[test_case("x_~10000~_{f}.png" => Some(10000); "the longest")]
 #[test_case("x_{f}.png" => None; "not set")]
 fn fade_time(filename: &str) -> Option<i64> {
     // Act, with the expected value checked by test_case

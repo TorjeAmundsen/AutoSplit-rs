@@ -366,7 +366,10 @@ fn compare(split_image: &Path, capture_path: &Path, profile: Option<&Path>) -> R
     if method.is_none() && !image.is_fade() {
         println!("This image's comparison method is unknown, so it never matches.");
     }
-    if let SplitContent::Image { pixels, .. } = &image.content {
+    // A fade image's one color looks the same at any size
+    if let SplitContent::Image { pixels, .. } = &image.content
+        && !image.is_fade()
+    {
         let (image_ratio, capture_ratio) = (
             pixels.width() as f64 / pixels.height().max(1) as f64,
             capture.width() as f64 / capture.height().max(1) as f64,
@@ -383,6 +386,12 @@ fn compare(split_image: &Path, capture_path: &Path, profile: Option<&Path>) -> R
         }
     }
     Ok(())
+}
+
+/// `text` as a CSV field: in quotes, with its quotes doubled, when it has a comma, quote or line
+/// break.
+fn csv_field(text: &str) -> String {
+    if text.contains([',', '"', '\n', '\r']) { format!("\"{}\"", text.replace('"', "\"\"")) } else { text.to_owned() }
 }
 
 /// Every method's similarity for each frame in a folder, as CSV, to see how it changes over time.
@@ -407,7 +416,7 @@ fn compare_frames(split_image: &Path, frames: &Path, fps: f64, profile: Option<&
             similarities.push(format!("{:.6}", image.similarity(Some(capture.view()), &defaults, &mut scratch)));
         }
         let file = path.file_name().map_or_else(String::new, |name| name.to_string_lossy().into_owned());
-        println!("{index},{file},{:.3},{}", index as f64 / fps, similarities.join(","));
+        println!("{index},{},{:.3},{}", csv_field(&file), index as f64 / fps, similarities.join(","));
     }
     Ok(())
 }
@@ -519,7 +528,15 @@ fn replay(
     if runs == 0 && status.showing != Showing::Nothing {
         let (best, threshold) = (decimal_or_dash(status.highest), decimal_or_dash(status.threshold));
         let reached = status.highest.zip(status.threshold).is_some_and(|(best, threshold)| best >= threshold);
-        if status.below && reached {
+        let fade = runner.images().start.first().is_some_and(SplitImage::is_fade);
+        if fade && reached {
+            // Whether it ever faded there isn't in the status, so both are said
+            let below = if status.below { ", and with {b} it then has to drop below it again" } else { "" };
+            println!(
+                "The start image reached its threshold (best {best} / {threshold}), but a fade image only matches a \
+                 fade to its color, not a cut{below}."
+            );
+        } else if status.below && reached {
             println!(
                 "The start image reached its threshold (best {best} / {threshold}) but, with {{b}}, never dropped \
                  below it again."

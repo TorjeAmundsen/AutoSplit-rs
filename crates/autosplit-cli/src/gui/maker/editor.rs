@@ -15,8 +15,8 @@ use super::super::maker_plan::DeletedPreset;
 use super::super::messages::{Answer, Message};
 use super::super::paths::{canonical, file_name_text};
 use super::super::preset_form::{
-    Draft, Field, ListChange, MASK_NAME_CHARS, SAVESTATE_NAME_CHARS, SplitEdit, SplitKind, elide_middle,
-    field_problems, field_value,
+    Draft, FADE_MASK_NAME_CHARS, Field, ListChange, MASK_NAME_CHARS, SAVESTATE_NAME_CHARS, SplitEdit, SplitKind,
+    elide_middle, field_problems, field_value,
 };
 use super::super::preset_form::{
     discard_question, known_game, next_problem_split, problem_flags, problem_list, saved_preset_name, status_line,
@@ -99,6 +99,8 @@ impl Gui {
         on!(weak, maker, on_preview_toggled, () gui => gui.show_maker_preview());
         on!(weak, maker, on_choose_savestate, () gui => gui.choose_split_file(true));
         on!(weak, maker, on_clear_savestate, () gui => gui.edit_split(SplitEdit::Savestate(String::new())));
+        // Only fade splits can be without a mask, for the whole screen
+        on!(weak, maker, on_clear_mask, () gui => gui.edit_split(SplitEdit::Mask(String::new())));
         on!(weak, maker, on_add_split, () gui => {
             let selected = gui.selected_split();
             gui.change_splits(|draft| Some(draft.add(selected)));
@@ -328,7 +330,7 @@ impl Gui {
                 Some(&kind) => SplitEdit::Kind(kind),
                 None => return,
             },
-            SplitField::Compare => SplitEdit::Compare((values.get_compare() == 1).then(|| values.get_color().into())),
+            SplitField::Compare => SplitEdit::Compare(values.get_compare() == 1),
             SplitField::Color => SplitEdit::Color(values.get_color().into()),
             SplitField::FadeTime => SplitEdit::FadeTime(field_value(values.get_fade_time())),
             SplitField::Threshold => {
@@ -439,10 +441,7 @@ impl Gui {
         values.set_name(split.name.as_str().into());
         values.set_kind(SplitKind::of(&split).index() as i32);
         values.set_compare(i32::from(split.is_fade()));
-        // A split compared by a screenshot keeps the color shown last, for switching back
-        if let Some(color) = &split.fade {
-            values.set_color(color.as_str().into());
-        }
+        values.set_color(split.fade.as_deref().unwrap_or_default().into());
         values.set_fade_time(split.fade_time.unwrap_or(DEFAULT_FADE_TIME as u32) as f32);
         // Unticked, they show the profile's defaults, which ticking or editing starts from
         values.set_has_threshold(split.threshold.is_some());
@@ -480,7 +479,12 @@ impl Gui {
                     slint::Color::from_rgb_u8(red, green, blue)
                 }),
                 group_problem: field_problems(&problems, selected, Field::Group).into(),
-                mask: elide_middle(&file_name_text(Path::new(&split.mask)).unwrap_or_default(), MASK_NAME_CHARS).into(),
+                // A fade split's mask has Clear beside it too, like the savestate
+                mask: elide_middle(
+                    &file_name_text(Path::new(&split.mask)).unwrap_or_default(),
+                    if split.is_fade() { FADE_MASK_NAME_CHARS } else { MASK_NAME_CHARS },
+                )
+                .into(),
                 savestate: elide_middle(
                     &file_name_text(Path::new(&split.savestate)).unwrap_or_default(),
                     SAVESTATE_NAME_CHARS,

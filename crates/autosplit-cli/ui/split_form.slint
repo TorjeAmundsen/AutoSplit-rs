@@ -93,6 +93,7 @@ export component SplitFormPanel inherits VerticalLayout {
     callback choose-mask();
     callback choose-savestate();
     callback clear-savestate();
+    callback clear-mask();
     spacing: 6px;
 
     if !root.has-split: Label {
@@ -279,6 +280,14 @@ export component SplitFormPanel inherits VerticalLayout {
                     text: "Choose...";
                     suggested: root.form.mask == "" && SplitValues.compare == 0;
                     clicked => { root.choose-mask(); }
+                }
+
+                // A fade split without a mask compares the whole screen
+                if SplitValues.compare == 1: Button {
+                    width: 50px;
+                    text: "Clear";
+                    enabled: root.form.mask != "";
+                    clicked => { root.clear-mask(); }
                 }
             }
 

@@ -48,10 +48,9 @@ pub struct PresetSplit {
     /// later default doesn't change them.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fade_time: Option<u32>,
-    /// While editing, the threshold the split had before it became a fade split, which switching
-    /// back to a screenshot restores. Never saved.
+    /// While editing, what switching between a screenshot and a fade brings back. Never saved.
     #[serde(skip)]
-    pub threshold_before_fade: Option<Option<f64>>,
+    pub remembered: Remembered,
     /// Without one, the profile's default similarity threshold applies.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub threshold: Option<f64>,
@@ -73,6 +72,23 @@ pub struct PresetSplit {
     /// How to use the savestate.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub instructions: String,
+}
+
+/// What a split being edited had before it switched between a screenshot and a fade, so
+/// switching back brings it back. It isn't part of what the split is: splits that differ only in
+/// it are the same, so switching there and back is no change.
+#[derive(Clone, Debug, Default)]
+pub struct Remembered {
+    /// The threshold before it became a fade split.
+    pub threshold: Option<Option<f64>>,
+    /// The color and fade time before it became a screenshot split.
+    pub fade: Option<(String, Option<u32>)>,
+}
+
+impl PartialEq for Remembered {
+    fn eq(&self, _: &Self) -> bool {
+        true
+    }
 }
 
 impl PresetSplit {
@@ -288,7 +304,9 @@ const LIBRARY_SPLIT_KEYS: &[&str] = &["description", "base_image", "then"];
 
 /// `#rrggbb` as RGB, in either case. The `#` is needed.
 pub fn parse_color(text: &str) -> Option<[u8; 3]> {
-    let hex = text.trim().strip_prefix('#').filter(|hex| hex.len() == 6 && hex.is_ascii())?;
+    // Only hex digits: `from_str_radix` would take a `+` too
+    let hex =
+        text.trim().strip_prefix('#').filter(|hex| hex.len() == 6 && hex.bytes().all(|b| b.is_ascii_hexdigit()))?;
     let channel = |at: usize| u8::from_str_radix(&hex[at..at + 2], 16).ok();
     Some([channel(0)?, channel(2)?, channel(4)?])
 }

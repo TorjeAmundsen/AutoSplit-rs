@@ -337,7 +337,7 @@ fn a_preset_with_every_field_set_reads_back_as_saved() {
         savestate: file(&picked.path().join("door.gzs"), "s"),
         instructions: "Advance 1 frame".into(),
         // Only the editor's, never written
-        threshold_before_fade: None,
+        remembered: Default::default(),
     };
 
     // Act
