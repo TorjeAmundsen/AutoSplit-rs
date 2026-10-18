@@ -3,11 +3,12 @@
 
 use super::*;
 
-/// A split image to write: what it's made from, its mask and its file.
+/// A split image to write: what it's made from, its mask and its file. Only a fade split can be
+/// without a mask, for the whole screen.
 pub(super) struct Job {
     index: usize,
     source: Source,
-    mask: Arc<Mask>,
+    mask: Option<Arc<Mask>>,
     target: PathBuf,
 }
 
@@ -20,8 +21,11 @@ pub(super) struct Written {
 
 impl Job {
     fn run(&self) -> Result<(), String> {
-        let shot = self.source.image()?;
-        let image = apply_mask(shot.view(), &self.mask, &mut ResizeBuffers::default());
+        let image = match (&self.source, &self.mask) {
+            (Source::Fade(color), mask) => fade_image(*color, mask.as_deref()),
+            (source, Some(mask)) => apply_mask(source.image()?.view(), mask, &mut ResizeBuffers::default()),
+            (_, None) => return Err(format!("{} has no mask.", self.target.display())),
+        };
         let png = image.encode_png().map_err(|error| format!("Couldn't encode {}: {error}", self.target.display()))?;
         std::fs::write(&self.target, png).map_err(|error| format!("Couldn't write {}: {error}", self.target.display()))
     }
@@ -46,11 +50,16 @@ impl Gui {
         let names = self.maker_file_names();
         let sources: Vec<(usize, Source)> = {
             let maker = self.maker.borrow();
-            indexes.into_iter().filter_map(|index| Some((index, maker.source(index)?.clone()))).collect()
+            indexes.into_iter().filter_map(|index| Some((index, maker.source(index)?))).collect()
         };
         let mut jobs = Vec::new();
         for (index, source) in sources {
-            match self.maker_mask(index) {
+            // A fade split without a mask is the whole screen
+            let mask = match source {
+                Source::Fade(_) if !self.has_mask(index) => Ok(None),
+                _ => self.maker_mask(index).map(Some),
+            };
+            match mask {
                 Ok(mask) => jobs.push(Job { index, source, mask, target: folder.join(&names[index]) }),
                 Err(error) => {
                     self.show_message(Message::error(error));
@@ -65,7 +74,7 @@ impl Gui {
         let sources: Vec<PathBuf> = (self.maker.borrow().splits.iter())
             .filter_map(|split| match split.source.as_ref()? {
                 Source::File(path) => Some(canonical(path)),
-                Source::Grabbed(_) => None,
+                Source::Grabbed(_) | Source::Fade(_) => None,
             })
             .collect();
         let plan = plan_writes(&written, &names, &existing, &sources, |name, path| writes_over(&folder, name, path));
@@ -154,7 +163,7 @@ impl Gui {
                 .collect();
             let file = |written: &Written| match &written.source {
                 Source::File(path) => Some(path.clone()),
-                Source::Grabbed(_) => None,
+                Source::Grabbed(_) | Source::Fade(_) => None,
             };
             let done: Vec<PathBuf> = results.iter().filter(|written| written.result.is_ok()).filter_map(file).collect();
             let failed: Vec<PathBuf> =
@@ -198,9 +207,9 @@ impl Gui {
             match result {
                 Ok(path) => {
                     written += 1;
-                    if let Some(split) = maker.splits.get_mut(index).filter(|_| same_preset)
-                        && split.source.as_ref().is_some_and(|now| now.same(&source))
-                    {
+                    // A fade split's source is its color, which the split itself doesn't keep
+                    let unchanged = maker.source(index).is_some_and(|now| now.same(&source));
+                    if let Some(split) = maker.splits.get_mut(index).filter(|_| same_preset && unchanged) {
                         split.saved = Some(path);
                     }
                 }
@@ -243,7 +252,7 @@ impl Gui {
         let maker = self.maker.borrow();
         let generation = maker.generation;
         let jobs: Vec<(usize, Source)> =
-            indexes.into_iter().filter_map(|index| Some((index, maker.source(index)?.clone()))).collect();
+            indexes.into_iter().filter_map(|index| Some((index, maker.source(index)?))).collect();
         drop(maker);
         self.start_work();
         let spawned = std::thread::Builder::new().name("thumbnails".into()).spawn(move || {

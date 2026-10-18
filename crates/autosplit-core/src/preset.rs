@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use crate::filename::{RESET_KEYWORD, START_KEYWORD, SplitSpec, build_filename};
+use crate::filename::{DEFAULT_FADE_TIME, RESET_KEYWORD, START_KEYWORD, SplitSpec, build_filename};
 use crate::split_image::SplitDefaults;
 
 /// The file a preset folder has its preset in.
@@ -37,8 +37,17 @@ pub struct PresetSplit {
     #[serde(default, skip_serializing_if = "is_default")]
     pub with_previous: bool,
     /// The mask's PNG, relative to the preset's folder. Where its alpha is 255, the screenshot is
-    /// kept.
+    /// kept, or a fade split's color. A fade split without one is the whole screen.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub mask: String,
+    /// `#rrggbb`: the color a fade split splits on a fade to, instead of a screenshot. Kept as
+    /// written, which can be wrong while it's being typed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fade: Option<String>,
+    /// How long a fade split's fade takes, in milliseconds. Always written for fade splits, so a
+    /// later default doesn't change them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fade_time: Option<u32>,
     /// Without one, the profile's default similarity threshold applies.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub threshold: Option<f64>,
@@ -68,6 +77,16 @@ impl PresetSplit {
         self.name == RESET_KEYWORD || self.name == START_KEYWORD
     }
 
+    /// Whether it splits on a fade to a color, `{f}`, instead of a screenshot.
+    pub fn is_fade(&self) -> bool {
+        self.fade.is_some()
+    }
+
+    /// A fade split's color, once it's written right.
+    pub fn fade_color(&self) -> Option<[u8; 3]> {
+        parse_color(self.fade.as_deref()?)
+    }
+
     /// What the split image's file name says.
     pub fn spec(&self) -> SplitSpec<'_> {
         SplitSpec {
@@ -77,6 +96,7 @@ impl PresetSplit {
             delay: self.delay,
             dummy: self.dummy,
             below: self.below,
+            fade_time: self.is_fade().then(|| self.fade_time.unwrap_or(DEFAULT_FADE_TIME as u32)),
         }
     }
 }
@@ -244,11 +264,30 @@ pub struct LibrarySplit {
 }
 
 /// The keys a preset's `[[split]]` table can have, which are [`PresetSplit`]'s fields.
-pub const SPLIT_KEYS: &[&str] =
-    &["name", "with_previous", "mask", "threshold", "pause", "delay", "dummy", "below", "savestate", "instructions"];
+pub const SPLIT_KEYS: &[&str] = &[
+    "name",
+    "with_previous",
+    "mask",
+    "fade",
+    "fade_time",
+    "threshold",
+    "pause",
+    "delay",
+    "dummy",
+    "below",
+    "savestate",
+    "instructions",
+];
 
 /// The keys a splits library's `[[split]]` table can have besides [`SPLIT_KEYS`].
 const LIBRARY_SPLIT_KEYS: &[&str] = &["description", "base_image", "then"];
+
+/// `#rrggbb` as RGB, in either case. The `#` is needed.
+pub fn parse_color(text: &str) -> Option<[u8; 3]> {
+    let hex = text.trim().strip_prefix('#').filter(|hex| hex.len() == 6 && hex.is_ascii())?;
+    let channel = |at: usize| u8::from_str_radix(&hex[at..at + 2], 16).ok();
+    Some([channel(0)?, channel(2)?, channel(4)?])
+}
 
 fn is_default<T: Default + PartialEq>(value: &T) -> bool {
     *value == T::default()

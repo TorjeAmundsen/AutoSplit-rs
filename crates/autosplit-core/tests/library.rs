@@ -24,7 +24,7 @@ fn step(folder: &Path, name: &str) -> NewStep {
 fn using(name: &str, mask: PathBuf) -> NewStep {
     NewStep {
         split: PresetSplit { name: name.into(), mask: mask.display().to_string(), ..PresetSplit::default() },
-        mask,
+        mask: Some(mask),
         savestate: None,
         screenshot: screenshot(),
     }
@@ -306,7 +306,7 @@ fn a_replace_that_fails_changes_nothing() {
     let mut flash = step(preset.path(), "Ganon");
     flash.savestate = Some(preset.path().join("missing.gzs"));
     let mut intro = step(preset.path(), "Ganon intro");
-    std::fs::write(&intro.mask, b"another mask").unwrap();
+    std::fs::write(intro.mask.as_ref().unwrap(), b"another mask").unwrap();
     intro.split.dummy = true;
 
     // Act
@@ -475,4 +475,19 @@ fn a_new_file_named_like_another_in_another_case_gets_a_number() {
 
     // Assert
     assert_eq!(load(&folder).splits[1].split.mask, "gohma (1).png");
+}
+
+#[test]
+fn fade_step_without_a_mask_is_added_without_one() {
+    // Arrange
+    let directory = tempfile::tempdir().unwrap();
+    let fade = PresetSplit { name: "EnterDeku".into(), fade: Some("#a0a0a0".into()), ..PresetSplit::default() };
+    let step = NewStep { split: fade, mask: None, savestate: None, screenshot: screenshot() };
+
+    // Act
+    let folder = add_ready_made(directory.path(), GAME, "Fade into the Deku Tree", vec![step]).unwrap();
+
+    // Assert
+    let added = &load(&folder).splits[0];
+    assert_eq!((added.split.mask.as_str(), added.split.fade.as_deref()), ("", Some("#a0a0a0")));
 }

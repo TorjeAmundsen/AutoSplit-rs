@@ -246,6 +246,10 @@ fn main() {
     maker.set_live_image(solid([90, 140, 90]));
     maker.set_can_grab(true);
     save(&window, PhysicalSize::new(828, 672), &folder.join("maker.png"));
+    // A fade split selected, which isn't made from the capture
+    maker.set_grab_fade(true);
+    save(&window, PhysicalSize::new(828, 672), &folder.join("maker-fade.png"));
+    maker.set_grab_fade(false);
     // A preset written by hand that has to be fixed before anything's made from it
     maker.set_preset_problem(
         "Boss Alt: It has the same name as a split above it that it's compared together with. Give it another name."
@@ -334,7 +338,9 @@ Replace them?",
         named: true,
         name_problem: "".into(),
         mask_problem: "".into(),
+        color_problem: "".into(),
         group_problem: "".into(),
+        fade_color: Default::default(),
         mask: elide_middle("006_a_button_flip_after_the_door.png", MASK_NAME_CHARS).into(),
         savestate: elide_middle("006 enter deku.gzs", SAVESTATE_NAME_CHARS).into(),
         mask_path: "presets/No_Wrong_Warp/006_a_button_flip.png".into(),
@@ -356,6 +362,22 @@ Replace them?",
     // Without the savestate note, all of the form fits
     maker.set_form(SplitForm { savestate_copied: false, ..maker.get_form() });
     save(&window, PhysicalSize::new(828, 672), &folder.join("maker-edit-plain.png"));
+    // A fade split of the whole screen
+    values.set_compare(1);
+    values.set_color("#a0a0a0".into());
+    values.set_threshold(0.995);
+    maker.set_form(SplitForm {
+        mask: "".into(),
+        fade_color: slint::Color::from_rgb_u8(0xa0, 0xa0, 0xa0),
+        ..maker.get_form()
+    });
+    save(&window, PhysicalSize::new(828, 672), &folder.join("maker-edit-fade.png"));
+    values.set_compare(0);
+    values.set_threshold(0.92);
+    maker.set_form(SplitForm {
+        mask: elide_middle("006_a_button_flip_after_the_door.png", MASK_NAME_CHARS).into(),
+        ..maker.get_form()
+    });
     // Compared with the split above while the profile has grouping off
     values.set_with_previous(true);
     maker.set_form(SplitForm { grouping_off: true, ..maker.get_form() });
@@ -414,6 +436,7 @@ Replace them?",
                 pause: pause.into(),
                 dummy,
                 below,
+                fade: Default::default(),
             }
         };
     let library_item =

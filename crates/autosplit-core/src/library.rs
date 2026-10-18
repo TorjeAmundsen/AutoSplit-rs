@@ -24,10 +24,11 @@ pub const BASE_IMAGE_SIZE: (usize, usize) = (64, 48);
 const WRITING_PREFIX: &str = ".writing-";
 
 /// An image of a ready-made split to write: a preset's split, with its mask and savestate as
-/// paths that exist, and a screenshot the mask fits, at any size.
+/// paths that exist, and a screenshot the mask fits, at any size. Only a fade split can be without
+/// a mask.
 pub struct NewStep {
     pub split: PresetSplit,
-    pub mask: PathBuf,
+    pub mask: Option<PathBuf>,
     pub savestate: Option<PathBuf>,
     pub screenshot: BgraImage,
 }
@@ -208,12 +209,12 @@ fn store_steps(
     let mut sources = Vec::new();
     for step in &steps {
         let savestate = step.savestate.as_deref().map(found).transpose()?;
-        sources.push((found(&step.mask)?, savestate));
+        sources.push((step.mask.as_deref().map(found).transpose()?, savestate));
     }
     let inside = |path: &Path| path.strip_prefix(&root).ok().map(relative_text);
     // Used where they are, so never written over
     let kept: HashSet<String> = (sources.iter())
-        .flat_map(|(mask, savestate)| std::iter::once(mask).chain(savestate))
+        .flat_map(|(mask, savestate)| mask.iter().chain(savestate))
         .filter_map(|path| inside(path))
         .collect();
     // The folder's files by their names in lowercase. Names that differ only in case are one
@@ -260,7 +261,10 @@ fn store_steps(
                 std::fs::copy(source, &to).map_err(|error| unwritable(&to, error))?;
                 Ok(name)
             };
-            let mask = place(mask_source, format!("{stem}.png"))?;
+            let mask = match mask_source {
+                Some(source) => place(source, format!("{stem}.png"))?,
+                None => String::new(),
+            };
             // Under its own name, which says where it is in the game
             let savestate = match savestate_source {
                 Some(source) => {

@@ -327,6 +327,8 @@ fn a_preset_with_every_field_set_reads_back_as_saved() {
         name: "Door".into(),
         with_previous: true,
         mask: file(&picked.path().join("door.png"), "o"),
+        fade: Some("#a0a0a0".into()),
+        fade_time: Some(1000),
         threshold: Some(0.93),
         pause: Some(1.5),
         delay: Some(250),

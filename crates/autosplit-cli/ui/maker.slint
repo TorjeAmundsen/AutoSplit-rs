@@ -53,6 +53,8 @@ export component MakerWindow inherits Window {
     in property <bool> can-grab;
     // Why Grab can't be used yet, like without a capture device, or empty
     in property <string> grab-blocker;
+    // The selected split is a fade split, which Grab saves from its color instead of the capture
+    in property <bool> grab-fade;
     in property <image> preview-image;
     in property <string> preview-message: "No screenshot for this split yet.";
     // Behind the split image, so its transparent parts show
@@ -532,11 +534,11 @@ export component MakerWindow inherits Window {
 
                     Button {
                         width: 90px;
-                        text: "Grab";
+                        text: root.grab-fade ? "Grab*" : "Grab";
                         suggested: true;
                         enabled: root.can-grab;
                         clicked => { root.grab(); }
-                        tip: root.grab-blocker != "" ? root.grab-blocker : "Make the selected split's image from the capture now, save it into the split image folder, and go to the next split. The screenshot hotkey does the same while this window is open.";
+                        tip: root.grab-blocker != "" ? root.grab-blocker : root.grab-fade ? "Fade splits are made from their color and mask, not the capture. Grab saves this one into the split image folder and goes to the next split." : "Make the selected split's image from the capture now, save it into the split image folder, and go to the next split. The screenshot hotkey does the same while this window is open.";
                     }
 
                     Button {
@@ -707,15 +709,16 @@ export component MakerWindow inherits Window {
                     }
                 }
 
+                // A fade split is made from its color, so the capture isn't needed for it
                 if !root.editing: Label {
                     height: 20px;
-                    text: "Capture Region";
+                    text: root.grab-fade ? "Fade Split" : "Capture Region";
                 }
 
                 if !root.editing: Preview {
                     height: 240px;
                     source: root.live-image;
-                    message: root.live-message;
+                    message: root.grab-fade ? "This split is a fade to a color, so it's made from its color and mask, not the capture. There's no savestate to load for it.\n\nPress Grab* to save it and go to the next split." : root.live-message;
                 }
 
                 // The selected split, in the space of the folder and the capture, which the

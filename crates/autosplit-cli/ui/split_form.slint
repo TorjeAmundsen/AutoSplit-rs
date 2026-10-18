@@ -5,7 +5,7 @@ import { CheckBox } from "std-widgets.slint";
 import { Button, ComboBox, Label, SpinBox, TextArea, TextField, Theme, Tip } from "widgets.slint";
 
 // A field of the split form, which says it was edited. Its value is in its property.
-export enum SplitField { name, kind, threshold, delay, pause, dummy, below, with-previous, instructions }
+export enum SplitField { name, kind, compare, color, fade-time, threshold, delay, pause, dummy, below, with-previous, instructions }
 
 // What the form shows of the selected split besides its fields, while editing.
 export struct SplitForm {
@@ -14,7 +14,10 @@ export struct SplitForm {
     // What has to be fixed in each field, one problem a line, or empty
     name-problem: string,
     mask-problem: string,
+    color-problem: string,
     group-problem: string,
+    // A fade split's color, transparent while it isn't written right
+    fade-color: color,
     mask: string,
     savestate: string,
     // Full paths, for the tooltips
@@ -58,6 +61,12 @@ export global SplitValues {
     in-out property <int> generation;
     in-out property <string> name;
     in-out property <int> kind;
+    // 0 for a screenshot, 1 for a fade to a color
+    in-out property <int> compare;
+    // A fade split's color as typed, kept when it's switched to a screenshot and back
+    in-out property <string> color;
+    // Milliseconds
+    in-out property <float> fade-time: 1000;
     // Unticked, the profile's default applies, which the value shows
     in-out property <bool> has-threshold;
     in-out property <float> threshold;
@@ -107,7 +116,7 @@ export component SplitFormPanel inherits VerticalLayout {
             }
 
             ComboBox {
-                width: 140px;
+                width: 112px;
                 model: root.kinds;
                 current-index <=> SplitValues.kind;
                 selected => { root.split-edited(SplitField.kind); }
@@ -119,8 +128,86 @@ export component SplitFormPanel inherits VerticalLayout {
                 }
             }
 
-            Rectangle {
+            // Beside the type, since any type can be either
+            ComboBox {
                 horizontal-stretch: 1;
+                model: ["Screenshot", "Fade"];
+                current-index <=> SplitValues.compare;
+                selected => { root.split-edited(SplitField.compare); }
+
+                Tooltip {
+                    Tip {
+                        text: "Compare by: a screenshot made into the split image with the mask, or a fade to a color, which splits on the frame the fade ends and not on a cut to the color.";
+                    }
+                }
+            }
+        }
+
+        if SplitValues.compare == 1: VerticalLayout {
+            spacing: 2px;
+
+            HorizontalLayout {
+                height: 24px;
+                spacing: 6px;
+
+                Label {
+                    width: root.label-width;
+                    text: "Color:";
+                }
+
+                TextField {
+                    width: 68px;
+                    error: root.form.color-problem != "";
+                    text <=> SplitValues.color;
+                    edited => { root.split-edited(SplitField.color); }
+
+                    Tooltip {
+                        Tip {
+                            text: "The color the screen fades to, as # and 6 hex digits, like #000000 for black. The game's own color: Fade Color Tolerance in Settings covers a capture whose colors are a little off.";
+                        }
+                    }
+                }
+
+                Rectangle {
+                    width: 18px;
+                    border-width: 1px;
+                    border-color: Theme.secondary-text;
+                    background: root.form.fade-color;
+                }
+
+                Rectangle {
+                    horizontal-stretch: 1;
+                }
+
+                Label {
+                    text: "Fade";
+                }
+
+                SpinBox {
+                    width: 64px;
+                    height: 22px;
+                    minimum: 150;
+                    maximum: 10000;
+                    step: 50;
+                    generation: SplitValues.generation;
+                    value <=> SplitValues.fade-time;
+                    edited => { root.split-edited(SplitField.fade-time); }
+
+                    Tooltip {
+                        Tip {
+                            text: "About how long the fade takes, in milliseconds. Fades up to twice as long still count.";
+                        }
+                    }
+                }
+
+                Label {
+                    text: "ms";
+                }
+            }
+
+            if root.form.color-problem != "": FieldProblem {
+                label-width: root.label-width;
+                text: root.form.color-problem;
             }
         }
 
@@ -177,7 +264,8 @@ export component SplitFormPanel inherits VerticalLayout {
                 Label {
                     horizontal-stretch: 1;
                     color: root.form.mask-problem != "" ? Theme.error : root.form.mask == "" ? Theme.secondary-text : Theme.text;
-                    text: root.form.mask == "" ? "None yet" : root.form.mask;
+                    // A fade split without one compares the whole screen
+                    text: root.form.mask != "" ? root.form.mask : SplitValues.compare == 1 ? "None, the whole screen" : "None yet";
 
                     Tooltip {
                         Tip {
@@ -189,7 +277,7 @@ export component SplitFormPanel inherits VerticalLayout {
                 Button {
                     width: 80px;
                     text: "Choose...";
-                    suggested: root.form.mask == "";
+                    suggested: root.form.mask == "" && SplitValues.compare == 0;
                     clicked => { root.choose-mask(); }
                 }
             }
@@ -335,7 +423,7 @@ export component SplitFormPanel inherits VerticalLayout {
 
                 Tooltip {
                     Tip {
-                        text: "Split when the similarity drops back below the threshold after reaching it, like when a screen goes away";
+                        text: SplitValues.compare == 1 ? "Split when the color goes away after the fade, like when the next area shows" : "Split when the similarity drops back below the threshold after reaching it, like when a screen goes away";
                     }
                 }
             }
@@ -378,7 +466,8 @@ export component SplitFormPanel inherits VerticalLayout {
             }
         }
 
-        VerticalLayout {
+        // A fade split is made from its color, so there's no screen to get to for a screenshot
+        if SplitValues.compare == 0: VerticalLayout {
             spacing: 2px;
 
             HorizontalLayout {
@@ -424,13 +513,17 @@ export component SplitFormPanel inherits VerticalLayout {
         }
 
         // Always two lines, however much is above it
-        TextArea {
+        if SplitValues.compare == 0: TextArea {
             vertical-stretch: 1;
             min-height: 42px;
             enabled: root.form.savestate != "";
             placeholder-text: root.form.savestate == "" ? "Instructions for the savestate, once there is one" : "What to do after loading the savestate, if anything";
             text <=> SplitValues.instructions;
             edited => { root.split-edited(SplitField.instructions); }
+        }
+
+        if SplitValues.compare == 1: Rectangle {
+            vertical-stretch: 1;
         }
     }
 }

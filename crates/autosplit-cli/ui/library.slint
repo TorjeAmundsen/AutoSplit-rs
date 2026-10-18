@@ -20,6 +20,8 @@ export struct LibraryStep {
     pause: string,
     dummy: bool,
     below: bool,
+    // A fade split's color and fade time, or empty
+    fade: string,
     // The file name it gets, with XX for its number, which comes from where it's put
     file-parts: [NamePart],
     file: string,
@@ -94,7 +96,7 @@ component Settings inherits VerticalLayout {
     Setting {
         label: "Flags";
         empty: "None";
-        value: (root.step.dummy ? "Dummy" : "") + (root.step.dummy && root.step.below ? ", " : "") + (root.step.below ? "Below threshold" : "");
+        value: (root.step.dummy ? "Dummy" : "") + (root.step.dummy && root.step.below ? ", " : "") + (root.step.below ? "Below threshold" : "") + ((root.step.dummy || root.step.below) && root.step.fade != "" ? ", " : "") + (root.step.fade != "" ? "Fade to " + root.step.fade : "");
         kind: NameKind.flags;
     }
 

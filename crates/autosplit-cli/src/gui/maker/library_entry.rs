@@ -35,7 +35,8 @@ struct Edited {
 /// An image of the ready-made split as it would be written, with where its base image is from.
 struct Planned {
     split: PresetSplit,
-    mask: PathBuf,
+    /// None for a fade split of the whole screen.
+    mask: Option<PathBuf>,
     savestate: Option<PathBuf>,
     /// None while there's nothing to make its base image from, which a picture can be chosen for.
     screenshot: Option<BgraImage>,
@@ -183,19 +184,19 @@ impl Gui {
         let pictures = maker.entry.as_ref().map(|entry| &entry.pictures);
         let mut planned = Vec::new();
         for (place, (index, split)) in preset.splits.iter().enumerate().skip(selected).take(images).enumerate() {
-            if split.mask.is_empty() {
+            if split.mask.is_empty() && !split.is_fade() {
                 return Err(format!("{} needs a mask first.", library_heading(split)));
             }
             // Missing files are said here, before anything is written
-            let (mask, savestate) =
-                (maker.file(&split.mask), (!split.savestate.is_empty()).then(|| maker.file(&split.savestate)));
-            for path in std::iter::once(&mask).chain(&savestate) {
+            let file = |path: &str| (!path.is_empty()).then(|| maker.file(path));
+            let (mask, savestate) = (file(&split.mask), file(&split.savestate));
+            for path in mask.iter().chain(&savestate) {
                 if !path.is_file() {
                     return Err(format!("{} uses {}, which doesn't exist.", library_heading(split), path.display()));
                 }
             }
             let picture = pictures.and_then(|pictures| pictures.get(&place));
-            let source = maker.splits.get(index).and_then(|work| work.source.clone());
+            let source = maker.source(index);
             let live = maker.entry.as_ref().and_then(|entry| entry.live.as_ref());
             let (screenshot, from) = match (picture, source, live) {
                 (Some((path, image)), _, _) => (Some(image.clone()), picked_from(path)),
@@ -205,6 +206,7 @@ impl Gui {
                             format!("Base image from its screenshot {}", file_name_text(path).unwrap_or_default())
                         }
                         Source::Grabbed(_) => "Base image from its grab".to_owned(),
+                        Source::Fade(_) => "Base image from its color".to_owned(),
                     };
                     (Some(source.image().map_err(|error| error.to_string())?.as_ref().clone()), from)
                 }
@@ -335,7 +337,7 @@ impl Gui {
             let savestate = (!step.split.savestate.is_empty()).then(|| folder.join(&step.split.savestate));
             steps.push(NewStep {
                 split: step.split.clone(),
-                mask: folder.join(&step.split.mask),
+                mask: (!step.split.mask.is_empty()).then(|| folder.join(&step.split.mask)),
                 savestate,
                 screenshot,
             });

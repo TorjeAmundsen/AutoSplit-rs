@@ -5,10 +5,20 @@
 
 use std::path::Path;
 
-use autosplit_core::filename::{NamePart, PartKind, RESET_KEYWORD, START_KEYWORD, name_parts, validate_split_name};
+use autosplit_core::filename::{
+    DEFAULT_FADE_TIME, MIN_FADE_TIME, NamePart, PartKind, RESET_KEYWORD, START_KEYWORD, name_parts, validate_split_name,
+};
 use autosplit_core::preset::{Preset, PresetSplit, game_key};
 use autosplit_core::split_folder::MAX_GROUP_SIZE;
 use autosplit_core::split_image::SplitDefaults;
+
+/// The threshold a split starts with once it's made a fade split: the solid frame at the end of a
+/// fade reaches it, and the frame before doesn't.
+pub const FADE_THRESHOLD: f64 = 0.995;
+/// The color a split starts with once it's made a fade split.
+pub const FADE_COLOR: &str = "#000000";
+/// The longest fade time the form takes, in milliseconds.
+pub const MAX_FADE_TIME: u32 = 10_000;
 
 /// A number field's value as the number it shows: `1.3` stays 1.3 instead of becoming
 /// 1.2999999523162842, which the field's 32-bit float would otherwise give file names.
@@ -94,6 +104,13 @@ pub enum SplitEdit {
     Name(String),
     /// A path relative to the preset's folder, or a picked file's absolute path.
     Mask(String),
+    /// What it's compared by: a fade to this color, or `None` for a screenshot. A fade split
+    /// starts at [`FADE_THRESHOLD`].
+    Compare(Option<String>),
+    /// A fade split's color, as typed.
+    Color(String),
+    /// A fade split's fade time in milliseconds, rounded to whole ones.
+    FadeTime(f64),
     /// `None` for the profile's default similarity threshold.
     Threshold(Option<f64>),
     /// Seconds, or `None` for the profile's default pause time.
@@ -115,15 +132,17 @@ pub enum SplitEdit {
 pub enum Field {
     Name,
     Mask,
+    /// A fade split's color.
+    Color,
     /// Same split as the one above.
     Group,
 }
 
 impl SplitEdit {
     /// Whether it changes other fields than its own, which the form shows again then: the type
-    /// sets the name and Same split as the one above.
+    /// sets the name and Same split as the one above, and comparing by a fade the threshold.
     pub fn changes_other_fields(&self) -> bool {
-        matches!(self, Self::Kind(_))
+        matches!(self, Self::Kind(_) | Self::Compare(_))
     }
 
     /// Whether the split's mask is another one, so what's shown of the old one goes.
@@ -181,11 +200,18 @@ impl Draft {
         }
     }
 
-    /// The preset as it's saved: instructions only go with a savestate.
+    /// The preset as it's saved: instructions only go with a savestate, and fade splits have
+    /// neither, since there's no screen to get to for a screenshot. Until then they're kept, for a
+    /// split switched to a fade and back.
     pub fn to_save(&self) -> Preset {
         let mut preset = self.preset.clone();
-        for split in preset.splits.iter_mut().filter(|split| split.savestate.is_empty()) {
-            split.instructions.clear();
+        for split in preset.splits.iter_mut() {
+            if split.is_fade() {
+                split.savestate.clear();
+            }
+            if split.savestate.is_empty() {
+                split.instructions.clear();
+            }
         }
         preset
     }
@@ -210,6 +236,21 @@ impl Draft {
             SplitEdit::Kind(_) => {}
             SplitEdit::Name(name) => split.name = name,
             SplitEdit::Mask(mask) => split.mask = mask,
+            SplitEdit::Compare(Some(color)) => {
+                if !split.is_fade() {
+                    let color = if color.trim().is_empty() { FADE_COLOR.to_owned() } else { color };
+                    split.fade = Some(color);
+                    split.fade_time = Some(split.fade_time.unwrap_or(DEFAULT_FADE_TIME as u32));
+                    split.threshold = Some(FADE_THRESHOLD);
+                }
+            }
+            SplitEdit::Compare(None) => (split.fade, split.fade_time) = (None, None),
+            SplitEdit::Color(color) if split.is_fade() => split.fade = Some(color),
+            SplitEdit::Color(_) => {}
+            SplitEdit::FadeTime(time) if split.is_fade() => {
+                split.fade_time = Some((time.round() as u32).clamp(MIN_FADE_TIME as u32, MAX_FADE_TIME));
+            }
+            SplitEdit::FadeTime(_) => {}
             // The default isn't written, so the preset keeps following it
             // Three decimals, like the spin box, for fade images that need 0.995
             SplitEdit::Threshold(threshold) => {
@@ -586,8 +627,12 @@ fn split_problems(split: &PresetSplit) -> Vec<(Field, String)> {
     if let Err(error) = validate_split_name(&split.name) {
         problems.push((Field::Name, error.to_string()));
     }
-    if split.mask.is_empty() {
+    // A fade split without one is the whole screen
+    if split.mask.is_empty() && !split.is_fade() {
         problems.push((Field::Mask, "It needs a mask. Choose one.".to_owned()));
+    }
+    if split.is_fade() && split.fade_color().is_none() {
+        problems.push((Field::Color, "Write the color as # and 6 hex digits, like #a0a0a0.".to_owned()));
     }
     problems
 }

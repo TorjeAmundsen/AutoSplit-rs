@@ -5,6 +5,7 @@
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
+use autosplit_core::filename::DEFAULT_FADE_TIME;
 use autosplit_core::mask::Mask;
 use autosplit_core::preset::{Preset, PresetSplit, delete_preset, new_preset_folder, save_preset};
 use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
@@ -327,6 +328,9 @@ impl Gui {
                 Some(&kind) => SplitEdit::Kind(kind),
                 None => return,
             },
+            SplitField::Compare => SplitEdit::Compare((values.get_compare() == 1).then(|| values.get_color().into())),
+            SplitField::Color => SplitEdit::Color(values.get_color().into()),
+            SplitField::FadeTime => SplitEdit::FadeTime(field_value(values.get_fade_time())),
             SplitField::Threshold => {
                 SplitEdit::Threshold(values.get_has_threshold().then(|| field_value(values.get_threshold())))
             }
@@ -434,6 +438,12 @@ impl Gui {
         values.set_generation(values.get_generation().wrapping_add(1));
         values.set_name(split.name.as_str().into());
         values.set_kind(SplitKind::of(&split).index() as i32);
+        values.set_compare(i32::from(split.is_fade()));
+        // A split compared by a screenshot keeps the color shown last, for switching back
+        if let Some(color) = &split.fade {
+            values.set_color(color.as_str().into());
+        }
+        values.set_fade_time(split.fade_time.unwrap_or(DEFAULT_FADE_TIME as u32) as f32);
         // Unticked, they show the profile's defaults, which ticking or editing starts from
         values.set_has_threshold(split.threshold.is_some());
         values.set_threshold(split.threshold.unwrap_or(threshold_default) as f32);
@@ -465,6 +475,10 @@ impl Gui {
                 named: SplitKind::of(split) == SplitKind::Split,
                 name_problem: field_problems(&problems, selected, Field::Name).into(),
                 mask_problem: field_problems(&problems, selected, Field::Mask).into(),
+                color_problem: field_problems(&problems, selected, Field::Color).into(),
+                fade_color: split.fade_color().map_or(slint::Color::from_argb_u8(0, 0, 0, 0), |[red, green, blue]| {
+                    slint::Color::from_rgb_u8(red, green, blue)
+                }),
                 group_problem: field_problems(&problems, selected, Field::Group).into(),
                 mask: elide_middle(&file_name_text(Path::new(&split.mask)).unwrap_or_default(), MASK_NAME_CHARS).into(),
                 savestate: elide_middle(

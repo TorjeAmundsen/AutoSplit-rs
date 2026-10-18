@@ -977,3 +977,99 @@ fn splits_in_the_preset_are_named_like_the_split_list() {
     // Assert
     assert_eq!(shown, preset.file_names(Some(&defaults)).get(1).cloned());
 }
+
+/// Split `index`'s fade color, fade time and threshold.
+fn fade_fields(draft: &Draft, index: usize) -> (Option<&str>, Option<u32>, Option<f64>) {
+    let split = &draft.preset.splits[index];
+    (split.fade.as_deref(), split.fade_time, split.threshold)
+}
+
+#[test_case("" => (Some("#000000".to_owned()), Some(1000), Some(0.995)); "black when no color was typed")]
+#[test_case("#a0a0a0" => (Some("#a0a0a0".to_owned()), Some(1000), Some(0.995)); "the color typed before")]
+fn comparing_by_a_fade_starts_at_0_995(color: &str) -> (Option<String>, Option<u32>, Option<f64>) {
+    // Arrange: a threshold tuned for a screenshot
+    let mut draft = draft(&["Boss"]);
+    draft.edit_split(0, SplitEdit::Threshold(Some(0.92)));
+
+    // Act
+    draft.edit_split(0, SplitEdit::Compare(Some(color.into())));
+
+    // Assert, with the expected value checked by test_case
+    let (fade, time, threshold) = fade_fields(&draft, 0);
+    (fade.map(str::to_owned), time, threshold)
+}
+
+#[test]
+fn comparing_by_a_screenshot_again_drops_the_fade_and_keeps_the_threshold() {
+    // Arrange
+    let mut draft = draft(&["Boss"]);
+    draft.edit_split(0, SplitEdit::Compare(Some("#a0a0a0".into())));
+
+    // Act
+    draft.edit_split(0, SplitEdit::Compare(None));
+
+    // Assert
+    assert_eq!(fade_fields(&draft, 0), (None, None, Some(0.995)));
+}
+
+#[test]
+fn color_and_fade_time_only_change_fade_splits() {
+    // Arrange
+    let mut draft = draft(&["Boss"]);
+
+    // Act
+    draft.edit_split(0, SplitEdit::Color("#a0a0a0".into()));
+    draft.edit_split(0, SplitEdit::FadeTime(500.0));
+
+    // Assert
+    assert_eq!(fade_fields(&draft, 0), (None, None, None));
+}
+
+#[test_case(50.0 => Some(150); "at least what can be told from a cut")]
+#[test_case(349.6 => Some(350); "whole milliseconds")]
+#[test_case(99_999.0 => Some(10_000); "at most 10 seconds")]
+fn fade_times_are_kept_in_range(time: f64) -> Option<u32> {
+    // Arrange
+    let mut draft = draft(&["Boss"]);
+    draft.edit_split(0, SplitEdit::Compare(Some(String::new())));
+
+    // Act
+    draft.edit_split(0, SplitEdit::FadeTime(time));
+
+    // Assert, with the expected value checked by test_case
+    draft.preset.splits[0].fade_time
+}
+
+#[test]
+fn fade_split_needs_no_mask_but_a_color_written_right() {
+    // Arrange
+    let mut draft = draft(&["Boss"]);
+    draft.edit_split(0, SplitEdit::Mask(String::new()));
+    draft.edit_split(0, SplitEdit::Compare(Some(String::new())));
+
+    // Act
+    draft.edit_split(0, SplitEdit::Color("#a0a0".into()));
+
+    // Assert
+    let problems = draft.problems();
+    assert_eq!(
+        (field_problems(&problems, 0, Field::Mask), field_problems(&problems, 0, Field::Color)),
+        (String::new(), "Write the color as # and 6 hex digits, like #a0a0a0.".to_owned())
+    );
+}
+
+#[test]
+fn fade_splits_are_saved_without_a_savestate() {
+    // Arrange
+    let mut draft = draft(&["Boss"]);
+    draft.edit_split(0, SplitEdit::Savestate("boss.gzs".into()));
+    draft.edit_split(0, SplitEdit::Instructions("Advance a frame.".into()));
+
+    // Act
+    draft.edit_split(0, SplitEdit::Compare(Some(String::new())));
+
+    // Assert: kept for switching back, but not saved
+    let saved = &draft.to_save().splits[0];
+    let kept = &draft.preset.splits[0];
+    assert_eq!((saved.savestate.as_str(), saved.instructions.as_str(), kept.savestate.as_str()), ("", "", "boss.gzs"));
+}

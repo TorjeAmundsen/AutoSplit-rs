@@ -23,7 +23,7 @@ impl Gui {
     }
 
     /// Whether split `index` has a mask picked, which may still fail to read.
-    fn has_mask(&self, index: usize) -> bool {
+    pub(super) fn has_mask(&self, index: usize) -> bool {
         let maker = self.maker.borrow();
         maker.shown().and_then(|preset| preset.splits.get(index)).is_some_and(|split| !split.mask.is_empty())
     }
@@ -37,15 +37,16 @@ impl Gui {
         if maker.edit.is_some() {
             return (self.windows.maker.get_preview_mask(), self.windows.maker.get_preview_live());
         }
-        (true, maker.splits.get(maker.selected).is_some_and(|split| split.source.is_none()))
+        (true, maker.source(maker.selected).is_none())
     }
 
     /// The selected split's split image, or its mask when nothing's set to make it from.
     pub(super) fn show_maker_preview(&self) {
         let maker = self.maker.borrow();
         let selected = maker.selected;
-        let source = maker.source(selected).cloned();
+        let source = maker.source(selected);
         let has_split = maker.shown().is_some_and(|preset| selected < preset.splits.len());
+        let fade = maker.fade_split(selected).is_some();
         let (editing, no_presets) = (maker.edit.is_some(), maker.presets.is_empty());
         drop(maker);
         let window = &self.windows.maker;
@@ -58,10 +59,11 @@ impl Gui {
             return window.set_preview_message(message.into());
         }
         let (masked, live) = self.preview_toggles();
-        // While editing, a split without a mask yet shows the picture as it is
+        // While editing, a split without a mask yet shows the picture as it is, and a fade split
+        // without one is the whole screen
         let mask = || match self.maker_mask(selected) {
             Ok(mask) => Ok(Some(mask)),
-            Err(_) if editing && !self.has_mask(selected) => Ok(None),
+            Err(_) if (editing || fade) && !self.has_mask(selected) => Ok(None),
             Err(error) => Err(error),
         };
         if live {
@@ -76,6 +78,7 @@ impl Gui {
         let Some(source) = source else {
             // While editing, the mask itself, when there's nothing to apply it to
             let message = match (masked, self.has_mask(selected)) {
+                _ if fade => "Write the split's color as # and 6 hex digits to see it.".into(),
                 (true, true) => match self.maker_mask_picture(selected) {
                     Ok(picture) => {
                         window.set_preview_image(picture);

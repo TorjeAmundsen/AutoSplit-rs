@@ -497,6 +497,8 @@ pub struct SplitSpec<'a> {
     pub delay: Option<u32>,
     pub dummy: bool,
     pub below: bool,
+    /// Milliseconds, for a fade split, `{f}`. `None` for one made from a screenshot.
+    pub fade_time: Option<u32>,
 }
 
 /// The file name of split image `index` (from 0) of `count`, like AutoMask names them. Only the
@@ -520,10 +522,19 @@ pub fn build_filename(spec: &SplitSpec, index: usize, count: usize, defaults: Op
     if let Some(delay) = spec.delay {
         name += &format!("_#{delay}#");
     }
-    if defaults.is_some_and(|defaults| defaults.comparison_method != ComparisonMethod::L2Norm.index()) {
+    if let Some(fade_time) = spec.fade_time {
+        name += &format!("_~{fade_time}~");
+    }
+    // Fade images always compare by color
+    let other_method = defaults.is_some_and(|defaults| defaults.comparison_method != ComparisonMethod::L2Norm.index());
+    if other_method && spec.fade_time.is_none() {
         name += "_^0^";
     }
-    let flags: String = [(spec.dummy, 'd'), (spec.below, 'b')].iter().filter(|(on, _)| *on).map(|(_, c)| c).collect();
+    let flags: String = [(spec.dummy, 'd'), (spec.below, 'b'), (spec.fade_time.is_some(), 'f')]
+        .iter()
+        .filter(|(on, _)| *on)
+        .map(|(_, c)| c)
+        .collect();
     if !flags.is_empty() {
         name += &format!("_{{{flags}}}");
     }
@@ -551,7 +562,7 @@ pub fn validate_split_name(name: &str) -> Result<(), NameError> {
     if name == START_KEYWORD || name == RESET_KEYWORD {
         return Ok(());
     }
-    if let Some(c) = name.chars().find(|c| "#@{}()[]^".contains(*c)) {
+    if let Some(c) = name.chars().find(|c| "#@{}()[]^~".contains(*c)) {
         return Err(NameError::SettingCharacter(c));
     }
     if let Some(c) = name.chars().find(|c| r#"/\:*?"<>|"#.contains(*c) || c.is_control()) {

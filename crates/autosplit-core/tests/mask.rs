@@ -4,7 +4,7 @@ use std::path::Path;
 
 use autosplit_core::image::BgraImage;
 use autosplit_core::imgproc::ResizeBuffers;
-use autosplit_core::mask::{Mask, apply_mask};
+use autosplit_core::mask::{Mask, apply_mask, fade_image};
 use test_case::test_case;
 
 const SHOT: [u8; 4] = [10, 20, 30, 255];
@@ -76,4 +76,26 @@ fn masks_keep_what_automask_kept(made_by_automask: &str, mask: &str) {
     // Assert
     let automask: Vec<bool> = made.data().as_chunks::<4>().0.iter().map(|pixel| pixel[3] == 255).collect();
     assert_eq!(kept.iter().map(|alpha| *alpha == 255).collect::<Vec<_>>(), automask);
+}
+
+#[test]
+fn fade_image_without_a_mask_is_one_pixel_of_its_color() {
+    // Act
+    let image = fade_image([0xa0, 0x80, 0x10], None);
+
+    // Assert: BGRA
+    assert_eq!((image.width(), image.height(), pixels(&image)), (1, 1, vec![[0x10, 0x80, 0xa0, 255]]));
+}
+
+#[test]
+fn fade_image_has_its_color_where_the_mask_is_opaque() {
+    // Arrange
+    let mask = mask(4, 2, 255, 0);
+
+    // Act
+    let image = fade_image([0xa0, 0xa0, 0xa0], Some(&mask));
+
+    // Assert
+    let (gray, clear) = ([0xa0, 0xa0, 0xa0, 255], [0, 0, 0, 0]);
+    assert_eq!((image.width(), image.height(), pixels(&image)), (4, 2, [gray, gray, clear, clear].repeat(2)));
 }

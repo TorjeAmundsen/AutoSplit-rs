@@ -180,8 +180,15 @@ fn name_parts_keep_the_whole_name() {
     assert_eq!(joined, filename);
 }
 
-const SPEC: SplitSpec =
-    SplitSpec { name: "Bottle", threshold: Some(0.93), pause: None, delay: None, dummy: false, below: false };
+const SPEC: SplitSpec = SplitSpec {
+    name: "Bottle",
+    threshold: Some(0.93),
+    pause: None,
+    delay: None,
+    dummy: false,
+    below: false,
+    fade_time: None,
+};
 
 fn defaults(delay_time: i64, comparison_method: i64) -> SplitDefaults {
     SplitDefaults {
@@ -205,6 +212,8 @@ fn defaults(delay_time: i64, comparison_method: i64) -> SplitDefaults {
 #[test_case(SplitSpec { delay: Some(500), ..SPEC }, 5, 20, Some(defaults(500, 0)) => "05_Bottle_(0.93)_#500#.png"; "its own delay, like the profile's")]
 #[test_case(SplitSpec { delay: Some(0), ..SPEC }, 5, 20, Some(defaults(500, 0)) => "05_Bottle_(0.93)_#0#.png"; "no delay against the profile's")]
 #[test_case(SPEC, 5, 20, Some(defaults(0, 2)) => "05_Bottle_(0.93)_^0^.png"; "l2 norm against the profile's method")]
+#[test_case(SplitSpec { threshold: Some(0.995), fade_time: Some(1000), ..SPEC }, 5, 20, None => "05_Bottle_(0.995)_~1000~_{f}.png"; "fade split")]
+#[test_case(SplitSpec { fade_time: Some(350), dummy: true, ..SPEC }, 5, 20, Some(defaults(0, 2)) => "05_Bottle_(0.93)_~350~_{df}.png"; "fade split, which never asks for a method")]
 fn builds_file_names_like_automask(
     spec: SplitSpec,
     index: usize,
@@ -223,6 +232,7 @@ fn builds_file_names_like_automask(
 #[test_case("A/B" => Err(NameError::FileNameCharacter('/')); "file name character")]
 #[test_case("Reset Room" => Err(NameError::Keyword(RESET_KEYWORD)); "reset keyword")]
 #[test_case("Preset" => Err(NameError::Keyword(RESET_KEYWORD)); "keyword inside a word")]
+#[test_case("Fade~1" => Err(NameError::SettingCharacter('~')); "fade time character")]
 fn split_names(name: &str) -> Result<(), NameError> {
     // Act, with the expected value checked by test_case
     validate_split_name(name)
@@ -234,4 +244,17 @@ fn split_names(name: &str) -> Result<(), NameError> {
 fn fade_time(filename: &str) -> Option<i64> {
     // Act, with the expected value checked by test_case
     fade_time_from_filename(filename)
+}
+
+#[test]
+fn fade_split_file_names_read_back_as_fade_images() {
+    // Arrange
+    let spec = SplitSpec { threshold: Some(0.995), fade_time: Some(350), below: true, ..SPEC };
+    let name = build_filename(&spec, 5, 20, None);
+
+    // Act
+    let read = (filename_warnings(&name), fade_time_from_filename(&name), threshold_from_filename(&name));
+
+    // Assert
+    assert_eq!(read, (vec![], Some(350), Some(0.995)));
 }
