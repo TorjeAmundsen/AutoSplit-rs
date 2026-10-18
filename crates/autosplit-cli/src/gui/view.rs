@@ -11,6 +11,7 @@ use autosplit_core::profile::UserProfile;
 use autosplit_core::runner::{ImageRef, Showing};
 use autosplit_core::split_folder::MAX_GROUP_SIZE;
 use autosplit_core::split_image::{SplitContent, SplitImage};
+use autosplit_core::tester::Phase;
 use autosplit_core::text::{
     InfoCell, WindowTexts, decimal, decimal_or_dash, tester_ignored, tester_info, tester_status, trigger_caption,
     window_texts,
@@ -368,7 +369,10 @@ impl GuiView {
             live: decimal_or_dash(similarity),
             highest: decimal_or_dash(tester.highest()),
             threshold: decimal(threshold),
-            reached: similarity.is_some_and(|similarity| similarity >= threshold),
+            // A fade image at the threshold without a fade there, like after a cut, hasn't reached
+            // it, which the status says
+            reached: similarity.is_some_and(|similarity| similarity >= threshold)
+                && !(image.is_fade() && tester.phase() == Phase::Waiting),
             highest_reached: tester.highest().is_some_and(|highest| highest >= threshold),
             meter: (
                 similarity.map_or(-1.0, |similarity| similarity as f32),

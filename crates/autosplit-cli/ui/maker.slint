@@ -539,7 +539,7 @@ export component MakerWindow inherits Window {
                         suggested: true;
                         enabled: root.can-grab;
                         clicked => { root.grab(); }
-                        tip: root.grab-blocker != "" ? root.grab-blocker : root.grab-fade ? "Fade splits are made from their color and mask, not the capture. Grab saves this one into the split image folder and goes to the next split." : "Make the selected split's image from the capture now, save it into the split image folder, and go to the next split. The screenshot hotkey does the same while this window is open.";
+                        tip: root.grab-blocker != "" ? root.grab-blocker : root.grab-fade ? "Fade splits are made from their color, not the capture. Grab* saves this one into the split image folder and goes to the next split. The screenshot hotkey does the same while this window is open." : "Make the selected split's image from the capture now, save it into the split image folder, and go to the next split. The screenshot hotkey does the same while this window is open.";
                     }
 
                     Button {
@@ -548,7 +548,7 @@ export component MakerWindow inherits Window {
                         // A fade split is made from its color, so it takes no screenshot
                         enabled: root.preset-problem == "" && !root.grab-fade;
                         clicked => { root.use-screenshots(); }
-                        tip: root.grab-fade ? "The selected split is a fade split, which is made from its color, not a screenshot. Select another split to use screenshots." : "Make split images from screenshot files instead: one for the selected split, or several for the splits in order from the first";
+                        tip: root.grab-fade ? "The selected split is a fade split, which is made from its color, not a screenshot. Select another split to use screenshots." : "Make split images from screenshot files instead: one for the selected split, or several for the splits in order from the first, skipping fade splits";
                     }
 
                     Rectangle {
@@ -568,7 +568,7 @@ export component MakerWindow inherits Window {
                         text: "Save Selected";
                         enabled: root.can-save-selected;
                         clicked => { root.save-selected(); }
-                        tip: "Write the selected split's split image into the split image folder, from its grab or screenshot";
+                        tip: "Write the selected split's split image into the split image folder, from its grab or screenshot, or a fade split's color";
                     }
 
                     Button {
@@ -576,7 +576,7 @@ export component MakerWindow inherits Window {
                         text: "Save All";
                         enabled: root.can-save-all;
                         clicked => { root.save-all(); }
-                        tip: "Write the split images of every split with a grab or screenshot into the split image folder";
+                        tip: "Write the split images of every split with a grab or screenshot, and of every fade split, into the split image folder";
                     }
                 }
 
@@ -720,7 +720,8 @@ export component MakerWindow inherits Window {
                 if !root.editing: Preview {
                     height: 240px;
                     source: root.live-image;
-                    message: root.grab-fade ? "This split is a fade to a color, so it's made from its color and mask, not the capture. There's no savestate to load for it.\n\nPress Grab* to save it and go to the next split." : root.live-message;
+                    // What's in the way of Grab*, like a missing split image folder, instead of pressing it
+                    message: root.grab-fade ? "This split is a fade to a color, so it's made from its color, not the capture. There's no savestate to load for it.\n\n" + (root.grab-blocker != "" ? root.grab-blocker : "Grab* saves it and goes to the next split.") : root.live-message;
                 }
 
                 // The selected split, in the space of the folder and the capture, which the

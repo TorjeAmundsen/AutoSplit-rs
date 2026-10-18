@@ -727,6 +727,7 @@ impl Gui {
         let takes_screenshot: Vec<usize> =
             (0..maker.splits.len()).filter(|&index| maker.fade_split(index).is_none()).collect();
         let count = takes_screenshot.len();
+        let fades = maker.splits.len() - count;
         // Without splits, like with no presets or all of them removed, there's no selected one
         let selected = (maker.selected < maker.splits.len()).then_some(maker.selected);
         let targets = if paths.len() == 1 { selected.into_iter().collect() } else { takes_screenshot };
@@ -740,9 +741,18 @@ impl Gui {
         // Unlike a grab, they're saved when asked
         let status = match paths.len() {
             1 => "Screenshot set for the selected split. Save Selected writes its split image.".to_owned(),
-            n if n == count => format!("{n} screenshots set, one for each split. Save All writes their split images."),
-            n => format!(
+            n if n == count && fades == 0 => {
+                format!("{n} screenshots set, one for each split. Save All writes their split images.")
+            }
+            n if n == count => format!(
+                "{n} screenshots set, one for each split that isn't a fade split. Save All writes their split images."
+            ),
+            n if fades == 0 => format!(
                 "{n} screenshots for {count} splits, set in order from the first. Save All writes their split images."
+            ),
+            n => format!(
+                "{n} screenshots for the {count} splits that aren't fade splits, set in order from the first. Save All \
+                 writes their split images."
             ),
         };
         self.windows.maker.set_status(status.into());

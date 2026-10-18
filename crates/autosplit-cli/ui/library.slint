@@ -60,7 +60,11 @@ component Setting inherits HorizontalLayout {
         text: root.label;
     }
 
+    // Cut off when the pane is narrow, like the File row, since flags with a fade can get long
     Text {
+        horizontal-stretch: 1;
+        min-width: 0px;
+        overflow: elide;
         font-weight: root.value == "" ? 400 : 600;
         color: root.value == "" ? Theme.secondary-text : NameColors.of({ kind: root.kind });
         text: root.value == "" ? root.empty : root.value;

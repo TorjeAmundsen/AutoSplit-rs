@@ -149,17 +149,20 @@ export component SplitFormPanel inherits VerticalLayout {
         if SplitValues.compare == 1: VerticalLayout {
             spacing: 2px;
 
+            // Tighter than the other rows, which have fewer fields
             HorizontalLayout {
                 height: 24px;
-                spacing: 6px;
+                spacing: 4px;
 
                 Label {
                     width: root.label-width;
                     text: "Color:";
                 }
 
+                // Wide enough for wide uppercase values like #DDDDDD
                 TextField {
-                    width: 68px;
+                    width: 74px;
+                    monospace: true;
                     error: root.form.color-problem != "";
                     text <=> SplitValues.color;
                     edited => { root.split-edited(SplitField.color); }
