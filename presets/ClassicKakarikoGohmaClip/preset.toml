@@ -66,6 +66,25 @@ threshold = 0.995
 pause = 60.0
 
 [[split]]
+name = "ScrubsDummyLow"
+mask = "ScrubsDummyLow.png"
+threshold = 0.93
+pause = 1.0
+dummy = true
+below = true
+savestate = "savestates/005-deku_tree.gzs"
+
+[[split]]
+name = "ScrubsDummyHigh"
+with_previous = true
+mask = "ScrubsDummyHigh.png"
+threshold = 0.93
+pause = 1.0
+dummy = true
+below = true
+savestate = "savestates/006-deku_tree.gzs"
+
+[[split]]
 name = "Scrubs"
 mask = "Scrubs.png"
 fade = "#000000"
