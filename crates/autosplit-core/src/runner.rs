@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use crate::commands::Command;
 use crate::compare::CompareScratch;
-use crate::fade::FadeTracker;
+use crate::fade::{FadeTracker, reached};
 use crate::image::BgraView;
 use crate::profile::UserProfile;
 use crate::split_folder::{MAX_GROUP_SIZE, SplitSet};
@@ -278,22 +278,6 @@ impl ComparisonCache {
     fn clear(&mut self) {
         self.frame = None;
         self.results.clear();
-    }
-}
-
-/// Whether `image` reached `threshold` at `now`: a fade image only by a fade, which `fade`
-/// watches for.
-pub(crate) fn reached(
-    image: &SplitImage,
-    fade: &mut FadeTracker,
-    now: Duration,
-    similarity: f64,
-    threshold: f64,
-) -> bool {
-    if image.is_fade() {
-        fade.update(now, similarity, threshold, image.fade_time_ms())
-    } else {
-        similarity >= threshold
     }
 }
 

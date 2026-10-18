@@ -72,7 +72,7 @@ impl Gui {
             user_files(&folder).unwrap_or_default().iter().map(|path| canonical(path)).collect();
         // Every split's screenshot, also of splits not saved now
         let sources: Vec<PathBuf> = (self.maker.borrow().splits.iter())
-            .filter_map(|split| match split.source.as_ref()? {
+            .filter_map(|split| match split.shot.as_ref()? {
                 Source::File(path) => Some(canonical(path)),
                 Source::Grabbed(_) | Source::Fade(_) => None,
             })
@@ -219,7 +219,7 @@ impl Gui {
         // Every split made from a moved screenshot reads it from its new place, and its split image
         // is still made from it
         for split in maker.splits.iter_mut().filter(|_| same_preset) {
-            for source in [&mut split.source, &mut split.saved_from] {
+            for source in [&mut split.shot, &mut split.saved_from] {
                 if let Some(Source::File(path)) = source.as_mut()
                     && let Some((_, to)) = moves.iter().find(|(from, _)| from == path)
                 {
@@ -295,7 +295,7 @@ impl Gui {
         }
         for (index, source, thumb) in made {
             if let Some(split) = maker.splits.get_mut(index)
-                && split.source.as_ref().is_some_and(|now| now.same(&source))
+                && split.shot.as_ref().is_some_and(|now| now.same(&source))
             {
                 split.thumb = Some(slint::Image::from_rgba8(thumb));
             }

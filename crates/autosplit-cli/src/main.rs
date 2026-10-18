@@ -19,7 +19,7 @@ use autosplit_core::image::BgraImage;
 use autosplit_core::profile::UserProfile;
 use autosplit_core::runner::{Captured, Effect, Runner, RunnerSettings, Showing};
 use autosplit_core::split_folder::{FolderLoad, SplitSet, load_profile_folder, load_profile_folder_to_start};
-use autosplit_core::split_image::{ImageType, SplitContent, SplitImage};
+use autosplit_core::split_image::{ImageType, SplitContent, SplitDefaults, SplitImage};
 use autosplit_core::text::{Compared, decimal, decimal_or_dash, hex_color};
 use clap::{Parser, Subcommand};
 
@@ -235,6 +235,14 @@ fn folder_result(load: FolderLoad) -> Result<(SplitSet, usize)> {
     }
 }
 
+/// The defaults of the profile at `path`, or of a new profile without one.
+fn profile_defaults(path: Option<&Path>) -> Result<SplitDefaults> {
+    Ok(match path {
+        Some(path) => load_profile(path, None)?.split_defaults(),
+        None => UserProfile::default().split_defaults(),
+    })
+}
+
 fn load_split_image(path: &Path) -> Result<SplitImage> {
     if !path.exists() {
         bail!("{} doesn't exist", path.display());
@@ -276,13 +284,9 @@ fn check(profile_path: &Path, split_dir: Option<PathBuf>) -> Result<()> {
                 .filter_map(|(set, flag)| set.then_some(*flag))
                 .collect();
         let flags = if letters.is_empty() { String::new() } else { format!("{{{letters}}}") };
-        let method = match image.fade_color() {
-            Some(_) => "fade",
-            None => image.comparison_method(&defaults).map_or("never", ComparisonMethod::name),
-        };
-        let fade = match image.fade_color() {
-            Some(color) => format!("fade to {} in {}ms, ", hex_color(color), image.fade_time_ms()),
-            None => String::new(),
+        let (method, fade) = match image.fade_color() {
+            Some(color) => ("fade", format!("fade to {} in {}ms, ", hex_color(color), image.fade_time_ms())),
+            None => (image.comparison_method(&defaults).map_or("never", ComparisonMethod::name), String::new()),
         };
         let content = fade
             + &match &image.content {
@@ -326,10 +330,7 @@ fn compare(split_image: &Path, capture_path: &Path, profile: Option<&Path>) -> R
     }
     let capture = BgraImage::open_png(capture_path)
         .map_err(|error| anyhow::anyhow!("{} isn't a PNG image ({error})", capture_path.display()))?;
-    let defaults = match profile {
-        Some(path) => load_profile(path, None)?.split_defaults(),
-        None => UserProfile::default().split_defaults(),
-    };
+    let defaults = profile_defaults(profile)?;
     let method = image.comparison_method(&defaults).filter(|_| !image.is_fade());
     let threshold = image.similarity_threshold(&defaults);
     let default_note = if profile.is_none() && !image.filename.contains('(') {
@@ -399,10 +400,7 @@ fn csv_field(text: &str) -> String {
 fn compare_frames(split_image: &Path, frames: &Path, fps: f64, profile: Option<&Path>) -> Result<()> {
     let image = load_split_image(split_image)?;
     let paths = frame_paths(frames)?;
-    let defaults = match profile {
-        Some(path) => load_profile(path, None)?.split_defaults(),
-        None => UserProfile::default().split_defaults(),
-    };
+    let defaults = profile_defaults(profile)?;
     let mut scratch = CompareScratch::default();
     let fade_column = if image.is_fade() { ",fade" } else { "" };
     println!("frame,file,seconds,l2_norm,histograms,phash{fade_column}");

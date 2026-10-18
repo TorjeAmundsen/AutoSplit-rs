@@ -3,7 +3,7 @@
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 
-use crate::filename::{FilenameWarning, RESET_KEYWORD, START_KEYWORD, number_prefix};
+use crate::filename::{FADE_COMPARISONS, FilenameWarning, RESET_KEYWORD, START_KEYWORD, number_prefix};
 use crate::profile::UserProfile;
 use crate::split_image::{self, ImageType, LoadError, LoadWarning, SplitImage};
 
@@ -133,7 +133,9 @@ pub fn load_profile_folder(profile: &UserProfile, hotkeys_needed: bool) -> Folde
     if let Ok(set) = &load.result {
         let fps_limit = profile.fps_limit.max(1);
         let images = set.start.iter().chain(&set.reset).chain(&set.splits);
-        for image in images.filter(|image| image.is_fade() && image.fade_time_ms() * fps_limit < 3 * 1000) {
+        for image in
+            images.filter(|image| image.is_fade() && image.fade_time_ms() * fps_limit < FADE_COMPARISONS * 1000)
+        {
             let warning = FilenameWarning::FadeTooShortForFps { fade_time: image.fade_time_ms(), fps_limit };
             load.warnings.push(LoadWarning { path: image.path.clone(), warning });
         }

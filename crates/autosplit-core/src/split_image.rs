@@ -171,7 +171,7 @@ impl SplitImage {
 
     /// How long a fade image's fade takes, in milliseconds.
     pub fn fade_time_ms(&self) -> i64 {
-        self.fade_time.unwrap_or(DEFAULT_FADE_TIME)
+        self.fade_time.unwrap_or(i64::from(DEFAULT_FADE_TIME))
     }
 
     /// A fade image's color, as RGB.

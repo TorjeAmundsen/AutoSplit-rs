@@ -116,7 +116,7 @@ impl PresetSplit {
             delay: self.delay,
             dummy: self.dummy,
             below: self.below,
-            fade_time: self.is_fade().then(|| self.fade_time.unwrap_or(DEFAULT_FADE_TIME as u32)),
+            fade_time: self.is_fade().then(|| self.fade_time.unwrap_or(DEFAULT_FADE_TIME)),
         }
     }
 }

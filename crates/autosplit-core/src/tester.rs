@@ -5,9 +5,9 @@ use std::path::Path;
 use std::time::Duration;
 
 use crate::compare::CompareScratch;
-use crate::fade::FadeTracker;
+use crate::fade::{FadeTracker, reached};
 use crate::image::BgraImage;
-use crate::runner::{Captured, interval, next_grid_tick, reached};
+use crate::runner::{Captured, interval, next_grid_tick};
 use crate::split_image::{ImageType, LoadError, SplitDefaults, SplitImage};
 
 /// Where the tester is in the image's trigger sequence.

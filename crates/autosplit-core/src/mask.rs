@@ -63,9 +63,7 @@ pub fn apply_mask(shot: BgraView, mask: &Mask, buffers: &mut ResizeBuffers) -> B
 
 /// A fade split's split image: `color` (RGB) where `mask` is fully opaque, at the mask's size, and
 /// transparent elsewhere. Without a mask, one pixel of it, which is stretched to the whole capture.
-pub fn fade_image([red, green, blue]: [u8; 3], mask: Option<&Mask>) -> BgraImage {
-    let pixel = [blue, green, red, 255];
-    let Some(mask) = mask else { return BgraImage::from_raw(1, 1, pixel.to_vec()) };
-    let solid = BgraImage::from_raw(mask.width, mask.height, pixel.repeat(mask.width * mask.height));
-    apply_mask(solid.view(), mask, &mut ResizeBuffers::default())
+pub fn fade_image(color: [u8; 3], mask: Option<&Mask>) -> BgraImage {
+    let Some(mask) = mask else { return BgraImage::solid(color, 1, 1) };
+    apply_mask(BgraImage::solid(color, mask.width, mask.height).view(), mask, &mut ResizeBuffers::default())
 }

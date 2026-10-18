@@ -331,9 +331,10 @@ fn colors_off_by_the_tolerance_count_as_the_color() {
     // Act
     let similarities = [10, 0].map(|tolerance| similarity(&image, &capture, tolerance));
 
-    // Assert
+    // Assert: worked out another way than the code does, so equal up to rounding
     let off = 1.0 - (3.0_f64 * 81.0).sqrt() / (255.0 * 3.0_f64.sqrt());
-    assert_eq!(similarities, [1.0, off]);
+    assert_eq!(similarities[0], 1.0);
+    assert!((similarities[1] - off).abs() < 1e-12, "{} isn't {off}", similarities[1]);
 }
 
 #[test]

@@ -74,14 +74,9 @@ impl Source {
                 .map_err(|error| format!("Couldn't read {}: {error}", path.display())),
             Self::Grabbed(image) => Ok(image.clone()),
             // At the size grabs are compared at, which a mask is stretched to
-            Self::Fade(color) => Ok(Arc::new(solid(*color, 320, 240))),
+            Self::Fade(color) => Ok(Arc::new(BgraImage::solid(*color, 320, 240))),
         }
     }
-}
-
-/// An opaque image of `color` (RGB).
-pub(super) fn solid([red, green, blue]: [u8; 3], width: usize, height: usize) -> BgraImage {
-    BgraImage::from_raw(width, height, [blue, green, red, 255].repeat(width * height))
 }
 
 /// The window's preset, and what's been done with it.
@@ -126,22 +121,24 @@ pub(super) struct Maker {
 /// What's been done for a split.
 #[derive(Clone, Default)]
 struct SplitWork {
-    /// What its image is made from.
-    source: Option<Source>,
+    /// The grab or screenshot it was given. What its image is made from is [`Maker::source`], which
+    /// for a fade split is its color, whatever this is: a split switched to a fade keeps it, for
+    /// switching back.
+    shot: Option<Source>,
     /// Its split image, once it's written.
     saved: Option<PathBuf>,
     /// What `saved` was made from. A fade split's color is in its preset, so changing it doesn't
-    /// go through [`SplitWork::set_source`].
+    /// go through [`SplitWork::set_shot`].
     saved_from: Option<Source>,
-    /// A small picture of its split image, once it's made from its source.
+    /// A small picture of its grab or screenshot, once it's made.
     thumb: Option<slint::Image>,
 }
 
 impl SplitWork {
-    /// Makes its image from `source` from now on: what was saved or pictured of the one before
-    /// is another image.
-    fn set_source(&mut self, source: Source) {
-        *self = Self { source: Some(source), ..Self::default() };
+    /// Makes its image from the grab or screenshot `shot` from now on: what was saved or pictured
+    /// of the one before is another image.
+    fn set_shot(&mut self, shot: Source) {
+        *self = Self { shot: Some(shot), ..Self::default() };
     }
 }
 
@@ -192,7 +189,7 @@ impl Maker {
         if let Some(split) = self.fade_split(index) {
             return split.fade_color().map(Source::Fade);
         }
-        self.splits.get(index)?.source.clone()
+        self.splits.get(index)?.shot.clone()
     }
 
     /// Split `index` of the shown preset, when it's a fade split.
@@ -292,10 +289,12 @@ fn maker_view(
 
 /// The list's picture of split `index`: its color for a fade split, or of its grab or screenshot.
 fn thumb(maker: &Maker, index: usize) -> Option<slint::Image> {
-    if maker.fade_split(index).is_some() {
-        let Source::Fade(color) = maker.source(index)? else { return None };
+    if let Some(split) = maker.fade_split(index) {
+        // None while its color isn't written right
+        let [red, green, blue] = split.fade_color()?;
         let (width, height) = THUMB_SIZE;
-        return Some(slint::Image::from_rgba8(thumbnail(solid(color, width, height).view())));
+        let pixels = [red, green, blue, 255].repeat(width * height);
+        return Some(slint::Image::from_rgba8(Pixels::clone_from_slice(&pixels, width as u32, height as u32)));
     }
     maker.splits.get(index)?.thumb.clone()
 }
@@ -655,7 +654,7 @@ impl Gui {
         let selected = maker.selected;
         let count = maker.splits.len();
         let Some(split) = maker.splits.get_mut(selected) else { return };
-        split.set_source(Source::Grabbed(image));
+        split.set_shot(Source::Grabbed(image));
         drop(maker);
         self.make_thumbnails(vec![selected]);
         // Stays on the split when its image can't be saved, to grab it again once that's fixed
@@ -733,7 +732,7 @@ impl Gui {
         let targets = if paths.len() == 1 { selected.into_iter().collect() } else { takes_screenshot };
         let mut set = Vec::new();
         for (&index, path) in targets.iter().zip(&paths) {
-            maker.splits[index].set_source(Source::File(path.clone()));
+            maker.splits[index].set_shot(Source::File(path.clone()));
             set.push(index);
         }
         drop(maker);

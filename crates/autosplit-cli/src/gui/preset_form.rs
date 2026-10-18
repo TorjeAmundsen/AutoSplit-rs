@@ -227,7 +227,7 @@ impl Draft {
             SplitEdit::Compare(true) if !split.is_fade() => {
                 let (color, time) = split.remembered.fade.take().unwrap_or((FADE_COLOR.to_owned(), None));
                 split.fade = Some(color);
-                split.fade_time = Some(time.unwrap_or(DEFAULT_FADE_TIME as u32));
+                split.fade_time = Some(time.unwrap_or(DEFAULT_FADE_TIME));
                 split.remembered.threshold = Some(split.threshold);
                 split.threshold = Some(FADE_THRESHOLD);
             }
@@ -244,7 +244,7 @@ impl Draft {
             SplitEdit::Color(color) if split.is_fade() => split.fade = Some(color),
             SplitEdit::Color(_) => {}
             SplitEdit::FadeTime(time) if split.is_fade() => {
-                split.fade_time = Some((time.round() as u32).clamp(MIN_FADE_TIME as u32, MAX_FADE_TIME as u32));
+                split.fade_time = Some((time.round() as u32).clamp(MIN_FADE_TIME, MAX_FADE_TIME));
             }
             SplitEdit::FadeTime(_) => {}
             // The default isn't written, so the preset keeps following it
@@ -645,7 +645,7 @@ fn split_problems(split: &PresetSplit) -> Vec<(Field, String)> {
         problems.push((Field::Color, "Write the color as # and 6 hex digits, like #a0a0a0.".to_owned()));
     }
     // Only a preset written by hand, since the form keeps it in range
-    if split.fade_time.is_some_and(|time| !(MIN_FADE_TIME..=MAX_FADE_TIME).contains(&i64::from(time))) {
+    if split.fade_time.is_some_and(|time| !(MIN_FADE_TIME..=MAX_FADE_TIME).contains(&time)) {
         let message = format!("The fade time has to be between {MIN_FADE_TIME} and {MAX_FADE_TIME} ms.");
         problems.push((Field::Color, message));
     }

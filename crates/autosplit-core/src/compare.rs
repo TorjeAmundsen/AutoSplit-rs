@@ -85,7 +85,7 @@ impl Mask {
         &self.spans
     }
 
-    fn byte_spans(&self) -> impl Iterator<Item = Range<usize>> + '_ {
+    pub(crate) fn byte_spans(&self) -> impl Iterator<Item = Range<usize>> + '_ {
         self.spans.iter().map(|span| span.start * 4..span.end * 4)
     }
 }

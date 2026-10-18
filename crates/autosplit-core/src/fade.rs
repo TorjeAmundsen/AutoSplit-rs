@@ -6,6 +6,7 @@ use std::time::Duration;
 
 use crate::compare::Mask;
 use crate::image::BgraImage;
+use crate::split_image::SplitImage;
 
 /// The largest RGB distance: from black to white.
 const MAX_DISTANCE: f64 = 441.672_955_930_063_7; // 255 * sqrt(3)
@@ -56,7 +57,7 @@ pub(crate) fn similarity(color: [u8; 3], capture: &BgraImage, mask: Option<&Mask
         count += (pixels.len() / 4) as u64;
     };
     match mask {
-        Some(mask) => mask.spans().iter().for_each(|span| add(&capture.data()[span.start * 4..span.end * 4])),
+        Some(mask) => mask.byte_spans().for_each(|span| add(&capture.data()[span])),
         None => add(capture.data()),
     }
     if count == 0 {
@@ -73,18 +74,38 @@ pub(crate) fn similarity(color: [u8; 3], capture: &BgraImage, mask: Option<&Mask
     1.0 - squared.sqrt() / MAX_DISTANCE
 }
 
+/// Whether `image` reached `threshold` at `now`, for the runner and the Live Tester: a fade image
+/// only by a fade, which `fade` watches for.
+pub(crate) fn reached(
+    image: &SplitImage,
+    fade: &mut FadeTracker,
+    now: Duration,
+    similarity: f64,
+    threshold: f64,
+) -> bool {
+    if image.is_fade() {
+        fade.update(now, similarity, threshold, image.fade_time_ms())
+    } else {
+        similarity >= threshold
+    }
+}
+
 /// Watches a fade image's similarity over time, to tell a fade to its color from a cut.
 ///
-/// The similarity is sampled every quarter of the fade time, between 50 and 100 ms. A frame at
-/// the threshold is a fade when the samples before it came closer to the color step by step, none
-/// of the last three steps to the threshold making more than 40% of the way, or most of those
-/// three steps' rise, and enough of the way came without a jump. A cut makes all of the way in one
-/// step.
+/// The similarity is sampled every quarter of the fade time, from `MIN_SAMPLE_INTERVAL` to
+/// `MAX_SAMPLE_INTERVAL`. A frame at the threshold is a fade when the samples before it came closer
+/// to the color step by step: none of the last `ARRIVAL_STEPS` to the threshold makes more than
+/// `MAX_STEP_SHARE` of the way or `MAX_ARRIVAL_SHARE` of their rise, and `MIN_FADE_DEPTH` of the
+/// way came without a jump of more than `MAX_STEP_GROWTH` times the steps after it. A cut makes all
+/// of the way in one step.
 #[derive(Clone, Debug, Default)]
 pub struct FadeTracker {
     /// When each sample was taken, and its similarity.
     samples: VecDeque<(Duration, f64)>,
     next_sample: Option<Duration>,
+    /// The samples and the current frame, for [`FadeTracker::update`], kept so it doesn't allocate
+    /// on every frame at the threshold.
+    way: Vec<f64>,
 }
 
 impl FadeTracker {
@@ -116,7 +137,9 @@ impl FadeTracker {
         }
         // The way here: back from this frame, for as long as each sample came closer
         let current = (self.samples.back().is_none_or(|(at, _)| *at != now)).then_some(similarity);
-        let way: Vec<f64> = self.samples.iter().map(|(_, sample)| *sample).chain(current).collect();
+        self.way.clear();
+        self.way.extend(self.samples.iter().map(|(_, sample)| *sample).chain(current));
+        let way = &self.way;
         let start = (1..way.len()).rev().find(|&i| way[i] < way[i - 1] - MAX_DIP).unwrap_or(0);
         let way = &way[start..];
         let depth = similarity - way.iter().copied().fold(f64::INFINITY, f64::min);

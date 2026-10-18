@@ -442,7 +442,7 @@ impl Gui {
         values.set_kind(SplitKind::of(&split).index() as i32);
         values.set_compare(i32::from(split.is_fade()));
         values.set_color(split.fade.as_deref().unwrap_or_default().into());
-        values.set_fade_time(split.fade_time.unwrap_or(DEFAULT_FADE_TIME as u32) as f32);
+        values.set_fade_time(split.fade_time.unwrap_or(DEFAULT_FADE_TIME) as f32);
         // Unticked, they show the profile's defaults, which ticking or editing starts from
         values.set_has_threshold(split.threshold.is_some());
         values.set_threshold(split.threshold.unwrap_or(threshold_default) as f32);

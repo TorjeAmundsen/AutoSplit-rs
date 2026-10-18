@@ -19,11 +19,14 @@ pub const PAUSE_FLAG: u32 = 1 << 2;
 pub const FADE_FLAG: u32 = 1 << 3;
 
 /// How long a fade takes when the file name doesn't say, in milliseconds.
-pub const DEFAULT_FADE_TIME: i64 = 1000;
+pub const DEFAULT_FADE_TIME: u32 = 1000;
 /// Shorter fades can't be told apart from a cut.
-pub const MIN_FADE_TIME: i64 = 150;
+pub const MIN_FADE_TIME: u32 = 150;
 /// Longer ones would keep a long history of the similarity, which no game's fade needs.
-pub const MAX_FADE_TIME: i64 = 10_000;
+pub const MAX_FADE_TIME: u32 = 10_000;
+/// How many comparisons a fade needs, about, to tell it from a cut. A fade shorter than that many
+/// frames at the FPS limit may never split.
+pub const FADE_COMPARISONS: i64 = 3;
 
 pub const START_KEYWORD: &str = "start_auto_splitter";
 pub const RESET_KEYWORD: &str = "reset";
@@ -124,7 +127,7 @@ pub fn comparison_method_from_filename(filename: &str) -> Option<i64> {
 /// `~1000~`: how long a fade image's fade takes, in milliseconds. From [`MIN_FADE_TIME`] to
 /// [`MAX_FADE_TIME`].
 pub fn fade_time_from_filename(filename: &str) -> Option<i64> {
-    int_value(filename, '~', '~').filter(|value| (MIN_FADE_TIME..=MAX_FADE_TIME).contains(value))
+    int_value(filename, '~', '~').filter(|value| (i64::from(MIN_FADE_TIME)..=i64::from(MAX_FADE_TIME)).contains(value))
 }
 
 /// `{dbpf}`: dummy, below threshold, pause and fade flags. `m` is a legacy flag that's ignored.
@@ -228,22 +231,22 @@ impl Setting {
         }
     }
 
-    fn allowed(self) -> &'static str {
+    fn allowed(self) -> String {
         match self {
-            Self::Threshold => "between 0 and 1",
-            Self::Loops => "1 or more",
-            Self::PauseTime | Self::DelayTime | Self::ComparisonMethod => "0 or more",
-            Self::Flags => "d, b, p, f or m",
-            Self::FadeTime => "between 150 and 10000",
+            Self::Threshold => "between 0 and 1".into(),
+            Self::Loops => "1 or more".into(),
+            Self::PauseTime | Self::DelayTime | Self::ComparisonMethod => "0 or more".into(),
+            Self::Flags => "d, b, p, f or m".into(),
+            Self::FadeTime => format!("between {MIN_FADE_TIME} and {MAX_FADE_TIME}"),
         }
     }
 
-    fn fallback(self) -> &'static str {
+    fn fallback(self) -> String {
         match self {
-            Self::Loops => "the image is used once",
-            Self::Flags => "the image has no flags",
-            Self::FadeTime => "the default of 1000 is used",
-            _ => "the profile's default is used",
+            Self::Loops => "the image is used once".into(),
+            Self::Flags => "the image has no flags".into(),
+            Self::FadeTime => format!("the default of {DEFAULT_FADE_TIME} is used"),
+            _ => "the profile's default is used".into(),
         }
     }
 }
@@ -289,8 +292,8 @@ impl fmt::Display for FilenameWarning {
                 write!(f, "fade images, with the {{f}} flag, compare by color, so the {} is ignored", setting.name())
             }
             Self::FadeTooShortForFps { fade_time, fps_limit } => {
-                // A fade needs about 3 comparisons to tell it from a cut
-                let needed = (3000 + fade_time - 1) / *fade_time.max(&1);
+                // The lowest FPS limit that compares FADE_COMPARISONS times within the fade
+                let needed = (FADE_COMPARISONS * 1000 + fade_time - 1) / *fade_time.max(&1);
                 write!(
                     f,
                     "the FPS limit of {fps_limit} compares too seldom to tell a fade of {fade_time} ms from a cut, so it \
@@ -330,7 +333,8 @@ pub fn filename_warnings(filename: &str) -> Vec<FilenameWarning> {
     }
     // Without `{f}`, a lone `~` is part of the name, as it is for AutoSplit
     if fade {
-        check(Setting::FadeTime, &|text| parse_int(text).map(|value| (MIN_FADE_TIME..=MAX_FADE_TIME).contains(&value)));
+        let fade_times = i64::from(MIN_FADE_TIME)..=i64::from(MAX_FADE_TIME);
+        check(Setting::FadeTime, &|text| parse_int(text).map(|value| fade_times.contains(&value)));
     }
     if let Delimited::Invalid(count, ..) = delimited(filename, '{', '}') {
         warnings.push(FilenameWarning::Delimiters { setting: Setting::Flags, count });
