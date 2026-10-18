@@ -6,6 +6,7 @@ name = "reset"
 mask = "reset.png"
 threshold = 0.96
 pause = 0.1
+savestate = "savestates/000_start_and_reset.gzs"
 
 [[split]]
 name = "start_auto_splitter"
@@ -13,6 +14,7 @@ mask = "start_auto_splitter.png"
 threshold = 0.96
 pause = 10.0
 below = true
+savestate = "savestates/000_start_and_reset.gzs"
 
 [[split]]
 name = "KokiriSwordRight"
@@ -55,6 +57,14 @@ with_previous = true
 mask = "CrawlspaceRight.png"
 threshold = 0.93
 pause = 30.0
+
+[[split]]
+name = "LoadDummy"
+mask = "LoadDummy.png"
+threshold = 0.95
+pause = 0.0
+dummy = true
+savestate = "savestates/007-kokiri_forest.gzs"
 
 [[split]]
 name = "Credits"
