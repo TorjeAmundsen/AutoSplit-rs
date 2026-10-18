@@ -715,8 +715,10 @@ impl Gui {
         // Fade splits are made from their color, so screenshots go to the others in order
         let takes_screenshot: Vec<usize> =
             (0..maker.splits.len()).filter(|&index| maker.fade_split(index).is_none()).collect();
-        let targets = if paths.len() == 1 { vec![maker.selected] } else { takes_screenshot.clone() };
         let count = takes_screenshot.len();
+        // Without splits, like with no presets or all of them removed, there's no selected one
+        let selected = (maker.selected < maker.splits.len()).then_some(maker.selected);
+        let targets = if paths.len() == 1 { selected.into_iter().collect() } else { takes_screenshot };
         let mut set = Vec::new();
         for (&index, path) in targets.iter().zip(&paths) {
             maker.splits[index].set_source(Source::File(path.clone()));

@@ -19,6 +19,11 @@ const MAX_STEP_SHARE: f64 = 0.4;
 /// The steps to the threshold that [`MAX_STEP_SHARE`] applies to. Earlier steps can be big, like
 /// when something dark crosses a small region as the fade starts.
 const ARRIVAL_STEPS: usize = 3;
+/// The most one of the [`ARRIVAL_STEPS`] may make of their rise. A fade still rises in the steps
+/// before the last one, while a cut after something that held still, like a dark room entered
+/// with a cut, makes all of it in one. Without this, the earlier cut would count toward the
+/// fade's depth and make the later one look small.
+const MAX_ARRIVAL_SHARE: f64 = 0.75;
 /// How far a fade may go back from one sample to the next, like a game's fades sometimes do.
 const MAX_DIP: f64 = 0.03;
 const MIN_SAMPLE_INTERVAL: Duration = Duration::from_millis(50);
@@ -67,8 +72,8 @@ pub(crate) fn similarity(color: [u8; 3], capture: &BgraImage, mask: Option<&Mask
 ///
 /// The similarity is sampled every quarter of the fade time, between 50 and 100 ms. A frame at
 /// the threshold is a fade when the samples before it came closer to the color step by step, none
-/// of the last three steps to the threshold making more than 40% of the way. A cut makes all of
-/// the way in one step.
+/// of the last three steps to the threshold making more than 40% of the way, or most of those
+/// three steps' rise. A cut makes all of the way in one step.
 #[derive(Clone, Debug, Default)]
 pub struct FadeTracker {
     /// When each sample was taken, and its similarity.
@@ -116,6 +121,9 @@ impl FadeTracker {
         };
         let last_steps = &way[arrival.saturating_sub(ARRIVAL_STEPS)..=arrival];
         let largest_step = last_steps.windows(2).map(|pair| pair[1] - pair[0]).fold(0.0, f64::max);
-        depth >= MIN_FADE_DEPTH.max(1.0 - threshold) && largest_step <= MAX_STEP_SHARE * depth
+        let rise = last_steps[last_steps.len() - 1] - last_steps[0];
+        depth >= MIN_FADE_DEPTH.max(1.0 - threshold)
+            && largest_step <= MAX_STEP_SHARE * depth
+            && largest_step <= MAX_ARRIVAL_SHARE * rise
     }
 }

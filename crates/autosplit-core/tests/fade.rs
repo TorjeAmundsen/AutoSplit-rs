@@ -6,6 +6,7 @@ use std::time::Duration;
 use autosplit_core::fade::FadeTracker;
 use autosplit_core::image::BgraImage;
 use autosplit_core::split_image::{LoadError, SplitDefaults, SplitImage};
+use test_case::test_case;
 
 /// Similarities against black at 60 FPS, from a capture of Ocarina of Time, 2 seconds each.
 ///
@@ -145,6 +146,33 @@ fn cut_blended_over_two_frames_is_not_a_fade() {
     // Arrange
     let mut trace = vec![0.8; 60];
     trace.extend([0.87, 0.93]);
+    trace.extend([1.0; 60]);
+
+    // Act
+    let found = first_fade(&trace, 0.97, 1000);
+
+    // Assert
+    assert_eq!(found, None);
+}
+
+#[test_case(&[(0.484, 60), (0.913, 60), (1.0, 90)]; "a cut to a dark room, then a cut to the color")]
+#[test_case(&[(0.9, 60), (0.0, 3), (0.9, 30), (1.0, 60)]; "a lost capture, then a cut to the color")]
+fn cut_soon_after_another_cut_is_not_a_fade(parts: &[(f64, usize)]) {
+    // Arrange: the earlier cut is still in the history when the cut to the color comes
+    let trace: Vec<f64> = parts.iter().flat_map(|&(similarity, frames)| vec![similarity; frames]).collect();
+
+    // Act
+    let found = [0.97, 0.995].map(|threshold| first_fade(&trace, threshold, 1000));
+
+    // Assert
+    assert_eq!(found, [None; 2]);
+}
+
+#[test]
+fn cut_after_a_dark_room_that_flickers_is_not_a_fade() {
+    // Arrange: a cut to a dark room whose similarity moves a little, then a cut to the color
+    let mut trace = vec![0.3; 30];
+    trace.extend((0..60).map(|frame| 0.85 + 0.015 * (frame as f64).sin()));
     trace.extend([1.0; 60]);
 
     // Act
