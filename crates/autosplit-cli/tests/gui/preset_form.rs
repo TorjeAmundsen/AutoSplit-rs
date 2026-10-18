@@ -4,7 +4,7 @@ use autosplit::gui::preset_form::{
     Draft, Field, InstructionText, ListChange, Problem, SplitEdit, SplitKind, discard_question, elide_middle,
     field_problems, field_value, import_blocker, in_preset, instruction_cards, known_game, library_file_name,
     library_heading, matches_search, next_problem_split, problem_flags, problem_list, problem_summary,
-    saved_preset_name, split_heading, status_line,
+    saved_preset_name, saved_split, split_heading, status_line,
 };
 use autosplit_core::preset::{Preset, PresetSplit};
 use test_case::test_case;
@@ -999,17 +999,54 @@ fn comparing_by_a_fade_starts_at_0_995(color: &str) -> (Option<String>, Option<u
     (fade.map(str::to_owned), time, threshold)
 }
 
-#[test]
-fn comparing_by_a_screenshot_again_drops_the_fade_and_keeps_the_threshold() {
+#[test_case(None => (None, None, None); "the profile's threshold")]
+#[test_case(Some(0.92) => (None, None, Some(0.92)); "its own threshold")]
+fn comparing_by_a_screenshot_again_drops_the_fade_and_brings_back_the_threshold(
+    threshold: Option<f64>,
+) -> (Option<String>, Option<u32>, Option<f64>) {
     // Arrange
     let mut draft = draft(&["Boss"]);
+    draft.edit_split(0, SplitEdit::Threshold(threshold));
     draft.edit_split(0, SplitEdit::Compare(Some("#a0a0a0".into())));
 
     // Act
     draft.edit_split(0, SplitEdit::Compare(None));
 
+    // Assert, with the expected value checked by test_case
+    let (fade, time, threshold) = fade_fields(&draft, 0);
+    (fade.map(str::to_owned), time, threshold)
+}
+
+#[test]
+fn comparing_by_a_fade_and_back_is_no_change() {
+    // Arrange
+    let mut draft = draft(&["Boss"]);
+    draft.edit_split(0, SplitEdit::Threshold(Some(0.92)));
+    let before = draft.clone();
+
+    // Act
+    draft.edit_split(0, SplitEdit::Compare(Some(String::new())));
+    draft.edit_split(0, SplitEdit::Compare(None));
+
     // Assert
-    assert_eq!(fade_fields(&draft, 0), (None, None, Some(0.995)));
+    assert_eq!(draft.preset, before.preset);
+}
+
+#[test]
+fn fade_splits_go_into_the_split_library_without_a_savestate() {
+    // Arrange: switched to a fade while it had a savestate, which the form hides
+    let fade = PresetSplit {
+        fade: Some("#000000".into()),
+        savestate: "boss.gzs".into(),
+        instructions: "Advance a frame.".into(),
+        ..split("Boss")
+    };
+
+    // Act
+    let saved = saved_split(&fade);
+
+    // Assert
+    assert_eq!((saved.savestate.as_str(), saved.instructions.as_str()), ("", ""));
 }
 
 #[test]

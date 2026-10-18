@@ -176,6 +176,8 @@ fn split_keys_are_the_fields_of_a_split() {
         below: true,
         savestate: "deku.gzs".into(),
         instructions: "Load it".into(),
+        // Only the editor's, never written
+        threshold_before_fade: None,
     };
     let preset = Preset { name: "Any%".into(), splits: vec![split.clone()], ..Preset::default() };
 

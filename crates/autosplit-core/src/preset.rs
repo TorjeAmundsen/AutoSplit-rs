@@ -48,6 +48,10 @@ pub struct PresetSplit {
     /// later default doesn't change them.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fade_time: Option<u32>,
+    /// While editing, the threshold the split had before it became a fade split, which switching
+    /// back to a screenshot restores. Never saved.
+    #[serde(skip)]
+    pub threshold_before_fade: Option<Option<f64>>,
     /// Without one, the profile's default similarity threshold applies.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub threshold: Option<f64>,

@@ -200,20 +200,9 @@ impl Draft {
         }
     }
 
-    /// The preset as it's saved: instructions only go with a savestate, and fade splits have
-    /// neither, since there's no screen to get to for a screenshot. Until then they're kept, for a
-    /// split switched to a fade and back.
+    /// The preset as it's saved, each split like [`saved_split`] says.
     pub fn to_save(&self) -> Preset {
-        let mut preset = self.preset.clone();
-        for split in preset.splits.iter_mut() {
-            if split.is_fade() {
-                split.savestate.clear();
-            }
-            if split.savestate.is_empty() {
-                split.instructions.clear();
-            }
-        }
-        preset
+        Preset { splits: self.preset.splits.iter().map(saved_split).collect(), ..self.preset.clone() }
     }
 
     /// Whether it changed since editing started, which closing asks about.
@@ -241,10 +230,17 @@ impl Draft {
                     let color = if color.trim().is_empty() { FADE_COLOR.to_owned() } else { color };
                     split.fade = Some(color);
                     split.fade_time = Some(split.fade_time.unwrap_or(DEFAULT_FADE_TIME as u32));
+                    split.threshold_before_fade = Some(split.threshold);
                     split.threshold = Some(FADE_THRESHOLD);
                 }
             }
-            SplitEdit::Compare(None) => (split.fade, split.fade_time) = (None, None),
+            SplitEdit::Compare(None) => {
+                (split.fade, split.fade_time) = (None, None);
+                // A fade's threshold would almost never match a screenshot
+                if let Some(threshold) = split.threshold_before_fade.take() {
+                    split.threshold = threshold;
+                }
+            }
             SplitEdit::Color(color) if split.is_fade() => split.fade = Some(color),
             SplitEdit::Color(_) => {}
             SplitEdit::FadeTime(time) if split.is_fade() => {
@@ -615,6 +611,20 @@ pub fn import_blocker(preset: &Preset, steps: &[PresetSplit]) -> Option<String> 
     })?;
     let total = (preset.splits.iter().chain(steps)).filter(|split| split.name == step.name).count();
     Some(format!("A preset can have up to {MAX_GROUP_SIZE} {} images, and this would make {total}.", kind_word(step)))
+}
+
+/// `split` as it's saved, into the preset or the split library: instructions only go with a
+/// savestate, and fade splits have neither, since there's no screen to get to for a screenshot.
+/// While editing they're kept, for a split switched to a fade and back.
+pub fn saved_split(split: &PresetSplit) -> PresetSplit {
+    let mut split = split.clone();
+    if split.is_fade() {
+        split.savestate.clear();
+    }
+    if split.savestate.is_empty() {
+        split.instructions.clear();
+    }
+    split
 }
 
 /// A split with nothing set, which the default threshold applies to.

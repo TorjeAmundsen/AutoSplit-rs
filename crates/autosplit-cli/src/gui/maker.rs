@@ -130,6 +130,9 @@ struct SplitWork {
     source: Option<Source>,
     /// Its split image, once it's written.
     saved: Option<PathBuf>,
+    /// What `saved` was made from. A fade split's color is in its preset, so changing it doesn't
+    /// go through [`SplitWork::set_source`].
+    saved_from: Option<Source>,
     /// A small picture of its split image, once it's made from its source.
     thumb: Option<slint::Image>,
 }
@@ -562,7 +565,15 @@ impl Gui {
     /// setting is changed and changed back while editing.
     fn saves_in_place(&self, names: &[String]) -> Vec<bool> {
         let folder = self.split_image_folder();
-        let saved: Vec<Option<PathBuf>> = self.maker.borrow().splits.iter().map(|split| split.saved.clone()).collect();
+        let maker = self.maker.borrow();
+        // A fade split saved in another color isn't its split image anymore
+        let saved: Vec<Option<PathBuf>> = (maker.splits.iter().enumerate())
+            .map(|(index, split)| {
+                let current = split.saved_from.as_ref().zip(maker.source(index));
+                split.saved.clone().filter(|_| current.is_some_and(|(from, now)| from.same(&now)))
+            })
+            .collect();
+        drop(maker);
         saves_in_place(&saved, names, folder.as_deref())
     }
 

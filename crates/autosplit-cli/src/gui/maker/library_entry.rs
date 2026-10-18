@@ -6,7 +6,7 @@ use autosplit_core::library::{NewStep, add_ready_made, base_image, change_ready_
 use autosplit_core::preset::{LibrarySplit, PresetSplit};
 
 use super::super::name_parts_model;
-use super::super::preset_form::{library_file_name, library_file_parts, library_heading};
+use super::super::preset_form::{library_file_name, library_file_parts, library_heading, saved_split};
 use super::super::ui::EntryStep;
 use super::library::splits_folder;
 use super::*;
@@ -184,6 +184,8 @@ impl Gui {
         let pictures = maker.entry.as_ref().map(|entry| &entry.pictures);
         let mut planned = Vec::new();
         for (place, (index, split)) in preset.splits.iter().enumerate().skip(selected).take(images).enumerate() {
+            // As it's saved: a fade split's savestate, hidden in the form, isn't its own
+            let split = &saved_split(split);
             if split.mask.is_empty() && !split.is_fade() {
                 return Err(format!("{} needs a mask first.", library_heading(split)));
             }

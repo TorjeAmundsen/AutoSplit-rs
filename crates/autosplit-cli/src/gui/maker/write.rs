@@ -210,18 +210,21 @@ impl Gui {
                     // A fade split's source is its color, which the split itself doesn't keep
                     let unchanged = maker.source(index).is_some_and(|now| now.same(&source));
                     if let Some(split) = maker.splits.get_mut(index).filter(|_| same_preset && unchanged) {
-                        split.saved = Some(path);
+                        (split.saved, split.saved_from) = (Some(path), Some(source));
                     }
                 }
                 Err(error) => errors.push(error),
             }
         }
-        // Every split made from a moved screenshot reads it from its new place
+        // Every split made from a moved screenshot reads it from its new place, and its split image
+        // is still made from it
         for split in maker.splits.iter_mut().filter(|_| same_preset) {
-            if let Some(Source::File(path)) = split.source.as_mut()
-                && let Some((_, to)) = moves.iter().find(|(from, _)| from == path)
-            {
-                *path = to.clone();
+            for source in [&mut split.source, &mut split.saved_from] {
+                if let Some(Source::File(path)) = source.as_mut()
+                    && let Some((_, to)) = moves.iter().find(|(from, _)| from == path)
+                {
+                    *path = to.clone();
+                }
             }
         }
         let generation_now = maker.generation;
