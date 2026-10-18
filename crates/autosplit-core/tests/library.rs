@@ -275,6 +275,53 @@ fn replaced_images_keep_their_file_names() {
 }
 
 #[test]
+fn renamed_images_rename_their_files() {
+    // Arrange: the boss's images as they are, the flash given a name that says what it is
+    let (_splits, _preset, folder) = with_boss();
+    let kept = |name: &str, mask: &str| using(name, folder.join(mask));
+    let steps = vec![kept("Ganon intro", "Ganon_intro.png"), kept("White flash", "Ganon.png")];
+
+    // Act
+    change_ready_made(&folder, 0, &entry(&folder, 0), "The intro text, then the flash", Some(steps), &[]).unwrap();
+
+    // Assert: the flash's mask and base image under its new name, the old ones gone
+    let library = load(&folder);
+    assert_eq!(
+        (library.splits[1].split.name.as_str(), library.splits[1].split.mask.as_str(), files(&folder)),
+        (
+            "White flash",
+            "White_flash.png",
+            vec![
+                "Ganon_intro.png".to_owned(),
+                "White_flash.png".to_owned(),
+                "base_Ganon_intro.png".to_owned(),
+                "base_White_flash.png".to_owned(),
+                LIBRARY_FILE.to_owned()
+            ]
+        )
+    );
+}
+
+#[test]
+fn a_renamed_image_keeps_a_mask_another_ready_made_split_uses() {
+    // Arrange: a flash that uses the boss's mask too
+    let (splits, _preset, folder) = with_boss();
+    add_ready_made(splits.path(), GAME, "Any flash", vec![using("Flash", folder.join("Ganon.png"))]).unwrap();
+    let steps =
+        vec![using("Ganon intro", folder.join("Ganon_intro.png")), using("White flash", folder.join("Ganon.png"))];
+
+    // Act
+    change_ready_made(&folder, 0, &entry(&folder, 0), "Renamed", Some(steps), &[]).unwrap();
+
+    // Assert: both still use the one mask
+    let library = load(&folder);
+    assert_eq!(
+        (library.splits[1].split.mask.as_str(), library.splits[2].split.mask.as_str()),
+        ("Ganon.png", "Ganon.png")
+    );
+}
+
+#[test]
 fn files_other_ready_made_splits_use_are_never_written_over() {
     // Arrange: a flash that uses the boss's mask, then the boss made again from a new mask
     let (splits, preset, folder) = with_boss();

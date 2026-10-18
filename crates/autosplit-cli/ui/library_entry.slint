@@ -9,6 +9,9 @@ import { CheckBox } from "std-widgets.slint";
 // One image of the ready-made split as it would be written
 export struct EntryStep {
     heading: string,
+    // Its name, as typed when it's given another, which a split's image can be
+    name: string,
+    renamable: bool,
     // Its base image, at the size it's written at, or empty without one
     thumb: image,
     // Its file name, with XX for its number
@@ -50,6 +53,8 @@ export component LibraryEntryWindow inherits Window {
     // What has to be fixed before saving, or empty
     in property <string> problem;
     callback images-edited(float);
+    // The image at this place is given this name
+    callback name-edited(int, string);
     // A picture is chosen for the base image of the image at this place, or that's undone
     callback pick-picture(int);
     callback clear-picture(int);
@@ -159,10 +164,18 @@ export component LibraryEntryWindow inherits Window {
                 alignment: center;
                 spacing: 2px;
 
-                Text {
+                if !step.renamable: Text {
                     font-weight: 600;
                     text: step.heading;
                     overflow: elide;
+                }
+
+                // Another name, like a generic one for a split that isn't only this game's place
+                if step.renamable: TextField {
+                    height: 22px;
+                    text: step.name;
+                    placeholder-text: "Its name";
+                    edited(text) => { root.name-edited(index, text); }
                 }
 
                 Rectangle {

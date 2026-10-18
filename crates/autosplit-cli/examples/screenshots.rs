@@ -526,6 +526,8 @@ Replace them?",
     let entry = LibraryEntryWindow::new().unwrap();
     let entry_step = |heading: &str, file: &str, name: &str, source: &str| EntryStep {
         heading: heading.into(),
+        name: heading.into(),
+        renamable: true,
         thumb: base(file),
         file_parts: library_parts(name),
         file: name.into(),
