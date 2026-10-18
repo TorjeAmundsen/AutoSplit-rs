@@ -62,7 +62,7 @@ fn main() {
     main.set_live_message("Waiting for capture device...".into());
     main.set_current_image_file("05_Bottle_(0.93)_[35]_#1100#_{b}.png".into());
     main.set_current_image_message("None (Paused). 9.9 seconds remaining".into());
-    main.set_window_title("AutoSplit v0.2.0".into());
+    main.set_window_title("AutoSplit v0.2.1".into());
     main.show().unwrap();
     save(&window, PhysicalSize::new(786, 450), &folder.join("main.png"));
     // A message box drawn in the window, like under Wayland
@@ -126,7 +126,7 @@ fn main() {
     settings.hide().unwrap();
 
     let about = AboutWindow::new().unwrap();
-    about.set_version("0.2.0".into());
+    about.set_version("0.2.1".into());
     about.show().unwrap();
     save(&window, PhysicalSize::new(264, 250), &folder.join("about.png"));
     about.hide().unwrap();
