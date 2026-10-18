@@ -2,12 +2,20 @@
 // boxes and combo boxes with arrows, so text fits at AutoSplit's sizes. Check boxes are Slint's.
 
 // One font on every system, so text takes the same room everywhere. Each window sets it as its
-// default.
+// default. File names and colors use its monospace sibling, so their settings line up.
 import "../assets/fonts/NotoSans-Regular.ttf";
 import "../assets/fonts/NotoSans-SemiBold.ttf";
 import "../assets/fonts/NotoSans-Bold.ttf";
+import "../assets/fonts/NotoSansMono-Regular.ttf";
+import "../assets/fonts/NotoSansMono-SemiBold.ttf";
 
 import { ListView, Palette } from "std-widgets.slint";
+
+// The bundled fonts' names, for text that sets its own
+export global Fonts {
+    out property <string> sans: "Noto Sans";
+    out property <string> mono: "Noto Sans Mono";
+}
 
 export global Theme {
     out property <bool> dark: Palette.color-scheme == ColorScheme.dark;
@@ -662,6 +670,8 @@ export component TextField inherits Rectangle {
     in property <string> placeholder-text;
     // What's in it has to change, shown with a red frame
     in property <bool> error;
+    // In the monospace font, like a hex color
+    in property <bool> monospace;
     out property <bool> has-focus: input.has-focus;
     callback edited(string);
     callback accepted(string);
@@ -691,6 +701,7 @@ export component TextField inherits Rectangle {
             height: parent.height;
             vertical-alignment: center;
             single-line: true;
+            font-family: root.monospace ? Fonts.mono : Fonts.sans;
             read-only: root.read-only || !root.enabled;
             enabled: root.enabled;
             color: root.enabled ? Theme.text : Theme.disabled-text;
@@ -972,9 +983,9 @@ export component SpinBox inherits Rectangle {
 }
 
 // A part of a split image's file name, as the split image loader reads it. `kind` is what it does:
-// Text, Number, Keyword, Threshold, Pause, Delay, Loops, Method, Flags or Extension.
+// Text, Number, Keyword, Threshold, Pause, Delay, Loops, Method, Flags, Fade time or Extension.
 // What a part of a split image's file name is, like the parser's PartKind.
-export enum NameKind { text, number, keyword, threshold, pause, delay, loops, method, flags, extension }
+export enum NameKind { text, number, keyword, threshold, pause, delay, loops, method, flags, fade-time, extension }
 
 export struct NamePart {
     text: string,
@@ -1013,6 +1024,11 @@ export global NameColors {
         if part.kind == NameKind.flags {
             return Theme.dark ? #c39bd3 : #8e44ad;
         }
+        // Brown, which no other part has: told apart from the others with red-green color
+        // blindness too, and readable on the window in both themes
+        if part.kind == NameKind.fade-time {
+            return Theme.dark ? #e3c4b5 : #5c3623;
+        }
         return Theme.text;
     }
 }
@@ -1027,6 +1043,7 @@ export component FileName inherits HorizontalLayout {
     alignment: start;
 
     if root.parts.length == 0: Label {
+        font-family: Fonts.mono;
         text: root.file;
     }
 
@@ -1035,6 +1052,7 @@ export component FileName inherits HorizontalLayout {
 
         text := Text {
             vertical-alignment: center;
+            font-family: Fonts.mono;
             text: part.text;
             font-weight: part.kind == NameKind.text ? 400 : 600;
             color: NameColors.of(part);

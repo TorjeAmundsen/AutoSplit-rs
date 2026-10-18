@@ -102,6 +102,12 @@ fn library_step(step: &LibrarySplit, thumb: Option<slint::Image>, defaults: &Spl
         pause: split.pause.map(|pause| format!("{pause} s")).unwrap_or_default().into(),
         dummy: split.dummy,
         below: split.below,
+        fade: match (&split.fade, split.fade_time) {
+            (Some(color), Some(time)) => format!("{color} in {time} ms"),
+            (Some(color), None) => color.clone(),
+            (None, _) => String::new(),
+        }
+        .into(),
     }
 }
 

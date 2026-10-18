@@ -2,11 +2,13 @@
 //! splits selected in the preset being edited, written into the splits library next to the
 //! program, and changed or deleted from Split Library.
 
+use autosplit_core::filename::validate_split_name;
 use autosplit_core::library::{NewStep, add_ready_made, base_image, change_ready_made, delete_ready_made};
 use autosplit_core::preset::{LibrarySplit, PresetSplit};
+use slint::Model;
 
 use super::super::name_parts_model;
-use super::super::preset_form::{library_file_name, library_file_parts, library_heading};
+use super::super::preset_form::{SplitKind, library_file_name, library_file_parts, library_heading, saved_split};
 use super::super::ui::EntryStep;
 use super::library::splits_folder;
 use super::*;
@@ -21,6 +23,27 @@ pub(super) struct Entry {
     /// Pictures chosen for the base images, by the image's place in the ready-made split, with
     /// their files. They come before anything else.
     pictures: HashMap<usize, (PathBuf, BgraImage)>,
+    /// Names typed for the images, by their place in the ready-made split, as typed.
+    names: HashMap<usize, String>,
+}
+
+impl Entry {
+    /// `split`, the image at `place`, with the name typed for it.
+    fn named(&self, place: usize, split: &PresetSplit) -> PresetSplit {
+        match self.names.get(&place) {
+            Some(name) => PresetSplit { name: name.trim().to_owned(), ..split.clone() },
+            None => split.clone(),
+        }
+    }
+}
+
+/// What's wrong with `named`, the image `own` with the name typed for it, if anything.
+fn name_problem(own: &PresetSplit, named: &PresetSplit) -> Option<String> {
+    if SplitKind::of(named) != SplitKind::of(own) {
+        return Some(format!("{} can't be named {}.", library_heading(own), named.name));
+    }
+    let error = validate_split_name(&named.name).err()?;
+    Some(format!("{}: {error}", library_heading(own)))
 }
 
 /// A ready-made split being edited, as it was when the window opened: the library can change
@@ -34,8 +57,12 @@ struct Edited {
 
 /// An image of the ready-made split as it would be written, with where its base image is from.
 struct Planned {
+    /// With the name typed for it.
     split: PresetSplit,
-    mask: PathBuf,
+    /// As the preset has it.
+    own: PresetSplit,
+    /// None for a fade split of the whole screen.
+    mask: Option<PathBuf>,
     savestate: Option<PathBuf>,
     /// None while there's nothing to make its base image from, which a picture can be chosen for.
     screenshot: Option<BgraImage>,
@@ -48,6 +75,12 @@ impl Planned {
         let Self { split, mask, savestate, screenshot, .. } = self;
         Some(NewStep { split, mask, savestate, screenshot: screenshot? })
     }
+}
+
+/// What's wrong with a name typed for one of `planned`, or the first without a base image, if
+/// anything.
+fn planned_problem(planned: &[Planned]) -> Option<String> {
+    (planned.iter().find_map(|planned| name_problem(&planned.own, &planned.split))).or_else(|| missing_picture(planned))
 }
 
 /// What to do about the first of `planned` without a base image, if any.
@@ -86,6 +119,12 @@ impl Gui {
         on!(weak, library, on_delete_entry, (index) gui => gui.ask_delete_entry(index as usize));
         let entry = &self.windows.entry;
         on!(weak, entry, on_images_edited, (_images) gui => gui.show_entry());
+        on!(weak, entry, on_name_edited, (index, name) gui => {
+            if let Some(entry) = gui.maker.borrow_mut().entry.as_mut() {
+                entry.names.insert(index as usize, name.into());
+            }
+            gui.show_entry();
+        });
         on!(weak, entry, on_pick_picture, (index) gui => gui.pick_picture(index as usize));
         on!(weak, entry, on_clear_picture, (index) gui => {
             if let Some(entry) = gui.maker.borrow_mut().entry.as_mut() {
@@ -125,7 +164,9 @@ impl Gui {
         window.set_images(1.0);
         window.set_description_text(description.into());
         window.set_game(game.trim().into());
-        self.maker.borrow_mut().entry = Some(Entry { editing, live, pictures: HashMap::new() });
+        self.maker.borrow_mut().entry = Some(Entry { editing, live, pictures: HashMap::new(), names: HashMap::new() });
+        // Made anew, so the name fields show the names of these images
+        window.set_steps(ModelRc::default());
         self.show_entry();
         super::super::fit_window(window.window(), window.get_fitted_width(), window.get_fitted_height());
         self.show_window(window.window());
@@ -183,19 +224,21 @@ impl Gui {
         let pictures = maker.entry.as_ref().map(|entry| &entry.pictures);
         let mut planned = Vec::new();
         for (place, (index, split)) in preset.splits.iter().enumerate().skip(selected).take(images).enumerate() {
-            if split.mask.is_empty() {
+            // As it's saved: a fade split's savestate, hidden in the form, isn't its own
+            let split = &saved_split(split);
+            if split.mask.is_empty() && !split.is_fade() {
                 return Err(format!("{} needs a mask first.", library_heading(split)));
             }
             // Missing files are said here, before anything is written
-            let (mask, savestate) =
-                (maker.file(&split.mask), (!split.savestate.is_empty()).then(|| maker.file(&split.savestate)));
-            for path in std::iter::once(&mask).chain(&savestate) {
+            let file = |path: &str| (!path.is_empty()).then(|| maker.file(path));
+            let (mask, savestate) = (file(&split.mask), file(&split.savestate));
+            for path in mask.iter().chain(&savestate) {
                 if !path.is_file() {
                     return Err(format!("{} uses {}, which doesn't exist.", library_heading(split), path.display()));
                 }
             }
             let picture = pictures.and_then(|pictures| pictures.get(&place));
-            let source = maker.splits.get(index).and_then(|work| work.source.clone());
+            let source = maker.source(index);
             let live = maker.entry.as_ref().and_then(|entry| entry.live.as_ref());
             let (screenshot, from) = match (picture, source, live) {
                 (Some((path, image)), _, _) => (Some(image.clone()), picked_from(path)),
@@ -205,6 +248,7 @@ impl Gui {
                             format!("Base image from its screenshot {}", file_name_text(path).unwrap_or_default())
                         }
                         Source::Grabbed(_) => "Base image from its grab".to_owned(),
+                        Source::Fade(_) => "Base image from its color".to_owned(),
                     };
                     (Some(source.image().map_err(|error| error.to_string())?.as_ref().clone()), from)
                 }
@@ -212,7 +256,8 @@ impl Gui {
                 // Shown without one, so a picture can be chosen for it
                 (None, None, None) => (None, "No picture for its base image yet".to_owned()),
             };
-            planned.push(Planned { split: split.clone(), mask, savestate, screenshot, source: from });
+            let named = maker.entry.as_ref().map_or_else(|| split.clone(), |entry| entry.named(place, split));
+            planned.push(Planned { split: named, own: split.clone(), mask, savestate, screenshot, source: from });
         }
         Ok(planned)
     }
@@ -228,10 +273,14 @@ impl Gui {
         let most = preset.splits.len().saturating_sub(maker.selected).clamp(1, 8);
         let kept = entry.editing.as_ref().filter(|_| !window.get_replace());
         let picked: Vec<usize> = entry.pictures.keys().copied().collect();
-        let step_row = |place: usize, split: &PresetSplit, thumb: slint::Image, source: String| {
+        let names = entry.names.clone();
+        // `own` is the image as it is, and `split` with the name typed for it
+        let step_row = |place: usize, own: &PresetSplit, split: &PresetSplit, thumb: slint::Image, source: String| {
             let file = library_file_name(split, Some(&defaults));
             EntryStep {
-                heading: library_heading(split).into(),
+                heading: library_heading(own).into(),
+                name: names.get(&place).cloned().unwrap_or_else(|| split.name.clone()).into(),
+                renamable: SplitKind::of(own) == SplitKind::Split,
                 thumb,
                 file_parts: name_parts_model(library_file_parts(split, Some(&defaults))),
                 file: file.into(),
@@ -239,28 +288,37 @@ impl Gui {
                 picked: picked.contains(&place),
             }
         };
-        // Kept as they are, only the description changes, and a base image a picture is chosen for
-        let kept_rows: Option<Vec<EntryStep>> = kept.map(|edited| {
-            (edited.steps.iter().enumerate())
-                .map(|(place, step)| match entry.pictures.get(&place) {
-                    Some((path, image)) => step_row(place, &step.split, base_picture(image), picked_from(path)),
-                    None => {
-                        let thumb = maker.library.thumb(&edited.folder, &step.base_image).unwrap_or_default();
-                        step_row(place, &step.split, thumb, "Kept as it is".to_owned())
+        // Kept as they are, only the description and names change, and a base image a picture is
+        // chosen for
+        let kept_rows: Option<(Vec<EntryStep>, Option<String>)> = kept.map(|edited| {
+            let mut problem = None;
+            let rows = (edited.steps.iter().enumerate())
+                .map(|(place, step)| {
+                    let split = entry.named(place, &step.split);
+                    problem = problem.take().or_else(|| name_problem(&step.split, &split));
+                    match entry.pictures.get(&place) {
+                        Some((path, image)) => {
+                            step_row(place, &step.split, &split, base_picture(image), picked_from(path))
+                        }
+                        None => {
+                            let thumb = maker.library.thumb(&edited.folder, &step.base_image).unwrap_or_default();
+                            step_row(place, &step.split, &split, thumb, "Kept as it is".to_owned())
+                        }
                     }
                 })
-                .collect()
+                .collect();
+            (rows, problem)
         });
         drop(maker);
         let (rows, mut problem) = match kept_rows {
-            Some(rows) => (rows, String::new()),
+            Some((rows, problem)) => (rows, problem.unwrap_or_default()),
             None => match self.planned_steps() {
                 Ok(planned) => {
-                    let problem = missing_picture(&planned).unwrap_or_default();
+                    let problem = planned_problem(&planned).unwrap_or_default();
                     let rows = (planned.into_iter().enumerate())
                         .map(|(place, planned)| {
                             let thumb = planned.screenshot.as_ref().map(base_picture).unwrap_or_default();
-                            step_row(place, &planned.split, thumb, planned.source)
+                            step_row(place, &planned.own, &planned.split, thumb, planned.source)
                         })
                         .collect();
                     (rows, problem)
@@ -272,7 +330,16 @@ impl Gui {
             problem = "Pick the preset's game first: the split library is by game.".to_owned();
         }
         window.set_most_images(most as f32);
-        window.set_steps(ModelRc::new(VecModel::from(rows)));
+        // Changed in place while it has as many images, so a name field keeps its focus
+        let steps = window.get_steps();
+        match steps.as_any().downcast_ref::<VecModel<EntryStep>>().filter(|steps| steps.row_count() == rows.len()) {
+            Some(steps) => {
+                for (row, step) in rows.into_iter().enumerate() {
+                    steps.set_row_data(row, step);
+                }
+            }
+            None => window.set_steps(ModelRc::new(VecModel::from(rows))),
+        }
         window.set_problem(problem.into());
     }
 
@@ -292,7 +359,7 @@ impl Gui {
                 Err(problem) => return self.show_message(Message::error(problem)),
             },
             _ => match self.planned_steps() {
-                Ok(planned) => match missing_picture(&planned) {
+                Ok(planned) => match planned_problem(&planned) {
                     Some(problem) => return self.show_message(Message::error(problem)),
                     None => Some(planned.into_iter().filter_map(Planned::step).collect()),
                 },
@@ -319,11 +386,17 @@ impl Gui {
     fn kept_steps(&self, folder: &Path, kept: &[LibrarySplit]) -> Result<Option<Vec<NewStep>>, String> {
         let maker = self.maker.borrow();
         let Some(entry) = &maker.entry else { return Ok(None) };
-        if entry.pictures.is_empty() {
+        let named: Vec<PresetSplit> =
+            kept.iter().enumerate().map(|(place, step)| entry.named(place, &step.split)).collect();
+        if let Some(problem) = kept.iter().zip(&named).find_map(|(step, named)| name_problem(&step.split, named)) {
+            return Err(problem);
+        }
+        let renamed = kept.iter().zip(&named).any(|(step, named)| step.split.name != named.name);
+        if entry.pictures.is_empty() && !renamed {
             return Ok(None);
         }
         let mut steps = Vec::new();
-        for (place, step) in kept.iter().enumerate() {
+        for ((place, step), named) in kept.iter().enumerate().zip(named) {
             let screenshot = match entry.pictures.get(&place) {
                 Some((_, image)) => image.clone(),
                 // The base image it has, which is written again as it is
@@ -334,8 +407,8 @@ impl Gui {
             };
             let savestate = (!step.split.savestate.is_empty()).then(|| folder.join(&step.split.savestate));
             steps.push(NewStep {
-                split: step.split.clone(),
-                mask: folder.join(&step.split.mask),
+                split: named,
+                mask: (!step.split.mask.is_empty()).then(|| folder.join(&step.split.mask)),
                 savestate,
                 screenshot,
             });

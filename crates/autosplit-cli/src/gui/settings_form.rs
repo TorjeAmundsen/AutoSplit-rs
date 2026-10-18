@@ -29,6 +29,7 @@ pub enum SettingEdit {
     DefaultSimilarityThreshold(f64),
     DefaultDelayTime(f64),
     DefaultPauseTime(f64),
+    FadeColorTolerance(f64),
     LoopSplits(bool),
     GroupSplitImages(bool),
     SplitImageGrid(bool),
@@ -89,6 +90,9 @@ pub fn apply(profile: &mut UserProfile, edit: SettingEdit, devices: &[DeviceInfo
         SettingEdit::DefaultPauseTime(value) if value >= 0.0 && value.is_finite() => {
             profile.default_pause_time = (value * 100.0).round() / 100.0;
         }
+        SettingEdit::FadeColorTolerance(value) if (0.0..=255.0).contains(&value) => {
+            profile.fade_color_tolerance = value.round() as i64;
+        }
         SettingEdit::LoopSplits(on) => profile.loop_splits = on,
         SettingEdit::GroupSplitImages(on) => profile.group_split_images = on,
         SettingEdit::SplitImageGrid(on) => profile.split_image_grid = on,
@@ -109,6 +113,7 @@ pub fn apply(profile: &mut UserProfile, edit: SettingEdit, devices: &[DeviceInfo
         | SettingEdit::DefaultSimilarityThreshold(_)
         | SettingEdit::DefaultDelayTime(_)
         | SettingEdit::DefaultPauseTime(_)
+        | SettingEdit::FadeColorTolerance(_)
         | SettingEdit::LiveSplitOnePort(_) => return false,
     }
     true

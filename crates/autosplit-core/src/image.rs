@@ -20,6 +20,11 @@ impl BgraImage {
         Self { width, height, data }
     }
 
+    /// An opaque image of one color, given as RGB like `#rrggbb`.
+    pub fn solid([red, green, blue]: [u8; 3], width: usize, height: usize) -> Self {
+        Self::from_raw(width, height, [blue, green, red, 255].repeat(width * height))
+    }
+
     pub fn width(&self) -> usize {
         self.width
     }

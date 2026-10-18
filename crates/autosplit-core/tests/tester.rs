@@ -14,8 +14,14 @@ type Bgr = [u8; 3];
 const RED: Bgr = [0, 0, 255];
 const BLUE: Bgr = [255, 0, 0];
 
-const DEFAULTS: SplitDefaults =
-    SplitDefaults { comparison_method: 0, similarity_threshold: 0.95, delay_time: 0, pause_time: 0.0, fps_limit: 60 };
+const DEFAULTS: SplitDefaults = SplitDefaults {
+    comparison_method: 0,
+    similarity_threshold: 0.95,
+    delay_time: 0,
+    pause_time: 0.0,
+    fps_limit: 60,
+    fade_tolerance: 10,
+};
 
 fn solid(color: Bgr) -> BgraImage {
     let pixel = [color[0], color[1], color[2], 255];
@@ -333,4 +339,74 @@ fn delay_keeps_its_length_when_the_profile_changes() {
 
     // Assert
     assert_eq!(harness.captions(), ["Reached: 1.000", "Split +500 ms: 1.000"]);
+}
+
+#[test]
+fn fade_image_only_acts_on_a_fade() {
+    // Arrange: a red fade image
+    let mut harness = Harness::new("1_{f}.png");
+    harness.feed(Some(BLUE), SECOND);
+    harness.feed(Some(RED), SECOND);
+    let after_cut = harness.kept();
+    harness.feed(Some(BLUE), SECOND);
+
+    // Act: from blue to red, a new color every 50 ms
+    for step in 1..=20_u8 {
+        let red = (255 * u32::from(step) / 20) as u8;
+        harness.feed(Some([255 - red, 0, red]), Duration::from_millis(50));
+    }
+
+    // Assert: on a frame close to red, which reaches the threshold before the fade ends
+    let kinds: Vec<TriggerKind> = harness.kept().into_iter().map(|(kind, _)| kind).collect();
+    assert_eq!((after_cut, kinds), (vec![], vec![TriggerKind::Acted { delay: 0 }]));
+}
+
+#[test]
+fn info_shows_a_fade_image_s_color_and_fade_time() {
+    // Arrange: a red fade image
+    let harness = Harness::new("1_split_(0.9)_~600~_{f}.png");
+
+    // Act
+    let info = harness.info();
+
+    // Assert
+    assert_eq!(info[1], "METHOD: fade to #ff0000 (about 600 ms, tolerance 10 levels)");
+}
+
+#[test]
+fn status_says_why_a_cut_to_a_fade_image_s_color_does_nothing() {
+    // Arrange: a red fade image
+    let mut harness = Harness::new("1_{bf}.png");
+    harness.feed(Some(BLUE), SECOND);
+
+    // Act
+    harness.feed(Some(RED), SECOND);
+    let after_cut = tester_status(&harness.tester);
+    harness.feed(Some(BLUE), SECOND);
+    for step in 1..=20_u8 {
+        let red = (255 * u32::from(step) / 20) as u8;
+        harness.feed(Some([255 - red, 0, red]), Duration::from_millis(50));
+    }
+    let after_fade = tester_status(&harness.tester);
+
+    // Assert
+    assert_eq!(
+        (after_cut.as_str(), after_fade.as_str()),
+        (
+            "At the threshold, but it didn't fade there, like after a cut. Waiting for a fade to the color.",
+            "Faded to the color. Waiting for it to drop back below."
+        )
+    );
+}
+
+#[test]
+fn info_shows_the_fade_tolerance_comparisons_use() {
+    // Arrange: a hand-edited profile's tolerance, past the 255 levels a channel has
+    let harness = Harness::with_defaults("1_split_~600~_{f}.png", SplitDefaults { fade_tolerance: 300, ..DEFAULTS });
+
+    // Act
+    let info = harness.info();
+
+    // Assert
+    assert_eq!(info[1], "METHOD: fade to #ff0000 (about 600 ms, tolerance 255 levels)");
 }

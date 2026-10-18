@@ -157,6 +157,7 @@ fn missing_profile_file_is_reported_as_invalid_settings() {
 #[test_case("livesplit_one_port"; "livesplit one port")]
 #[test_case("group_split_images"; "group split images")]
 #[test_case("split_image_grid"; "split image grid")]
+#[test_case("fade_color_tolerance"; "fade color tolerance")]
 fn keys_not_in_autosplit_are_left_out_when_unchanged(key: &str) {
     // Act
     let saved = configured().to_toml();
@@ -310,4 +311,16 @@ fn obs_virtual_camera_gets_its_whole_frame(device: &str, region: Region, frame: 
 
     // Assert, with the expected value checked by test_case
     full.map(|region| (region.width, region.height))
+}
+
+#[test]
+fn fade_color_tolerance_loads_back() {
+    // Arrange
+    let profile = UserProfile { fade_color_tolerance: 24, ..configured() };
+
+    // Act
+    let reloaded = UserProfile::parse(&profile.to_toml()).unwrap();
+
+    // Assert
+    assert_eq!((reloaded.fade_color_tolerance, reloaded.split_defaults().fade_tolerance), (24, 24));
 }

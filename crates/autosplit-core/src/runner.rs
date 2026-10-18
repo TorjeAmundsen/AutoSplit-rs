@@ -8,6 +8,7 @@ use std::time::Duration;
 
 use crate::commands::Command;
 use crate::compare::CompareScratch;
+use crate::fade::{FadeTracker, reached};
 use crate::image::BgraView;
 use crate::profile::UserProfile;
 use crate::split_folder::{MAX_GROUP_SIZE, SplitSet};
@@ -211,6 +212,10 @@ pub struct Runner {
     reset_highest: f64,
     /// Per image of the group being compared, or of the start images.
     below_armed: [bool; MAX_GROUP_SIZE],
+    /// Per image of the group being compared, or of the start images, for fade images.
+    fades: [FadeTracker; MAX_GROUP_SIZE],
+    /// Per reset image, for fade images.
+    reset_fades: [FadeTracker; MAX_GROUP_SIZE],
     /// The start image that started the run, whose pause time applies.
     started_by: usize,
     /// The split image that matched, which decides what the split does.
@@ -310,6 +315,8 @@ impl Runner {
             highest: 0.0,
             reset_highest: 0.0,
             below_armed: [false; MAX_GROUP_SIZE],
+            fades: Default::default(),
+            reset_fades: Default::default(),
             started_by: 0,
             matched: 0,
             run_start: Duration::ZERO,
@@ -437,6 +444,8 @@ impl Runner {
         self.highest = 0.0;
         self.reset_highest = 0.0;
         self.below_armed = [false; MAX_GROUP_SIZE];
+        self.fades = Default::default();
+        self.reset_fades = Default::default();
         self.started_by = 0;
         self.state = if !self.images.start.is_empty() {
             self.status.start_status = StartStatus::Ready;
@@ -480,6 +489,8 @@ impl Runner {
         self.status.running = true;
         self.index = 0;
         self.below_armed = [false; MAX_GROUP_SIZE];
+        self.fades = Default::default();
+        self.reset_fades = Default::default();
         let start_pause = self.start_pause();
         if start_pause > 0.0 {
             self.enter_pause(now, start_pause);
@@ -564,6 +575,7 @@ impl Runner {
     fn update_split_image(&mut self) -> bool {
         self.highest = 0.0;
         self.below_armed = [false; MAX_GROUP_SIZE];
+        self.fades = Default::default();
         if self.out_of_range() {
             return false;
         }
@@ -729,9 +741,9 @@ impl Runner {
         let mut best = 0.0_f64;
         let mut matched = None;
         for (slot, start) in self.images.start.iter().enumerate() {
-            let similarity = self.cache.get_or_compare(Compared::Start(slot), || {
-                start.compare(capture, start.comparison_method(&defaults), &mut self.scratch)
-            });
+            let similarity = self
+                .cache
+                .get_or_compare(Compared::Start(slot), || start.similarity(capture, &defaults, &mut self.scratch));
             best = best.max(similarity);
             if let Some(reading) = self.status.group.get_mut(slot) {
                 reading.similarity = Some(similarity);
@@ -740,14 +752,15 @@ impl Runner {
             if matched.is_some() {
                 continue;
             }
+            let threshold = start.similarity_threshold(&defaults);
             let armed = &mut self.below_armed[slot];
-            if similarity >= start.similarity_threshold(&defaults) {
+            if reached(start, &mut self.fades[slot], now, similarity, threshold) {
                 if start.is_below() {
                     *armed = true;
                 } else {
                     matched = Some(slot);
                 }
-            } else if start.is_below() && *armed && capture.is_some() {
+            } else if start.is_below() && *armed && similarity < threshold && capture.is_some() {
                 matched = Some(slot);
             }
         }
@@ -763,6 +776,7 @@ impl Runner {
         let (dummy, delay) = (start.is_dummy(), start.delay_time_ms(&defaults));
         self.started_by = slot;
         self.below_armed = [false; MAX_GROUP_SIZE];
+        self.fades = Default::default();
         if dummy {
             self.status.start_status = StartStatus::Started;
             self.state = State::Idle;
@@ -807,9 +821,9 @@ impl Runner {
         let mut matched = None;
         for (slot, split) in group.enumerate() {
             let image = &self.images.splits[split];
-            let similarity = self.cache.get_or_compare(Compared::Split(split), || {
-                image.compare(capture, image.comparison_method(&defaults), &mut self.scratch)
-            });
+            let similarity = self
+                .cache
+                .get_or_compare(Compared::Split(split), || image.similarity(capture, &defaults, &mut self.scratch));
             best = best.max(similarity);
             if let Some(reading) = self.status.group.get_mut(slot) {
                 reading.similarity = Some(similarity);
@@ -818,14 +832,15 @@ impl Runner {
             if matched.is_some() {
                 continue;
             }
+            let threshold = image.similarity_threshold(&defaults);
             let armed = &mut self.below_armed[slot];
-            if similarity >= image.similarity_threshold(&defaults) {
+            if reached(image, &mut self.fades[slot], now, similarity, threshold) {
                 if image.is_below() {
                     *armed = true;
                 } else {
                     matched = Some(split);
                 }
-            } else if image.is_below() && *armed && capture.is_some() {
+            } else if image.is_below() && *armed && similarity < threshold && capture.is_some() {
                 matched = Some(split);
             }
         }
@@ -919,14 +934,14 @@ impl Runner {
             if self.within(now, self.reset_pause(reset)) {
                 continue;
             }
-            let similarity = self.cache.get_or_compare(Compared::Reset(slot), || {
-                reset.compare(capture, reset.comparison_method(&defaults), &mut self.scratch)
-            });
+            let similarity = self
+                .cache
+                .get_or_compare(Compared::Reset(slot), || reset.similarity(capture, &defaults, &mut self.scratch));
             let threshold = reset.similarity_threshold(&defaults);
             if best.is_none_or(|(best, _)| similarity > best) {
                 best = Some((similarity, threshold));
             }
-            matched |= similarity >= threshold;
+            matched |= reached(reset, &mut self.reset_fades[slot], now, similarity, threshold);
         }
         match best {
             None => {

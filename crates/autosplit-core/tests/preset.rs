@@ -3,8 +3,8 @@
 use std::path::{Path, PathBuf};
 
 use autosplit_core::filename::{
-    BELOW_FLAG, DUMMY_FLAG, comparison_method_from_filename, delay_time_from_filename, filename_warnings,
-    flags_from_filename, pause_from_filename, threshold_from_filename,
+    BELOW_FLAG, DUMMY_FLAG, FADE_FLAG, comparison_method_from_filename, delay_time_from_filename,
+    fade_time_from_filename, filename_warnings, flags_from_filename, pause_from_filename, threshold_from_filename,
 };
 use autosplit_core::image::BgraImage;
 use autosplit_core::preset::{
@@ -167,6 +167,8 @@ fn split_keys_are_the_fields_of_a_split() {
         name: "Deku".into(),
         with_previous: true,
         mask: "deku.png".into(),
+        fade: Some("#000000".into()),
+        fade_time: Some(1000),
         threshold: Some(0.9),
         pause: Some(1.0),
         delay: Some(100),
@@ -174,6 +176,8 @@ fn split_keys_are_the_fields_of_a_split() {
         below: true,
         savestate: "deku.gzs".into(),
         instructions: "Load it".into(),
+        // Only the editor's, never written
+        remembered: Default::default(),
     };
     let preset = Preset { name: "Any%".into(), splits: vec![split.clone()], ..Preset::default() };
 
@@ -203,8 +207,14 @@ fn presets_read_back_what_they_write() {
     assert_eq!(reread, presets.into_iter().map(|loaded| loaded.preset).collect::<Vec<_>>());
 }
 
-const PROFILE: SplitDefaults =
-    SplitDefaults { comparison_method: 1, similarity_threshold: 0.9, delay_time: 500, pause_time: 10.0, fps_limit: 60 };
+const PROFILE: SplitDefaults = SplitDefaults {
+    comparison_method: 1,
+    similarity_threshold: 0.9,
+    delay_time: 500,
+    pause_time: 10.0,
+    fps_limit: 60,
+    fade_tolerance: 10,
+};
 
 #[test_case(None; "without a profile")]
 #[test_case(Some(PROFILE); "with a profile")]
@@ -218,9 +228,12 @@ fn bundled_file_names_read_back_as_their_settings(defaults: Option<SplitDefaults
             && threshold_from_filename(&name) == split.threshold
             && pause_from_filename(&name) == split.pause
             && delay_time_from_filename(&name) == split.delay.map(i64::from)
-            && (defaults.is_none() || comparison_method_from_filename(&name) == Some(0))
+            // Fade images always compare by color
+            && (defaults.is_none() || split.is_fade() || comparison_method_from_filename(&name) == Some(0))
             && (flags & DUMMY_FLAG != 0) == split.dummy
             && (flags & BELOW_FLAG != 0) == split.below
+            && (flags & FADE_FLAG != 0) == split.is_fade()
+            && fade_time_from_filename(&name) == split.fade_time.map(i64::from)
     };
 
     // Act
@@ -448,4 +461,35 @@ mask = \"boss.png\"
 fn libraries_need_a_game_and_only_their_keys(text: &str) -> bool {
     // Act, with the expected value checked by test_case: whether it's an error
     SplitLibrary::parse(text, Path::new("splits.toml")).is_err()
+}
+
+#[test_case("#a0a0a0" => Some([0xa0, 0xa0, 0xa0]); "lowercase")]
+#[test_case("#FF8000" => Some([0xff, 0x80, 0x00]); "uppercase")]
+#[test_case(" #000000 " => Some([0, 0, 0]); "spaces around")]
+#[test_case("a0a0a0" => None; "without the hash")]
+#[test_case("#a0a0a" => None; "too short")]
+#[test_case("#g0a0a0" => None; "not hex")]
+#[test_case("#+a+a+a" => None; "signs, which number parsing takes")]
+#[test_case("#ÆØa0a0" => None; "not ascii")]
+fn colors(text: &str) -> Option<[u8; 3]> {
+    // Act, with the expected value checked by test_case
+    autosplit_core::preset::parse_color(text)
+}
+
+#[test]
+fn fade_split_without_a_mask_reads_and_names_its_image() {
+    // Arrange
+    let text =
+        "name = \"Any%\"\n\n[[split]]\nname = \"EnterDeku\"\nfade = \"#a0a0a0\"\nfade_time = 1000\nthreshold = 0.995\n";
+
+    // Act
+    let preset = Preset::parse(text, Path::new("")).unwrap();
+
+    // Assert: written without the mask it doesn't have
+    assert!(!preset.to_toml().contains("mask"));
+    let split = &preset.splits[0];
+    assert_eq!(
+        (split.fade_color(), split.mask.as_str(), preset.file_names(None)),
+        (Some([0xa0, 0xa0, 0xa0]), "", vec!["0_EnterDeku_(0.995)_~1000~_{f}.png".to_owned()])
+    );
 }

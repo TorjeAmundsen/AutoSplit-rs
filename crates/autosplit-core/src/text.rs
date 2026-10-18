@@ -31,6 +31,11 @@ pub fn seconds_remaining_text(seconds: f64) -> String {
     format!("{shown} second{plural} remaining")
 }
 
+/// `#rrggbb`, from RGB.
+pub fn hex_color([red, green, blue]: [u8; 3]) -> String {
+    format!("#{red:02x}{green:02x}{blue:02x}")
+}
+
 /// [`decimal`], or `-` for no value.
 pub fn decimal_or_dash(value: Option<f64>) -> String {
     value.map_or("-".into(), decimal)
@@ -208,9 +213,14 @@ pub fn tester_info(tester: &Tester) -> Vec<InfoCell> {
     };
     vec![
         cell(ACTS_CELL, action, if image.is_dummy() { "dummy" } else { "" }),
-        match image.comparison_method(defaults) {
-            Some(method) => cell("METHOD", method.name().into(), from_profile(image.names_comparison_method())),
-            None => cell("METHOD", "unknown".into(), "always compares as 0"),
+        match (image.fade_color(), image.comparison_method(defaults)) {
+            (Some(color), _) => {
+                let note =
+                    format!("about {} ms, tolerance {} levels", image.fade_time_ms(), defaults.fade_tolerance_levels());
+                cell("METHOD", format!("fade to {}", hex_color(color)), &note)
+            }
+            (None, Some(method)) => cell("METHOD", method.name().into(), from_profile(image.names_comparison_method())),
+            (None, None) => cell("METHOD", "unknown".into(), "always compares as 0"),
         },
         cell("THRESHOLD", decimal(tester.threshold()), from_profile(image.names_threshold())),
         delay,
@@ -257,8 +267,14 @@ pub fn trigger_caption(tester: &Tester, trigger: &Trigger) -> String {
 
 /// What the Live Tester is waiting for.
 pub fn tester_status(tester: &Tester) -> String {
+    let at_threshold = tester.similarity().is_some_and(|similarity| similarity >= tester.threshold());
     match tester.phase() {
+        Phase::Waiting if tester.image().is_fade() && at_threshold => {
+            "At the threshold, but it didn't fade there, like after a cut. Waiting for a fade to the color.".into()
+        }
+        Phase::Waiting if tester.image().is_fade() => "Waiting for a fade to the color.".into(),
         Phase::Waiting => "Waiting for the similarity to reach the threshold.".into(),
+        Phase::Armed if tester.image().is_fade() => "Faded to the color. Waiting for it to drop back below.".into(),
         Phase::Armed => "Reached the threshold. Waiting for it to drop back below.".into(),
         Phase::Delaying { delay, .. } => format!("Waiting for the {delay} ms delay."),
         Phase::Done => {

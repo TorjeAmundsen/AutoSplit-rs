@@ -6,7 +6,7 @@ use autosplit_core::filename::{FilenameWarning, Setting};
 use autosplit_core::image::BgraImage;
 use autosplit_core::profile::UserProfile;
 use autosplit_core::split_folder::{
-    ValidationContext, ValidationError, load_profile_folder_to_start, load_split_folder,
+    ValidationContext, ValidationError, load_profile_folder, load_profile_folder_to_start, load_split_folder,
 };
 use autosplit_core::split_image::{LoadWarning, SplitImage};
 use tempfile::TempDir;
@@ -238,4 +238,22 @@ fn start_and_reset_images_are_in_file_name_order() {
             1
         )
     );
+}
+
+#[test_case(10 => vec![FilenameWarning::FadeTooShortForFps { fade_time: 200, fps_limit: 10 }]; "compared every 100 ms")]
+#[test_case(20 => Vec::<FilenameWarning>::new(); "the lowest FPS limit Settings has")]
+fn fade_images_too_short_for_the_fps_limit_are_warned_about(fps_limit: i64) -> Vec<FilenameWarning> {
+    // Arrange: a 200 ms fade, which needs about 3 comparisons
+    let directory = folder(&["1_fade_~200~_{f}.png"]);
+    let profile = UserProfile {
+        split_image_directory: directory.path().to_string_lossy().into(),
+        fps_limit,
+        ..UserProfile::default()
+    };
+
+    // Act
+    let warnings = load_profile_folder(&profile, false).warnings;
+
+    // Assert, with the expected value checked by test_case
+    warnings.into_iter().map(|warning| warning.warning).collect()
 }

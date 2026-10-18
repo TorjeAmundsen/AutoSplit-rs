@@ -24,10 +24,11 @@ pub const BASE_IMAGE_SIZE: (usize, usize) = (64, 48);
 const WRITING_PREFIX: &str = ".writing-";
 
 /// An image of a ready-made split to write: a preset's split, with its mask and savestate as
-/// paths that exist, and a screenshot the mask fits, at any size.
+/// paths that exist, and a screenshot the mask fits, at any size. Only a fade split can be without
+/// a mask.
 pub struct NewStep {
     pub split: PresetSplit,
-    pub mask: PathBuf,
+    pub mask: Option<PathBuf>,
     pub savestate: Option<PathBuf>,
     pub screenshot: BgraImage,
 }
@@ -70,11 +71,12 @@ pub fn add_ready_made(
             (folder, SplitLibrary { game: game.to_owned(), splits: Vec::new() }, true)
         }
     };
-    let written = store_steps(&folder, description, steps, &HashSet::new()).and_then(|(stored, pending)| {
-        let mut now = before.clone();
-        now.splits.extend(stored);
-        write_library(&folder, &before, &now, pending, &[])
-    });
+    let written =
+        store_steps(&folder, description, steps, &HashSet::new(), &HashSet::new()).and_then(|(stored, pending)| {
+            let mut now = before.clone();
+            now.splits.extend(stored);
+            write_library(&folder, &before, &now, pending, &[])
+        });
     match written {
         Ok(()) => Ok(folder),
         Err(error) => {
@@ -109,7 +111,14 @@ pub fn change_ready_made(
     let replaced: HashSet<String> =
         library_files(&chunks[index]).difference(&library_files(&others)).cloned().collect();
     let (stored, pending) = match steps {
-        Some(steps) => store_steps(folder, description, steps, &replaced)?,
+        Some(steps) => {
+            // Masks of images given another name, which take that name too, in lowercase
+            let renamed: HashSet<String> = (chunks[index].iter().zip(&steps))
+                .filter(|(old, new)| old.split.name != new.split.name && replaced.contains(&old.split.mask))
+                .map(|(old, _)| old.split.mask.to_lowercase())
+                .collect();
+            store_steps(folder, description, steps, &replaced, &renamed)?
+        }
         None => (described(std::mem::take(&mut chunks[index]), description), Pending::default()),
     };
     chunks[index] = stored;
@@ -192,12 +201,15 @@ impl Pending {
 /// splits. A file in the folder already, like one of a ready-made split that was inserted, is
 /// used where it is. The `replaced` files, which only the ready-made split these replace used,
 /// are written over once the library is, so its new files keep their names instead of getting a
-/// number. When something can't be found or written, what was written is deleted again.
+/// number. The `renamed` masks, in lowercase, are of images given another name, so they're copied
+/// under it instead of used where they are. When something can't be found or written, what was
+/// written is deleted again.
 fn store_steps(
     folder: &Path,
     description: &str,
     steps: Vec<NewStep>,
     replaced: &HashSet<String>,
+    renamed: &HashSet<String>,
 ) -> Result<(Vec<LibrarySplit>, Pending), PresetError> {
     let root = std::fs::canonicalize(folder).map_err(|error| unwritable(folder, error))?;
     let found = |path: &Path| {
@@ -208,12 +220,15 @@ fn store_steps(
     let mut sources = Vec::new();
     for step in &steps {
         let savestate = step.savestate.as_deref().map(found).transpose()?;
-        sources.push((found(&step.mask)?, savestate));
+        sources.push((step.mask.as_deref().map(found).transpose()?, savestate));
     }
-    let inside = |path: &Path| path.strip_prefix(&root).ok().map(relative_text);
+    let inside = |path: &Path| {
+        let inside = path.strip_prefix(&root).ok().map(relative_text)?;
+        (!renamed.contains(&inside.to_lowercase())).then_some(inside)
+    };
     // Used where they are, so never written over
     let kept: HashSet<String> = (sources.iter())
-        .flat_map(|(mask, savestate)| std::iter::once(mask).chain(savestate))
+        .flat_map(|(mask, savestate)| mask.iter().chain(savestate))
         .filter_map(|path| inside(path))
         .collect();
     // The folder's files by their names in lowercase. Names that differ only in case are one
@@ -260,7 +275,10 @@ fn store_steps(
                 std::fs::copy(source, &to).map_err(|error| unwritable(&to, error))?;
                 Ok(name)
             };
-            let mask = place(mask_source, format!("{stem}.png"))?;
+            let mask = match mask_source {
+                Some(source) => place(source, format!("{stem}.png"))?,
+                None => String::new(),
+            };
             // Under its own name, which says where it is in the game
             let savestate = match savestate_source {
                 Some(source) => {

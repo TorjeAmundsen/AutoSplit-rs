@@ -3,3 +3,5 @@
 /build
 # Screenshots the screenshots example writes when run without a folder from the crate
 /crates/autosplit-cli/*.png
+# Recordings of fades, cuts and other transitions for tuning fade images
+/fades

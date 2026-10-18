@@ -20,6 +20,8 @@ export struct LibraryStep {
     pause: string,
     dummy: bool,
     below: bool,
+    // A fade split's color and fade time, or empty
+    fade: string,
     // The file name it gets, with XX for its number, which comes from where it's put
     file-parts: [NamePart],
     file: string,
@@ -58,7 +60,11 @@ component Setting inherits HorizontalLayout {
         text: root.label;
     }
 
+    // Cut off when the pane is narrow, like the File row, since flags with a fade can get long
     Text {
+        horizontal-stretch: 1;
+        min-width: 0px;
+        overflow: elide;
         font-weight: root.value == "" ? 400 : 600;
         color: root.value == "" ? Theme.secondary-text : NameColors.of({ kind: root.kind });
         text: root.value == "" ? root.empty : root.value;
@@ -94,7 +100,7 @@ component Settings inherits VerticalLayout {
     Setting {
         label: "Flags";
         empty: "None";
-        value: (root.step.dummy ? "Dummy" : "") + (root.step.dummy && root.step.below ? ", " : "") + (root.step.below ? "Below threshold" : "");
+        value: (root.step.dummy ? "Dummy" : "") + (root.step.dummy && root.step.below ? ", " : "") + (root.step.below ? "Below threshold" : "") + ((root.step.dummy || root.step.below) && root.step.fade != "" ? ", " : "") + (root.step.fade != "" ? "Fade to " + root.step.fade : "");
         kind: NameKind.flags;
     }
 

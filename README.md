@@ -10,6 +10,7 @@ A Rust rewrite of [AutoSplit](https://github.com/Toufool/AutoSplit), the image c
 - Runs on Windows, Linux and macOS 11 or newer.
 - Captures from capture cards, webcams and OBS Virtual Camera. To split on a window or the screen, show it in OBS and use OBS Virtual Camera.
 - Makes split images for you: pick your category's preset in Make Split Images, play through it and grab each split, and the masked, named split images are saved into your folder. A preset editor and a Live Tester, for checking an image against the capture, are built in too.
+- Splits on fades to a color, like a fade to black between areas, without splitting on a cut to black like a console reset.
 - Controls LiveSplit through its AutoSplit Integration component, LiveSplit One over a local connection, Molok through signals on Linux, or any timer through hotkeys.
 - Uses little CPU, so it can run next to OBS on a weak machine. Most comparisons take well under a millisecond, see [PERFORMANCE.md](PERFORMANCE.md).
 

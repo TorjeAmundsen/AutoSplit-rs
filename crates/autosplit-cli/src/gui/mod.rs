@@ -317,6 +317,16 @@ fn show_dock_icon() {
 }
 
 /// Runs `action` with the GUI, on the window's thread.
+/// Whether `event` is a redraw of a minimized window on Windows, which is skipped. Minimizing has
+/// Slint draw the whole window next time, since Windows lets go of what it showed, but a redraw
+/// while minimized uses that up. The window then comes back black, apart from what changes.
+/// Skipped, the redraw Windows asks for when it's restored draws all of it.
+fn skipped_while_minimized(window: &slint::Window, event: &WindowEvent) -> bool {
+    cfg!(windows)
+        && matches!(event, WindowEvent::RedrawRequested)
+        && window.with_winit_window(|window| window.is_minimized()).flatten() == Some(true)
+}
+
 fn with_gui(action: impl FnOnce(&Rc<Gui>) + Send + 'static) {
     let _ = slint::invoke_from_event_loop(move || {
         if let Some(gui) = GUI.with(|gui| gui.borrow().clone()) {
@@ -343,6 +353,7 @@ pub fn name_parts_model(parts: Vec<autosplit_core::filename::NamePart>) -> Model
         PartKind::Loops => NameKind::Loops,
         PartKind::Method => NameKind::Method,
         PartKind::Flags => NameKind::Flags,
+        PartKind::FadeTime => NameKind::FadeTime,
         PartKind::Extension => NameKind::Extension,
     };
     let part = |part: autosplit_core::filename::NamePart| NamePart {
@@ -889,7 +900,10 @@ impl Gui {
         // AutoSplit's shortcuts work there too; the main window's menu has them.
         let weak = self.me.clone();
         let mut held = Modifiers::empty();
-        self.windows.settings.window().on_winit_window_event(move |_, event| {
+        self.windows.settings.window().on_winit_window_event(move |window, event| {
+            if skipped_while_minimized(window, event) {
+                return EventResult::PreventDefault;
+            }
             let Some(gui) = weak.upgrade() else { return EventResult::Propagate };
             if gui.swallowed_while_blocked(event) {
                 return EventResult::PreventDefault;
@@ -934,6 +948,9 @@ impl Gui {
             let weak = self.me.clone();
             let mut held = Modifiers::empty();
             window.on_winit_window_event(move |window, event| {
+                if skipped_while_minimized(window, event) {
+                    return EventResult::PreventDefault;
+                }
                 if let WindowEvent::ModifiersChanged(modifiers) = event {
                     held = modifiers_held(modifiers.state());
                 }
@@ -963,6 +980,9 @@ impl Gui {
         let weak = self.me.clone();
         let mut held = Modifiers::empty();
         self.windows.main.window().on_winit_window_event(move |window, event| {
+            if skipped_while_minimized(window, event) {
+                return EventResult::PreventDefault;
+            }
             let Some(gui) = weak.upgrade() else { return EventResult::Propagate };
             if gui.inline_message_key(event) {
                 return EventResult::PreventDefault;
@@ -987,7 +1007,10 @@ impl Gui {
 
         let weak = self.me.clone();
         let mut held = Modifiers::empty();
-        self.windows.tester.window().on_winit_window_event(move |_, event| {
+        self.windows.tester.window().on_winit_window_event(move |window, event| {
+            if skipped_while_minimized(window, event) {
+                return EventResult::PreventDefault;
+            }
             let Some(gui) = weak.upgrade() else { return EventResult::Propagate };
             if gui.swallowed_while_blocked(event) {
                 return EventResult::PreventDefault;
@@ -1010,7 +1033,10 @@ impl Gui {
         // The preset editor's keys
         let weak = self.me.clone();
         let mut held = Modifiers::empty();
-        self.windows.maker.window().on_winit_window_event(move |_, event| {
+        self.windows.maker.window().on_winit_window_event(move |window, event| {
+            if skipped_while_minimized(window, event) {
+                return EventResult::PreventDefault;
+            }
             let Some(gui) = weak.upgrade() else { return EventResult::Propagate };
             if gui.swallowed_while_blocked(event) {
                 return EventResult::PreventDefault;
@@ -1306,6 +1332,7 @@ impl Gui {
         settings.set_default_similarity_threshold(profile.default_similarity_threshold as f32);
         settings.set_default_delay_time(profile.default_delay_time as f32);
         settings.set_default_pause_time(profile.default_pause_time as f32);
+        settings.set_fade_color_tolerance(profile.fade_color_tolerance as f32);
         settings.set_loop_splits(profile.loop_splits);
         settings.set_group_split_images(profile.group_split_images);
         settings.set_split_image_grid(profile.split_image_grid);
@@ -1358,6 +1385,7 @@ impl Gui {
             }
             Setting::DefaultDelayTime => SettingEdit::DefaultDelayTime(settings.get_default_delay_time().into()),
             Setting::DefaultPauseTime => SettingEdit::DefaultPauseTime(settings.get_default_pause_time().into()),
+            Setting::FadeColorTolerance => SettingEdit::FadeColorTolerance(settings.get_fade_color_tolerance().into()),
             Setting::LoopSplits => SettingEdit::LoopSplits(settings.get_loop_splits()),
             Setting::GroupSplitImages => SettingEdit::GroupSplitImages(settings.get_group_split_images()),
             Setting::SplitImageGrid => SettingEdit::SplitImageGrid(settings.get_split_image_grid()),

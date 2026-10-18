@@ -5,7 +5,7 @@ name = "reset"
 mask = "reset.png"
 threshold = 0.96
 pause = 0.1
-description = "Automatically reset when pressing C-up in Link's house"
+description = "Automatically reset when pressing C-up in Link's house (With rupee count to prevent resetting after a savewarp)"
 base_image = "base_links_house.png"
 
 [[split]]
@@ -14,7 +14,7 @@ mask = "start.png"
 threshold = 0.96
 pause = 10.0
 below = true
-description = "Starts the auto splitter when you move after pressing C-up"
+description = "Starts the auto splitter when you move after pressing C-up."
 base_image = "base_links_house.png"
 
 [[split]]
@@ -22,7 +22,7 @@ name = "Escape"
 mask = "escape.png"
 threshold = 0.97
 delay = 150
-description = "Aqua escape, splits on full white fade"
+description = "Aqua escape in Lost Woods, splits on full white fade."
 base_image = "base_aqua_escape.png"
 
 [[split]]
@@ -32,50 +32,30 @@ threshold = 0.93
 pause = 35.0
 delay = 1100
 below = true
-description = "Splits on bottle model over head, common manual split timing"
+description = "Splits on bottle model over head, common manual split timing."
 base_image = "base_bottle.png"
 
 [[split]]
-name = "Full white fade"
-mask = "full_fade.png"
+name = "WhiteFlash"
+mask = "WhiteFlash.png"
 threshold = 0.97
-description = "Generic white fade transition or white flash after successful wrong warp"
-base_image = "base_white_fade.png"
+savestate = "011 wrong warp.gzs"
+description = "White flash after a wrong warp/blue warp cutscene skip."
+base_image = "base_WhiteFlash.png"
 
 [[split]]
 name = "Ganon"
 mask = "final_slash_zelda.png"
 threshold = 0.92
-description = "Final slash on Ganon"
+description = "Final slash on Ganon, standard RTA ending frame."
 base_image = "base_ganon.png"
-
-[[split]]
-name = "DekuCSDummy"
-mask = "DekuCSDummy.png"
-threshold = 0.94
-pause = 6.5
-dummy = true
-savestate = "004-kokiri forest.gzs"
-description = "Enter Deku Tree after watching the cutscene where he opens his mouth. Splits on full fade"
-base_image = "base_DekuCSDummy.png"
-
-[[split]]
-name = "EnterDeku"
-mask = "EnterDeku.png"
-threshold = 0.92
-pause = 60.0
-delay = 1000
-savestate = "005-kokiri forest.gzs"
-instructions = "After loading, advance 1 frame before taking your screenshot. The A button doesn't render correctly if the savestate is on the frame itself, so it had to be 1 frame before."
-base_image = "base_EnterDeku.png"
-then = true
 
 [[split]]
 name = "KokiriSwordRight"
 mask = "KokiriSwordRight.png"
 threshold = 0.96
 savestate = "000-kokiri_forest.gzs"
-description = "Kokiri Sword, split on model above head"
+description = "Kokiri Sword, split on model above head."
 base_image = "base_KokiriSwordRight.png"
 
 [[split]]
@@ -86,3 +66,49 @@ threshold = 0.96
 savestate = "001-kokiri_forest.gzs"
 base_image = "base_KokiriSwordLeft.png"
 then = true
+
+[[split]]
+name = "FastBlackFade"
+mask = "FastBlackFade.png"
+fade = "#000000"
+fade_time = 200
+threshold = 0.995
+description = "Fast fade to black, like entering Kokiri Shop."
+base_image = "base_FastBlackFade.png"
+
+[[split]]
+name = "FullWhiteFade"
+mask = "FullWhiteFade.png"
+fade = "#a0a0a0"
+fade_time = 800
+threshold = 0.995
+description = "Splits on a normal-length full-white fade (White fades are actually pretty gray in Ocarina of Time)."
+base_image = "base_FullWhiteFade.png"
+
+[[split]]
+name = "DekuCSDummy"
+mask = "DekuCSDummy.png"
+threshold = 0.94
+pause = 6.5
+dummy = true
+savestate = "005 enter deku dummy.gzs"
+description = "Splits on full fade upon entering Deku Tree, after the cutscene of him opening his mouth."
+base_image = "base_DekuCSDummy.png"
+
+[[split]]
+name = "EnterDeku"
+mask = "EnterDeku.png"
+fade = "#000000"
+fade_time = 800
+threshold = 0.995
+base_image = "base_EnterDeku.png"
+then = true
+
+[[split]]
+name = "FullBlackFade"
+mask = "FullBlackFade.png"
+fade = "#000000"
+fade_time = 800
+threshold = 0.995
+description = "Splits on a normal full-length black fade."
+base_image = "base_FullBlackFade.png"

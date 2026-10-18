@@ -16,6 +16,7 @@ export enum Setting {
     default-similarity-threshold,
     default-delay-time,
     default-pause-time,
+    fade-color-tolerance,
     loop-splits,
     group-split-images,
     split-image-grid,
@@ -36,7 +37,7 @@ export component SettingsWindow inherits Window {
     title: "Settings";
     icon: @image-url("../assets/icon.png");
     width: 380px;
-    height: 384px;
+    height: 414px;
     default-font-family: "Noto Sans";
     default-font-size: 12px;
 
@@ -61,6 +62,7 @@ export component SettingsWindow inherits Window {
     in-out property <float> default-similarity-threshold: 0.9;
     in-out property <float> default-delay-time: 0;
     in-out property <float> default-pause-time: 10;
+    in-out property <float> fade-color-tolerance: 15;
     in-out property <bool> loop-splits;
     in-out property <bool> group-split-images;
     in-out property <bool> split-image-grid;
@@ -414,9 +416,33 @@ export component SettingsWindow inherits Window {
                 }
             }
 
-            CheckBox {
+            Label {
                 x: 10px;
                 y: 130px;
+                width: 185px;
+                height: 26px;
+                text: "Fade Color Tolerance:";
+            }
+
+            SpinBox {
+                x: 200px;
+                y: 132px;
+                width: 100px;
+                height: 22px;
+                maximum: 255;
+                value <=> root.fade-color-tolerance;
+                edited => { root.changed(Setting.fade-color-tolerance); }
+
+                Tooltip {
+                    Tip {
+                        text: "How many levels each of red, green and blue may be off from a fade image's color, for capture setups whose colors are a little off.";
+                    }
+                }
+            }
+
+            CheckBox {
+                x: 10px;
+                y: 160px;
                 width: 360px;
                 height: 24px;
                 text: "Loop Last Split Image to First Split Image";
@@ -426,7 +452,7 @@ export component SettingsWindow inherits Window {
 
             CheckBox {
                 x: 10px;
-                y: 154px;
+                y: 184px;
                 width: 360px;
                 height: 24px;
                 text: "Start also Resets";
@@ -436,7 +462,7 @@ export component SettingsWindow inherits Window {
 
             CheckBox {
                 x: 10px;
-                y: 178px;
+                y: 208px;
                 width: 360px;
                 height: 24px;
                 text: "Enable auto reset image";
@@ -446,7 +472,7 @@ export component SettingsWindow inherits Window {
 
             CheckBox {
                 x: 10px;
-                y: 202px;
+                y: 232px;
                 width: 360px;
                 height: 24px;
                 text: "Compare images with the same number for one split";
@@ -462,7 +488,7 @@ export component SettingsWindow inherits Window {
 
             CheckBox {
                 x: 30px;
-                y: 226px;
+                y: 256px;
                 width: 340px;
                 height: 24px;
                 text: "Show a split's images in a 2x2 grid";
@@ -474,7 +500,7 @@ export component SettingsWindow inherits Window {
             Text {
                 color: Theme.text;
                 x: 10px;
-                y: 256px;
+                y: 286px;
                 width: 360px;
                 height: 61px;
                 wrap: word-wrap;
@@ -483,7 +509,7 @@ export component SettingsWindow inherits Window {
 
             Button {
                 x: 150px;
-                y: 322px;
+                y: 352px;
                 width: 80px;
                 height: 28px;
                 text: "Tutorial";

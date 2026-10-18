@@ -38,17 +38,28 @@ savestate = "savestates/002-kokiri_shop.gzs"
 [[split]]
 name = "ExitKokiriShop"
 mask = "ExitKokiriShop.png"
-threshold = 0.97
-savestate = "savestates/003-kokiri_forest.gzs"
+fade = "#000000"
+fade_time = 200
+threshold = 0.995
 
 [[split]]
 name = "CrawlspaceLeft"
 mask = "CrawlspaceLeft.png"
-threshold = 0.94
+threshold = 0.93
+pause = 30.0
 savestate = "savestates/004-kokiri_forest.gzs"
 
 [[split]]
 name = "CrawlspaceRight"
 with_previous = true
 mask = "CrawlspaceRight.png"
-threshold = 0.94
+threshold = 0.93
+pause = 30.0
+
+[[split]]
+name = "Credits"
+mask = "Credits.png"
+fade = "#000000"
+fade_time = 200
+threshold = 0.995
+below = true

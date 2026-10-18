@@ -3,7 +3,7 @@
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 
-use crate::filename::{RESET_KEYWORD, START_KEYWORD, number_prefix};
+use crate::filename::{FADE_COMPARISONS, FilenameWarning, RESET_KEYWORD, START_KEYWORD, number_prefix};
 use crate::profile::UserProfile;
 use crate::split_image::{self, ImageType, LoadError, LoadWarning, SplitImage};
 
@@ -125,10 +125,22 @@ impl FolderLoad {
 
 /// Loads the profile's folder, e.g. to look for the start image.
 pub fn load_profile_folder(profile: &UserProfile, hotkeys_needed: bool) -> FolderLoad {
-    load_split_folder(
+    let mut load = load_split_folder(
         Path::new(&profile.split_image_directory),
         &ValidationContext::from_profile(profile, hotkeys_needed),
-    )
+    );
+    // A fade needs a few comparisons to tell it from a cut
+    if let Ok(set) = &load.result {
+        let fps_limit = profile.fps_limit.max(1);
+        let images = set.start.iter().chain(&set.reset).chain(&set.splits);
+        for image in
+            images.filter(|image| image.is_fade() && image.fade_time_ms() * fps_limit < FADE_COMPARISONS * 1000)
+        {
+            let warning = FilenameWarning::FadeTooShortForFps { fade_time: image.fade_time_ms(), fps_limit };
+            load.warnings.push(LoadWarning { path: image.path.clone(), warning });
+        }
+    }
+    load
 }
 
 /// Loads the profile's folder to start a run, which also needs a split hotkey when the timer

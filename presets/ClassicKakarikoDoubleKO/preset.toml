@@ -34,11 +34,11 @@ savestate = "savestates/001-hyrule field.gzs"
 
 [[split]]
 name = "Kakariko"
-mask = "003_full_fade.png"
-threshold = 0.97
-pause = 30.0
-delay = 50
-savestate = "savestates/002-hyrule field.gzs"
+mask = "Kakariko.png"
+fade = "#a0a0a0"
+fade_time = 800
+threshold = 0.995
+pause = 100.0
 
 [[split]]
 name = "Bottle"
@@ -59,27 +59,18 @@ savestate = "savestates/004-kokiri forest.gzs"
 
 [[split]]
 name = "EnterDeku"
-mask = "006_a_button_flip.png"
-threshold = 0.92
+mask = "EnterDeku.png"
+fade = "#000000"
+fade_time = 800
+threshold = 0.995
 pause = 60.0
-delay = 1000
-savestate = "savestates/005-kokiri forest.gzs"
-instructions = "After loading, advance 1 frame before taking your screenshot. The A button doesn't render correctly if the savestate is on the frame itself, so it had to be 1 frame before."
-
-[[split]]
-name = "ScrubsDummy"
-mask = "007_scrubs_dummy.png"
-threshold = 0.95
-dummy = true
-savestate = "savestates/006-deku tree.gzs"
 
 [[split]]
 name = "Scrubs"
-mask = "008_scrubs_door.png"
-threshold = 0.95
-delay = 1150
-savestate = "savestates/007-deku tree.gzs"
-instructions = "This screenshot relies on your equips being accurate to your preferred ones. After loading, edit your equips with gz's equips menu and advance 1 frame before taking your screenshot."
+mask = "Scrubs.png"
+fade = "#000000"
+fade_time = 800
+threshold = 0.995
 
 [[split]]
 name = "DoubleKO"
@@ -97,11 +88,11 @@ savestate = "savestates/009-tower collapse.gzs"
 
 [[split]]
 name = "Collapse"
-mask = "003_full_fade.png"
-threshold = 0.97
+mask = "Collapse.png"
+fade = "#a0a0a0"
+fade_time = 800
+threshold = 0.995
 pause = 60.0
-delay = 50
-savestate = "savestates/009-tower collapse.gzs"
 
 [[split]]
 name = "CutsceneRNG"

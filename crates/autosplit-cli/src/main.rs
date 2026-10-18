@@ -19,8 +19,8 @@ use autosplit_core::image::BgraImage;
 use autosplit_core::profile::UserProfile;
 use autosplit_core::runner::{Captured, Effect, Runner, RunnerSettings, Showing};
 use autosplit_core::split_folder::{FolderLoad, SplitSet, load_profile_folder, load_profile_folder_to_start};
-use autosplit_core::split_image::{ImageType, SplitContent, SplitImage};
-use autosplit_core::text::{Compared, decimal, decimal_or_dash};
+use autosplit_core::split_image::{ImageType, SplitContent, SplitDefaults, SplitImage};
+use autosplit_core::text::{Compared, decimal, decimal_or_dash, hex_color};
 use clap::{Parser, Subcommand};
 
 /// Ticks at one timestamp after which `replay` gives up: the run is splitting in a loop.
@@ -84,15 +84,20 @@ enum CliCommand {
         #[arg(long)]
         split_dir: Option<PathBuf>,
     },
-    /// Compare a split image with a captured frame (PNG) using every comparison method.
+    /// Compare a split image with a captured frame (PNG) using every comparison method. With a
+    /// folder of frames, print each frame's similarities as CSV.
     Compare {
         /// Split image (PNG).
         split_image: PathBuf,
-        /// Captured frame (PNG), for example from `grab --profile`.
+        /// Captured frame (PNG), for example from `grab --profile`, or a folder of PNG frames,
+        /// played in file name order.
         capture: PathBuf,
-        /// Take the default threshold and method from this profile.
+        /// Take the default threshold, method and fade color tolerance from this profile.
         #[arg(long)]
         profile: Option<PathBuf>,
+        /// Frame rate a folder of frames was recorded at, for the CSV's seconds column.
+        #[arg(long, default_value_t = 60.0, value_parser = parse_fps)]
+        fps: f64,
     },
     /// Run the split state machine over recorded frames and print what would be sent.
     Replay {
@@ -186,7 +191,12 @@ fn run_command() -> Result<()> {
             device::grab(&device, &output, skip, profile.as_ref())
         }
         CliCommand::Check { profile, split_dir } => check(&profile, split_dir),
-        CliCommand::Compare { split_image, capture, profile } => compare(&split_image, &capture, profile.as_deref()),
+        CliCommand::Compare { split_image, capture, profile, fps } if capture.is_dir() => {
+            compare_frames(&split_image, &capture, fps, profile.as_deref())
+        }
+        CliCommand::Compare { split_image, capture, profile, .. } => {
+            compare(&split_image, &capture, profile.as_deref())
+        }
         CliCommand::Replay { profile, frames, fps, split_dir, auto_controlled } => {
             replay(&profile, &frames, fps, split_dir, auto_controlled)
         }
@@ -225,6 +235,14 @@ fn folder_result(load: FolderLoad) -> Result<(SplitSet, usize)> {
     }
 }
 
+/// The defaults of the profile at `path`, or of a new profile without one.
+fn profile_defaults(path: Option<&Path>) -> Result<SplitDefaults> {
+    Ok(match path {
+        Some(path) => load_profile(path, None)?.split_defaults(),
+        None => UserProfile::default().split_defaults(),
+    })
+}
+
 fn load_split_image(path: &Path) -> Result<SplitImage> {
     if !path.exists() {
         bail!("{} doesn't exist", path.display());
@@ -260,19 +278,24 @@ fn check(profile_path: &Path, split_dir: Option<PathBuf>) -> Result<()> {
             ImageType::Reset => "reset",
             ImageType::Split => "split",
         };
-        let letters: String = [(image.is_dummy(), 'd'), (image.is_below(), 'b'), (image.is_pause(), 'p')]
-            .iter()
-            .filter_map(|(set, flag)| set.then_some(*flag))
-            .collect();
+        let letters: String =
+            [(image.is_dummy(), 'd'), (image.is_below(), 'b'), (image.is_pause(), 'p'), (image.is_fade(), 'f')]
+                .iter()
+                .filter_map(|(set, flag)| set.then_some(*flag))
+                .collect();
         let flags = if letters.is_empty() { String::new() } else { format!("{{{letters}}}") };
-        let method = image.comparison_method(&defaults).map_or("never", ComparisonMethod::name);
-        let content = match &image.content {
-            SplitContent::Image { pixels, mask: None, .. } => format!("{}x{}", pixels.width(), pixels.height()),
-            SplitContent::Image { pixels, mask: Some(_), .. } => {
-                format!("{}x{} masked", pixels.width(), pixels.height())
-            }
-            SplitContent::Invalid(_) => "invalid".into(),
+        let (method, fade) = match image.fade_color() {
+            Some(color) => ("fade", format!("fade to {} in {}ms, ", hex_color(color), image.fade_time_ms())),
+            None => (image.comparison_method(&defaults).map_or("never", ComparisonMethod::name), String::new()),
         };
+        let content = fade
+            + &match &image.content {
+                SplitContent::Image { pixels, mask: None, .. } => format!("{}x{}", pixels.width(), pixels.height()),
+                SplitContent::Image { pixels, mask: Some(_), .. } => {
+                    format!("{}x{} masked", pixels.width(), pixels.height())
+                }
+                SplitContent::Invalid(_) => "invalid".into(),
+            };
         println!(
             "{:<44} {:<6} {:>9} {:>7}s {:>6}ms {:>5} {:<10} {:<6} {content}",
             image.display_name(),
@@ -307,11 +330,8 @@ fn compare(split_image: &Path, capture_path: &Path, profile: Option<&Path>) -> R
     }
     let capture = BgraImage::open_png(capture_path)
         .map_err(|error| anyhow::anyhow!("{} isn't a PNG image ({error})", capture_path.display()))?;
-    let defaults = match profile {
-        Some(path) => load_profile(path, None)?.split_defaults(),
-        None => UserProfile::default().split_defaults(),
-    };
-    let method = image.comparison_method(&defaults);
+    let defaults = profile_defaults(profile)?;
+    let method = image.comparison_method(&defaults).filter(|_| !image.is_fade());
     let threshold = image.similarity_threshold(&defaults);
     let default_note = if profile.is_none() && !image.filename.contains('(') {
         ", the default; use --profile for your profile's"
@@ -319,6 +339,16 @@ fn compare(split_image: &Path, capture_path: &Path, profile: Option<&Path>) -> R
         ""
     };
     let mut scratch = CompareScratch::default();
+    if let Some(color) = image.fade_color() {
+        let similarity = image.similarity(Some(capture.view()), &defaults, &mut scratch);
+        let reached = if similarity >= threshold { "reached" } else { "not reached" };
+        println!(
+            "Fade to {} {}  (threshold {}{default_note}: {reached}. It only splits when a fade got it there, not a cut)",
+            hex_color(color),
+            decimal(similarity),
+            decimal(threshold)
+        );
+    }
     for candidate in ComparisonMethod::ALL {
         let similarity = image.compare(Some(capture.view()), Some(candidate), &mut scratch);
         let note = if method == Some(candidate) {
@@ -334,10 +364,13 @@ fn compare(split_image: &Path, capture_path: &Path, profile: Option<&Path>) -> R
         };
         println!("{:<11} {}{note}", candidate.name(), decimal(similarity));
     }
-    if method.is_none() {
+    if method.is_none() && !image.is_fade() {
         println!("This image's comparison method is unknown, so it never matches.");
     }
-    if let SplitContent::Image { pixels, .. } = &image.content {
+    // A fade image's one color looks the same at any size
+    if let SplitContent::Image { pixels, .. } = &image.content
+        && !image.is_fade()
+    {
         let (image_ratio, capture_ratio) = (
             pixels.width() as f64 / pixels.height().max(1) as f64,
             capture.width() as f64 / capture.height().max(1) as f64,
@@ -352,6 +385,36 @@ fn compare(split_image: &Path, capture_path: &Path, profile: Option<&Path>) -> R
                 pixels.height()
             );
         }
+    }
+    Ok(())
+}
+
+/// `text` as a CSV field: in quotes, with its quotes doubled, when it has a comma, quote or line
+/// break.
+fn csv_field(text: &str) -> String {
+    if text.contains([',', '"', '\n', '\r']) { format!("\"{}\"", text.replace('"', "\"\"")) } else { text.to_owned() }
+}
+
+/// Every method's similarity for each frame in a folder, as CSV, to see how it changes over time.
+/// A fade image has a column for its color too, with the profile's fade color tolerance.
+fn compare_frames(split_image: &Path, frames: &Path, fps: f64, profile: Option<&Path>) -> Result<()> {
+    let image = load_split_image(split_image)?;
+    let paths = frame_paths(frames)?;
+    let defaults = profile_defaults(profile)?;
+    let mut scratch = CompareScratch::default();
+    let fade_column = if image.is_fade() { ",fade" } else { "" };
+    println!("frame,file,seconds,l2_norm,histograms,phash{fade_column}");
+    for (index, path) in paths.iter().enumerate() {
+        let capture = BgraImage::open_png(path).with_context(|| format!("loading {}", path.display()))?;
+        let mut similarities: Vec<String> = ComparisonMethod::ALL
+            .iter()
+            .map(|&method| format!("{:.6}", image.compare(Some(capture.view()), Some(method), &mut scratch)))
+            .collect();
+        if image.is_fade() {
+            similarities.push(format!("{:.6}", image.similarity(Some(capture.view()), &defaults, &mut scratch)));
+        }
+        let file = path.file_name().map_or_else(String::new, |name| name.to_string_lossy().into_owned());
+        println!("{index},{},{:.3},{}", csv_field(&file), index as f64 / fps, similarities.join(","));
     }
     Ok(())
 }
@@ -463,7 +526,15 @@ fn replay(
     if runs == 0 && status.showing != Showing::Nothing {
         let (best, threshold) = (decimal_or_dash(status.highest), decimal_or_dash(status.threshold));
         let reached = status.highest.zip(status.threshold).is_some_and(|(best, threshold)| best >= threshold);
-        if status.below && reached {
+        let fade = runner.images().start.first().is_some_and(SplitImage::is_fade);
+        if fade && reached {
+            // Whether it ever faded there isn't in the status, so both are said
+            let below = if status.below { ", and with {b} it then has to drop below it again" } else { "" };
+            println!(
+                "The start image reached its threshold (best {best} / {threshold}), but a fade image only matches a \
+                 fade to its color, not a cut{below}."
+            );
+        } else if status.below && reached {
             println!(
                 "The start image reached its threshold (best {best} / {threshold}) but, with {{b}}, never dropped \
                  below it again."

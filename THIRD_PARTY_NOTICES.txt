@@ -41,9 +41,9 @@ Noto Sans
 ---------
 
 The windows use the Noto Sans font, embedded in the program, so text takes the same room on
-every system. Copyright 2022 The Noto Project Authors
-(https://github.com/notofonts/latin-greek-cyrillic). It's licensed under the SIL Open Font
-License, Version 1.1, whose text is in crates/autosplit-cli/assets/fonts/OFL.txt and at
+every system, and Noto Sans Mono for split image file names and colors. Copyright 2022 The Noto
+Project Authors (https://github.com/notofonts/latin-greek-cyrillic). It's licensed under the SIL
+Open Font License, Version 1.1, whose text is in crates/autosplit-cli/assets/fonts/OFL.txt and at
 https://openfontlicense.org.
 
 Slint

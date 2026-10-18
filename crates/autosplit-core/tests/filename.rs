@@ -3,7 +3,8 @@
 
 use autosplit_core::filename::{
     FilenameWarning, NameError, RESET_KEYWORD, START_KEYWORD, Setting, SplitSpec, build_filename,
-    delay_time_from_filename, filename_warnings, has_keyword, name_parts, threshold_from_filename, validate_split_name,
+    delay_time_from_filename, fade_time_from_filename, filename_warnings, has_keyword, name_parts,
+    threshold_from_filename, validate_split_name,
 };
 use autosplit_core::split_image::SplitDefaults;
 use test_case::test_case;
@@ -41,6 +42,14 @@ fn out_of_range(setting: Setting, value: &str) -> Vec<FilenameWarning> {
     FilenameWarning::NotANumber { setting: Setting::Threshold, value: "0.9a".into() },
     FilenameWarning::InvalidFlag { flags: "x".into(), invalid: 'x' },
 ]; "several problems")]
+#[test_case("x_~500~_{f}.png" => Vec::<FilenameWarning>::new(); "fade image with a fade time")]
+#[test_case("x_~100~_{f}.png" => out_of_range(Setting::FadeTime, "100"); "fade time too short to tell from a cut")]
+#[test_case("x_~3600000~_{f}.png" => out_of_range(Setting::FadeTime, "3600000"); "fade time too long")]
+#[test_case("x_~fast~_{f}.png" => not_a_number(Setting::FadeTime, "fast"); "fade time that isn't a number")]
+#[test_case("x_~1000~.png" => vec![FilenameWarning::FadeOnly(Setting::FadeTime)]; "fade time without the fade flag")]
+#[test_case("boss~2.png" => Vec::<FilenameWarning>::new(); "lone tilde in a name")]
+#[test_case("x_^1^_{f}.png" => vec![FilenameWarning::NotForFade(Setting::ComparisonMethod)]; "method on a fade image")]
+#[test_case("x_^9^_{f}.png" => vec![FilenameWarning::NotForFade(Setting::ComparisonMethod)]; "unknown method on a fade image")]
 fn warnings(filename: &str) -> Vec<FilenameWarning> {
     // Act, with the expected value checked by test_case
     filename_warnings(filename)
@@ -152,6 +161,9 @@ fn name_parts_follow_the_parser() {
 #[test_case("start_auto_splitter_reset.png" => vec!["Keyword:start_auto_splitter", "Text:_reset", "Extension:.png"]; "start keyword wins")]
 #[test_case("x_(0.5.png" => vec!["Text:x_", "Threshold!:(", "Text:0.5", "Extension:.png"]; "unclosed value")]
 #[test_case("x_(0.5)_(0.7).png" => vec!["Text:x_", "Threshold!:(0.5)_(0.7)", "Extension:.png"]; "two values")]
+#[test_case("x_~500~_{f}.png" => vec!["Text:x_", "FadeTime:~500~", "Text:_", "Flags:{f}", "Extension:.png"]; "fade time")]
+#[test_case("x_~500~.png" => vec!["Text:x_", "FadeTime!:~500~", "Extension:.png"]; "fade time without the fade flag")]
+#[test_case("boss~2.png" => vec!["Text:boss~2", "Extension:.png"]; "lone tilde")]
 fn name_parts_mark_what_the_parser_ignores(filename: &str) -> Vec<String> {
     // Act, with the expected value checked by test_case
     parts(filename)
@@ -169,11 +181,25 @@ fn name_parts_keep_the_whole_name() {
     assert_eq!(joined, filename);
 }
 
-const SPEC: SplitSpec =
-    SplitSpec { name: "Bottle", threshold: Some(0.93), pause: None, delay: None, dummy: false, below: false };
+const SPEC: SplitSpec = SplitSpec {
+    name: "Bottle",
+    threshold: Some(0.93),
+    pause: None,
+    delay: None,
+    dummy: false,
+    below: false,
+    fade_time: None,
+};
 
 fn defaults(delay_time: i64, comparison_method: i64) -> SplitDefaults {
-    SplitDefaults { comparison_method, similarity_threshold: 0.9, delay_time, pause_time: 10.0, fps_limit: 60 }
+    SplitDefaults {
+        comparison_method,
+        similarity_threshold: 0.9,
+        delay_time,
+        pause_time: 10.0,
+        fps_limit: 60,
+        fade_tolerance: 10,
+    }
 }
 
 #[test_case(SPEC, 5, 20, None => "05_Bottle_(0.93).png"; "padded to the count's digits")]
@@ -187,6 +213,8 @@ fn defaults(delay_time: i64, comparison_method: i64) -> SplitDefaults {
 #[test_case(SplitSpec { delay: Some(500), ..SPEC }, 5, 20, Some(defaults(500, 0)) => "05_Bottle_(0.93)_#500#.png"; "its own delay, like the profile's")]
 #[test_case(SplitSpec { delay: Some(0), ..SPEC }, 5, 20, Some(defaults(500, 0)) => "05_Bottle_(0.93)_#0#.png"; "no delay against the profile's")]
 #[test_case(SPEC, 5, 20, Some(defaults(0, 2)) => "05_Bottle_(0.93)_^0^.png"; "l2 norm against the profile's method")]
+#[test_case(SplitSpec { threshold: Some(0.995), fade_time: Some(1000), ..SPEC }, 5, 20, None => "05_Bottle_(0.995)_~1000~_{f}.png"; "fade split")]
+#[test_case(SplitSpec { fade_time: Some(350), dummy: true, ..SPEC }, 5, 20, Some(defaults(0, 2)) => "05_Bottle_(0.93)_~350~_{df}.png"; "fade split, which never asks for a method")]
 fn builds_file_names_like_automask(
     spec: SplitSpec,
     index: usize,
@@ -205,7 +233,31 @@ fn builds_file_names_like_automask(
 #[test_case("A/B" => Err(NameError::FileNameCharacter('/')); "file name character")]
 #[test_case("Reset Room" => Err(NameError::Keyword(RESET_KEYWORD)); "reset keyword")]
 #[test_case("Preset" => Err(NameError::Keyword(RESET_KEYWORD)); "keyword inside a word")]
+#[test_case("Fade~1" => Err(NameError::SettingCharacter('~')); "fade time character")]
 fn split_names(name: &str) -> Result<(), NameError> {
     // Act, with the expected value checked by test_case
     validate_split_name(name)
+}
+
+#[test_case("x_~500~_{f}.png" => Some(500); "fade time")]
+#[test_case("x_~100~_{f}.png" => None; "too short")]
+#[test_case("x_~10001~_{f}.png" => None; "too long")]
+#[test_case("x_~10000~_{f}.png" => Some(10000); "the longest")]
+#[test_case("x_{f}.png" => None; "not set")]
+fn fade_time(filename: &str) -> Option<i64> {
+    // Act, with the expected value checked by test_case
+    fade_time_from_filename(filename)
+}
+
+#[test]
+fn fade_split_file_names_read_back_as_fade_images() {
+    // Arrange
+    let spec = SplitSpec { threshold: Some(0.995), fade_time: Some(350), below: true, ..SPEC };
+    let name = build_filename(&spec, 5, 20, None);
+
+    // Act
+    let read = (filename_warnings(&name), fade_time_from_filename(&name), threshold_from_filename(&name));
+
+    // Assert
+    assert_eq!(read, (vec![], Some(350), Some(0.995)));
 }

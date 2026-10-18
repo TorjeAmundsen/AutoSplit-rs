@@ -8,10 +8,11 @@ use std::sync::Arc;
 
 use autosplit_core::image::{BgraImage, BgraView};
 use autosplit_core::imgproc::{ResizeBuffers, stretch_to_rgba};
-use autosplit_core::mask::{Mask, apply_mask};
-use autosplit_core::preset::{LoadedPreset, Preset, PresetError, load_presets};
+use autosplit_core::mask::{Mask, apply_mask, fade_image};
+use autosplit_core::preset::{LoadedPreset, Preset, PresetError, PresetSplit, load_presets};
 use autosplit_core::profile::UserProfile;
 use autosplit_core::split_folder::user_files;
+use autosplit_core::text::hex_color;
 use slint::{ComponentHandle, ModelRc, Rgba8Pixel, SharedPixelBuffer, SharedString, VecModel};
 
 use super::document::Document;
@@ -42,6 +43,8 @@ enum Source {
     File(PathBuf),
     /// The capture region, grabbed for the split.
     Grabbed(Arc<BgraImage>),
+    /// A fade split's color (RGB), which it's made of whatever was grabbed or picked for it.
+    Fade([u8; 3]),
 }
 
 impl Source {
@@ -50,6 +53,7 @@ impl Source {
         match self {
             Self::File(path) => file_name_text(path).unwrap_or_default(),
             Self::Grabbed(_) => "grabbed".into(),
+            Self::Fade(color) => format!("fade to {}", hex_color(*color)),
         }
     }
 
@@ -58,6 +62,7 @@ impl Source {
         match (self, other) {
             (Self::File(a), Self::File(b)) => a == b,
             (Self::Grabbed(a), Self::Grabbed(b)) => Arc::ptr_eq(a, b),
+            (Self::Fade(a), Self::Fade(b)) => a == b,
             _ => false,
         }
     }
@@ -68,6 +73,8 @@ impl Source {
                 .map(Arc::new)
                 .map_err(|error| format!("Couldn't read {}: {error}", path.display())),
             Self::Grabbed(image) => Ok(image.clone()),
+            // At the size grabs are compared at, which a mask is stretched to
+            Self::Fade(color) => Ok(Arc::new(BgraImage::solid(*color, 320, 240))),
         }
     }
 }
@@ -114,19 +121,24 @@ pub(super) struct Maker {
 /// What's been done for a split.
 #[derive(Clone, Default)]
 struct SplitWork {
-    /// What its image is made from.
-    source: Option<Source>,
+    /// The grab or screenshot it was given. What its image is made from is [`Maker::source`], which
+    /// for a fade split is its color, whatever this is: a split switched to a fade keeps it, for
+    /// switching back.
+    shot: Option<Source>,
     /// Its split image, once it's written.
     saved: Option<PathBuf>,
-    /// A small picture of its split image, once it's made from its source.
+    /// What `saved` was made from. A fade split's color is in its preset, so changing it doesn't
+    /// go through [`SplitWork::set_shot`].
+    saved_from: Option<Source>,
+    /// A small picture of its grab or screenshot, once it's made.
     thumb: Option<slint::Image>,
 }
 
 impl SplitWork {
-    /// Makes its image from `source` from now on: what was saved or pictured of the one before
-    /// is another image.
-    fn set_source(&mut self, source: Source) {
-        *self = Self { source: Some(source), ..Self::default() };
+    /// Makes its image from the grab or screenshot `shot` from now on: what was saved or pictured
+    /// of the one before is another image.
+    fn set_shot(&mut self, shot: Source) {
+        *self = Self { shot: Some(shot), ..Self::default() };
     }
 }
 
@@ -171,9 +183,18 @@ impl Maker {
         (self.splits, self.selected) = (vec![SplitWork::default(); count], 0);
     }
 
-    /// What split `index`'s image is made from, if anything.
-    fn source(&self, index: usize) -> Option<&Source> {
-        self.splits.get(index)?.source.as_ref()
+    /// What split `index`'s image is made from, if anything: a fade split's color, once it's
+    /// written right, or else its grab or screenshot.
+    fn source(&self, index: usize) -> Option<Source> {
+        if let Some(split) = self.fade_split(index) {
+            return split.fade_color().map(Source::Fade);
+        }
+        self.splits.get(index)?.shot.clone()
+    }
+
+    /// Split `index` of the shown preset, when it's a fade split.
+    fn fade_split(&self, index: usize) -> Option<&PresetSplit> {
+        self.shown()?.splits.get(index).filter(|split| split.is_fade())
     }
 }
 
@@ -228,14 +249,15 @@ fn maker_view(
     // Every other split is shaded, splits compared together as one
     let mut block = 0;
     let rows = (names.iter().enumerate())
-        .map(|(index, name)| MakerRow {
+        .map(|(index, name)| (index, name, thumb(maker, index)))
+        .map(|(index, name, thumb)| MakerRow {
             heading: maker.shown().map(|preset| split_heading(preset, index)).unwrap_or_default().into(),
             parts: file_name_parts(name),
             file: name.into(),
-            source: maker.source(index).map(Source::label).unwrap_or_default().into(),
+            source: maker.source(index).as_ref().map(Source::label).unwrap_or_default().into(),
             saved: in_place.get(index).copied().unwrap_or_default(),
-            thumb: maker.splits.get(index).and_then(|split| split.thumb.clone()).unwrap_or_default(),
-            has_thumb: maker.splits.get(index).is_some_and(|split| split.thumb.is_some()),
+            has_thumb: thumb.is_some(),
+            thumb: thumb.unwrap_or_default(),
             problem: problems.get(index).copied().unwrap_or_default(),
             joined: joined(index),
             shaded: {
@@ -256,13 +278,25 @@ fn maker_view(
         preset_problem: summary.unwrap_or_default(),
         can_grab: !maker.splits.is_empty() && usable,
         can_save_selected: maker.source(selected).is_some() && usable,
-        can_save_all: maker.splits.iter().any(|split| split.source.is_some()) && usable,
+        can_save_all: (0..maker.splits.len()).any(|index| maker.source(index).is_some()) && usable,
         can_test: in_place.get(selected).copied().unwrap_or_default() && usable,
         needs_grouping: !grouping && maker.loaded().is_some_and(|loaded| loaded.preset.needs_grouping()),
         working: maker.working > 0,
         has_savestates: usable && splits.iter().any(|split| !split.savestate.is_empty()),
         has_instructions: splits.iter().any(|split| !split.savestate.is_empty() && !split.instructions.is_empty()),
     }
+}
+
+/// The list's picture of split `index`: its color for a fade split, or of its grab or screenshot.
+fn thumb(maker: &Maker, index: usize) -> Option<slint::Image> {
+    if let Some(split) = maker.fade_split(index) {
+        // None while its color isn't written right
+        let [red, green, blue] = split.fade_color()?;
+        let (width, height) = THUMB_SIZE;
+        let pixels = [red, green, blue, 255].repeat(width * height);
+        return Some(slint::Image::from_rgba8(Pixels::clone_from_slice(&pixels, width as u32, height as u32)));
+    }
+    maker.splits.get(index)?.thumb.clone()
 }
 
 /// A game's name in the list of games.
@@ -317,7 +351,14 @@ impl Gui {
             }
         });
         on!(weak, maker, on_split_chosen, (index) gui => gui.choose_split(index as usize));
-        on!(weak, maker, on_grab, () gui => gui.send(UiCommand::Grab));
+        on!(weak, maker, on_grab, () gui => {
+            // Made from its color, so it doesn't wait for the capture
+            if gui.selected_fade() {
+                gui.grab_fade();
+            } else {
+                gui.send(UiCommand::Grab);
+            }
+        });
         on!(weak, maker, on_use_screenshots, () gui => gui.pick_screenshots());
         on!(weak, maker, on_save_selected, () gui => {
             let selected = gui.maker.borrow().selected;
@@ -489,10 +530,16 @@ impl Gui {
         self.refresh_instructions();
     }
 
+    /// Whether the selected split is a fade split, which Grab saves from its color.
+    fn selected_fade(&self) -> bool {
+        let maker = self.maker.borrow();
+        maker.fade_split(maker.selected).is_some()
+    }
+
     /// Why Grab can't work yet, which its tooltip says, or empty. The hotkey still tries, and says
-    /// so in a message.
+    /// so in a message. A fade split doesn't need the capture.
     fn grab_blocker(&self) -> &'static str {
-        if !self.state.borrow().document.profile.has_capture_device() {
+        if !self.selected_fade() && !self.state.borrow().document.profile.has_capture_device() {
             concat!(
                 "Pick a capture device in Settings (",
                 primary_key!(),
@@ -517,7 +564,15 @@ impl Gui {
     /// setting is changed and changed back while editing.
     fn saves_in_place(&self, names: &[String]) -> Vec<bool> {
         let folder = self.split_image_folder();
-        let saved: Vec<Option<PathBuf>> = self.maker.borrow().splits.iter().map(|split| split.saved.clone()).collect();
+        let maker = self.maker.borrow();
+        // A fade split saved in another color isn't its split image anymore
+        let saved: Vec<Option<PathBuf>> = (maker.splits.iter().enumerate())
+            .map(|(index, split)| {
+                let current = split.saved_from.as_ref().zip(maker.source(index));
+                split.saved.clone().filter(|_| current.is_some_and(|(from, now)| from.same(&now)))
+            })
+            .collect();
+        drop(maker);
         saves_in_place(&saved, names, folder.as_deref())
     }
 
@@ -541,6 +596,7 @@ impl Gui {
         window.set_preset_problem(view.preset_problem.into());
         window.set_can_grab(view.can_grab && grab_blocker.is_empty());
         window.set_grab_blocker(grab_blocker.into());
+        window.set_grab_fade(self.selected_fade());
         window.set_can_save_selected(view.can_save_selected);
         window.set_can_save_all(view.can_save_all);
         window.set_can_test(view.can_test);
@@ -579,6 +635,10 @@ impl Gui {
         if !self.windows.maker.window().is_visible() {
             return;
         }
+        // Like from the screenshot hotkey: it's made from its color
+        if self.selected_fade() {
+            return self.grab_fade();
+        }
         // The split's file name and mask aren't settled until the preset is saved
         if self.editing() {
             return self.show_message(Message::warning("Save or cancel the changes to the preset first, then grab."));
@@ -594,7 +654,7 @@ impl Gui {
         let selected = maker.selected;
         let count = maker.splits.len();
         let Some(split) = maker.splits.get_mut(selected) else { return };
-        split.set_source(Source::Grabbed(image));
+        split.set_shot(Source::Grabbed(image));
         drop(maker);
         self.make_thumbnails(vec![selected]);
         // Stays on the split when its image can't be saved, to grab it again once that's fixed
@@ -605,8 +665,27 @@ impl Gui {
         }
     }
 
+    /// Grab on a fade split: its split image is written from its color, and the next split is
+    /// selected, like after a grab.
+    fn grab_fade(self: &Rc<Self>) {
+        if self.editing() {
+            return self.show_message(Message::warning("Save or cancel the changes to the preset first, then grab."));
+        }
+        if self.refused_for_problems() {
+            return;
+        }
+        let maker = self.maker.borrow();
+        let (selected, count) = (maker.selected, maker.splits.len());
+        drop(maker);
+        if self.save_split_images(vec![selected]) && selected + 1 < count {
+            self.choose_split(selected + 1);
+        } else {
+            self.show_maker();
+        }
+    }
+
     /// Asks for screenshots: one for the selected split, or several for the splits in order from
-    /// the first, like AutoSplit numbers its screenshots.
+    /// the first, like AutoSplit numbers its screenshots. Fade splits don't use any.
     fn pick_screenshots(self: &Rc<Self>) {
         if self.refused_for_problems() {
             return;
@@ -639,21 +718,40 @@ impl Gui {
 
     fn use_screenshots(&self, paths: Vec<PathBuf>) {
         let mut maker = self.maker.borrow_mut();
-        let first = if paths.len() == 1 { maker.selected } else { 0 };
-        let count = maker.splits.len();
+        if paths.len() == 1 && maker.fade_split(maker.selected).is_some() {
+            drop(maker);
+            return self.windows.maker.set_status("Fade splits are made from their color, not a screenshot.".into());
+        }
+        // Fade splits are made from their color, so screenshots go to the others in order
+        let takes_screenshot: Vec<usize> =
+            (0..maker.splits.len()).filter(|&index| maker.fade_split(index).is_none()).collect();
+        let count = takes_screenshot.len();
+        let fades = maker.splits.len() - count;
+        // Without splits, like with no presets or all of them removed, there's no selected one
+        let selected = (maker.selected < maker.splits.len()).then_some(maker.selected);
+        let targets = if paths.len() == 1 { selected.into_iter().collect() } else { takes_screenshot };
         let mut set = Vec::new();
-        for (offset, path) in paths.iter().enumerate().filter(|(offset, _)| first + offset < count) {
-            maker.splits[first + offset].set_source(Source::File(path.clone()));
-            set.push(first + offset);
+        for (&index, path) in targets.iter().zip(&paths) {
+            maker.splits[index].set_shot(Source::File(path.clone()));
+            set.push(index);
         }
         drop(maker);
         self.make_thumbnails(set);
         // Unlike a grab, they're saved when asked
         let status = match paths.len() {
             1 => "Screenshot set for the selected split. Save Selected writes its split image.".to_owned(),
-            n if n == count => format!("{n} screenshots set, one for each split. Save All writes their split images."),
-            n => format!(
+            n if n == count && fades == 0 => {
+                format!("{n} screenshots set, one for each split. Save All writes their split images.")
+            }
+            n if n == count => format!(
+                "{n} screenshots set, one for each split that isn't a fade split. Save All writes their split images."
+            ),
+            n if fades == 0 => format!(
                 "{n} screenshots for {count} splits, set in order from the first. Save All writes their split images."
+            ),
+            n => format!(
+                "{n} screenshots for the {count} splits that aren't fade splits, set in order from the first. Save All \
+                 writes their split images."
             ),
         };
         self.windows.maker.set_status(status.into());
