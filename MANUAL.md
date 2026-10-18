@@ -8,6 +8,7 @@ Everything AutoSplit-rs does, to look things up. For setting it up the first tim
 - [Live Tester](#live-tester)
 - [Settings](#settings)
 - [Split image file names](#split-image-file-names)
+- [Fade images](#fade-images)
 - [Profiles](#profiles)
 - [Timers](#timers)
 - [Keyboard shortcuts](#keyboard-shortcuts)
@@ -72,7 +73,8 @@ The list shows each split's name over its file name, colored by what each part o
 ### Making the images
 
 - Grab saves the capture region for the selected split, with its mask, and selects the next split. The screenshot hotkey does the same while the window is open, so you can play through the category and press it at each split.
-- Use Screenshots... uses screenshot files instead, like the ones Take Screenshot saves. Pick one for the selected split, or several for the splits in order. Then press Save Selected or Save All.
+- On a [fade split](#fade-images), the button reads Grab* and saves the split image from the split's color instead of the capture, then selects the next split. It works without a capture device. The Capture Region is replaced by a note that the split needs no savestate or screen.
+- Use Screenshots... uses screenshot files instead, like the ones Take Screenshot saves. Pick one for the selected split, or several for the splits in order, skipping fade splits. Then press Save Selected or Save All. It's off while a fade split is selected.
 - Test opens the selected split's saved image in the [Live Tester](#live-tester).
 
 Saving asks before replacing split images, and before leaving older images of the same splits under other names, like after a threshold changed. Delete Old Images removes those, Keep Old Images keeps them. A green check mark over the Output Preview shows when images are saved. Screenshots that were in the split image folder move into its `base` folder, where they aren't read as split images.
@@ -81,7 +83,9 @@ The main window reads the split image folder again when Make Split Images closes
 
 ### Output Preview
 
-Until a split has an image, the Output Preview shows the capture with the split's mask, as Grab would save it. Click it, or the checkerboard button above it, to show what the mask removes as a checkerboard.
+Until a split has an image, the Output Preview shows the capture with the split's mask, as Grab would save it. Click it, or the checkerboard button above it, to show what the mask removes as a checkerboard. A fade split shows its color where its mask keeps the screen, or everywhere without a mask.
+
+![Make Split Images with a fade split selected: its color swatch in the split list, Grab* below the list, the Fade Split note in place of the Capture Region, and the Output Preview showing the color in the mask's shape](docs/make-split-images-fade.png)
 
 ### Generate Profile
 
@@ -117,7 +121,7 @@ Edit, next to the preset, edits it, and New starts a new preset for the same gam
   - A grayed-out name can't be inserted, like a fifth reset image. When you pick it, a red line above the buttons says why.
   - The window stays open. Saving the preset copies the masks and savestates of inserted splits into it.
 
-  ![Split Library: the ready-made splits listed on the left, with where the preset has them already, and EnterDeku picked on the right, its dummy and its split each with a screenshot, settings and file name, above Insert Above and Insert Below](docs/split-library.png)
+  ![Split Library: the ready-made splits listed on the left, with where the preset has them already, and KokiriSwordLeft picked on the right, its two images each with a screenshot, settings and file name, above Insert Above and Insert Below](docs/split-library.png)
 
 - Grabs and screenshots stay with their splits while you change them. Grab itself is hidden while editing, since a split's file name and mask aren't settled until the preset is saved.
 
@@ -126,12 +130,18 @@ Each split has:
 | Field | What it is |
 | --- | --- |
 | Type | Split, Start Image or Reset Image. Start and reset images are named `start_auto_splitter` and `reset`, so their name can't be changed. A preset can have up to 4 of each. |
-| Name | The part of the file name after the number. It can't contain `reset` or `start_auto_splitter`, or the characters `#@{}()[]^`, which file names use for settings. |
-| Mask | A PNG that's opaque where the screen is compared. |
+| Compare | Screenshot compares the screen with a grab or screenshot. Fade waits for the screen to fade to a color, see [Fade images](#fade-images). |
+| Name | The part of the file name after the number. It can't contain `reset` or `start_auto_splitter`, or the characters `#@{}()[]^~`, which file names use for settings. |
+| Color, Fade ms | For a fade split: the color the screen fades to, as a hex code like `#000000`, and about how long the fade takes in milliseconds. |
+| Mask | A PNG that's opaque where the screen is compared. A fade split doesn't need one, and Clear removes it. |
 | Threshold, Delay, Pause | Unticked, they use the profile's default and stay out of the file name. Changing a value ticks it. |
 | Dummy, Split below threshold | The `{d}` and `{b}` flags. |
 | Same split as the one above | Compares the split for the same split as the one above it, so either one matching splits. Up to 4 splits can be together. See [Several images for one split](#several-images-for-one-split). |
-| Savestate and instructions | For Copy Savestates and Savestate Instructions. |
+| Savestate and instructions | For Copy Savestates and Savestate Instructions. A fade split doesn't have them, since its image comes from its color. |
+
+Switching Compare to Fade ticks Threshold and sets it to 0.995, and switching back gives the split its old threshold, color and fade time again.
+
+![Make Split Images while editing a fade split: Compare set to Fade, the Color field with its swatch and Fade ms, the Mask with Clear, and the threshold at 0.995](docs/make-split-images-fade-editing.png)
 
 The Output Preview has two more buttons while editing:
 
@@ -173,6 +183,7 @@ The right side keeps the frames that would have made the image act in a run:
 - With `{b}`, it keeps the frame that reached the threshold, the frame that dropped back below it, and the frame after the delay if there is one.
 - A dummy image (`{d}`) acts right away, without its delay.
 - A reset image keeps the frame that reached the threshold.
+- A [fade image](#fade-images) keeps the frame where the fade reached the threshold. The line next to Start Over says when the screen reached the threshold without fading there, like after a cut, so you can tell a cut from a missed fade.
 
 `<` and `>` above the frames go through them. Start Over clears them and Highest. The tester takes one image at a time, so the images of a [grouped split](#several-images-for-one-split) are tested one by one.
 
@@ -195,7 +206,7 @@ File > Settings has four tabs.
 
 The defaults for split images whose file names don't set their own.
 
-![The Image Settings tab with the default comparison method, threshold, delay and pause, and the checkboxes below them](docs/settings-image.png)
+![The Image Settings tab with the default comparison method, threshold, delay and pause, the Fade Color Tolerance, and the checkboxes below them](docs/settings-image.png)
 
 | Setting | What it does |
 | --- | --- |
@@ -203,6 +214,7 @@ The defaults for split images whose file names don't set their own.
 | Default Similarity Threshold | The similarity an image has to reach to split. |
 | Default Delay Time | How long to wait after a match before splitting, in milliseconds. |
 | Default Pause Time | How long to stop comparing after a split, in seconds. It keeps two similar images in a row from splitting at once. |
+| Fade Color Tolerance | How far off, in levels out of 255, each color channel of the screen can be from a [fade image](#fade-images)'s color and still count as that color. 15 by default. Raise it if a capture shows the color a little off. |
 | Loop Last Split Image to First Split Image | After the last image splits, start over with the first. |
 | Start also Resets | When the start image matches, reset the timer first, then start it. |
 | Enable auto reset image | Use the reset image. The toggle auto reset image hotkey turns it on and off. |
@@ -243,12 +255,14 @@ A split image's file name can set its own values, which override the defaults fr
 | Times to split on this image in a row | between at signs | `@3@` |
 | Comparison method: 0 L2 Norm, 1 Histograms, 2 pHash | between carets | `^1^` |
 | Flags | between curly brackets | `{db}` |
+| Fade time, in milliseconds, for a fade image | between tildes | `~1000~` |
 
 Flags, several of which can go in one pair of brackets:
 
 - `{d}`: dummy split. When it matches, AutoSplit-rs moves on to the next image without splitting.
 - `{b}`: split when the similarity drops below the threshold, after it went above it.
 - `{p}`: press the pause hotkey instead of the split hotkey.
+- `{f}`: a [fade image](#fade-images), which splits when the screen fades to its color.
 
 Examples:
 
@@ -256,6 +270,7 @@ Examples:
 - `02_Boss_(0.9)_[10]_{d}.png`: the same, as a dummy split.
 - `03_Door_(0.85)_[20]_#3500#.png`: threshold 0.85, splits 3.5 seconds after matching, then pauses 20 seconds.
 - `04_Text_(0.9)_[10]_#3500#_@3@_{b}.png`: also splits 3 times in a row, each time when the similarity drops below 0.9.
+- `05_Credits_(0.995)_~1000~_{f}.png`: splits when the screen fades to the image's color over about a second.
 
 Values need their closing character, so `(0.9` sets nothing.
 
@@ -286,6 +301,27 @@ Some splits look different from run to run, like a boss that dies in one of two 
 - A folder can also have up to 4 start images and up to 4 reset images, like `reset.png` and `reset_2.png`. Without the setting, a folder with more than one is refused.
 - The similarity viewer gets a row for each image. With Show a split's images in a 2x2 grid, the current image area shows them all.
 
+## Fade images
+
+A fade image splits when the screen fades to a color, like the fade to black or white when you enter a loading zone. It splits on the frame the fade ends, and it doesn't split when the screen cuts to the color at once, like on a console reset, or when a scene is just dark.
+
+Make Split Images makes them from a preset's fade splits, with Grab*. By hand, give the image the `{f}` flag:
+
+- The image is one color wherever it isn't transparent, like a 1x1 PNG of the color. A screenshot of the faded screen rarely is, since captures are a little noisy, so it won't load.
+- Make the parts that don't fade transparent, like a [masked image](#masked-images). Only the rest has to reach the color.
+- `~ms~` says about how long the fade takes, 1000 ms without it. It can be 150 to 10000 ms, and fades up to twice as long still count. Time the fade from when the screen starts to change until it's fully the color.
+- Use the game's own color, not what your capture shows. Fade Color Tolerance in [Image Settings](#image-settings) lets each of red, green and blue be up to 15 levels off by default, for captures whose colors are a little off.
+- Fade images always compare by color, so `^N^` and the comparison method are ignored for them.
+- At least 3 comparisons have to fall within the fade, so a short fade with a low Comparison FPS Limit warns when the folder loads.
+
+The similarity is how close the screen is to the color, counting how even it is, so a dark scene with something lit in it stays below the threshold. Use a high threshold, 0.995 is a good start, so it splits on the first frame that's fully the color and not the one before. On a noisy capture, like an analog one, the screen never quite reaches 1: open the image in the [Live Tester](#live-tester), let the fade happen, and set the threshold about 0.002 below the similarity the faded screen settles at.
+
+If something stays on screen through the fade, like an area name or a lighter part at the top, mask it out.
+
+With `{b}`, a fade image splits when the color goes away after the fade, like when the next area shows. A fade image also works as a start or reset image.
+
+![The Live Tester with a fade image: the method cell shows the color, fade time and tolerance, and the frame where the fade reached the threshold is kept on the right](docs/live-tester-fade.gif)
+
 ## Profiles
 
 A profile (`.toml`) holds all the settings, including the capture region. File > Save Profile, Save Profile As and Load Profile save and open them. If there's exactly one `.toml` file next to the program, it's loaded at start. Profiles from Toufool's AutoSplit load as they are, and profiles saved here load there. Closing with unsaved changes asks whether to save them.
@@ -306,6 +342,7 @@ default_similarity_threshold = 0.95
 timer_connection = "livesplit_one"  # optional, see Timers
 group_split_images = true  # optional, see Several images for one split
 split_image_grid = true  # optional, shows those images in a 2x2 grid
+fade_color_tolerance = 20  # optional, see Fade images
 
 [capture_region]  # in pixels of the device's frames; `autosplit grab` shows their size
 x = 0
@@ -437,8 +474,9 @@ autosplit check settings.toml [--split-dir folder]
 # Similarity of a split image against a captured frame, with every method
 autosplit compare "split_(0.95).png" frame.png [--profile settings.toml]
 
-# The same for each frame in a folder of PNG frames, as CSV with a column per method
-autosplit compare "split_(0.95).png" frames/ --fps 60 > similarity.csv
+# The same for each frame in a folder of PNG frames, as CSV with a column per method,
+# and for a fade image a fade column with its similarity to the color
+autosplit compare "split_(0.95).png" frames/ --fps 60 [--profile settings.toml] > similarity.csv
 
 # Run the split logic over a folder of recorded PNG frames
 autosplit replay settings.toml frames/ --fps 60 [--auto-controlled]

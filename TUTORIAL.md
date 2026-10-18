@@ -98,6 +98,8 @@ AutoSplit-rs comes with presets for some categories: a list of the category's sp
 
 If a grab didn't come out right, select that split and grab it again.
 
+Some splits are fade splits, which split when the screen fades to a color, like the fade to black when you leave an area. Their image is made from the color, not the capture, so when one is selected the button reads Grab*. Click it, or press the screenshot hotkey, to save it and move on, wherever you are in the game. They need no savestate.
+
 ### Savestates
 
 Some presets come with savestates for a practice tool on the console, like gz for Ocarina of Time, so you can jump to each split's screen instead of playing the whole run. Click Copy Savestates, paste them where the practice tool loads them from, like its folder on the SD card, and load each one when you grab its split. Savestate Instructions says what to do with the savestates that need more than loading, and highlights the split you're on.

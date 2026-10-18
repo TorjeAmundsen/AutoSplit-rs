@@ -38,6 +38,7 @@ The workspace has four crates:
 | --- | --- |
 | The split state machine | `autosplit-core/src/runner.rs` |
 | The Live Tester's decisions | `autosplit-core/src/tester.rs` |
+| Fade images: the similarity to a color and telling a fade from a cut | `autosplit-core/src/fade.rs` |
 | Presets and their masks | `autosplit-core/src/preset.rs`, `mask.rs`, `filename.rs` |
 | Writing the split library | `autosplit-core/src/library.rs` |
 | A running session | `autosplit-cli/src/session.rs`, fed by `device.rs` (capture), `hotkeys.rs`, `livesplit.rs`, `livesplit_one.rs` and `molok.rs` |
@@ -103,9 +104,9 @@ Debug builds (`cargo run`) can write the library, so you don't have to write `sp
 2. Select the first split and click **Add to Library...**. For a ready-made split of several images, raise **Images** to take the splits after it too.
 3. Write a description and save.
 
-This copies the masks and savestates into the game's library folder, which is made if the game has none yet. It writes each base image at 64x48 from the split's grab or screenshot, or else from the live capture. To use another screenshot instead, click **Picture...** beside that image.
+This copies the masks and savestates into the game's library folder, which is made if the game has none yet. It writes each base image at 64x48 from the split's grab or screenshot, or else from the live capture. To use another screenshot instead, click **Picture...** beside that image. Each image's name can be changed in the field above its file name, like a generic `FastBlackFade` for a split made from the preset's `ExitKokiriShop`. The preset keeps its own names.
 
-In the Split Library window, **Edit...** changes an entry's description. With **Replace** ticked, it also takes the entry's images and settings from the selected splits again, so you can insert an entry, tune it in the editor, and save it back. **Picture...** in the Edit window replaces just that image's base image, leaving the rest as it is. **Delete...** removes an entry.
+In the Split Library window, **Edit...** changes an entry's description and its images' names. A renamed image's mask and base image are renamed with it, unless another entry uses the same mask. With **Replace** ticked, it also takes the entry's images and settings from the selected splits again, so you can insert an entry, tune it in the editor, and save it back. **Picture...** in the Edit window replaces just that image's base image, leaving the rest as it is. **Delete...** removes an entry.
 
 How the writes protect the library:
 
