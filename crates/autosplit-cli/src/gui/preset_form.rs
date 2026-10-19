@@ -622,10 +622,11 @@ pub fn settings_problem(entry: &[PresetSplit], place: usize, from: &PresetSplit)
     None
 }
 
-/// What taking the settings of `from` changes about a ready-made split's image `step`, like
-/// From ScrubsDummyLow: threshold default to 0.92. `savestates` are the file names of its
-/// savestate and the new one, or none when it's the same file.
-pub fn settings_changes(step: &PresetSplit, from: &PresetSplit, savestates: Option<(String, String)>) -> String {
+/// What taking the settings of `from` changes about a ready-made split's image `step`, each like
+/// threshold default to 0.92, but its savestate, which is compared as a file. These are all the
+/// settings it takes, since it keeps its own name and mask, so they decide whether anything
+/// changes as well as what's shown.
+pub fn changed_settings(step: &PresetSplit, from: &PresetSplit) -> Vec<String> {
     fn shown<T: ToString>(value: &Option<T>) -> String {
         value.as_ref().map_or_else(|| "default".to_owned(), T::to_string)
     }
@@ -643,11 +644,19 @@ pub fn settings_changes(step: &PresetSplit, from: &PresetSplit, savestates: Opti
     compare("dummy", step.dummy.to_string(), from.dummy.to_string());
     compare("below", step.below.to_string(), from.below.to_string());
     compare("with previous", step.with_previous.to_string(), from.with_previous.to_string());
-    if let Some((old, new)) = savestates {
-        compare("savestate", old, new);
-    }
     if step.instructions != from.instructions {
         changes.push("instructions".to_owned());
+    }
+    changes
+}
+
+/// What taking the settings of `from` changes about a ready-made split's image `step`, like
+/// From ScrubsDummyLow: threshold default to 0.92. `savestates` are the file names of its
+/// savestate and the new one, or none when it's the same file.
+pub fn settings_changes(step: &PresetSplit, from: &PresetSplit, savestates: Option<(String, String)>) -> String {
+    let mut changes = changed_settings(step, from);
+    if let Some((old, new)) = savestates {
+        changes.push(format!("savestate {old} to {new}"));
     }
     let heading = library_heading(from);
     if changes.is_empty() {

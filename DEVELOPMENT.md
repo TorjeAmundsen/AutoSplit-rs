@@ -106,7 +106,13 @@ Debug builds (`cargo run`) can write the library, so you don't have to write `sp
 
 This copies the masks and savestates into the game's library folder, which is made if the game has none yet. It writes each base image at 64x48 from the split's grab or screenshot, or else from the live capture. To use another screenshot instead, click **Picture...** beside that image. Each image's name can be changed in the field above its file name, like a generic `FastBlackFade` for a split made from the preset's `ExitKokiriShop`. The preset keeps its own names.
 
-In the Split Library window, **Edit...** changes an entry's description and its images' names. A renamed image's mask and base image are renamed with it, unless another entry uses the same mask. With **Replace** ticked, it also takes the entry's images and settings from the selected splits again, so you can insert an entry, tune it in the editor, and save it back. **Picture...** in the Edit window replaces just that image's base image, leaving the rest as it is. **Delete...** removes an entry.
+In the Split Library window, **Edit...** opens an entry, and its **Change** list picks what saving changes:
+
+- **Description, names and pictures only**: a renamed image's mask and base image are renamed with it, unless another entry uses the same mask. **Picture...** replaces just that image's base image, leaving the rest as it is.
+- **Also settings and savestates, from the selected splits**: each image takes its settings and savestate from the split selected in the preset at its place, and keeps its mask and base image. Insert the entry, fix its settings and pick its savestate in the editor, try it in the Live Tester, then select its first split and save it back. Each image's row says what changes. The selected splits have to be the entry's own images, in order, and an image without a mask has to stay a fade split.
+- **Everything, made again from the selected splits**: takes the images and settings again, like Add to Library.
+
+**Delete...** removes an entry. Debug builds show each image's savestate in the Split Library as `splits.toml` names it, marked when the file is missing. Release builds only say whether there is one.
 
 How the writes protect the library:
 
@@ -114,6 +120,8 @@ How the writes protect the library:
 - Files that no entry uses anymore are deleted.
 - Saving refuses if the entry changed since its window opened.
 - Edit and Delete won't write over or delete a file that a split in the preset being edited still uses. Save the preset first, which copies those files into it.
+- A new savestate with the same contents as one the library has already, in another file, can use that file instead. Saving asks, and only about savestates new to the library. Saving a preset asks the same about its savestates.
+- A file written over one whose name differs only in case keeps the old spelling, so `splits.toml` names it the way git has it on every system.
 
 ## Release builds
 
@@ -158,7 +166,17 @@ The targets are `windows-x64`, `windows-arm64`, `linux-x64`, `linux-arm64` and `
 
 1. checks formatting and clippy,
 2. draws every window without a display,
-3. runs the tests and a release build for every target, natively on Windows, Linux and macOS, x64 and ARM64. The x64 half of the macOS build is tested under Rosetta 2.
+3. runs the tests and a release build for every target, natively on Windows, Linux and macOS, x64 and ARM64. The x64 half of the macOS build is tested under Rosetta 2,
+4. checks with `tools/check_savestates.py` that every `.gzs` in `presets/` and `splits/` was saved with gz 0.3.7. Newer gz builds save a format that 0.3.7 loads without complaint, and then the game crashes.
+
+Its first job sorts the files a pull request or push changed, so only what a change can affect runs:
+
+- Changes to docs (`*.md`, `docs/`) and `tools/` scripts alone run nothing.
+- Changes to `presets/` and `splits/` alone run the savestate check, and on Linux x64 the tests that read presets and the library.
+- Any other change runs steps 1 to 3. The savestate check runs too when `presets/`, `splits/`, the script or the workflow changed.
+- Manual runs and releases run everything.
+
+The **CI passed** job fails when another job failed or was cancelled, and passes when they were skipped, so it's the one check for branch protection to require.
 
 The tests run in the `ci` profile, which is release without link-time optimization, because that's much quicker to build. Only runs on `main` save their build caches, which every branch can read.
 

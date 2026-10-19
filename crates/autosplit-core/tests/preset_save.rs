@@ -175,16 +175,16 @@ fn a_file_with_the_same_contents_is_found_among_others() {
     let folder = tempfile::tempdir().unwrap();
     let picked = folder.path().join("picked.gzs");
     file(&picked, "link's house");
-    let (other, match_) = (folder.path().join("other.gzs"), folder.path().join("000.gzs"));
+    let (other, same) = (folder.path().join("other.gzs"), folder.path().join("000.gzs"));
     file(&other, "lost woods!!");
-    file(&match_, "link's house");
-    let files = [other.as_path(), picked.as_path(), match_.as_path()];
+    file(&same, "link's house");
+    let files = [other.as_path(), picked.as_path(), same.as_path()];
 
     // Act
     let found = (same_contents_as(&picked, files), same_contents_as(&other, files));
 
     // Assert
-    assert_eq!(found, (Some(match_.as_path()), None));
+    assert_eq!(found, (Some(same.as_path()), None));
 }
 
 #[test]

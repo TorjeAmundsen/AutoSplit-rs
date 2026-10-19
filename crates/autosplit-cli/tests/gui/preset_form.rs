@@ -952,12 +952,13 @@ fn ready_made_splits_take_settings_but_keep_their_name_and_mask() {
     assert_eq!(updated, expected);
 }
 
-#[test_case(None => "From ScrubsDummyLow: threshold default to 0.92, dummy false to true"; "settings")]
-#[test_case(Some(("none", "013-deku tree.gzs")) => "From ScrubsDummyLow: threshold default to 0.92, dummy false to true, savestate none to 013-deku tree.gzs"; "and another savestate")]
-fn settings_taken_from_the_preset_say_what_changes(savestates: Option<(&str, &str)>) -> String {
+#[test_case(false, None => "From ScrubsDummyLow: no changes"; "the same settings")]
+#[test_case(true, None => "From ScrubsDummyLow: threshold default to 0.92, dummy false to true"; "settings")]
+#[test_case(true, Some(("none", "013-deku tree.gzs")) => "From ScrubsDummyLow: threshold default to 0.92, dummy false to true, savestate none to 013-deku tree.gzs"; "and another savestate")]
+fn settings_taken_from_the_preset_say_what_changes(changed: bool, savestates: Option<(&str, &str)>) -> String {
     // Arrange
     let step = PresetSplit { threshold: None, ..library_split("ScrubsDummyLow") };
-    let from = PresetSplit { threshold: Some(0.92), dummy: true, ..step.clone() };
+    let from = if changed { PresetSplit { threshold: Some(0.92), dummy: true, ..step.clone() } } else { step.clone() };
 
     // Act
     settings_changes(&step, &from, savestates.map(|(old, new)| (old.to_owned(), new.to_owned())))
@@ -1004,18 +1005,6 @@ fn too_few_splits_selected_says_what_to_select(names: &[&str]) -> String {
 
     // Act
     too_few_selected(&entry)
-}
-
-#[test]
-fn settings_taken_from_the_same_split_change_nothing() {
-    // Arrange
-    let step = library_split("Escape");
-
-    // Act
-    let text = settings_changes(&step, &step, None);
-
-    // Assert
-    assert_eq!(text, "From Escape: no changes");
 }
 
 #[test_case(Some(1), 1, 2, true => 3; "above the selected split, which stays selected")]

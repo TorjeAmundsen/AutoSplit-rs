@@ -562,37 +562,16 @@ fn find(from: &Path, path: &str) -> Result<PathBuf, PresetError> {
 /// Paths are found from `from`, like [`save_preset`] finds them. Savestates that can't be read
 /// are left out, for saving to say.
 pub fn duplicate_savestates(from: &Path, preset: &Preset) -> Vec<(usize, String)> {
-    // Each savestate's file and its size, which only takes its metadata
-    let files: Vec<(usize, PathBuf, u64)> = (preset.splits.iter().enumerate())
-        .filter(|(_, split)| !split.savestate.is_empty())
-        .filter_map(|(index, split)| {
-            let file = find(from, &split.savestate).ok()?;
-            let size = std::fs::metadata(&file).ok()?.len();
-            Some((index, file, size))
-        })
+    let files: Vec<Option<PathBuf>> = (preset.splits.iter())
+        .map(|split| if split.savestate.is_empty() { None } else { find(from, &split.savestate).ok() })
         .collect();
-    // A file of a size no other file has can't have the same contents, so it's never read
-    let mut sizes: HashMap<u64, HashSet<&Path>> = HashMap::new();
-    for (_, file, size) in &files {
-        sizes.entry(*size).or_default().insert(file);
-    }
-    // The first savestate with each contents: its file and how the preset names it
-    let mut first: HashMap<Vec<u8>, (&Path, &str)> = HashMap::new();
-    let mut duplicates = Vec::new();
-    for (index, file, size) in &files {
-        if sizes[size].len() < 2 {
-            continue;
-        }
-        let Ok(contents) = std::fs::read(file) else { continue };
-        match first.get(&contents) {
-            Some((kept, savestate)) if *kept != file.as_path() => duplicates.push((*index, (*savestate).to_owned())),
-            Some(_) => {}
-            None => {
-                first.insert(contents, (file, &preset.splits[*index].savestate));
-            }
-        }
-    }
-    duplicates
+    let places: Vec<Option<&Path>> = files.iter().map(Option::as_deref).collect();
+    // Named as the preset names the first split's file, which `find` made canonical like these
+    let named = |kept: &Path| {
+        let first = files.iter().position(|file| file.as_deref() == Some(kept))?;
+        Some(preset.splits[first].savestate.clone())
+    };
+    (duplicates_among(&places, []).into_iter()).filter_map(|(index, kept)| Some((index, named(&kept)?))).collect()
 }
 
 /// The first of `files` with the same contents as `file` but in another file, which can be used
