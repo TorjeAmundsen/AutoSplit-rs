@@ -512,16 +512,22 @@ impl Gui {
         }));
     }
 
-    /// The images of `steps` whose savestate has the same contents as one the game's library has
-    /// in another file, or an earlier image of `steps`, each with that file. Files the images use
-    /// themselves only count once an earlier image keeps theirs, so two of them never trade files.
+    /// The images of `steps` whose savestate is new to the library and has the same contents as
+    /// one the game's library has in another file, or an earlier image of `steps`, each with that
+    /// file. Files the images use themselves only count once an earlier image keeps theirs, so two
+    /// of them never trade files.
     fn library_duplicates(&self, game: &str, steps: &[NewStep]) -> Vec<(usize, PathBuf)> {
         let maker = self.maker.borrow();
         let library: Vec<PathBuf> = (maker.library.splits_for(game).into_iter())
             .flat_map(|(folder, _, steps)| steps.iter().filter_map(move |step| library_savestate(&step.split, folder)))
             .collect();
         let files: Vec<Option<&Path>> = steps.iter().map(|step| step.savestate.as_deref()).collect();
-        duplicates_among(&files, library.iter().map(PathBuf::as_path))
+        let mut duplicates = duplicates_among(&files, library.iter().map(PathBuf::as_path));
+        // Only savestates new to the library: its own were kept on purpose, or before this was
+        // asked, so they aren't asked about every time
+        let saved: Vec<PathBuf> = library.iter().map(|path| canonical(path)).collect();
+        duplicates.retain(|(place, _)| files[*place].is_none_or(|file| !saved.contains(&canonical(file))));
+        duplicates
     }
 
     /// Writes the ready-made split: a new one for `game` with `steps`, or the one being edited with

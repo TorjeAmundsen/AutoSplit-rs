@@ -2,13 +2,14 @@
 //! draft, which the output preview shows masked on the capture as it changes. Saving writes it
 //! with its files into its folder, or a new one.
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use autosplit_core::filename::DEFAULT_FADE_TIME;
 use autosplit_core::mask::Mask;
 use autosplit_core::preset::{
-    Preset, PresetSplit, delete_preset, duplicate_savestates, new_preset_folder, save_preset,
+    PRESET_FILE, Preset, PresetSplit, delete_preset, duplicate_savestates, new_preset_folder, save_preset,
 };
 use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
 
@@ -602,7 +603,20 @@ impl Gui {
             Some(folder) => folder.clone(),
             None => new_preset_folder(&presets_folder(), &preset.name),
         };
-        let duplicates = duplicate_savestates(source.as_deref().unwrap_or(&target), &preset);
+        let from = source.as_deref().unwrap_or(&target);
+        // Only savestates this save adds: the saved preset's were kept on purpose, or before this
+        // was asked, so they aren't asked about every time
+        let saved: HashSet<PathBuf> = (source.as_deref())
+            .and_then(|folder| Preset::load(&folder.join(PRESET_FILE)).ok())
+            .map(|saved| {
+                (saved.splits.iter())
+                    .filter(|split| !split.savestate.is_empty())
+                    .map(|split| canonical(&from.join(&split.savestate)))
+                    .collect()
+            })
+            .unwrap_or_default();
+        let mut duplicates = duplicate_savestates(from, &preset);
+        duplicates.retain(|(index, _)| !saved.contains(&canonical(&from.join(&preset.splits[*index].savestate))));
         if duplicates.is_empty() {
             return self.write_draft(source, target, preset);
         }

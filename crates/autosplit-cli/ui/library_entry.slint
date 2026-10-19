@@ -206,10 +206,11 @@ export component LibraryEntryWindow inherits Window {
                     }
                 }
 
+                // Wrapped, since what taking the selected splits' settings changes can be long
                 Text {
                     color: Theme.secondary-text;
                     text: step.source;
-                    overflow: elide;
+                    wrap: word-wrap;
                 }
             }
 
