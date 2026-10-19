@@ -473,6 +473,14 @@ export component LibraryWindow inherits Window {
                                 wrap: word-wrap;
                             }
 
+                            // Under its name, since it's for the whole ready-made split, not just
+                            // its last image
+                            if root.item.description != "": Text {
+                                wrap: word-wrap;
+                                color: Theme.text;
+                                text: root.item.description;
+                            }
+
                             // What each image sets, numbered when there are several, with the image
                             // at its own size to the right, in a box that keeps its place when
                             // there's no picture, then its file name and savestate. Every label
@@ -536,12 +544,6 @@ export component LibraryWindow inherits Window {
                                 Files {
                                     step: step;
                                 }
-                            }
-
-                            if root.item.description != "": Text {
-                                wrap: word-wrap;
-                                color: Theme.text;
-                                text: root.item.description;
                             }
                         }
                     }
