@@ -5,8 +5,9 @@ name = "reset"
 mask = "reset.png"
 threshold = 0.96
 pause = 0.1
+savestate = "000_start_and_reset.gzs"
 description = "Automatically reset when pressing C-up in Link's house (With rupee count to prevent resetting after a savewarp)"
-base_image = "base_links_house.png"
+base_image = "base_reset.png"
 
 [[split]]
 name = "start_auto_splitter"
@@ -14,16 +15,18 @@ mask = "start.png"
 threshold = 0.96
 pause = 10.0
 below = true
+savestate = "000_start_and_reset.gzs"
 description = "Starts the auto splitter when you move after pressing C-up."
-base_image = "base_links_house.png"
+base_image = "base_start_auto_splitter.png"
 
 [[split]]
 name = "Escape"
 mask = "escape.png"
 threshold = 0.97
 delay = 150
+savestate = "001 escape.gzs"
 description = "Aqua escape in Lost Woods, splits on full white fade."
-base_image = "base_aqua_escape.png"
+base_image = "base_Escape.png"
 
 [[split]]
 name = "Bottle"
@@ -32,6 +35,7 @@ threshold = 0.93
 pause = 35.0
 delay = 1100
 below = true
+savestate = "004 bottle.gzs"
 description = "Splits on bottle model over head, common manual split timing."
 base_image = "base_bottle.png"
 
@@ -47,6 +51,7 @@ base_image = "base_WhiteFlash.png"
 name = "Ganon"
 mask = "final_slash_zelda.png"
 threshold = 0.92
+savestate = "013 ganon.gzs"
 description = "Final slash on Ganon, standard RTA ending frame."
 base_image = "base_ganon.png"
 

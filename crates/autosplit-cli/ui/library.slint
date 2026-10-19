@@ -25,6 +25,10 @@ export struct LibraryStep {
     // The file name it gets, with XX for its number, which comes from where it's put
     file-parts: [NamePart],
     file: string,
+    // Its savestate, as the library's file has it in developer builds and whether it has one in
+    // others, or empty without one. Missing when the file isn't there.
+    savestate: string,
+    savestate-missing: bool,
 }
 
 export struct LibraryItem {
@@ -52,6 +56,8 @@ component Setting inherits HorizontalLayout {
     in property <NameKind> kind;
     // What it shows without a value
     in property <string> empty: "Default";
+    // The value is something to fix, like a file that isn't there
+    in property <bool> warning;
     spacing: 6px;
 
     Text {
@@ -66,7 +72,7 @@ component Setting inherits HorizontalLayout {
         min-width: 0px;
         overflow: elide;
         font-weight: root.value == "" ? 400 : 600;
-        color: root.value == "" ? Theme.secondary-text : NameColors.of({ kind: root.kind });
+        color: root.warning ? Theme.warning : root.value == "" ? Theme.secondary-text : NameColors.of({ kind: root.kind });
         text: root.value == "" ? root.empty : root.value;
     }
 }
@@ -103,6 +109,13 @@ component Settings inherits VerticalLayout {
         value: (root.step.dummy ? "Dummy" : "") + (root.step.dummy && root.step.below ? ", " : "") + (root.step.below ? "Below threshold" : "") + ((root.step.dummy || root.step.below) && root.step.fade != "" ? ", " : "") + (root.step.fade != "" ? "Fade to " + root.step.fade : "");
         kind: NameKind.flags;
     }
+}
+
+// An image's file name and savestate, under its picture and settings so they get the pane's whole
+// width: a file name with many settings in it is long
+component Files inherits VerticalLayout {
+    in property <LibraryStep> step;
+    spacing: 1px;
 
     // Colored like the split list's file names, cut off when the pane is narrow
     HorizontalLayout {
@@ -123,6 +136,14 @@ component Settings inherits VerticalLayout {
                 file: root.step.file;
             }
         }
+    }
+
+    Setting {
+        label: "Savestate";
+        empty: "None";
+        value: root.step.savestate;
+        kind: NameKind.text;
+        warning: root.step.savestate-missing;
     }
 }
 
@@ -177,7 +198,7 @@ export component LibraryWindow inherits Window {
     in property <string> window-title: "Split Library";
     title: root.window-title;
     icon: @image-url("../assets/icon.png");
-    preferred-width: 600px;
+    preferred-width: 680px;
     preferred-height: 520px;
     min-width: 480px;
     min-height: 280px;
@@ -464,51 +485,60 @@ export component LibraryWindow inherits Window {
                             }
 
                             // Each image at its own size, beside what it sets, numbered when there are
-                            // several, in a box that keeps its place when there's no picture
-                            for step[step-index] in root.item.steps: HorizontalLayout {
-                                spacing: 10px;
+                            // several, in a box that keeps its place when there's no picture, then
+                            // its file name and savestate
+                            for step[step-index] in root.item.steps: VerticalLayout {
+                                spacing: 3px;
 
-                                VerticalLayout {
-                                    alignment: start;
+                                HorizontalLayout {
+                                    spacing: 10px;
 
-                                    Rectangle {
-                                        width: max(64px, thumb.preferred-width) + 2px;
-                                        height: max(48px, thumb.preferred-height) + 2px;
-                                        border-width: 1px;
-                                        border-color: Theme.separator;
+                                    VerticalLayout {
+                                        alignment: start;
 
-                                        thumb := Image {
-                                            source: step.thumb;
-                                            image-rendering: pixelated;
+                                        Rectangle {
+                                            width: max(64px, thumb.preferred-width) + 2px;
+                                            height: max(48px, thumb.preferred-height) + 2px;
+                                            border-width: 1px;
+                                            border-color: Theme.separator;
+
+                                            thumb := Image {
+                                                source: step.thumb;
+                                                image-rendering: pixelated;
+                                            }
+
+                                            // No picture to show, like a base image that couldn't
+                                            // be read
+                                            if step.thumb.width == 0: Text {
+                                                horizontal-alignment: center;
+                                                vertical-alignment: center;
+                                                font-size: 10px;
+                                                color: Theme.secondary-text;
+                                                text: "No image";
+                                            }
+                                        }
+                                    }
+
+                                    VerticalLayout {
+                                        horizontal-stretch: 1;
+                                        alignment: start;
+                                        spacing: 3px;
+
+                                        if root.item.steps.length > 1: Text {
+                                            font-weight: 600;
+                                            color: Theme.text;
+                                            text: (step-index + 1) + ". " + step.heading;
+                                            overflow: elide;
                                         }
 
-                                        // No picture to show, like a base image that couldn't
-                                        // be read
-                                        if step.thumb.width == 0: Text {
-                                            horizontal-alignment: center;
-                                            vertical-alignment: center;
-                                            font-size: 10px;
-                                            color: Theme.secondary-text;
-                                            text: "No image";
+                                        Settings {
+                                            step: step;
                                         }
                                     }
                                 }
 
-                                VerticalLayout {
-                                    horizontal-stretch: 1;
-                                    alignment: start;
-                                    spacing: 3px;
-
-                                    if root.item.steps.length > 1: Text {
-                                        font-weight: 600;
-                                        color: Theme.text;
-                                        text: (step-index + 1) + ". " + step.heading;
-                                        overflow: elide;
-                                    }
-
-                                    Settings {
-                                        step: step;
-                                    }
+                                Files {
+                                    step: step;
                                 }
                             }
 

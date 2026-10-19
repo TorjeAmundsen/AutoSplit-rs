@@ -551,6 +551,66 @@ fn find(from: &Path, path: &str) -> Result<PathBuf, PresetError> {
     })
 }
 
+/// The splits of `preset` whose savestate has the same contents as an earlier split's in another
+/// file, each with that split's savestate, which it can use instead so the preset keeps one copy.
+/// Paths are found from `from`, like [`save_preset`] finds them. Savestates that can't be read
+/// are left out, for saving to say.
+pub fn duplicate_savestates(from: &Path, preset: &Preset) -> Vec<(usize, String)> {
+    // Each savestate's file and its size, which only takes its metadata
+    let files: Vec<(usize, PathBuf, u64)> = (preset.splits.iter().enumerate())
+        .filter(|(_, split)| !split.savestate.is_empty())
+        .filter_map(|(index, split)| {
+            let file = std::fs::canonicalize(find(from, &split.savestate).ok()?).ok()?;
+            let size = std::fs::metadata(&file).ok()?.len();
+            Some((index, file, size))
+        })
+        .collect();
+    // A file of a size no other file has can't have the same contents, so it's never read
+    let mut sizes: HashMap<u64, HashSet<&Path>> = HashMap::new();
+    for (_, file, size) in &files {
+        sizes.entry(*size).or_default().insert(file);
+    }
+    // The first savestate with each contents: its file and how the preset names it
+    let mut first: HashMap<Vec<u8>, (&Path, &str)> = HashMap::new();
+    let mut duplicates = Vec::new();
+    for (index, file, size) in &files {
+        if sizes[size].len() < 2 {
+            continue;
+        }
+        let Ok(contents) = std::fs::read(file) else { continue };
+        match first.get(&contents) {
+            Some((kept, savestate)) if *kept != file.as_path() => duplicates.push((*index, (*savestate).to_owned())),
+            Some(_) => {}
+            None => {
+                first.insert(contents, (file, &preset.splits[*index].savestate));
+            }
+        }
+    }
+    duplicates
+}
+
+/// The first of `files` with the same contents as `file` but in another file, which can be used
+/// instead of a copy of it. Sizes are compared first, so a file of another size is never read.
+pub fn same_contents_as<'a>(file: &Path, files: impl IntoIterator<Item = &'a Path>) -> Option<&'a Path> {
+    let own = std::fs::canonicalize(file).ok()?;
+    let size = std::fs::metadata(&own).ok()?.len();
+    let mut contents = None;
+    for other in files {
+        let Ok(other_file) = std::fs::canonicalize(other) else { continue };
+        if other_file == own || std::fs::metadata(&other_file).map(|metadata| metadata.len()).ok() != Some(size) {
+            continue;
+        }
+        let contents = match &contents {
+            Some(contents) => contents,
+            None => contents.insert(std::fs::read(&own).ok()?),
+        };
+        if std::fs::read(&other_file).is_ok_and(|other| other == *contents) {
+            return Some(other);
+        }
+    }
+    None
+}
+
 /// Saves `preset` into the preset folder `target`, making it when needed. Its masks and
 /// savestates are paths relative to `source`, the folder it was read from, or to `target` when
 /// there's none, or absolute paths of files picked for it. Files outside `target` are copied in:

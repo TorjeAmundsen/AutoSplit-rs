@@ -577,6 +577,64 @@ pub fn library_file_name(split: &PresetSplit, defaults: Option<&SplitDefaults>) 
     library_file_parts(split, defaults).into_iter().map(|part| part.text).collect()
 }
 
+/// A ready-made split's image `step` with the settings and savestate of `from`, a split selected
+/// in the preset, keeping its own name and mask.
+pub fn with_settings_of(step: &PresetSplit, from: &PresetSplit) -> PresetSplit {
+    PresetSplit { name: step.name.clone(), mask: step.mask.clone(), ..from.clone() }
+}
+
+/// What's in the way of a ready-made split's image `step` taking the settings of `from`, the split
+/// selected in the preset at its place, if anything. It has to be the same image, inserted from
+/// the library, so another split's settings aren't written over it. And an image without a mask
+/// has to stay a fade split, of the whole screen.
+pub fn settings_problem(step: &PresetSplit, from: &PresetSplit) -> Option<String> {
+    if from.name != step.name {
+        return Some(format!(
+            "{} is selected where {} should be. Select the ready-made split's images in Make Split Images, from its first.",
+            library_heading(from),
+            library_heading(step)
+        ));
+    }
+    if step.mask.is_empty() && !from.is_fade() {
+        return Some(format!("{} has no mask, so it has to stay a fade split.", library_heading(step)));
+    }
+    None
+}
+
+/// What taking the settings of `from` changes about a ready-made split's image `step`, like
+/// From ScrubsDummyLow: threshold default to 0.92. `savestates` are the file names of its
+/// savestate and the new one, or none when it's the same file.
+pub fn settings_changes(step: &PresetSplit, from: &PresetSplit, savestates: Option<(String, String)>) -> String {
+    fn shown<T: ToString>(value: &Option<T>) -> String {
+        value.as_ref().map_or_else(|| "default".to_owned(), T::to_string)
+    }
+    let mut changes = Vec::new();
+    let mut compare = |what: &str, old: String, new: String| {
+        if old != new {
+            changes.push(format!("{what} {old} to {new}"));
+        }
+    };
+    compare("threshold", shown(&step.threshold), shown(&from.threshold));
+    compare("pause", shown(&step.pause), shown(&from.pause));
+    compare("delay", shown(&step.delay), shown(&from.delay));
+    compare("fade", shown(&step.fade), shown(&from.fade));
+    compare("fade time", shown(&step.fade_time), shown(&from.fade_time));
+    compare("dummy", step.dummy.to_string(), from.dummy.to_string());
+    compare("below", step.below.to_string(), from.below.to_string());
+    compare("with previous", step.with_previous.to_string(), from.with_previous.to_string());
+    if let Some((old, new)) = savestates {
+        compare("savestate", old, new);
+    }
+    if step.instructions != from.instructions {
+        changes.push("instructions".to_owned());
+    }
+    let heading = library_heading(from);
+    if changes.is_empty() {
+        return format!("From {heading}: no changes");
+    }
+    format!("From {heading}: {}", changes.join(", "))
+}
+
 /// Where a ready-made split is in the preset already.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct InPreset {

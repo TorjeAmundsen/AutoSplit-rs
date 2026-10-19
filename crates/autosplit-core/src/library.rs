@@ -245,6 +245,9 @@ fn store_steps(
     let mut given: HashSet<String> = HashSet::new();
     let mut free = |wanted: String| {
         let name = unique_file_name(&wanted, |name| given.contains(&name.to_lowercase()) || taken(name));
+        // Over a replaced file whose name differs only in case: its spelling, which a system that
+        // ignores case keeps on disk anyway, so the library names the file git has everywhere
+        let name = existing.get(&name.to_lowercase()).cloned().unwrap_or(name);
         given.insert(name.to_lowercase());
         name
     };

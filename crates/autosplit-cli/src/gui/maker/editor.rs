@@ -7,7 +7,9 @@ use std::rc::Rc;
 
 use autosplit_core::filename::DEFAULT_FADE_TIME;
 use autosplit_core::mask::Mask;
-use autosplit_core::preset::{Preset, PresetSplit, delete_preset, new_preset_folder, save_preset};
+use autosplit_core::preset::{
+    Preset, PresetSplit, delete_preset, duplicate_savestates, new_preset_folder, save_preset,
+};
 use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
 
 use super::super::Gui;
@@ -19,7 +21,8 @@ use super::super::preset_form::{
     elide_middle, field_problems, field_value,
 };
 use super::super::preset_form::{
-    discard_question, known_game, next_problem_split, problem_flags, problem_list, saved_preset_name, status_line,
+    discard_question, known_game, next_problem_split, problem_flags, problem_list, saved_preset_name, split_heading,
+    status_line,
 };
 use super::super::recorder::PRIMARY;
 use super::super::recorder::key_character;
@@ -599,6 +602,48 @@ impl Gui {
             Some(folder) => folder.clone(),
             None => new_preset_folder(&presets_folder(), &preset.name),
         };
+        let duplicates = duplicate_savestates(source.as_deref().unwrap_or(&target), &preset);
+        if duplicates.is_empty() {
+            return self.write_draft(source, target, preset);
+        }
+        // Savestates with the same contents as another split's: one copy for both, if wanted
+        let file = |savestate: &str| file_name_text(Path::new(savestate)).unwrap_or_default();
+        let lines: Vec<String> = (duplicates.iter())
+            .map(|(index, kept)| {
+                let split = split_heading(&preset, *index);
+                format!("{split}: {} is the same as {}", file(&preset.splits[*index].savestate), file(kept))
+            })
+            .collect();
+        let text = format!(
+            "These savestates have the same contents as one another split uses:\n\n{}\n\nUse that one instead, so the preset keeps one copy?",
+            lines.join("\n")
+        );
+        let id = self.maker.borrow().edit.as_ref().map(|edit| edit.id);
+        let weak = Rc::downgrade(self);
+        let labels = ["Use One Copy", "Keep Both", "Cancel"];
+        self.show_message(Message::choice(text, labels, 0, move |answer| {
+            let Some(gui) = weak.upgrade() else { return };
+            // Only while the same editing goes on
+            if gui.maker.borrow().edit.as_ref().map(|edit| edit.id) != id {
+                return;
+            }
+            let mut preset = preset;
+            match answer {
+                Answer::Yes => {
+                    for (index, kept) in duplicates {
+                        preset.splits[index].savestate = kept;
+                    }
+                }
+                Answer::No => {}
+                Answer::Cancel => return,
+            }
+            gui.write_draft(source, target, preset);
+        }));
+    }
+
+    /// Writes `preset`, the draft as it's saved, from its `source` folder into `target`, then shows
+    /// it as saved.
+    fn write_draft(self: &Rc<Self>, source: Option<PathBuf>, target: PathBuf, preset: Preset) {
         if let Err(error) = save_preset(source.as_deref(), &target, &preset) {
             return self.show_message(Message::error(format!("Couldn't save the preset. {error}")));
         }

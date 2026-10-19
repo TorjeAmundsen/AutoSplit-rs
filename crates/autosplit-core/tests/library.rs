@@ -181,6 +181,25 @@ fn masks_in_the_library_already_are_used_where_they_are() {
 }
 
 #[test]
+fn rewritten_files_keep_the_spelling_of_the_ones_they_replace() {
+    // Arrange: a base image named in lowercase, like one written by hand
+    let (_splits, _preset, folder) = with_boss();
+    std::fs::rename(folder.join("base_Ganon.png"), folder.join("base_ganon.png")).unwrap();
+    let text = std::fs::read_to_string(folder.join(LIBRARY_FILE)).unwrap();
+    std::fs::write(folder.join(LIBRARY_FILE), text.replace("base_Ganon.png", "base_ganon.png")).unwrap();
+    let again = using("Ganon", folder.join("Ganon.png"));
+
+    // Act
+    change_ready_made(&folder, 0, &entry(&folder, 0), "Just the flash", Some(vec![again]), &[]).unwrap();
+
+    // Assert: the library and the folder both still say base_ganon.png
+    assert_eq!(
+        (load(&folder).splits[0].base_image.as_str(), files(&folder)),
+        ("base_ganon.png", vec!["Ganon.png".to_owned(), "base_ganon.png".to_owned(), LIBRARY_FILE.to_owned()])
+    );
+}
+
+#[test]
 fn deleting_a_ready_made_split_deletes_the_files_only_it_used() {
     // Arrange: a second ready-made split that uses the boss's flash mask too
     let (splits, _preset, folder) = with_boss();

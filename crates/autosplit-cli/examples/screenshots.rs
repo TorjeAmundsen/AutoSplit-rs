@@ -447,6 +447,9 @@ Replace them?",
                 dummy,
                 below,
                 fade: Default::default(),
+                // As release builds show it
+                savestate: "Available".into(),
+                savestate_missing: false,
             }
         };
     let library_item =
@@ -509,11 +512,11 @@ Replace them?",
     library.set_errors("A split library couldn't be read.".into());
     library.set_selected(0);
     library.show().unwrap();
-    save(&window, PhysicalSize::new(600, 520), &folder.join("library.png"));
+    save(&window, PhysicalSize::new(680, 520), &folder.join("library.png"));
     library.set_selected(1);
     // Developer builds can change and delete what's in the library
     library.set_developer(true);
-    save(&window, PhysicalSize::new(600, 420), &folder.join("library-single.png"));
+    save(&window, PhysicalSize::new(680, 420), &folder.join("library-single.png"));
     save(&window, PhysicalSize::new(480, 300), &folder.join("library-narrow.png"));
     library.set_items(std::rc::Rc::new(slint::VecModel::from(Vec::<LibraryItem>::new())).into());
     library.set_errors("".into());
@@ -555,7 +558,7 @@ Replace them?",
     );
     entry.set_steps(std::rc::Rc::new(slint::VecModel::from(Vec::<EntryStep>::new())).into());
     entry.set_editing(true);
-    entry.set_replace(true);
+    entry.set_change(2);
     save(&window, PhysicalSize::new(520, 240), &folder.join("library-entry-problem.png"));
     entry.hide().unwrap();
 

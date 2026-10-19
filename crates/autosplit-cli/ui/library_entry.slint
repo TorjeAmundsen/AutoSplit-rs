@@ -3,8 +3,7 @@
 // the description of one already in the library. Its base images are made small from each
 // split's grab or screenshot, or the live capture.
 
-import { Button, FileName, NamePart, SpinBox, TextField, Theme } from "widgets.slint";
-import { CheckBox } from "std-widgets.slint";
+import { Button, ComboBox, FileName, NamePart, OpenList, SpinBox, TextField, Theme } from "widgets.slint";
 
 // One image of the ready-made split as it would be written
 export struct EntryStep {
@@ -44,8 +43,12 @@ export component LibraryEntryWindow inherits Window {
     in-out property <string> description-text;
     // Editing one in the library instead of adding one
     in property <bool> editing;
-    // While editing: its images and settings are made again from the selected splits
-    in-out property <bool> replace;
+    // While editing, what saving changes: 0 only its description, names and pictures, 1 its
+    // settings and savestates too, from the selected splits, 2 its images and settings, made again
+    // from the selected splits
+    in-out property <int> change;
+    // The Change list is showing, which Escape closes instead of the window
+    out property <bool> list-showing: OpenList.showing;
     // How many splits from the selected one it takes, and the most it can
     in-out property <float> images: 1;
     in property <float> most-images: 1;
@@ -58,12 +61,12 @@ export component LibraryEntryWindow inherits Window {
     // A picture is chosen for the base image of the image at this place, or that's undone
     callback pick-picture(int);
     callback clear-picture(int);
-    callback replace-toggled(bool);
+    callback change-chosen();
     callback save();
     callback cancel();
 
     // The images come from the selected splits, so how many is up to them
-    property <bool> from-splits: !root.editing || root.replace;
+    property <bool> from-splits: !root.editing || root.change == 2;
 
     layout := VerticalLayout {
         padding: 10px;
@@ -96,10 +99,25 @@ export component LibraryEntryWindow inherits Window {
             }
         }
 
-        if root.editing: CheckBox {
-            text: "Replace its images and settings with the selected splits";
-            checked <=> root.replace;
-            toggled => { root.replace-toggled(self.checked); }
+        if root.editing: HorizontalLayout {
+            spacing: 6px;
+
+            Text {
+                width: 80px;
+                vertical-alignment: center;
+                text: "Change:";
+            }
+
+            ComboBox {
+                height: 24px;
+                model: [
+                    "Its description and names",
+                    "Its settings and savestates, from the selected splits",
+                    "Its images and settings, made again from the selected splits",
+                ];
+                current-index <=> root.change;
+                selected => { root.change-chosen(); }
+            }
         }
 
         if root.from-splits: HorizontalLayout {

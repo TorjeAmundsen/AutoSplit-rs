@@ -936,15 +936,17 @@ impl Gui {
             EventResult::Propagate
         });
 
-        // Escape closes the small windows, and Enter About too, whose only button is OK
+        // Escape closes the small windows, unless it closes a dropdown list first, and Enter About
+        // too, whose only button is OK
+        let no_list: fn(&Gui) -> bool = |_| false;
         let windows = [
-            (self.windows.about.window(), true),
-            (self.windows.log.window(), false),
-            (self.windows.instructions.window(), false),
-            (self.windows.library.window(), false),
-            (self.windows.entry.window(), false),
+            (self.windows.about.window(), true, no_list),
+            (self.windows.log.window(), false, no_list),
+            (self.windows.instructions.window(), false, no_list),
+            (self.windows.library.window(), false, no_list),
+            (self.windows.entry.window(), false, |gui: &Gui| gui.windows.entry.get_list_showing()),
         ];
-        for (window, enter_too) in windows {
+        for (window, enter_too, list_showing) in windows {
             let weak = self.me.clone();
             let mut held = Modifiers::empty();
             window.on_winit_window_event(move |window, event| {
@@ -963,7 +965,8 @@ impl Gui {
                     Key::Named(NamedKey::Enter) => enter_too,
                     _ => false,
                 };
-                if !closes || event.state != ElementState::Pressed || weak.upgrade().is_none_or(|gui| gui.blocked()) {
+                let held_back = |gui: Rc<Gui>| gui.blocked() || list_showing(&gui);
+                if !closes || event.state != ElementState::Pressed || weak.upgrade().is_none_or(held_back) {
                     return EventResult::Propagate;
                 }
                 let _ = window.hide();

@@ -4,7 +4,7 @@ use autosplit::gui::preset_form::{
     Draft, Field, InstructionText, ListChange, Problem, SplitEdit, SplitKind, discard_question, elide_middle,
     field_problems, field_value, import_blocker, in_preset, instruction_cards, known_game, library_file_name,
     library_heading, matches_search, next_problem_split, problem_flags, problem_list, problem_summary,
-    saved_preset_name, saved_split, split_heading, status_line,
+    saved_preset_name, saved_split, settings_changes, settings_problem, split_heading, status_line, with_settings_of,
 };
 use autosplit_core::preset::{Preset, PresetSplit};
 use test_case::test_case;
@@ -917,6 +917,69 @@ fn splits_in_the_preset_say_where(name: &str) -> Option<(String, String)> {
 fn ready_made_splits_name_their_files_without_a_place(name: &str) -> String {
     // Act, with the expected value checked by test_case
     library_file_name(&library_split(name), None)
+}
+
+#[test]
+fn ready_made_splits_take_settings_but_keep_their_name_and_mask() {
+    // Arrange: the split it was inserted as, renamed and changed in the preset
+    let step = library_split("ScrubsDummyLow");
+    let from = PresetSplit {
+        name: "Renamed".into(),
+        mask: "other.png".into(),
+        threshold: Some(0.92),
+        dummy: true,
+        savestate: "savestates/013-deku tree.gzs".into(),
+        ..library_split("ScrubsDummyLow")
+    };
+
+    // Act
+    let updated = with_settings_of(&step, &from);
+
+    // Assert
+    let expected = PresetSplit { name: step.name.clone(), mask: step.mask.clone(), ..from };
+    assert_eq!(updated, expected);
+}
+
+#[test_case(None => "From ScrubsDummyLow: threshold default to 0.92, dummy false to true"; "settings")]
+#[test_case(Some(("none", "013-deku tree.gzs")) => "From ScrubsDummyLow: threshold default to 0.92, dummy false to true, savestate none to 013-deku tree.gzs"; "and another savestate")]
+fn settings_taken_from_the_preset_say_what_changes(savestates: Option<(&str, &str)>) -> String {
+    // Arrange
+    let step = PresetSplit { threshold: None, ..library_split("ScrubsDummyLow") };
+    let from = PresetSplit { threshold: Some(0.92), dummy: true, ..step.clone() };
+
+    // Act
+    settings_changes(&step, &from, savestates.map(|(old, new)| (old.to_owned(), new.to_owned())))
+}
+
+#[test_case("ScrubsDummyLow", "ScrubsDummyLow.png", None, None => None; "the same split")]
+#[test_case("ScrubsDummyLow", "ScrubsDummyLow.png", None, Some("#ffffff") => None; "made a fade split, keeping its mask")]
+#[test_case("Escape", "ScrubsDummyLow.png", None, None => Some("Escape is selected where ScrubsDummyLow should be. Select the ready-made split's images in Make Split Images, from its first.".to_owned()); "another split")]
+#[test_case("ScrubsDummyLow", "", Some("#000000"), Some("#000000") => None; "a fade split of the whole screen staying one")]
+#[test_case("ScrubsDummyLow", "", Some("#000000"), None => Some("ScrubsDummyLow has no mask, so it has to stay a fade split.".to_owned()); "a fade split of the whole screen made a normal one")]
+fn settings_are_only_taken_from_the_same_split(
+    selected: &str,
+    mask: &str,
+    fade: Option<&str>,
+    new_fade: Option<&str>,
+) -> Option<String> {
+    // Arrange
+    let step = PresetSplit { mask: mask.into(), fade: fade.map(Into::into), ..library_split("ScrubsDummyLow") };
+    let from = PresetSplit { name: selected.into(), fade: new_fade.map(Into::into), ..step.clone() };
+
+    // Act
+    settings_problem(&step, &from)
+}
+
+#[test]
+fn settings_taken_from_the_same_split_change_nothing() {
+    // Arrange
+    let step = library_split("Escape");
+
+    // Act
+    let text = settings_changes(&step, &step, None);
+
+    // Assert
+    assert_eq!(text, "From Escape: no changes");
 }
 
 #[test_case(Some(1), 1, 2, true => 3; "above the selected split, which stays selected")]

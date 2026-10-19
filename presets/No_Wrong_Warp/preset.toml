@@ -14,7 +14,7 @@ mask = "start.png"
 threshold = 0.96
 pause = 10.0
 below = true
-savestate = "savestates/000 start and reset (1).gzs"
+savestate = "savestates/000 start and reset.gzs"
 
 [[split]]
 name = "DekuDummy"
