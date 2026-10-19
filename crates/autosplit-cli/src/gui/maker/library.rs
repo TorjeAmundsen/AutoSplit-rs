@@ -88,7 +88,7 @@ pub(super) fn splits_folder() -> PathBuf {
 
 /// A ready-made split's image in the library in `folder` as Split Library shows it: the settings
 /// it has, or empty for the profile's `defaults`, its file name without its number, and its
-/// savestate, which developer builds show the path of.
+/// savestate. Developer builds show its path, and others only that it's missing.
 fn library_step(
     step: &LibrarySplit,
     folder: &Path,
@@ -100,14 +100,14 @@ fn library_step(
     let has_savestate = !split.savestate.is_empty();
     let savestate_missing = has_savestate && !folder.join(&split.savestate).is_file();
     let savestate = match (has_savestate, DEVELOPER, savestate_missing) {
-        (false, _, _) => String::new(),
+        (false, _, _) | (true, false, false) => String::new(),
         (true, true, false) => split.savestate.clone(),
         (true, true, true) => format!("{} (missing)", split.savestate),
-        (true, false, false) => "Available".to_owned(),
         (true, false, true) => "Missing".to_owned(),
     };
     LibraryStep {
         savestate: savestate.into(),
+        savestate_shown: DEVELOPER || savestate_missing,
         savestate_missing,
         file_parts: name_parts_model(library_file_parts(split, Some(defaults))),
         file: file.into(),

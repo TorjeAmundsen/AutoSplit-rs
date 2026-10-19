@@ -448,7 +448,8 @@ Replace them?",
                 below,
                 fade: Default::default(),
                 // As release builds show it
-                savestate: "Available".into(),
+                savestate: "".into(),
+                savestate_shown: false,
                 savestate_missing: false,
             }
         };

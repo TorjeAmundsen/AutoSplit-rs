@@ -25,9 +25,10 @@ export struct LibraryStep {
     // The file name it gets, with XX for its number, which comes from where it's put
     file-parts: [NamePart],
     file: string,
-    // Its savestate, as the library's file has it in developer builds and whether it has one in
-    // others, or empty without one. Missing when the file isn't there.
+    // Its savestate, as the library's file has it in developer builds, or empty without one.
+    // Other builds only show the line when the file is missing.
     savestate: string,
+    savestate-shown: bool,
     savestate-missing: bool,
 }
 
@@ -134,7 +135,7 @@ component Files inherits VerticalLayout {
         }
     }
 
-    Setting {
+    if root.step.savestate-shown: Setting {
         label: "Savestate";
         empty: "None";
         value: root.step.savestate;
