@@ -629,12 +629,12 @@ impl Gui {
             })
             .collect();
         let text = format!(
-            "These savestates have the same contents as one another split uses:\n\n{}\n\nUse that one instead, so the preset keeps one copy?",
+            "These savestates are the same as ones other splits already use:\n\n{}\n\nUse the existing files, so the preset keeps one copy of each?",
             lines.join("\n")
         );
         let id = self.maker.borrow().edit.as_ref().map(|edit| edit.id);
         let weak = Rc::downgrade(self);
-        let labels = ["Use One Copy", "Keep Both", "Cancel"];
+        let labels = ["Use Existing Files", "Keep Copies", "Cancel"];
         self.show_message(Message::choice(text, labels, 0, move |answer| {
             let Some(gui) = weak.upgrade() else { return };
             // Only while the same editing goes on

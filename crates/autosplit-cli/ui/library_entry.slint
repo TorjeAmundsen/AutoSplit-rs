@@ -111,9 +111,9 @@ export component LibraryEntryWindow inherits Window {
             ComboBox {
                 height: 24px;
                 model: [
-                    "Its description and names",
-                    "Its settings and savestates, from the selected splits",
-                    "Its images and settings, made again from the selected splits",
+                    "Description, names and pictures only",
+                    "Also settings and savestates, from the selected splits",
+                    "Everything, made again from the selected splits",
                 ];
                 current-index <=> root.change;
                 selected => { root.change-chosen(); }

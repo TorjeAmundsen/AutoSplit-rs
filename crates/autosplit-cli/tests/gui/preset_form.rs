@@ -4,7 +4,8 @@ use autosplit::gui::preset_form::{
     Draft, Field, InstructionText, ListChange, Problem, SplitEdit, SplitKind, discard_question, elide_middle,
     field_problems, field_value, import_blocker, in_preset, instruction_cards, known_game, library_file_name,
     library_heading, matches_search, next_problem_split, problem_flags, problem_list, problem_summary,
-    saved_preset_name, saved_split, settings_changes, settings_problem, split_heading, status_line, with_settings_of,
+    saved_preset_name, saved_split, settings_changes, settings_problem, split_heading, status_line, too_few_selected,
+    with_settings_of,
 };
 use autosplit_core::preset::{Preset, PresetSplit};
 use test_case::test_case;
@@ -953,7 +954,7 @@ fn settings_taken_from_the_preset_say_what_changes(savestates: Option<(&str, &st
 
 #[test_case("ScrubsDummyLow", "ScrubsDummyLow.png", None, None => None; "the same split")]
 #[test_case("ScrubsDummyLow", "ScrubsDummyLow.png", None, Some("#ffffff") => None; "made a fade split, keeping its mask")]
-#[test_case("Escape", "ScrubsDummyLow.png", None, None => Some("Escape is selected where ScrubsDummyLow should be. Select the ready-made split's images in Make Split Images, from its first.".to_owned()); "another split")]
+#[test_case("Escape", "ScrubsDummyLow.png", None, None => Some("Escape is selected where ScrubsDummyLow should be. Select ScrubsDummyLow in Make Split Images.".to_owned()); "another split")]
 #[test_case("ScrubsDummyLow", "", Some("#000000"), Some("#000000") => None; "a fade split of the whole screen staying one")]
 #[test_case("ScrubsDummyLow", "", Some("#000000"), None => Some("ScrubsDummyLow has no mask, so it has to stay a fade split.".to_owned()); "a fade split of the whole screen made a normal one")]
 fn settings_are_only_taken_from_the_same_split(
@@ -967,7 +968,31 @@ fn settings_are_only_taken_from_the_same_split(
     let from = PresetSplit { name: selected.into(), fade: new_fade.map(Into::into), ..step.clone() };
 
     // Act
-    settings_problem(&step, &from)
+    settings_problem(&[step], 0, &from)
+}
+
+#[test]
+fn another_split_at_a_later_image_says_to_select_the_first() {
+    // Arrange: a dummy, then the split, with Escape selected where the second should be
+    let entry = [library_split("ScrubsDummyLow"), library_split("ScrubsDummyHigh")];
+
+    // Act
+    let problem = settings_problem(&entry, 1, &library_split("Escape"));
+
+    // Assert
+    let expected = "Escape is selected where ScrubsDummyHigh should be. Select ScrubsDummyLow in Make Split Images, \
+                    the first of this ready-made split's 2 images.";
+    assert_eq!(problem.as_deref(), Some(expected));
+}
+
+#[test_case(&["Escape"] => "Select Escape in Make Split Images."; "one image")]
+#[test_case(&["ScrubsDummyLow", "ScrubsDummyHigh"] => "The preset has fewer than 2 splits from the selected one on. Select ScrubsDummyLow in Make Split Images, the first of this ready-made split's 2 images."; "several images")]
+fn too_few_splits_selected_says_what_to_select(names: &[&str]) -> String {
+    // Arrange
+    let entry: Vec<PresetSplit> = names.iter().map(|name| library_split(name)).collect();
+
+    // Act
+    too_few_selected(&entry)
 }
 
 #[test]

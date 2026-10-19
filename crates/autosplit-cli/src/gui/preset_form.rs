@@ -583,16 +583,37 @@ pub fn with_settings_of(step: &PresetSplit, from: &PresetSplit) -> PresetSplit {
     PresetSplit { name: step.name.clone(), mask: step.mask.clone(), ..from.clone() }
 }
 
-/// What's in the way of a ready-made split's image `step` taking the settings of `from`, the split
-/// selected in the preset at its place, if anything. It has to be the same image, inserted from
-/// the library, so another split's settings aren't written over it. And an image without a mask
-/// has to stay a fade split, of the whole screen.
-pub fn settings_problem(step: &PresetSplit, from: &PresetSplit) -> Option<String> {
+/// What to select in Make Split Images for a ready-made split with the images `entry` to take
+/// their settings from the preset: its first image, saying how many there are.
+fn select_entry(entry: &[PresetSplit]) -> String {
+    let first = entry.first().map(library_heading).unwrap_or_default();
+    match entry.len() {
+        1 => format!("Select {first} in Make Split Images."),
+        count => format!("Select {first} in Make Split Images, the first of this ready-made split's {count} images."),
+    }
+}
+
+/// What's in the way when the preset doesn't have a split from the selected one on for each of
+/// `entry`, a ready-made split's images.
+pub fn too_few_selected(entry: &[PresetSplit]) -> String {
+    match entry.len() {
+        1 => select_entry(entry),
+        count => format!("The preset has fewer than {count} splits from the selected one on. {}", select_entry(entry)),
+    }
+}
+
+/// What's in the way of the image at `place` of a ready-made split with the images `entry` taking
+/// the settings of `from`, the split selected in the preset at its place, if anything. It has to
+/// be the same image, inserted from the library, so another split's settings aren't written over
+/// it. And an image without a mask has to stay a fade split, of the whole screen.
+pub fn settings_problem(entry: &[PresetSplit], place: usize, from: &PresetSplit) -> Option<String> {
+    let step = entry.get(place)?;
     if from.name != step.name {
         return Some(format!(
-            "{} is selected where {} should be. Select the ready-made split's images in Make Split Images, from its first.",
+            "{} is selected where {} should be. {}",
             library_heading(from),
-            library_heading(step)
+            library_heading(step),
+            select_entry(entry)
         ));
     }
     if step.mask.is_empty() && !from.is_fade() {

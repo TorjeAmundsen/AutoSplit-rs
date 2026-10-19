@@ -10,7 +10,7 @@ use slint::Model;
 use super::super::name_parts_model;
 use super::super::preset_form::{
     SplitKind, library_file_name, library_file_parts, library_heading, saved_split, settings_changes, settings_problem,
-    with_settings_of,
+    too_few_selected, with_settings_of,
 };
 use super::super::ui::{EntryStep, LibraryEntryWindow};
 use super::library::splits_folder;
@@ -335,14 +335,12 @@ impl Gui {
         let Some(preset) = maker.edit.as_ref().map(editor::Editing::preset) else {
             return Err("Edit a preset first.".to_owned());
         };
+        let entry: Vec<PresetSplit> = kept.iter().map(|step| step.split.clone()).collect();
         let Some(splits) = preset.splits.get(maker.selected..maker.selected + kept.len()) else {
-            return Err(format!(
-                "Select the first of the {} splits to take its settings from in Make Split Images.",
-                kept.len()
-            ));
+            return Err(too_few_selected(&entry));
         };
         let mut updates = Vec::new();
-        for (place, (step, split)) in kept.iter().zip(splits).enumerate() {
+        for (place, split) in splits.iter().enumerate() {
             // As it's saved: a fade split's savestate, hidden in the form, isn't its own
             let mut split = saved_split(split);
             // A ready-made split's first image is never compared with the one before it, which
@@ -350,7 +348,7 @@ impl Gui {
             if place == 0 {
                 split.with_previous = false;
             }
-            if let Some(problem) = settings_problem(&step.split, &split) {
+            if let Some(problem) = settings_problem(&entry, place, &split) {
                 return Err(problem);
             }
             let savestate = (!split.savestate.is_empty()).then(|| maker.file(&split.savestate));
@@ -492,11 +490,11 @@ impl Gui {
             })
             .collect();
         let text = format!(
-            "These savestates have the same contents as one the split library has:\n\n{}\n\nUse that one instead, so the library keeps one copy?",
+            "These savestates are the same as ones the split library already has:\n\n{}\n\nUse the existing files, so the library keeps one copy of each?",
             lines.join("\n")
         );
         let weak = Rc::downgrade(self);
-        let labels = ["Use One Copy", "Keep Both", "Cancel"];
+        let labels = ["Use Existing Files", "Keep Copies", "Cancel"];
         self.show_message(Message::choice(text, labels, 0, move |answer| {
             let Some(gui) = weak.upgrade() else { return };
             match answer {
