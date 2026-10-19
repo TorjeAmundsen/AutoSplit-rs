@@ -1,7 +1,6 @@
 //! Split Library: the ready-made splits of the edited preset's game, from the splits library
 //! next to the program, added to the preset one at a time.
 
-use autosplit_core::filename::START_KEYWORD;
 use autosplit_core::preset::{LibrarySplit, LoadedLibrary, PresetSplit, game_key, load_libraries};
 use slint::Model;
 use slint::winit_030::WinitWindowAccessor;
@@ -10,9 +9,9 @@ use autosplit_core::split_image::SplitDefaults;
 
 use super::super::name_parts_model;
 use super::super::preset_form::{
-    InPreset, import_blocker, in_preset, library_file_name, library_file_parts, library_heading, matches_search,
+    import_blocker, in_preset, library_file_name, library_file_parts, library_heading, matches_search,
 };
-use super::super::ui::{LibraryItem, LibraryStep, NamePart};
+use super::super::ui::{LibraryItem, LibraryStep};
 use super::*;
 
 /// The splits libraries, read when Split Library opens, with their base images.
@@ -126,18 +125,6 @@ fn library_step(
         }
         .into(),
     }
-}
-
-/// The start of a file name, its number or keyword, as the split list colors it, or an empty
-/// part without one.
-fn in_preset_part(in_preset: &Option<InPreset>) -> NamePart {
-    let parts = in_preset.as_ref().map(|in_preset| file_name_parts(&in_preset.file));
-    let mut part = parts.and_then(|parts| parts.row_data(0)).unwrap_or_default();
-    // A start image's keyword is long for a row, so it's shortened like reset's length
-    if part.text == START_KEYWORD {
-        part.text = "start".into();
-    }
-    part
 }
 
 impl Gui {
@@ -289,12 +276,6 @@ impl Gui {
                     heading: last.map(library_heading).unwrap_or_default().into(),
                     description: description.unwrap_or_default().into(),
                     steps: ModelRc::new(VecModel::from(shown)),
-                    in_preset: in_preset_part(&in_preset),
-                    in_preset_file: in_preset
-                        .as_ref()
-                        .map(|in_preset| in_preset.file.as_str())
-                        .unwrap_or_default()
-                        .into(),
                     in_preset_note: in_preset.map(|in_preset| in_preset.note).unwrap_or_default().into(),
                     blocker: import_blocker(preset, &splits).unwrap_or_default().into(),
                 }

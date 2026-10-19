@@ -38,11 +38,7 @@ export struct LibraryItem {
     heading: string,
     description: string,
     steps: [LibraryStep],
-    // Where a split with its name is in the preset already: the start of its file name, its
-    // number or its keyword, colored like the split list's file names, with empty text when it
-    // isn't, and the whole file name, and a line saying where
-    in-preset: NamePart,
-    in-preset-file: string,
+    // A line saying where a split with its name is in the preset already, or empty when it isn't
     in-preset-note: string,
     // Why it can't be added, or empty
     blocker: string,
@@ -156,7 +152,8 @@ component Grip inherits Rectangle {
     callback released();
     // The drag ended without its release: another button was released, or Slint cancelled it
     callback cancelled();
-    width: 14px;
+    // Wider than its dots, so it's easier to grab
+    width: 20px;
     background: root.enabled && (touch.has-hover || root.dragging) ? Theme.item-hover : transparent;
 
     for dot[index] in 6: Rectangle {
@@ -418,20 +415,11 @@ export component LibraryWindow inherits Window {
                                     vertical-alignment: center;
                                     font-size: 11px;
                                     color: Theme.secondary-text;
-                                    text: item.steps.length + " images";
-                                }
-
-                                // In the preset already: where, as its file name starts
-                                if item.in-preset.text != "": Text {
-                                    vertical-alignment: center;
-                                    font-size: 11px;
-                                    font-weight: 600;
-                                    color: NameColors.of(item.in-preset);
-                                    text: item.in-preset.text;
+                                    text: item.steps.length;
 
                                     Tooltip {
                                         Tip {
-                                            text: "Already in the preset, as " + item.in-preset-file;
+                                            text: item.steps.length + " images, inserted together";
                                         }
                                     }
                                 }
@@ -484,14 +472,38 @@ export component LibraryWindow inherits Window {
                                 wrap: word-wrap;
                             }
 
-                            // Each image at its own size, beside what it sets, numbered when there are
-                            // several, in a box that keeps its place when there's no picture, then
-                            // its file name and savestate
+                            // What each image sets, numbered when there are several, with the image
+                            // at its own size to the right, in a box that keeps its place when
+                            // there's no picture, then its file name and savestate. Every label
+                            // starts at the left edge, so they line up.
                             for step[step-index] in root.item.steps: VerticalLayout {
                                 spacing: 3px;
 
+                                // Between images, like between the split list's splits
+                                if step-index > 0: Rectangle {
+                                    height: 1px;
+                                    background: Theme.separator;
+                                }
+
                                 HorizontalLayout {
                                     spacing: 10px;
+
+                                    VerticalLayout {
+                                        horizontal-stretch: 1;
+                                        alignment: start;
+                                        spacing: 3px;
+
+                                        if root.item.steps.length > 1: Text {
+                                            font-weight: 600;
+                                            color: Theme.text;
+                                            text: (step-index + 1) + ". " + step.heading;
+                                            overflow: elide;
+                                        }
+
+                                        Settings {
+                                            step: step;
+                                        }
+                                    }
 
                                     VerticalLayout {
                                         alignment: start;
@@ -516,23 +528,6 @@ export component LibraryWindow inherits Window {
                                                 color: Theme.secondary-text;
                                                 text: "No image";
                                             }
-                                        }
-                                    }
-
-                                    VerticalLayout {
-                                        horizontal-stretch: 1;
-                                        alignment: start;
-                                        spacing: 3px;
-
-                                        if root.item.steps.length > 1: Text {
-                                            font-weight: 600;
-                                            color: Theme.text;
-                                            text: (step-index + 1) + ". " + step.heading;
-                                            overflow: elide;
-                                        }
-
-                                        Settings {
-                                            step: step;
                                         }
                                     }
                                 }

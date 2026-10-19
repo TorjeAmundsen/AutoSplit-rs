@@ -13,7 +13,7 @@ use autosplit::gui::ui::{
 use autosplit::gui::{HOTKEY_ROWS, file_name_parts, name_parts_model, thumbnail, transparency_grid};
 use slint::platform::software_renderer::{MinimalSoftwareWindow, RepaintBufferType, Rgb565Pixel};
 use slint::platform::{Platform, WindowAdapter};
-use slint::{ComponentHandle, Model, PhysicalSize};
+use slint::{ComponentHandle, PhysicalSize};
 
 struct Headless {
     window: Rc<MinimalSoftwareWindow>,
@@ -454,12 +454,6 @@ Replace them?",
         };
     let library_item =
         |heading: &str, description: &str, steps: Vec<LibraryStep>, in_preset: bool, blocker: &str| LibraryItem {
-            in_preset: if in_preset {
-                file_name_parts("05_Bottle_(0.93)_[35]_#1100#_{b}.png").row_data(0).unwrap()
-            } else {
-                Default::default()
-            },
-            in_preset_file: if in_preset { "05_Bottle_(0.93)_[35]_#1100#_{b}.png".into() } else { "".into() },
             in_preset_note: if in_preset { "Already in the preset, as split 05.".into() } else { "".into() },
             ready_made: 0,
             heading: heading.into(),
