@@ -22,8 +22,8 @@ use super::super::preset_form::{
     elide_middle, field_problems, field_value,
 };
 use super::super::preset_form::{
-    discard_question, known_game, next_problem_split, problem_flags, problem_list, saved_preset_name, split_heading,
-    status_line,
+    ONE_COPY_LABELS, discard_question, known_game, next_problem_split, one_copy_question, problem_flags, problem_list,
+    saved_preset_name, split_heading, status_line,
 };
 use super::super::recorder::PRIMARY;
 use super::super::recorder::key_character;
@@ -622,20 +622,13 @@ impl Gui {
         }
         // Savestates with the same contents as another split's: one copy for both, if wanted
         let file = |savestate: &str| file_name_text(Path::new(savestate)).unwrap_or_default();
-        let lines: Vec<String> = (duplicates.iter())
-            .map(|(index, kept)| {
-                let split = split_heading(&preset, *index);
-                format!("{split}: {} is the same as {}", file(&preset.splits[*index].savestate), file(kept))
-            })
+        let same: Vec<(String, String, String)> = (duplicates.iter())
+            .map(|(index, kept)| (split_heading(&preset, *index), file(&preset.splits[*index].savestate), file(kept)))
             .collect();
-        let text = format!(
-            "These savestates are the same as ones other splits already use:\n\n{}\n\nUse the existing files, so the preset keeps one copy of each?",
-            lines.join("\n")
-        );
+        let text = one_copy_question(&same, false);
         let id = self.maker.borrow().edit.as_ref().map(|edit| edit.id);
         let weak = Rc::downgrade(self);
-        let labels = ["Use Existing Files", "Keep Copies", "Cancel"];
-        self.show_message(Message::choice(text, labels, 0, move |answer| {
+        self.show_message(Message::choice(text, ONE_COPY_LABELS, 0, move |answer| {
             let Some(gui) = weak.upgrade() else { return };
             // Only while the same editing goes on
             if gui.maker.borrow().edit.as_ref().map(|edit| edit.id) != id {

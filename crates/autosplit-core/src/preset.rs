@@ -538,6 +538,12 @@ pub(crate) fn relative_text(path: &Path) -> String {
     path.components().map(|part| part.as_os_str().to_string_lossy().into_owned()).collect::<Vec<_>>().join("/")
 }
 
+/// The path with links and `..` resolved, to compare paths written in different ways, or the
+/// path itself when it doesn't exist.
+pub fn canonical(path: &Path) -> PathBuf {
+    std::fs::canonicalize(path).unwrap_or_else(|_| path.to_owned())
+}
+
 /// Finds a mask or savestate: relative to `from`, or a picked file's absolute path.
 fn find(from: &Path, path: &str) -> Result<PathBuf, PresetError> {
     let picked = Path::new(path);
@@ -560,7 +566,7 @@ pub fn duplicate_savestates(from: &Path, preset: &Preset) -> Vec<(usize, String)
     let files: Vec<(usize, PathBuf, u64)> = (preset.splits.iter().enumerate())
         .filter(|(_, split)| !split.savestate.is_empty())
         .filter_map(|(index, split)| {
-            let file = std::fs::canonicalize(find(from, &split.savestate).ok()?).ok()?;
+            let file = find(from, &split.savestate).ok()?;
             let size = std::fs::metadata(&file).ok()?.len();
             Some((index, file, size))
         })
@@ -618,7 +624,6 @@ pub fn duplicates_among<'a>(
     files: &[Option<&Path>],
     existing: impl IntoIterator<Item = &'a Path>,
 ) -> Vec<(usize, PathBuf)> {
-    let canonical = |path: &Path| std::fs::canonicalize(path).unwrap_or_else(|_| path.to_owned());
     let own: HashSet<PathBuf> = files.iter().flatten().map(|path| canonical(path)).collect();
     let mut candidates: Vec<PathBuf> =
         existing.into_iter().filter(|path| !own.contains(&canonical(path))).map(Path::to_owned).collect();

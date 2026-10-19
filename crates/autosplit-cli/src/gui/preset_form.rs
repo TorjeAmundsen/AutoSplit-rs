@@ -819,6 +819,27 @@ pub fn discard_question(name: &str, saved_before: bool) -> (String, &'static str
     (format!("Discard {preset}? It hasn't been saved yet."), "Discard Preset")
 }
 
+/// The buttons of [`one_copy_question`]: use the files that are there already, keep the copies,
+/// or don't save.
+pub const ONE_COPY_LABELS: [&str; 3] = ["Use Existing Files", "Keep Copies", "Cancel"];
+
+/// Asks whether savestates that are the same as ones there already should use those instead of
+/// copies. `same` has each one's heading, its file name and the existing file's name. They're in
+/// the split `library`, or else in the preset.
+pub fn one_copy_question(same: &[(String, String, String)], library: bool) -> String {
+    let lines: Vec<String> =
+        same.iter().map(|(heading, file, kept)| format!("{heading}: {file} is the same as {kept}")).collect();
+    let (there, keeper) = if library {
+        ("the split library already has", "the library")
+    } else {
+        ("other splits already use", "the preset")
+    };
+    format!(
+        "These savestates are the same as ones {there}:\n\n{}\n\nUse the existing files, so {keeper} keeps one copy of each?",
+        lines.join("\n")
+    )
+}
+
 /// The line under the editor: the first of `problems` and how many more there are, or else
 /// whether the preset has changes to save.
 pub fn status_line(preset: &Preset, problems: &[Problem], has_changes: bool) -> String {

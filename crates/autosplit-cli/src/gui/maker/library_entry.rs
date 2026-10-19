@@ -9,8 +9,8 @@ use slint::Model;
 
 use super::super::name_parts_model;
 use super::super::preset_form::{
-    SplitKind, library_file_name, library_file_parts, library_heading, saved_split, settings_changes, settings_problem,
-    too_few_selected, with_settings_of,
+    ONE_COPY_LABELS, SplitKind, library_file_name, library_file_parts, library_heading, one_copy_question, saved_split,
+    settings_changes, settings_problem, too_few_selected, with_settings_of,
 };
 use super::super::ui::{EntryStep, LibraryEntryWindow};
 use super::library::splits_folder;
@@ -86,13 +86,7 @@ fn library_savestate(step: &PresetSplit, folder: &Path) -> Option<PathBuf> {
 /// Whether `update` gives `step`, an image of the ready-made split in `folder`, another savestate
 /// file. Paths that can't be found, like a missing file's, are compared as they're written.
 fn savestate_moved(step: &PresetSplit, folder: &Path, update: &Update) -> bool {
-    match (library_savestate(step, folder), &update.savestate) {
-        (Some(old), Some(new)) => match (std::fs::canonicalize(&old), std::fs::canonicalize(new)) {
-            (Ok(old), Ok(new)) => old != new,
-            _ => old != *new,
-        },
-        (old, new) => old.is_some() != new.is_some(),
-    }
+    library_savestate(step, folder).as_deref().map(canonical) != update.savestate.as_deref().map(canonical)
 }
 
 /// Whether `update` changes anything about `step`, an image of the ready-made split in `folder`.
@@ -114,6 +108,7 @@ fn update_text(step: &PresetSplit, folder: &Path, update: &Update) -> String {
 
 /// A ready-made split being edited, as it was when the window opened: the library can change
 /// meanwhile, which saving finds out instead of changing another one.
+#[derive(Clone)]
 struct Edited {
     /// Its library's folder, and its place among that library's.
     folder: PathBuf,
@@ -453,7 +448,7 @@ impl Gui {
     fn save_entry(self: &Rc<Self>) {
         let maker = self.maker.borrow();
         let Some(entry) = &maker.entry else { return };
-        let editing = entry.editing.as_ref().map(|edited| (edited.folder.clone(), edited.place, edited.steps.clone()));
+        let editing = entry.editing.clone();
         let game = maker.edit.as_ref().map(|edit| edit.preset().game.trim().to_owned()).unwrap_or_default();
         drop(maker);
         let in_use = self.files_in_use();
@@ -461,9 +456,9 @@ impl Gui {
         let description = window.get_description_text().trim().to_owned();
         let change = Change::of(window);
         let steps = match (&editing, change) {
-            (Some((folder, _, kept)), Change::Kept | Change::Settings) => {
-                let updates = (change == Change::Settings).then(|| self.updates(kept)).transpose();
-                match updates.and_then(|updates| self.kept_steps(folder, kept, updates.as_deref())) {
+            (Some(edited), Change::Kept | Change::Settings) => {
+                let updates = (change == Change::Settings).then(|| self.updates(&edited.steps)).transpose();
+                match updates.and_then(|updates| self.kept_steps(&edited.folder, &edited.steps, updates.as_deref())) {
                     Ok(steps) => steps,
                     Err(problem) => return self.show_message(Message::error(problem)),
                 }
@@ -482,20 +477,16 @@ impl Gui {
             steps => return self.write_entry(editing, &game, &description, steps, &in_use),
         };
         let file = |path: &Path| file_name_text(path).unwrap_or_default();
-        let lines: Vec<String> = (duplicates.iter())
+        let same: Vec<(String, String, String)> = (duplicates.iter())
             .map(|(place, kept)| {
                 let step = &steps[*place];
                 let savestate = step.savestate.as_deref().map(file).unwrap_or_default();
-                format!("{}: {savestate} is the same as {}", library_heading(&step.split), file(kept))
+                (library_heading(&step.split), savestate, file(kept))
             })
             .collect();
-        let text = format!(
-            "These savestates are the same as ones the split library already has:\n\n{}\n\nUse the existing files, so the library keeps one copy of each?",
-            lines.join("\n")
-        );
+        let text = one_copy_question(&same, true);
         let weak = Rc::downgrade(self);
-        let labels = ["Use Existing Files", "Keep Copies", "Cancel"];
-        self.show_message(Message::choice(text, labels, 0, move |answer| {
+        self.show_message(Message::choice(text, ONE_COPY_LABELS, 0, move |answer| {
             let Some(gui) = weak.upgrade() else { return };
             match answer {
                 Answer::Yes => {
@@ -532,14 +523,14 @@ impl Gui {
     /// its description and any new `steps`. Then shows the library as it is now.
     fn write_entry(
         &self,
-        editing: Option<(PathBuf, usize, Vec<LibrarySplit>)>,
+        editing: Option<Edited>,
         game: &str,
         description: &str,
         steps: Option<Vec<NewStep>>,
         in_use: &[PathBuf],
     ) {
         let written = match (editing, steps) {
-            (Some((folder, place, expected)), steps) => {
+            (Some(Edited { folder, place, steps: expected }), steps) => {
                 change_ready_made(&folder, place, &expected, description, steps, in_use)
             }
             (None, Some(steps)) => add_ready_made(&splits_folder(), game, description, steps).map(|_| ()),

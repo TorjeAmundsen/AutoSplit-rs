@@ -3,9 +3,9 @@
 use autosplit::gui::preset_form::{
     Draft, Field, InstructionText, ListChange, Problem, SplitEdit, SplitKind, discard_question, elide_middle,
     field_problems, field_value, import_blocker, in_preset, instruction_cards, known_game, library_file_name,
-    library_heading, matches_search, next_problem_split, problem_flags, problem_list, problem_summary,
-    saved_preset_name, saved_split, settings_changes, settings_problem, split_heading, status_line, too_few_selected,
-    with_settings_of,
+    library_heading, matches_search, next_problem_split, one_copy_question, problem_flags, problem_list,
+    problem_summary, saved_preset_name, saved_split, settings_changes, settings_problem, split_heading, status_line,
+    too_few_selected, with_settings_of,
 };
 use autosplit_core::preset::{Preset, PresetSplit};
 use test_case::test_case;
@@ -746,6 +746,17 @@ fn typed_games_are_the_known_ones(game: &str) -> Option<&'static str> {
 fn leaving_unsaved_changes_says_what_is_lost(name: &str, saved_before: bool) -> (String, &'static str) {
     // Act, with the expected value checked by test_case
     discard_question(name, saved_before)
+}
+
+#[test_case(false => "These savestates are the same as ones other splits already use:\n\nStart Image: 000 (1).gzs is the same as 000.gzs\nEscape: escape.gzs is the same as 001.gzs\n\nUse the existing files, so the preset keeps one copy of each?"; "in a preset")]
+#[test_case(true => "These savestates are the same as ones the split library already has:\n\nStart Image: 000 (1).gzs is the same as 000.gzs\nEscape: escape.gzs is the same as 001.gzs\n\nUse the existing files, so the library keeps one copy of each?"; "in the library")]
+fn savestates_there_already_are_offered_instead_of_copies(library: bool) -> String {
+    // Arrange
+    let same = [("Start Image", "000 (1).gzs", "000.gzs"), ("Escape", "escape.gzs", "001.gzs")]
+        .map(|(heading, file, kept)| (heading.to_owned(), file.to_owned(), kept.to_owned()));
+
+    // Act
+    one_copy_question(&same, library)
 }
 
 #[test_case("006 enter deku.gzs", 15 => "006 en...ku.gzs"; "shortened in the middle")]
