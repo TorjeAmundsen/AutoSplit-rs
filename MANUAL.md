@@ -158,7 +158,7 @@ A split without a mask yet shows the live capture as it is, so you can see the s
 
 Splits with something to fix have a red name. The bottom line shows the first problem and how many more there are. Click it, or press F8, to go to the next split with a problem. Hover over it, or the red `!` beside it, to see them all.
 
-- Save saves the preset and ends editing. Masks and savestates picked from elsewhere are copied into the preset, and ones it doesn't use anymore are deleted.
+- Save saves the preset and ends editing. Masks and savestates picked from elsewhere are copied into the preset, and ones it doesn't use anymore are deleted. When a new savestate is the same as one another split already uses, Save asks whether to use that one instead of keeping a copy.
 - Save as New saves the changes as another preset and leaves the old one as it was. If the game already has a preset with that name, the new one is called `Name (2)`.
 - Cancel, closing the window or quitting asks before throwing changes away.
 - Delete Preset asks, then deletes the preset with its masks and savestates, and ends editing. A preset that was never saved has nothing to delete yet.
