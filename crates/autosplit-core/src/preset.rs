@@ -611,6 +611,28 @@ pub fn same_contents_as<'a>(file: &Path, files: impl IntoIterator<Item = &'a Pat
     None
 }
 
+/// The places of `files`, in order, whose file has the same contents as one of `existing` or an
+/// earlier one of `files`, in another file, each with that file. An `existing` file that's also
+/// one of `files` only counts once an earlier one keeps it, so two of `files` never trade.
+pub fn duplicates_among<'a>(
+    files: &[Option<&Path>],
+    existing: impl IntoIterator<Item = &'a Path>,
+) -> Vec<(usize, PathBuf)> {
+    let canonical = |path: &Path| std::fs::canonicalize(path).unwrap_or_else(|_| path.to_owned());
+    let own: HashSet<PathBuf> = files.iter().flatten().map(|path| canonical(path)).collect();
+    let mut candidates: Vec<PathBuf> =
+        existing.into_iter().filter(|path| !own.contains(&canonical(path))).map(Path::to_owned).collect();
+    let mut duplicates = Vec::new();
+    for (place, file) in files.iter().enumerate() {
+        let Some(file) = file else { continue };
+        match same_contents_as(file, candidates.iter().map(PathBuf::as_path)) {
+            Some(found) => duplicates.push((place, found.to_owned())),
+            None => candidates.push(file.to_path_buf()),
+        }
+    }
+    duplicates
+}
+
 /// Saves `preset` into the preset folder `target`, making it when needed. Its masks and
 /// savestates are paths relative to `source`, the folder it was read from, or to `target` when
 /// there's none, or absolute paths of files picked for it. Files outside `target` are copied in:

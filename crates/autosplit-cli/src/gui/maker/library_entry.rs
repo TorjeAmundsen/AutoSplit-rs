@@ -4,7 +4,7 @@
 
 use autosplit_core::filename::validate_split_name;
 use autosplit_core::library::{NewStep, add_ready_made, base_image, change_ready_made, delete_ready_made};
-use autosplit_core::preset::{LibrarySplit, PresetSplit, same_contents_as};
+use autosplit_core::preset::{LibrarySplit, PresetSplit, duplicates_among};
 use slint::Model;
 
 use super::super::name_parts_model;
@@ -342,9 +342,14 @@ impl Gui {
             ));
         };
         let mut updates = Vec::new();
-        for (step, split) in kept.iter().zip(splits) {
+        for (place, (step, split)) in kept.iter().zip(splits).enumerate() {
             // As it's saved: a fade split's savestate, hidden in the form, isn't its own
-            let split = saved_split(split);
+            let mut split = saved_split(split);
+            // A ready-made split's first image is never compared with the one before it, which
+            // the library doesn't write, so it isn't a change
+            if place == 0 {
+                split.with_previous = false;
+            }
             if let Some(problem) = settings_problem(&step.split, &split) {
                 return Err(problem);
             }
@@ -508,18 +513,15 @@ impl Gui {
     }
 
     /// The images of `steps` whose savestate has the same contents as one the game's library has
-    /// in another file, each with that file.
+    /// in another file, or an earlier image of `steps`, each with that file. Files the images use
+    /// themselves only count once an earlier image keeps theirs, so two of them never trade files.
     fn library_duplicates(&self, game: &str, steps: &[NewStep]) -> Vec<(usize, PathBuf)> {
         let maker = self.maker.borrow();
-        let savestates: Vec<PathBuf> = (maker.library.splits_for(game).into_iter())
+        let library: Vec<PathBuf> = (maker.library.splits_for(game).into_iter())
             .flat_map(|(folder, _, steps)| steps.iter().filter_map(move |step| library_savestate(&step.split, folder)))
             .collect();
-        (steps.iter().enumerate())
-            .filter_map(|(place, step)| {
-                let found = same_contents_as(step.savestate.as_deref()?, savestates.iter().map(PathBuf::as_path))?;
-                Some((place, found.to_owned()))
-            })
-            .collect()
+        let files: Vec<Option<&Path>> = steps.iter().map(|step| step.savestate.as_deref()).collect();
+        duplicates_among(&files, library.iter().map(PathBuf::as_path))
     }
 
     /// Writes the ready-made split: a new one for `game` with `steps`, or the one being edited with

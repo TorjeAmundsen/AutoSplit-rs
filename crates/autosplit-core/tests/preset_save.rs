@@ -4,7 +4,8 @@ use std::path::Path;
 
 use autosplit_core::preset::{
     PRESET_FILE, Preset, PresetError, PresetSplit, SAVESTATE_NOTE_FILE, delete_preset, duplicate_savestates,
-    load_presets, new_preset_folder, same_contents_as, sanitize_file_name, save_preset, unique_file_name,
+    duplicates_among, load_presets, new_preset_folder, same_contents_as, sanitize_file_name, save_preset,
+    unique_file_name,
 };
 use test_case::test_case;
 
@@ -184,6 +185,24 @@ fn a_file_with_the_same_contents_is_found_among_others() {
 
     // Assert
     assert_eq!(found, (Some(match_.as_path()), None));
+}
+
+#[test]
+fn files_already_there_keep_the_first_and_never_trade() {
+    // Arrange: two files the images use with the same contents, another one of them, and an image
+    // without a file
+    let folder = tempfile::tempdir().unwrap();
+    let (a, b, c) = (folder.path().join("a.gzs"), folder.path().join("b.gzs"), folder.path().join("c.gzs"));
+    file(&a, "link's house");
+    file(&b, "link's house");
+    file(&c, "lost woods");
+    let files = [Some(a.as_path()), None, Some(b.as_path()), Some(c.as_path())];
+
+    // Act
+    let duplicates = duplicates_among(&files, [a.as_path(), b.as_path(), c.as_path()]);
+
+    // Assert: b takes a, and a keeps its own instead of taking b
+    assert_eq!(duplicates, vec![(2, a.clone())]);
 }
 
 #[test]
