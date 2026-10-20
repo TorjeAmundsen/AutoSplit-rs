@@ -56,20 +56,20 @@ description = "Final slash on Ganon, standard RTA ending frame."
 base_image = "base_ganon.png"
 
 [[split]]
-name = "KokiriSwordRight"
-mask = "KokiriSwordRight.png"
-threshold = 0.96
-savestate = "000-kokiri_forest.gzs"
-description = "Kokiri Sword, split on model above head."
-base_image = "base_KokiriSwordRight.png"
-
-[[split]]
 name = "KokiriSwordLeft"
-with_previous = true
 mask = "KokiriSwordLeft.png"
 threshold = 0.96
 savestate = "001-kokiri_forest.gzs"
+description = "Kokiri Sword, split on model above head."
 base_image = "base_KokiriSwordLeft.png"
+
+[[split]]
+name = "KokiriSwordRight"
+with_previous = true
+mask = "KokiriSwordRight.png"
+threshold = 0.96
+savestate = "000-kokiri_forest.gzs"
+base_image = "base_KokiriSwordRight.png"
 then = true
 
 [[split]]
