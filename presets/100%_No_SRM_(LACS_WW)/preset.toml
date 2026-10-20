@@ -185,3 +185,16 @@ with_previous = true
 mask = "HookshotHalfRight.png"
 threshold = 0.9
 savestate = "savestates/018-windmill.gzs"
+
+[[split]]
+name = "BombsLeft"
+mask = "BombsLeft.png"
+threshold = 0.94
+pause = 120.0
+
+[[split]]
+name = "BombsRight"
+with_previous = true
+mask = "BombsRight.png"
+threshold = 0.94
+pause = 120.0
