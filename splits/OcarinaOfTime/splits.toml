@@ -117,3 +117,23 @@ fade_time = 800
 threshold = 0.995
 description = "Splits on a normal full-length black fade."
 base_image = "base_FullBlackFade.png"
+
+[[split]]
+name = "DeathDummy"
+mask = "DeathDummy.png"
+threshold = 0.93
+pause = 0.0
+savestate = "010-gohma.gzs"
+description = "Splits on white flash after a death wrong warp/blue warp cutscene skip."
+base_image = "base_DeathDummy.png"
+
+[[split]]
+name = "WrongWarpFlash"
+mask = "WrongWarpFlash.png"
+fade = "#000000"
+fade_time = 800
+threshold = 0.995
+pause = 200.0
+below = true
+base_image = "base_WrongWarpFlash.png"
+then = true
