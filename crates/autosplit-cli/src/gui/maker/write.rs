@@ -203,10 +203,14 @@ impl Gui {
         maker.saving = false;
         // Another preset was chosen meanwhile: its splits aren't the ones saved
         let same_preset = maker.generation == generation;
+        let mut saved_rows = vec![false; if same_preset { maker.splits.len() } else { 0 }];
         for Written { index, source, result } in results {
             match result {
                 Ok(path) => {
                     written += 1;
+                    if let Some(saved) = saved_rows.get_mut(index) {
+                        *saved = true;
+                    }
                     // A fade split's source is its color, which the split itself doesn't keep
                     let unchanged = maker.source(index).is_some_and(|now| now.same(&source));
                     if let Some(split) = maker.splits.get_mut(index).filter(|_| same_preset && unchanged) {
@@ -229,6 +233,7 @@ impl Gui {
         }
         let generation_now = maker.generation;
         let queued = maker.queued.take().filter(|(queued, _)| *queued == generation_now);
+        let preview_saved = saved_rows.get(maker.selected).copied().unwrap_or(false);
         drop(maker);
         let moved = if moves.is_empty() {
             String::new()
@@ -237,7 +242,7 @@ impl Gui {
         };
         self.windows.maker.set_status(format!("Saved {}{moved}.", plural(written, "split image")).into());
         if written > 0 {
-            self.windows.maker.invoke_split_images_saved();
+            self.windows.maker.invoke_split_images_saved(ModelRc::from(saved_rows.as_slice()), preview_saved);
         }
         self.send(UiCommand::ReloadSplitImages);
         self.show_maker();
