@@ -3,7 +3,7 @@
 // the selected split's mask shown on the capture as it's changed.
 
 import { ScrollView } from "std-widgets.slint";
-import { Button, ClickAway, ComboBox, FileName, GridIcon, IconToggle, Keys, Label, LiveIcon, MaskIcon, NamePart, OpenList, Preview, SavedCheck, TextField, Theme, Tip } from "widgets.slint";
+import { Button, ClickAway, ComboBox, FileName, GridIcon, IconToggle, Keys, Label, LiveIcon, MaskIcon, NamePart, OpenList, Preview, SavedCheck, SavedGlow, TextField, Theme, Tip } from "widgets.slint";
 import { InlineMessage, MessageOverlay } from "message.slint";
 import { SplitField, SplitForm, SplitFormPanel, SplitValues } from "split_form.slint";
 
@@ -253,10 +253,15 @@ export component MakerWindow inherits Window {
     callback browse-folder();
 
     property <bool> saved-flash;
+    // The rows whose split images were just saved, by index
+    property <[bool]> saved-rows;
 
-    // Split images were saved: the output preview dims under a check mark for a moment
-    public function split-images-saved() {
-        root.saved-flash = true;
+    // Split images were saved: their rows' pictures dim under a check mark for a moment, and the
+    // output preview too when it shows one of them. After a grab the next split is selected, so
+    // the check is on the row grabbed, not the preview.
+    public function split-images-saved(rows: [bool], preview: bool) {
+        root.saved-rows = rows;
+        root.saved-flash = preview;
         // Restarting only resets a running timer, it doesn't start a stopped one
         flash-timer.running = true;
         flash-timer.restart();
@@ -268,6 +273,7 @@ export component MakerWindow inherits Window {
         triggered => {
             self.running = false;
             root.saved-flash = false;
+            root.saved-rows = [];
         }
     }
     callback generate-profile();
@@ -410,6 +416,10 @@ export component MakerWindow inherits Window {
                                 width: parent.width;
                                 background: index == root.selected ? Theme.selection.with-alpha(list-keys.has-focus ? 0.35 : 0.2) : row.shaded ? Theme.stripe : transparent;
 
+                                SavedGlow {
+                                    shown: root.saved-rows[index];
+                                }
+
                                 TouchArea {
                                     clicked => {
                                         list-keys.focus();
@@ -459,6 +469,11 @@ export component MakerWindow inherits Window {
                                                 height: parent.height - 2px;
                                                 source: row.thumb;
                                                 image-fit: fill;
+                                            }
+
+                                            SavedCheck {
+                                                size: 28px;
+                                                shown: root.saved-rows[index];
                                             }
                                         }
                                     }

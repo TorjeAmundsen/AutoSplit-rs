@@ -263,7 +263,11 @@ fn main() {
     maker.set_output_folder(output_folder);
     maker.set_preset_problem("".into());
     maker.set_can_grab(true);
-    maker.invoke_split_images_saved();
+    // Just after a grab: the split above saved, the selected one next to grab
+    maker.invoke_split_images_saved(slint::ModelRc::from([false, true].as_slice()), false);
+    // Past the check mark popping in
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    slint::platform::update_timers_and_animations();
     save(&window, PhysicalSize::new(828, 672), &folder.join("maker-saved.png"));
     // A long message drawn in the window scrolls
     let files: Vec<String> = (1..=40).map(|number| format!("{number:02}_Boss_(0.95).png")).collect();
