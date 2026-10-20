@@ -1,0 +1,187 @@
+name = "100% No SRM (LACS WW)"
+game = "The Legend of Zelda: Ocarina of Time"
+
+[[split]]
+name = "reset"
+mask = "reset.png"
+threshold = 0.96
+pause = 0.1
+savestate = "savestates/000_start_and_reset.gzs"
+
+[[split]]
+name = "start_auto_splitter"
+mask = "start_auto_splitter.png"
+threshold = 0.96
+pause = 10.0
+below = true
+savestate = "savestates/000_start_and_reset.gzs"
+
+[[split]]
+name = "EscapeDummy"
+mask = "EscapeDummy.png"
+threshold = 0.95
+pause = 0.5
+savestate = "savestates/000-escdmy.gzs"
+
+[[split]]
+name = "Escape"
+mask = "FullBlackFade.png"
+fade = "#000000"
+fade_time = 800
+threshold = 0.995
+pause = 200.0
+
+[[split]]
+name = "Bottle"
+mask = "Bottle.png"
+threshold = 0.93
+pause = 60.0
+delay = 1100
+below = true
+savestate = "savestates/004_bottle.gzs"
+
+[[split]]
+name = "HylianShieldDummy"
+mask = "HylianShieldDummy.png"
+threshold = 0.95
+pause = 5.0
+
+[[split]]
+name = "DekuShield"
+mask = "DekuShield.png"
+threshold = 0.9
+pause = 200.0
+savestate = "savestates/002-bottom_of_the_well.gzs"
+
+[[split]]
+name = "DekuShieldAltLighting"
+with_previous = true
+mask = "DekuShield.png"
+threshold = 0.9
+pause = 200.0
+savestate = "savestates/003-bottom_of_the_well.gzs"
+
+[[split]]
+name = "Zelda"
+mask = "Zelda.png"
+threshold = 0.93
+pause = 120.0
+savestate = "savestates/004-zelda.gzs"
+
+[[split]]
+name = "EponasSong"
+mask = "EponasSong.png"
+threshold = 0.95
+delay = 500
+savestate = "savestates/005-lon_lon_ranch.gzs"
+
+[[split]]
+name = "BugsDummy"
+mask = "BugsDummy.png"
+threshold = 0.94
+pause = 15.0
+savestate = "savestates/006-kokiri_forest.gzs"
+
+[[split]]
+name = "EnterDekuDummy1"
+mask = "EnterDekuDummy1.png"
+threshold = 0.95
+pause = 0.5
+savestate = "savestates/007-kokiri_forest.gzs"
+
+[[split]]
+name = "EnterDekuDummy2"
+with_previous = true
+mask = "EnterDekuDummy2.png"
+threshold = 0.95
+pause = 0.5
+savestate = "savestates/007-kokiri_forest.gzs"
+
+[[split]]
+name = "EnterDekuDummy3"
+with_previous = true
+mask = "EnterDekuDummy3.png"
+threshold = 0.95
+pause = 0.5
+savestate = "savestates/007-kokiri_forest.gzs"
+
+[[split]]
+name = "EnterDekuDummy4"
+with_previous = true
+mask = "EnterDekuDummy4.png"
+threshold = 0.95
+pause = 0.5
+savestate = "savestates/007-kokiri_forest.gzs"
+
+[[split]]
+name = "EnterDeku"
+mask = "FullBlackFade (1).png"
+fade = "#000000"
+fade_time = 800
+threshold = 0.995
+pause = 60.0
+
+[[split]]
+name = "SlingshotLeft"
+mask = "SlingshotLeft.png"
+threshold = 0.94
+savestate = "savestates/008-sling1.gzs"
+
+[[split]]
+name = "SlingshotRight"
+with_previous = true
+mask = "SlingshotRight.png"
+threshold = 0.94
+savestate = "savestates/009-sling2.gzs"
+
+[[split]]
+name = "DeathDummy"
+mask = "DeathDummy.png"
+threshold = 0.93
+pause = 0.0
+savestate = "savestates/010-gohma.gzs"
+
+[[split]]
+name = "LACSWW"
+mask = "FullBlackFade (2).png"
+fade = "#000000"
+fade_time = 800
+threshold = 0.995
+pause = 200.0
+below = true
+
+[[split]]
+name = "HoverBootsLeft"
+mask = "HoverBootsLeft (1).png"
+threshold = 0.94
+pause = 200.0
+savestate = "savestates/011-hovr1.gzs"
+
+[[split]]
+name = "HoverBootsRight"
+with_previous = true
+mask = "HoverBootsRight.png"
+threshold = 0.94
+pause = 200.0
+savestate = "savestates/012-hovr2.gzs"
+
+[[split]]
+name = "HeheheDummy"
+mask = "HeheheDummy.png"
+threshold = 0.94
+pause = 7.0
+dummy = true
+savestate = "savestates/013-windmill.gzs"
+
+[[split]]
+name = "HookshotHalfLeft"
+mask = "HookshotHalfLeft.png"
+threshold = 0.9
+savestate = "savestates/018-windmill.gzs"
+
+[[split]]
+name = "HookshotHalfRight"
+with_previous = true
+mask = "HookshotHalfRight.png"
+threshold = 0.9
+savestate = "savestates/018-windmill.gzs"
