@@ -4,12 +4,15 @@
 
 use autosplit_core::filename::validate_split_name;
 use autosplit_core::library::{NewStep, add_ready_made, base_image, change_ready_made, delete_ready_made};
-use autosplit_core::preset::{LibrarySplit, PresetSplit};
+use autosplit_core::preset::{LibrarySplit, PresetSplit, duplicates_among};
 use slint::Model;
 
 use super::super::name_parts_model;
-use super::super::preset_form::{SplitKind, library_file_name, library_file_parts, library_heading, saved_split};
-use super::super::ui::EntryStep;
+use super::super::preset_form::{
+    ONE_COPY_LABELS, SplitKind, changed_settings, library_file_name, library_file_parts, library_heading,
+    one_copy_question, saved_split, settings_changes, settings_problem, too_few_selected, with_settings_of,
+};
+use super::super::ui::{EntryStep, LibraryEntryWindow};
 use super::library::splits_folder;
 use super::*;
 
@@ -46,8 +49,64 @@ fn name_problem(own: &PresetSplit, named: &PresetSplit) -> Option<String> {
     Some(format!("{}: {error}", library_heading(own)))
 }
 
+/// What saving a ready-made split being edited changes, as the window's Change list has it.
+#[derive(Clone, Copy, PartialEq)]
+enum Change {
+    /// Its description, names and the pictures chosen for base images.
+    Kept,
+    /// Its settings and savestates too, from the selected splits.
+    Settings,
+    /// Its images and settings, made again from the selected splits.
+    Replaced,
+}
+
+impl Change {
+    /// In the Change list's order.
+    const ALL: [Self; 3] = [Self::Kept, Self::Settings, Self::Replaced];
+
+    fn of(window: &LibraryEntryWindow) -> Self {
+        let chosen = usize::try_from(window.get_change()).ok().and_then(|index| Self::ALL.get(index).copied());
+        chosen.unwrap_or(Self::Kept)
+    }
+}
+
+/// The settings and savestate an image of a ready-made split being edited takes from the selected
+/// split at its place.
+struct Update {
+    /// As it's saved.
+    split: PresetSplit,
+    savestate: Option<PathBuf>,
+}
+
+/// A file of a ready-made split in the library in `folder`, like an image's mask or savestate, as
+/// a path, or none for an image without one.
+fn library_file(folder: &Path, name: &str) -> Option<PathBuf> {
+    (!name.is_empty()).then(|| folder.join(name))
+}
+
+/// Whether `update` gives `step`, an image of the ready-made split in `folder`, another savestate
+/// file. Paths that can't be found, like a missing file's, are compared as they're written.
+fn savestate_moved(step: &PresetSplit, folder: &Path, update: &Update) -> bool {
+    library_file(folder, &step.savestate).as_deref().map(canonical) != update.savestate.as_deref().map(canonical)
+}
+
+/// Whether `update` changes anything about `step`, an image of the ready-made split in `folder`.
+fn update_changes(step: &PresetSplit, folder: &Path, update: &Update) -> bool {
+    !changed_settings(step, &update.split).is_empty() || savestate_moved(step, folder, update)
+}
+
+/// What `update` changes about `step`, an image of the ready-made split in `folder`, like
+/// From ScrubsDummyLow: threshold default to 0.92.
+fn update_text(step: &PresetSplit, folder: &Path, update: &Update) -> String {
+    let name = |path: Option<&Path>| path.and_then(file_name_text).unwrap_or_else(|| "none".to_owned());
+    let savestates = savestate_moved(step, folder, update)
+        .then(|| (name(library_file(folder, &step.savestate).as_deref()), name(update.savestate.as_deref())));
+    settings_changes(step, &update.split, savestates)
+}
+
 /// A ready-made split being edited, as it was when the window opened: the library can change
 /// meanwhile, which saving finds out instead of changing another one.
+#[derive(Clone)]
 struct Edited {
     /// Its library's folder, and its place among that library's.
     folder: PathBuf,
@@ -132,7 +191,7 @@ impl Gui {
             }
             gui.show_entry();
         });
-        on!(weak, entry, on_replace_toggled, (_replace) gui => gui.show_entry());
+        on!(weak, entry, on_change_chosen, () gui => gui.show_entry());
         on!(weak, entry, on_save, () gui => gui.save_entry());
         on!(weak, entry, on_cancel, () gui => gui.close_entry());
     }
@@ -160,7 +219,7 @@ impl Gui {
         let window = &self.windows.entry;
         window.set_window_title(if editing.is_some() { "Edit Library Entry" } else { "Add to Library" }.into());
         window.set_editing(editing.is_some());
-        window.set_replace(false);
+        window.set_change(0);
         window.set_images(1.0);
         window.set_description_text(description.into());
         window.set_game(game.trim().into());
@@ -262,6 +321,38 @@ impl Gui {
         Ok(planned)
     }
 
+    /// The settings and savestates the images of a ready-made split being edited, `kept`, take
+    /// from the selected split and the ones after it, one for each. Or what's in the way.
+    fn updates(&self, kept: &[LibrarySplit]) -> Result<Vec<Update>, String> {
+        let maker = self.maker.borrow();
+        let Some(preset) = maker.edit.as_ref().map(editor::Editing::preset) else {
+            return Err("Edit a preset first.".to_owned());
+        };
+        let entry: Vec<PresetSplit> = kept.iter().map(|step| step.split.clone()).collect();
+        let Some(splits) = preset.splits.get(maker.selected..maker.selected + kept.len()) else {
+            return Err(too_few_selected(&entry));
+        };
+        let mut updates = Vec::new();
+        for (place, split) in splits.iter().enumerate() {
+            // As it's saved: a fade split's savestate, hidden in the form, isn't its own
+            let mut split = saved_split(split);
+            // A ready-made split's first image is never compared with the one before it, which
+            // the library doesn't write, so it isn't a change
+            if place == 0 {
+                split.with_previous = false;
+            }
+            if let Some(problem) = settings_problem(&entry, place, &split) {
+                return Err(problem);
+            }
+            let savestate = (!split.savestate.is_empty()).then(|| maker.file(&split.savestate));
+            if let Some(path) = savestate.as_ref().filter(|path| !path.is_file()) {
+                return Err(format!("{} uses {}, which doesn't exist.", library_heading(&split), path.display()));
+            }
+            updates.push(Update { split, savestate });
+        }
+        Ok(updates)
+    }
+
     /// Puts the ready-made split as it would be written in the entry window, and what's in the way.
     fn show_entry(&self) {
         let defaults = self.state.borrow().document.profile.split_defaults();
@@ -271,7 +362,14 @@ impl Gui {
         let Some(preset) = maker.edit.as_ref().map(editor::Editing::preset) else { return };
         let game = preset.game.clone();
         let most = preset.splits.len().saturating_sub(maker.selected).clamp(1, 8);
-        let kept = entry.editing.as_ref().filter(|_| !window.get_replace());
+        let change = Change::of(window);
+        let kept = entry.editing.as_ref().filter(|_| change != Change::Replaced);
+        // Settings taken from the selected splits, or what's in the way of taking them
+        let (updates, update_problem) =
+            match kept.filter(|_| change == Change::Settings).map(|edited| self.updates(&edited.steps)).transpose() {
+                Ok(updates) => (updates, None),
+                Err(problem) => (None, Some(problem)),
+            };
         let picked: Vec<usize> = entry.pictures.keys().copied().collect();
         let names = entry.names.clone();
         // `own` is the image as it is, and `split` with the name typed for it
@@ -289,20 +387,25 @@ impl Gui {
             }
         };
         // Kept as they are, only the description and names change, and a base image a picture is
-        // chosen for
+        // chosen for, and the settings and savestates when they're taken from the selected splits
         let kept_rows: Option<(Vec<EntryStep>, Option<String>)> = kept.map(|edited| {
-            let mut problem = None;
+            let mut problem = update_problem;
             let rows = (edited.steps.iter().enumerate())
                 .map(|(place, step)| {
                     let split = entry.named(place, &step.split);
                     problem = problem.take().or_else(|| name_problem(&step.split, &split));
+                    let update = updates.as_deref().and_then(|updates| updates.get(place));
+                    // What changes, when settings are taken, or else where its base image is from
+                    let text = |otherwise: String| {
+                        update.map_or(otherwise, |update| update_text(&step.split, &edited.folder, update))
+                    };
                     match entry.pictures.get(&place) {
                         Some((path, image)) => {
-                            step_row(place, &step.split, &split, base_picture(image), picked_from(path))
+                            step_row(place, &step.split, &split, base_picture(image), text(picked_from(path)))
                         }
                         None => {
                             let thumb = maker.library.thumb(&edited.folder, &step.base_image).unwrap_or_default();
-                            step_row(place, &step.split, &split, thumb, "Kept as it is".to_owned())
+                            step_row(place, &step.split, &split, thumb, text("Kept as it is".to_owned()))
                         }
                     }
                 })
@@ -343,21 +446,27 @@ impl Gui {
         window.set_problem(problem.into());
     }
 
-    /// Writes the ready-made split into the library, then shows the library as it is now.
-    fn save_entry(&self) {
+    /// Writes the ready-made split into the library, then shows the library as it is now. A
+    /// savestate with the same contents as one the library has in another file can use that one
+    /// instead, if wanted.
+    fn save_entry(self: &Rc<Self>) {
         let maker = self.maker.borrow();
         let Some(entry) = &maker.entry else { return };
-        let editing = entry.editing.as_ref().map(|edited| (edited.folder.clone(), edited.place, edited.steps.clone()));
+        let editing = entry.editing.clone();
         let game = maker.edit.as_ref().map(|edit| edit.preset().game.trim().to_owned()).unwrap_or_default();
         drop(maker);
         let in_use = self.files_in_use();
         let window = &self.windows.entry;
         let description = window.get_description_text().trim().to_owned();
-        let steps = match (&editing, window.get_replace()) {
-            (Some((folder, _, kept)), false) => match self.kept_steps(folder, kept) {
-                Ok(steps) => steps,
-                Err(problem) => return self.show_message(Message::error(problem)),
-            },
+        let change = Change::of(window);
+        let steps = match (&editing, change) {
+            (Some(edited), Change::Kept | Change::Settings) => {
+                let updates = (change == Change::Settings).then(|| self.updates(&edited.steps)).transpose();
+                match updates.and_then(|updates| self.kept_steps(&edited.folder, &edited.steps, updates.as_deref())) {
+                    Ok(steps) => steps,
+                    Err(problem) => return self.show_message(Message::error(problem)),
+                }
+            }
             _ => match self.planned_steps() {
                 Ok(planned) => match planned_problem(&planned) {
                     Some(problem) => return self.show_message(Message::error(problem)),
@@ -366,11 +475,71 @@ impl Gui {
                 Err(problem) => return self.show_message(Message::error(problem)),
             },
         };
-        let written = match (editing, steps) {
-            (Some((folder, place, expected)), steps) => {
-                change_ready_made(&folder, place, &expected, &description, steps, &in_use)
+        let duplicates = self.library_duplicates(&game, steps.as_deref().unwrap_or_default());
+        let mut steps = match steps {
+            Some(steps) if !duplicates.is_empty() => steps,
+            steps => return self.write_entry(editing, &game, &description, steps, &in_use),
+        };
+        let file = |path: &Path| file_name_text(path).unwrap_or_default();
+        let same: Vec<(String, String, String)> = (duplicates.iter())
+            .map(|(place, kept)| {
+                let step = &steps[*place];
+                let savestate = step.savestate.as_deref().map(file).unwrap_or_default();
+                (library_heading(&step.split), savestate, file(kept))
+            })
+            .collect();
+        let text = one_copy_question(&same, true);
+        let weak = Rc::downgrade(self);
+        self.show_message(Message::choice(text, ONE_COPY_LABELS, 0, move |answer| {
+            let Some(gui) = weak.upgrade() else { return };
+            match answer {
+                Answer::Yes => {
+                    for (place, kept) in duplicates {
+                        steps[place].savestate = Some(kept);
+                    }
+                }
+                Answer::No => {}
+                Answer::Cancel => return,
             }
-            (None, Some(steps)) => add_ready_made(&splits_folder(), &game, &description, steps).map(|_| ()),
+            gui.write_entry(editing, &game, &description, Some(steps), &in_use);
+        }));
+    }
+
+    /// The images of `steps` whose savestate is new to the library and has the same contents as
+    /// one the game's library has in another file, or an earlier image of `steps`, each with that
+    /// file. Files the images use themselves only count once an earlier image keeps theirs, so two
+    /// of them never trade files.
+    fn library_duplicates(&self, game: &str, steps: &[NewStep]) -> Vec<(usize, PathBuf)> {
+        let maker = self.maker.borrow();
+        let library: Vec<PathBuf> = (maker.library.splits_for(game).into_iter())
+            .flat_map(|(folder, _, steps)| {
+                steps.iter().filter_map(move |step| library_file(folder, &step.split.savestate))
+            })
+            .collect();
+        let files: Vec<Option<&Path>> = steps.iter().map(|step| step.savestate.as_deref()).collect();
+        let mut duplicates = duplicates_among(&files, library.iter().map(PathBuf::as_path));
+        // Only savestates new to the library: its own were kept on purpose, or before this was
+        // asked, so they aren't asked about every time
+        let saved: Vec<PathBuf> = library.iter().map(|path| canonical(path)).collect();
+        duplicates.retain(|(place, _)| files[*place].is_none_or(|file| !saved.contains(&canonical(file))));
+        duplicates
+    }
+
+    /// Writes the ready-made split: a new one for `game` with `steps`, or the one being edited with
+    /// its description and any new `steps`. Then shows the library as it is now.
+    fn write_entry(
+        &self,
+        editing: Option<Edited>,
+        game: &str,
+        description: &str,
+        steps: Option<Vec<NewStep>>,
+        in_use: &[PathBuf],
+    ) {
+        let written = match (editing, steps) {
+            (Some(Edited { folder, place, steps: expected }), steps) => {
+                change_ready_made(&folder, place, &expected, description, steps, in_use)
+            }
+            (None, Some(steps)) => add_ready_made(&splits_folder(), game, description, steps).map(|_| ()),
             (None, None) => return,
         };
         if let Err(error) = written {
@@ -382,8 +551,14 @@ impl Gui {
     }
 
     /// The images of a ready-made split being edited, kept as they are but for base images a
-    /// picture is chosen for, or none when nothing but the description changes.
-    fn kept_steps(&self, folder: &Path, kept: &[LibrarySplit]) -> Result<Option<Vec<NewStep>>, String> {
+    /// picture is chosen for, and the settings and savestates of `updates`, or none when nothing
+    /// but the description changes.
+    fn kept_steps(
+        &self,
+        folder: &Path,
+        kept: &[LibrarySplit],
+        updates: Option<&[Update]>,
+    ) -> Result<Option<Vec<NewStep>>, String> {
         let maker = self.maker.borrow();
         let Some(entry) = &maker.entry else { return Ok(None) };
         let named: Vec<PresetSplit> =
@@ -392,7 +567,10 @@ impl Gui {
             return Err(problem);
         }
         let renamed = kept.iter().zip(&named).any(|(step, named)| step.split.name != named.name);
-        if entry.pictures.is_empty() && !renamed {
+        let updated = updates.is_some_and(|updates| {
+            kept.iter().zip(updates).any(|(step, update)| update_changes(&step.split, folder, update))
+        });
+        if entry.pictures.is_empty() && !renamed && !updated {
             return Ok(None);
         }
         let mut steps = Vec::new();
@@ -405,13 +583,11 @@ impl Gui {
                     format!("{name}'s base image can't be read, so choose a picture for it: {error}")
                 })?,
             };
-            let savestate = (!step.split.savestate.is_empty()).then(|| folder.join(&step.split.savestate));
-            steps.push(NewStep {
-                split: named,
-                mask: (!step.split.mask.is_empty()).then(|| folder.join(&step.split.mask)),
-                savestate,
-                screenshot,
-            });
+            let (split, savestate) = match updates.and_then(|updates| updates.get(place)) {
+                Some(update) => (with_settings_of(&named, &update.split), update.savestate.clone()),
+                None => (named, library_file(folder, &step.split.savestate)),
+            };
+            steps.push(NewStep { split, mask: library_file(folder, &step.split.mask), savestate, screenshot });
         }
         Ok(Some(steps))
     }

@@ -3,8 +3,9 @@
 use autosplit::gui::preset_form::{
     Draft, Field, InstructionText, ListChange, Problem, SplitEdit, SplitKind, discard_question, elide_middle,
     field_problems, field_value, import_blocker, in_preset, instruction_cards, known_game, library_file_name,
-    library_heading, matches_search, next_problem_split, problem_flags, problem_list, problem_summary,
-    saved_preset_name, saved_split, split_heading, status_line,
+    library_heading, matches_search, next_problem_split, one_copy_question, problem_flags, problem_list,
+    problem_summary, saved_preset_name, saved_split, settings_changes, settings_problem, split_heading, status_line,
+    too_few_selected, with_settings_of,
 };
 use autosplit_core::preset::{Preset, PresetSplit};
 use test_case::test_case;
@@ -747,6 +748,17 @@ fn leaving_unsaved_changes_says_what_is_lost(name: &str, saved_before: bool) -> 
     discard_question(name, saved_before)
 }
 
+#[test_case(false => "These savestates are the same as ones other splits already use:\n\nStart Image: 000 (1).gzs is the same as 000.gzs\nEscape: escape.gzs is the same as 001.gzs\n\nUse the existing files, so the preset keeps one copy of each?"; "in a preset")]
+#[test_case(true => "These savestates are the same as ones the split library already has:\n\nStart Image: 000 (1).gzs is the same as 000.gzs\nEscape: escape.gzs is the same as 001.gzs\n\nUse the existing files, so the library keeps one copy of each?"; "in the library")]
+fn savestates_there_already_are_offered_instead_of_copies(library: bool) -> String {
+    // Arrange
+    let same = [("Start Image", "000 (1).gzs", "000.gzs"), ("Escape", "escape.gzs", "001.gzs")]
+        .map(|(heading, file, kept)| (heading.to_owned(), file.to_owned(), kept.to_owned()));
+
+    // Act
+    one_copy_question(&same, library)
+}
+
 #[test_case("006 enter deku.gzs", 15 => "006 en...ku.gzs"; "shortened in the middle")]
 #[test_case("deku.gzs", 15 => "deku.gzs"; "short enough")]
 #[test_case("006 enter deku.gzs", 18 => "006 enter deku.gzs"; "exactly the limit")]
@@ -917,6 +929,82 @@ fn splits_in_the_preset_say_where(name: &str) -> Option<(String, String)> {
 fn ready_made_splits_name_their_files_without_a_place(name: &str) -> String {
     // Act, with the expected value checked by test_case
     library_file_name(&library_split(name), None)
+}
+
+#[test]
+fn ready_made_splits_take_settings_but_keep_their_name_and_mask() {
+    // Arrange: the split it was inserted as, renamed and changed in the preset
+    let step = library_split("ScrubsDummyLow");
+    let from = PresetSplit {
+        name: "Renamed".into(),
+        mask: "other.png".into(),
+        threshold: Some(0.92),
+        dummy: true,
+        savestate: "savestates/013-deku tree.gzs".into(),
+        ..library_split("ScrubsDummyLow")
+    };
+
+    // Act
+    let updated = with_settings_of(&step, &from);
+
+    // Assert
+    let expected = PresetSplit { name: step.name.clone(), mask: step.mask.clone(), ..from };
+    assert_eq!(updated, expected);
+}
+
+#[test_case(false, None => "From ScrubsDummyLow: no changes"; "the same settings")]
+#[test_case(true, None => "From ScrubsDummyLow: threshold default to 0.92, dummy false to true"; "settings")]
+#[test_case(true, Some(("none", "013-deku tree.gzs")) => "From ScrubsDummyLow: threshold default to 0.92, dummy false to true, savestate none to 013-deku tree.gzs"; "and another savestate")]
+fn settings_taken_from_the_preset_say_what_changes(changed: bool, savestates: Option<(&str, &str)>) -> String {
+    // Arrange
+    let step = PresetSplit { threshold: None, ..library_split("ScrubsDummyLow") };
+    let from = if changed { PresetSplit { threshold: Some(0.92), dummy: true, ..step.clone() } } else { step.clone() };
+
+    // Act
+    settings_changes(&step, &from, savestates.map(|(old, new)| (old.to_owned(), new.to_owned())))
+}
+
+#[test_case("ScrubsDummyLow", "ScrubsDummyLow.png", None, None => None; "the same split")]
+#[test_case("ScrubsDummyLow", "ScrubsDummyLow.png", None, Some("#ffffff") => None; "made a fade split, keeping its mask")]
+#[test_case("Escape", "ScrubsDummyLow.png", None, None => Some("Escape is selected where ScrubsDummyLow should be. Select ScrubsDummyLow in Make Split Images.".to_owned()); "another split")]
+#[test_case("ScrubsDummyLow", "", Some("#000000"), Some("#000000") => None; "a fade split of the whole screen staying one")]
+#[test_case("ScrubsDummyLow", "", Some("#000000"), None => Some("ScrubsDummyLow has no mask, so it has to stay a fade split.".to_owned()); "a fade split of the whole screen made a normal one")]
+fn settings_are_only_taken_from_the_same_split(
+    selected: &str,
+    mask: &str,
+    fade: Option<&str>,
+    new_fade: Option<&str>,
+) -> Option<String> {
+    // Arrange
+    let step = PresetSplit { mask: mask.into(), fade: fade.map(Into::into), ..library_split("ScrubsDummyLow") };
+    let from = PresetSplit { name: selected.into(), fade: new_fade.map(Into::into), ..step.clone() };
+
+    // Act
+    settings_problem(&[step], 0, &from)
+}
+
+#[test]
+fn another_split_at_a_later_image_says_to_select_the_first() {
+    // Arrange: a dummy, then the split, with Escape selected where the second should be
+    let entry = [library_split("ScrubsDummyLow"), library_split("ScrubsDummyHigh")];
+
+    // Act
+    let problem = settings_problem(&entry, 1, &library_split("Escape"));
+
+    // Assert
+    let expected = "Escape is selected where ScrubsDummyHigh should be. Select ScrubsDummyLow in Make Split Images, \
+                    the first of this ready-made split's 2 images.";
+    assert_eq!(problem.as_deref(), Some(expected));
+}
+
+#[test_case(&["Escape"] => "Select Escape in Make Split Images."; "one image")]
+#[test_case(&["ScrubsDummyLow", "ScrubsDummyHigh"] => "The preset has fewer than 2 splits from the selected one on. Select ScrubsDummyLow in Make Split Images, the first of this ready-made split's 2 images."; "several images")]
+fn too_few_splits_selected_says_what_to_select(names: &[&str]) -> String {
+    // Arrange
+    let entry: Vec<PresetSplit> = names.iter().map(|name| library_split(name)).collect();
+
+    // Act
+    too_few_selected(&entry)
 }
 
 #[test_case(Some(1), 1, 2, true => 3; "above the selected split, which stays selected")]

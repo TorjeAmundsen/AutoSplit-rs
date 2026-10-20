@@ -1,7 +1,6 @@
 //! Split Library: the ready-made splits of the edited preset's game, from the splits library
 //! next to the program, added to the preset one at a time.
 
-use autosplit_core::filename::START_KEYWORD;
 use autosplit_core::preset::{LibrarySplit, LoadedLibrary, PresetSplit, game_key, load_libraries};
 use slint::Model;
 use slint::winit_030::WinitWindowAccessor;
@@ -10,9 +9,9 @@ use autosplit_core::split_image::SplitDefaults;
 
 use super::super::name_parts_model;
 use super::super::preset_form::{
-    InPreset, import_blocker, in_preset, library_file_name, library_file_parts, library_heading, matches_search,
+    import_blocker, in_preset, library_file_name, library_file_parts, library_heading, matches_search,
 };
-use super::super::ui::{LibraryItem, LibraryStep, NamePart};
+use super::super::ui::{LibraryItem, LibraryStep};
 use super::*;
 
 /// The splits libraries, read when Split Library opens, with their base images.
@@ -37,7 +36,7 @@ pub(super) struct Library {
 impl Library {
     /// The ready-made splits for `game`, in the order the list shows them, each with its
     /// library's folder, its place among that library's, and its images.
-    fn splits_for(&self, game: &str) -> Vec<(&Path, usize, &[LibrarySplit])> {
+    pub(super) fn splits_for(&self, game: &str) -> Vec<(&Path, usize, &[LibrarySplit])> {
         let key = game_key(game);
         (self.libraries.iter())
             .filter(|loaded| !key.is_empty() && game_key(&loaded.library.game) == key)
@@ -87,12 +86,29 @@ pub(super) fn splits_folder() -> PathBuf {
     bundled_folder("splits")
 }
 
-/// A ready-made split's image as Split Library shows it: the settings it has, or empty for the
-/// profile's `defaults`, and its file name without its number.
-fn library_step(step: &LibrarySplit, thumb: Option<slint::Image>, defaults: &SplitDefaults) -> LibraryStep {
+/// A ready-made split's image in the library in `folder` as Split Library shows it: the settings
+/// it has, or empty for the profile's `defaults`, its file name without its number, and its
+/// savestate. Developer builds show its path, and others only that it's missing.
+fn library_step(
+    step: &LibrarySplit,
+    folder: &Path,
+    thumb: Option<slint::Image>,
+    defaults: &SplitDefaults,
+) -> LibraryStep {
     let split = &step.split;
     let file = library_file_name(split, Some(defaults));
+    let has_savestate = !split.savestate.is_empty();
+    let savestate_missing = has_savestate && !folder.join(&split.savestate).is_file();
+    let savestate = match (has_savestate, DEVELOPER, savestate_missing) {
+        (false, _, _) | (true, false, false) => String::new(),
+        (true, true, false) => split.savestate.clone(),
+        (true, true, true) => format!("{} (missing)", split.savestate),
+        (true, false, true) => "Missing".to_owned(),
+    };
     LibraryStep {
+        savestate: savestate.into(),
+        savestate_shown: DEVELOPER || savestate_missing,
+        savestate_missing,
         file_parts: name_parts_model(library_file_parts(split, Some(defaults))),
         file: file.into(),
         heading: library_heading(split).into(),
@@ -109,18 +125,6 @@ fn library_step(step: &LibrarySplit, thumb: Option<slint::Image>, defaults: &Spl
         }
         .into(),
     }
-}
-
-/// The start of a file name, its number or keyword, as the split list colors it, or an empty
-/// part without one.
-fn in_preset_part(in_preset: &Option<InPreset>) -> NamePart {
-    let parts = in_preset.as_ref().map(|in_preset| file_name_parts(&in_preset.file));
-    let mut part = parts.and_then(|parts| parts.row_data(0)).unwrap_or_default();
-    // A start image's keyword is long for a row, so it's shortened like reset's length
-    if part.text == START_KEYWORD {
-        part.text = "start".into();
-    }
-    part
 }
 
 impl Gui {
@@ -261,7 +265,7 @@ impl Gui {
             .map(|(index, &(folder, _, steps))| {
                 let splits: Vec<PresetSplit> = steps.iter().map(|step| step.split.clone()).collect();
                 let shown: Vec<LibraryStep> = (steps.iter())
-                    .map(|step| library_step(step, maker.library.thumb(folder, &step.base_image), &defaults))
+                    .map(|step| library_step(step, folder, maker.library.thumb(folder, &step.base_image), &defaults))
                     .collect();
                 // The split it's for is its last image, which the ones before lead up to
                 let last = splits.last();
@@ -272,12 +276,6 @@ impl Gui {
                     heading: last.map(library_heading).unwrap_or_default().into(),
                     description: description.unwrap_or_default().into(),
                     steps: ModelRc::new(VecModel::from(shown)),
-                    in_preset: in_preset_part(&in_preset),
-                    in_preset_file: in_preset
-                        .as_ref()
-                        .map(|in_preset| in_preset.file.as_str())
-                        .unwrap_or_default()
-                        .into(),
                     in_preset_note: in_preset.map(|in_preset| in_preset.note).unwrap_or_default().into(),
                     blocker: import_blocker(preset, &splits).unwrap_or_default().into(),
                 }

@@ -13,7 +13,7 @@ use autosplit::gui::ui::{
 use autosplit::gui::{HOTKEY_ROWS, file_name_parts, name_parts_model, thumbnail, transparency_grid};
 use slint::platform::software_renderer::{MinimalSoftwareWindow, RepaintBufferType, Rgb565Pixel};
 use slint::platform::{Platform, WindowAdapter};
-use slint::{ComponentHandle, Model, PhysicalSize};
+use slint::{ComponentHandle, PhysicalSize};
 
 struct Headless {
     window: Rc<MinimalSoftwareWindow>,
@@ -447,16 +447,14 @@ Replace them?",
                 dummy,
                 below,
                 fade: Default::default(),
+                // As release builds show it
+                savestate: "".into(),
+                savestate_shown: false,
+                savestate_missing: false,
             }
         };
     let library_item =
         |heading: &str, description: &str, steps: Vec<LibraryStep>, in_preset: bool, blocker: &str| LibraryItem {
-            in_preset: if in_preset {
-                file_name_parts("05_Bottle_(0.93)_[35]_#1100#_{b}.png").row_data(0).unwrap()
-            } else {
-                Default::default()
-            },
-            in_preset_file: if in_preset { "05_Bottle_(0.93)_[35]_#1100#_{b}.png".into() } else { "".into() },
             in_preset_note: if in_preset { "Already in the preset, as split 05.".into() } else { "".into() },
             ready_made: 0,
             heading: heading.into(),
@@ -492,14 +490,7 @@ Replace them?",
         library_item(
             "Reset Image",
             "Automatically reset when pressing C-up in Link's house",
-            vec![step(
-                "Reset Image",
-                "base_links_house.png",
-                ["0.96", "", "0.1 s"],
-                false,
-                false,
-                "reset_(0.96)_[0.1].png",
-            )],
+            vec![step("Reset Image", "base_reset.png", ["0.96", "", "0.1 s"], false, false, "reset_(0.96)_[0.1].png")],
             false,
             "A preset can have up to 4 reset images, and this would make 5.",
         ),
@@ -509,11 +500,11 @@ Replace them?",
     library.set_errors("A split library couldn't be read.".into());
     library.set_selected(0);
     library.show().unwrap();
-    save(&window, PhysicalSize::new(600, 520), &folder.join("library.png"));
+    save(&window, PhysicalSize::new(680, 520), &folder.join("library.png"));
     library.set_selected(1);
     // Developer builds can change and delete what's in the library
     library.set_developer(true);
-    save(&window, PhysicalSize::new(600, 420), &folder.join("library-single.png"));
+    save(&window, PhysicalSize::new(680, 420), &folder.join("library-single.png"));
     save(&window, PhysicalSize::new(480, 300), &folder.join("library-narrow.png"));
     library.set_items(std::rc::Rc::new(slint::VecModel::from(Vec::<LibraryItem>::new())).into());
     library.set_errors("".into());
@@ -555,7 +546,7 @@ Replace them?",
     );
     entry.set_steps(std::rc::Rc::new(slint::VecModel::from(Vec::<EntryStep>::new())).into());
     entry.set_editing(true);
-    entry.set_replace(true);
+    entry.set_change(2);
     save(&window, PhysicalSize::new(520, 240), &folder.join("library-entry-problem.png"));
     entry.hide().unwrap();
 

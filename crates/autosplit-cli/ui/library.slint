@@ -25,6 +25,11 @@ export struct LibraryStep {
     // The file name it gets, with XX for its number, which comes from where it's put
     file-parts: [NamePart],
     file: string,
+    // Its savestate, as the library's file has it in developer builds, or empty without one.
+    // Other builds only show the line when the file is missing.
+    savestate: string,
+    savestate-shown: bool,
+    savestate-missing: bool,
 }
 
 export struct LibraryItem {
@@ -34,11 +39,7 @@ export struct LibraryItem {
     heading: string,
     description: string,
     steps: [LibraryStep],
-    // Where a split with its name is in the preset already: the start of its file name, its
-    // number or its keyword, colored like the split list's file names, with empty text when it
-    // isn't, and the whole file name, and a line saying where
-    in-preset: NamePart,
-    in-preset-file: string,
+    // A line saying where a split with its name is in the preset already, or empty when it isn't
     in-preset-note: string,
     // Why it can't be added, or empty
     blocker: string,
@@ -52,10 +53,14 @@ component Setting inherits HorizontalLayout {
     in property <NameKind> kind;
     // What it shows without a value
     in property <string> empty: "Default";
+    // The value is something to fix, like a file that isn't there
+    in property <bool> warning;
+    // Fits the longest label it's lined up with
+    in property <length> label-width: 58px;
     spacing: 6px;
 
     Text {
-        width: 58px;
+        width: root.label-width;
         color: Theme.secondary-text;
         text: root.label;
     }
@@ -66,43 +71,101 @@ component Setting inherits HorizontalLayout {
         min-width: 0px;
         overflow: elide;
         font-weight: root.value == "" ? 400 : 600;
-        color: root.value == "" ? Theme.secondary-text : NameColors.of({ kind: root.kind });
+        color: root.warning ? Theme.warning : root.value == "" ? Theme.secondary-text : NameColors.of({ kind: root.kind });
         text: root.value == "" ? root.empty : root.value;
     }
 }
 
-// Every setting an image can have, a line each, so they're always in the same place
+// Every setting an image can have, always in the same place: in two columns when there's room,
+// the left one's values short so the right one gets the rest of the width for the flags, or else
+// a line each
 component Settings inherits VerticalLayout {
     in property <LibraryStep> step;
+    // Said by the window, from its own width, since this one's comes from what it shows
+    in property <bool> two-columns;
+    // Named like the split form's checkboxes. The profile has none to default to, so without any
+    // it's None.
+    property <string> flags: (root.step.dummy ? "Dummy" : "") + (root.step.dummy && root.step.below ? ", " : "") + (root.step.below ? "Below threshold" : "") + ((root.step.dummy || root.step.below) && root.step.fade != "" ? ", " : "") + (root.step.fade != "" ? "Fade to " + root.step.fade : "");
     alignment: start;
     spacing: 1px;
 
-    Setting {
+    // A line between the columns, so each value goes with the label beside it
+    if root.two-columns: HorizontalLayout {
+        spacing: 8px;
+
+        VerticalLayout {
+            width: 116px;
+            spacing: 1px;
+
+            Setting {
+                label: "Threshold";
+                value: root.step.threshold;
+                kind: NameKind.threshold;
+            }
+
+            Setting {
+                label: "Pause";
+                value: root.step.pause;
+                kind: NameKind.pause;
+            }
+        }
+
+        Rectangle {
+            width: 1px;
+            background: Theme.separator;
+        }
+
+        VerticalLayout {
+            spacing: 1px;
+
+            Setting {
+                label-width: 34px;
+                label: "Delay";
+                value: root.step.delay;
+                kind: NameKind.delay;
+            }
+
+            Setting {
+                label-width: 34px;
+                label: "Flags";
+                empty: "None";
+                value: root.flags;
+                kind: NameKind.flags;
+            }
+        }
+    }
+
+    if !root.two-columns: Setting {
         label: "Threshold";
         value: root.step.threshold;
         kind: NameKind.threshold;
     }
 
-    Setting {
+    if !root.two-columns: Setting {
         label: "Delay";
         value: root.step.delay;
         kind: NameKind.delay;
     }
 
-    Setting {
+    if !root.two-columns: Setting {
         label: "Pause";
         value: root.step.pause;
         kind: NameKind.pause;
     }
 
-    // Named like the split form's checkboxes, in the flags' color. The profile has none to
-    // default to, so without any it's None
-    Setting {
+    if !root.two-columns: Setting {
         label: "Flags";
         empty: "None";
-        value: (root.step.dummy ? "Dummy" : "") + (root.step.dummy && root.step.below ? ", " : "") + (root.step.below ? "Below threshold" : "") + ((root.step.dummy || root.step.below) && root.step.fade != "" ? ", " : "") + (root.step.fade != "" ? "Fade to " + root.step.fade : "");
+        value: root.flags;
         kind: NameKind.flags;
     }
+}
+
+// An image's file name and savestate, under its picture and settings so they get the pane's whole
+// width: a file name with many settings in it is long
+component Files inherits VerticalLayout {
+    in property <LibraryStep> step;
+    spacing: 1px;
 
     // Colored like the split list's file names, cut off when the pane is narrow
     HorizontalLayout {
@@ -124,6 +187,14 @@ component Settings inherits VerticalLayout {
             }
         }
     }
+
+    if root.step.savestate-shown: Setting {
+        label: "Savestate";
+        empty: "None";
+        value: root.step.savestate;
+        kind: NameKind.text;
+        warning: root.step.savestate-missing;
+    }
 }
 
 // Where a split is dragged from: two columns of dots at the start of its row
@@ -135,7 +206,8 @@ component Grip inherits Rectangle {
     callback released();
     // The drag ended without its release: another button was released, or Slint cancelled it
     callback cancelled();
-    width: 14px;
+    // Wider than its dots, so it's easier to grab
+    width: 20px;
     background: root.enabled && (touch.has-hover || root.dragging) ? Theme.item-hover : transparent;
 
     for dot[index] in 6: Rectangle {
@@ -177,7 +249,7 @@ export component LibraryWindow inherits Window {
     in property <string> window-title: "Split Library";
     title: root.window-title;
     icon: @image-url("../assets/icon.png");
-    preferred-width: 600px;
+    preferred-width: 680px;
     preferred-height: 520px;
     min-width: 480px;
     min-height: 280px;
@@ -397,20 +469,11 @@ export component LibraryWindow inherits Window {
                                     vertical-alignment: center;
                                     font-size: 11px;
                                     color: Theme.secondary-text;
-                                    text: item.steps.length + " images";
-                                }
-
-                                // In the preset already: where, as its file name starts
-                                if item.in-preset.text != "": Text {
-                                    vertical-alignment: center;
-                                    font-size: 11px;
-                                    font-weight: 600;
-                                    color: NameColors.of(item.in-preset);
-                                    text: item.in-preset.text;
+                                    text: item.steps.length;
 
                                     Tooltip {
                                         Tip {
-                                            text: "Already in the preset, as " + item.in-preset-file;
+                                            text: item.steps.length + " images, inserted together";
                                         }
                                     }
                                 }
@@ -463,59 +526,80 @@ export component LibraryWindow inherits Window {
                                 wrap: word-wrap;
                             }
 
-                            // Each image at its own size, beside what it sets, numbered when there are
-                            // several, in a box that keeps its place when there's no picture
-                            for step[step-index] in root.item.steps: HorizontalLayout {
-                                spacing: 10px;
-
-                                VerticalLayout {
-                                    alignment: start;
-
-                                    Rectangle {
-                                        width: max(64px, thumb.preferred-width) + 2px;
-                                        height: max(48px, thumb.preferred-height) + 2px;
-                                        border-width: 1px;
-                                        border-color: Theme.separator;
-
-                                        thumb := Image {
-                                            source: step.thumb;
-                                            image-rendering: pixelated;
-                                        }
-
-                                        // No picture to show, like a base image that couldn't
-                                        // be read
-                                        if step.thumb.width == 0: Text {
-                                            horizontal-alignment: center;
-                                            vertical-alignment: center;
-                                            font-size: 10px;
-                                            color: Theme.secondary-text;
-                                            text: "No image";
-                                        }
-                                    }
-                                }
-
-                                VerticalLayout {
-                                    horizontal-stretch: 1;
-                                    alignment: start;
-                                    spacing: 3px;
-
-                                    if root.item.steps.length > 1: Text {
-                                        font-weight: 600;
-                                        color: Theme.text;
-                                        text: (step-index + 1) + ". " + step.heading;
-                                        overflow: elide;
-                                    }
-
-                                    Settings {
-                                        step: step;
-                                    }
-                                }
-                            }
-
+                            // Under its name, since it's for the whole ready-made split, not just
+                            // its last image
                             if root.item.description != "": Text {
                                 wrap: word-wrap;
                                 color: Theme.text;
                                 text: root.item.description;
+                            }
+
+                            // What each image sets, numbered when there are several, with the image
+                            // at its own size to the right, in a box that keeps its place when
+                            // there's no picture, then its file name and savestate. Every label
+                            // starts at the left edge, so they line up.
+                            for step[step-index] in root.item.steps: VerticalLayout {
+                                spacing: 3px;
+
+                                // Between images, like between the split list's splits
+                                if step-index > 0: Rectangle {
+                                    height: 1px;
+                                    background: Theme.separator;
+                                }
+
+                                HorizontalLayout {
+                                    spacing: 10px;
+
+                                    VerticalLayout {
+                                        horizontal-stretch: 1;
+                                        alignment: start;
+                                        spacing: 3px;
+
+                                        if root.item.steps.length > 1: Text {
+                                            font-weight: 600;
+                                            color: Theme.text;
+                                            text: (step-index + 1) + ". " + step.heading;
+                                            overflow: elide;
+                                        }
+
+                                        // Two columns once the pane leaves the settings about
+                                        // 300px beside the thumbnail
+                                        Settings {
+                                            step: step;
+                                            two-columns: root.width >= 620px;
+                                        }
+                                    }
+
+                                    VerticalLayout {
+                                        alignment: start;
+
+                                        Rectangle {
+                                            width: max(64px, thumb.preferred-width) + 2px;
+                                            height: max(48px, thumb.preferred-height) + 2px;
+                                            border-width: 1px;
+                                            border-color: Theme.separator;
+
+                                            thumb := Image {
+                                                source: step.thumb;
+                                                image-rendering: pixelated;
+                                            }
+
+                                            // No picture to show, like a base image that couldn't
+                                            // be read
+                                            if step.thumb.width == 0: Text {
+                                                horizontal-alignment: center;
+                                                vertical-alignment: center;
+                                                font-size: 10px;
+                                                color: Theme.secondary-text;
+                                                text: "No image";
+                                            }
+                                        }
+                                    }
+                                }
+
+                                Files {
+                                    step: step;
+                                }
                             }
                         }
                     }

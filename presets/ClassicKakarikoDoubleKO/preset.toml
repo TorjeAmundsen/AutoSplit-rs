@@ -66,23 +66,23 @@ threshold = 0.995
 pause = 60.0
 
 [[split]]
-name = "ScrubsDummyLow"
-mask = "ScrubsDummyLow.png"
-threshold = 0.93
-pause = 1.0
-dummy = true
-below = true
-savestate = "savestates/013-deku tree.gzs"
-
-[[split]]
 name = "ScrubsDummyHigh"
-with_previous = true
 mask = "ScrubsDummyHigh.png"
 threshold = 0.93
 pause = 1.0
 dummy = true
 below = true
 savestate = "savestates/014-deku tree.gzs"
+
+[[split]]
+name = "ScrubsDummyLow"
+with_previous = true
+mask = "ScrubsDummyLow.png"
+threshold = 0.93
+pause = 1.0
+dummy = true
+below = true
+savestate = "savestates/013-deku tree.gzs"
 
 [[split]]
 name = "Scrubs"

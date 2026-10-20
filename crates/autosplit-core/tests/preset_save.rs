@@ -3,8 +3,9 @@
 use std::path::Path;
 
 use autosplit_core::preset::{
-    PRESET_FILE, Preset, PresetError, PresetSplit, SAVESTATE_NOTE_FILE, delete_preset, load_presets, new_preset_folder,
-    sanitize_file_name, save_preset, unique_file_name,
+    PRESET_FILE, Preset, PresetError, PresetSplit, SAVESTATE_NOTE_FILE, delete_preset, duplicate_savestates,
+    duplicates_among, load_presets, new_preset_folder, same_contents_as, sanitize_file_name, save_preset,
+    unique_file_name,
 };
 use test_case::test_case;
 
@@ -137,6 +138,71 @@ fn files_in_the_folder_stay_where_they_are() {
 
     // Assert
     assert_eq!((saved, files(folder.path())), (loaded, vec!["masks/boss.png".to_owned(), PRESET_FILE.to_owned()]));
+}
+
+#[test]
+fn savestates_with_the_same_contents_in_other_files_are_found() {
+    // Arrange: reset and start in two files with the same contents, and one picked from elsewhere
+    let (folder, elsewhere) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+    file(&folder.path().join("savestates/000 start and reset.gzs"), "link's house");
+    file(&folder.path().join("savestates/000 start and reset (1).gzs"), "link's house");
+    file(&folder.path().join("savestates/001 escape.gzs"), "lost woods");
+    file(&folder.path().join("savestates/002 kakariko.gzs"), "kakariko!!");
+    let picked = file(&elsewhere.path().join("downloaded.gzs"), "link's house");
+    let with_savestate = |name: &str, savestate: &str| PresetSplit { savestate: savestate.into(), ..split(name, "") };
+    let loaded = preset(vec![
+        with_savestate("reset", "savestates/000 start and reset.gzs"),
+        with_savestate("start_auto_splitter", "savestates/000 start and reset (1).gzs"),
+        with_savestate("Escape", "savestates/001 escape.gzs"),
+        with_savestate("Escape 2", &picked),
+        with_savestate("Same file", "savestates/000 start and reset.gzs"),
+        split("No savestate", ""),
+        with_savestate("Same size", "savestates/002 kakariko.gzs"),
+    ]);
+
+    // Act
+    let duplicates = duplicate_savestates(folder.path(), &loaded);
+
+    // Assert: each with the first's, none for the one already using its file, and none for one
+    // the same size as another but with other contents
+    let first = "savestates/000 start and reset.gzs".to_owned();
+    assert_eq!(duplicates, vec![(1, first.clone()), (3, first)]);
+}
+
+#[test]
+fn a_file_with_the_same_contents_is_found_among_others() {
+    // Arrange: one with other contents of the same size, the file itself, then the match
+    let folder = tempfile::tempdir().unwrap();
+    let picked = folder.path().join("picked.gzs");
+    file(&picked, "link's house");
+    let (other, same) = (folder.path().join("other.gzs"), folder.path().join("000.gzs"));
+    file(&other, "lost woods!!");
+    file(&same, "link's house");
+    let files = [other.as_path(), picked.as_path(), same.as_path()];
+
+    // Act
+    let found = (same_contents_as(&picked, files), same_contents_as(&other, files));
+
+    // Assert
+    assert_eq!(found, (Some(same.as_path()), None));
+}
+
+#[test]
+fn files_already_there_keep_the_first_and_never_trade() {
+    // Arrange: two files the images use with the same contents, another one of them, and an image
+    // without a file
+    let folder = tempfile::tempdir().unwrap();
+    let (a, b, c) = (folder.path().join("a.gzs"), folder.path().join("b.gzs"), folder.path().join("c.gzs"));
+    file(&a, "link's house");
+    file(&b, "link's house");
+    file(&c, "lost woods");
+    let files = [Some(a.as_path()), None, Some(b.as_path()), Some(c.as_path())];
+
+    // Act
+    let duplicates = duplicates_among(&files, [a.as_path(), b.as_path(), c.as_path()]);
+
+    // Assert: b takes a, and a keeps its own instead of taking b
+    assert_eq!(duplicates, vec![(2, a.clone())]);
 }
 
 #[test]

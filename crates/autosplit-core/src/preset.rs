@@ -538,6 +538,12 @@ pub(crate) fn relative_text(path: &Path) -> String {
     path.components().map(|part| part.as_os_str().to_string_lossy().into_owned()).collect::<Vec<_>>().join("/")
 }
 
+/// The path with links and `..` resolved, to compare paths written in different ways, or the
+/// path itself when it doesn't exist.
+pub fn canonical(path: &Path) -> PathBuf {
+    std::fs::canonicalize(path).unwrap_or_else(|_| path.to_owned())
+}
+
 /// Finds a mask or savestate: relative to `from`, or a picked file's absolute path.
 fn find(from: &Path, path: &str) -> Result<PathBuf, PresetError> {
     let picked = Path::new(path);
@@ -549,6 +555,66 @@ fn find(from: &Path, path: &str) -> Result<PathBuf, PresetError> {
         };
         PresetError::Unreadable { path: file, reason }
     })
+}
+
+/// The splits of `preset` whose savestate has the same contents as an earlier split's in another
+/// file, each with that split's savestate, which it can use instead so the preset keeps one copy.
+/// Paths are found from `from`, like [`save_preset`] finds them. Savestates that can't be read
+/// are left out, for saving to say.
+pub fn duplicate_savestates(from: &Path, preset: &Preset) -> Vec<(usize, String)> {
+    let files: Vec<Option<PathBuf>> = (preset.splits.iter())
+        .map(|split| if split.savestate.is_empty() { None } else { find(from, &split.savestate).ok() })
+        .collect();
+    let places: Vec<Option<&Path>> = files.iter().map(Option::as_deref).collect();
+    // Named as the preset names the first split's file, which `find` made canonical like these
+    let named = |kept: &Path| {
+        let first = files.iter().position(|file| file.as_deref() == Some(kept))?;
+        Some(preset.splits[first].savestate.clone())
+    };
+    (duplicates_among(&places, []).into_iter()).filter_map(|(index, kept)| Some((index, named(&kept)?))).collect()
+}
+
+/// The first of `files` with the same contents as `file` but in another file, which can be used
+/// instead of a copy of it. Sizes are compared first, so a file of another size is never read.
+pub fn same_contents_as<'a>(file: &Path, files: impl IntoIterator<Item = &'a Path>) -> Option<&'a Path> {
+    let own = std::fs::canonicalize(file).ok()?;
+    let size = std::fs::metadata(&own).ok()?.len();
+    let mut contents = None;
+    for other in files {
+        let Ok(other_file) = std::fs::canonicalize(other) else { continue };
+        if other_file == own || std::fs::metadata(&other_file).map(|metadata| metadata.len()).ok() != Some(size) {
+            continue;
+        }
+        let contents = match &contents {
+            Some(contents) => contents,
+            None => contents.insert(std::fs::read(&own).ok()?),
+        };
+        if std::fs::read(&other_file).is_ok_and(|other| other == *contents) {
+            return Some(other);
+        }
+    }
+    None
+}
+
+/// The places of `files`, in order, whose file has the same contents as one of `existing` or an
+/// earlier one of `files`, in another file, each with that file. An `existing` file that's also
+/// one of `files` only counts once an earlier one keeps it, so two of `files` never trade.
+pub fn duplicates_among<'a>(
+    files: &[Option<&Path>],
+    existing: impl IntoIterator<Item = &'a Path>,
+) -> Vec<(usize, PathBuf)> {
+    let own: HashSet<PathBuf> = files.iter().flatten().map(|path| canonical(path)).collect();
+    let mut candidates: Vec<PathBuf> =
+        existing.into_iter().filter(|path| !own.contains(&canonical(path))).map(Path::to_owned).collect();
+    let mut duplicates = Vec::new();
+    for (place, file) in files.iter().enumerate() {
+        let Some(file) = file else { continue };
+        match same_contents_as(file, candidates.iter().map(PathBuf::as_path)) {
+            Some(found) => duplicates.push((place, found.to_owned())),
+            None => candidates.push(file.to_path_buf()),
+        }
+    }
+    duplicates
 }
 
 /// Saves `preset` into the preset folder `target`, making it when needed. Its masks and

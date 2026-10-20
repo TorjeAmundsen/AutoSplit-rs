@@ -577,6 +577,94 @@ pub fn library_file_name(split: &PresetSplit, defaults: Option<&SplitDefaults>) 
     library_file_parts(split, defaults).into_iter().map(|part| part.text).collect()
 }
 
+/// A ready-made split's image `step` with the settings and savestate of `from`, a split selected
+/// in the preset, keeping its own name and mask.
+pub fn with_settings_of(step: &PresetSplit, from: &PresetSplit) -> PresetSplit {
+    PresetSplit { name: step.name.clone(), mask: step.mask.clone(), ..from.clone() }
+}
+
+/// What to select in Make Split Images for a ready-made split with the images `entry` to take
+/// their settings from the preset: its first image, saying how many there are.
+fn select_entry(entry: &[PresetSplit]) -> String {
+    let first = entry.first().map(library_heading).unwrap_or_default();
+    match entry.len() {
+        1 => format!("Select {first} in Make Split Images."),
+        count => format!("Select {first} in Make Split Images, the first of this ready-made split's {count} images."),
+    }
+}
+
+/// What's in the way when the preset doesn't have a split from the selected one on for each of
+/// `entry`, a ready-made split's images.
+pub fn too_few_selected(entry: &[PresetSplit]) -> String {
+    match entry.len() {
+        1 => select_entry(entry),
+        count => format!("The preset has fewer than {count} splits from the selected one on. {}", select_entry(entry)),
+    }
+}
+
+/// What's in the way of the image at `place` of a ready-made split with the images `entry` taking
+/// the settings of `from`, the split selected in the preset at its place, if anything. It has to
+/// be the same image, inserted from the library, so another split's settings aren't written over
+/// it. And an image without a mask has to stay a fade split, of the whole screen.
+pub fn settings_problem(entry: &[PresetSplit], place: usize, from: &PresetSplit) -> Option<String> {
+    let step = entry.get(place)?;
+    if from.name != step.name {
+        return Some(format!(
+            "{} is selected where {} should be. {}",
+            library_heading(from),
+            library_heading(step),
+            select_entry(entry)
+        ));
+    }
+    if step.mask.is_empty() && !from.is_fade() {
+        return Some(format!("{} has no mask, so it has to stay a fade split.", library_heading(step)));
+    }
+    None
+}
+
+/// What taking the settings of `from` changes about a ready-made split's image `step`, each like
+/// threshold default to 0.92, but its savestate, which is compared as a file. These are all the
+/// settings it takes, since it keeps its own name and mask, so they decide whether anything
+/// changes as well as what's shown.
+pub fn changed_settings(step: &PresetSplit, from: &PresetSplit) -> Vec<String> {
+    fn shown<T: ToString>(value: &Option<T>) -> String {
+        value.as_ref().map_or_else(|| "default".to_owned(), T::to_string)
+    }
+    let mut changes = Vec::new();
+    let mut compare = |what: &str, old: String, new: String| {
+        if old != new {
+            changes.push(format!("{what} {old} to {new}"));
+        }
+    };
+    compare("threshold", shown(&step.threshold), shown(&from.threshold));
+    compare("pause", shown(&step.pause), shown(&from.pause));
+    compare("delay", shown(&step.delay), shown(&from.delay));
+    compare("fade", shown(&step.fade), shown(&from.fade));
+    compare("fade time", shown(&step.fade_time), shown(&from.fade_time));
+    compare("dummy", step.dummy.to_string(), from.dummy.to_string());
+    compare("below", step.below.to_string(), from.below.to_string());
+    compare("with previous", step.with_previous.to_string(), from.with_previous.to_string());
+    if step.instructions != from.instructions {
+        changes.push("instructions".to_owned());
+    }
+    changes
+}
+
+/// What taking the settings of `from` changes about a ready-made split's image `step`, like
+/// From ScrubsDummyLow: threshold default to 0.92. `savestates` are the file names of its
+/// savestate and the new one, or none when it's the same file.
+pub fn settings_changes(step: &PresetSplit, from: &PresetSplit, savestates: Option<(String, String)>) -> String {
+    let mut changes = changed_settings(step, from);
+    if let Some((old, new)) = savestates {
+        changes.push(format!("savestate {old} to {new}"));
+    }
+    let heading = library_heading(from);
+    if changes.is_empty() {
+        return format!("From {heading}: no changes");
+    }
+    format!("From {heading}: {}", changes.join(", "))
+}
+
 /// Where a ready-made split is in the preset already.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct InPreset {
@@ -738,6 +826,27 @@ pub fn discard_question(name: &str, saved_before: bool) -> (String, &'static str
     }
     let preset = if name.is_empty() { "the new preset".to_owned() } else { format!("the new preset {name}") };
     (format!("Discard {preset}? It hasn't been saved yet."), "Discard Preset")
+}
+
+/// The buttons of [`one_copy_question`]: use the files that are there already, keep the copies,
+/// or don't save.
+pub const ONE_COPY_LABELS: [&str; 3] = ["Use Existing Files", "Keep Copies", "Cancel"];
+
+/// Asks whether savestates that are the same as ones there already should use those instead of
+/// copies. `same` has each one's heading, its file name and the existing file's name. They're in
+/// the split `library`, or else in the preset.
+pub fn one_copy_question(same: &[(String, String, String)], library: bool) -> String {
+    let lines: Vec<String> =
+        same.iter().map(|(heading, file, kept)| format!("{heading}: {file} is the same as {kept}")).collect();
+    let (there, keeper) = if library {
+        ("the split library already has", "the library")
+    } else {
+        ("other splits already use", "the preset")
+    };
+    format!(
+        "These savestates are the same as ones {there}:\n\n{}\n\nUse the existing files, so {keeper} keeps one copy of each?",
+        lines.join("\n")
+    )
 }
 
 /// The line under the editor: the first of `problems` and how many more there are, or else

@@ -17,17 +17,19 @@ below = true
 savestate = "savestates/000_start_and_reset.gzs"
 
 [[split]]
+name = "KokiriSwordLeft"
+mask = "KokiriSwordLeft.png"
+threshold = 0.93
+savestate = "savestates/009-kokiri_forest.gzs"
+
+[[split]]
 name = "KokiriSwordRight"
+with_previous = true
 mask = "KokiriSwordRight.png"
 threshold = 0.93
 savestate = "savestates/008-kokiri_forest.gzs"
 
-[[split]]
-name = "KokiriSwordLeft"
-with_previous = true
-mask = "KokiriSwordLeft.png"
-threshold = 0.93
-savestate = "savestates/009-kokiri_forest.gzs"
+
 
 [[split]]
 name = "NutDummy"
