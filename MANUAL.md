@@ -77,7 +77,7 @@ The list shows each split's name over its file name, colored by what each part o
 - Use Screenshots... uses screenshot files instead, like the ones Take Screenshot saves. Pick one for the selected split, or several for the splits in order, skipping fade splits. Then press Save Selected or Save All. It's off while a fade split is selected.
 - Test opens the selected split's saved image in the [Live Tester](#live-tester).
 
-Saving asks before replacing split images, and before leaving older images of the same splits under other names, like after a threshold changed. Delete Old Images removes those, Keep Old Images keeps them. A green check mark over the Output Preview shows when images are saved. Screenshots that were in the split image folder move into its `base` folder, where they aren't read as split images.
+Saving asks before replacing split images, and before leaving older images of the same splits under other names, like after a threshold changed. Delete Old Images removes those, Keep Old Images keeps them. Each split saved flashes green, with a check mark on its picture. The Output Preview shows the check mark too when the selected split is one of them. Screenshots that were in the split image folder move into its `base` folder, where they aren't read as split images.
 
 The main window reads the split image folder again when Make Split Images closes. What you grabbed or picked is kept until AutoSplit-rs closes, so Save All can save it again into another folder.
 
@@ -93,7 +93,7 @@ Generate Profile... saves the current settings as a new profile named after the 
 
 ### Savestates
 
-Some presets come with savestates for a practice tool on the console, like gz for Ocarina of Time (`.gzs` files), to get to each split's screen quickly.
+Some presets come with savestates for a practice tool on the console, like gz for Ocarina of Time (`.gzs` files). Each one loads the game on the exact frame its split's mask was made for. Load them in the order of the splits, grabbing each split after loading its savestate.
 
 - Copy Savestates puts them on the clipboard, numbered like the split images, to paste where the practice tool loads them from, like its folder on the SD card. On Linux, AutoSplit-rs holds them on the clipboard itself, so paste them before closing it.
 - Savestate Instructions shows what to do with savestates that need more than loading, in large text. The card of the split selected in Make Split Images is highlighted, so it follows along as you grab, and clicking a card selects its split.

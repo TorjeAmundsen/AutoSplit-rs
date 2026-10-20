@@ -93,7 +93,7 @@ AutoSplit-rs comes with presets for some categories: a list of the category's sp
 3. Click Browse... and pick an empty folder for the split images, like a new folder named after your category.
 4. Click Generate Profile..., save the profile, and choose Load It. This saves your settings, with that folder, as a profile for this category.
 5. Set a screenshot hotkey in File > Settings > Hotkeys, if you don't have one. Pick a key you can press while playing.
-6. Play through the category. At each split, when the screen looks like the split's moment, press the screenshot hotkey, or click Grab. The selected split's image is saved, and the next split is selected. The Output Preview shows what the image will look like before you grab.
+6. Get to each split's screen. If Copy Savestates can be clicked, your preset has savestates: load them as in [Savestates](#savestates) below instead of playing. Otherwise, play through the category. At each split, when the screen looks like the split's moment, press the screenshot hotkey, or click Grab. The Output Preview shows what the image will look like before you grab. A grab saves the image of the split that's selected, and right away selects the next split, so the selected split is always the one you grab next. The split you just grabbed flashes green with a check mark on its picture.
 7. Close Make Split Images when every split is grabbed.
 
 If a grab didn't come out right, select that split and grab it again.
@@ -102,7 +102,14 @@ Some splits are fade splits, which split when the screen fades to a color, like 
 
 ### Savestates
 
-Some presets come with savestates for a practice tool on the console, like gz for Ocarina of Time, so you can jump to each split's screen instead of playing the whole run. Click Copy Savestates, paste them where the practice tool loads them from, like its folder on the SD card, and load each one when you grab its split. Savestate Instructions says what to do with the savestates that need more than loading, and highlights the split you're on.
+Some presets come with savestates for a practice tool on the console, like gz for Ocarina of Time. Each one loads the game on the exact frame its split's mask was made for, so if your preset has them, use them instead of playing through the category:
+
+1. Click Copy Savestates, and paste them where the practice tool loads them from, like its folder on the SD card. Only get them with Copy Savestates: it numbers them in the order of the splits, like the split images.
+2. Select the first split in Make Split Images.
+3. Load the split's savestate, and grab. If Savestate Instructions has a card for the split, do what it says first.
+4. Load the next savestate and grab again, in order, until every split is grabbed. Grab selects the next split for you, so the selected split always matches the next savestate. A fade split has no savestate: click Grab* and go on to the next one.
+
+Savestate Instructions shows the steps for the savestates that need more than loading, and highlights the split you're on.
 
 ![Savestate Instructions with the selected split's card highlighted](docs/savestate-instructions.png)
 
