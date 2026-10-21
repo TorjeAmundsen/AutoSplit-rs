@@ -243,6 +243,14 @@ component Face inherits Rectangle {
     }
 }
 
+// A button's 16px icon from Icons, in the color of the window's other icons
+component ButtonIcon inherits Image {
+    in property <bool> enabled;
+    width: 16px;
+    height: 16px;
+    colorize: root.enabled ? Theme.arrow : Theme.disabled-text;
+}
+
 export component Button inherits Rectangle {
     in property <string> text;
     in property <bool> enabled: true;
@@ -253,14 +261,23 @@ export component Button inherits Rectangle {
     in property <bool> suggested;
     // Its tooltip, or none when empty
     in property <string> tip;
+    // A 16px icon from Icons before the text, or none
+    in property <image> icon;
     // The pointer is over it while it can be clicked
     out property <bool> hovered: touch.has-hover && root.enabled;
     callback clicked();
-    preferred-width: max(75px, label.preferred-width + 20px);
+    property <bool> has-icon: root.icon.width > 0;
+    // ButtonIcon's size
+    property <length> icon-size: 16px;
+    // Between the icon and the text, when it has both
+    property <length> icon-gap: root.has-icon && root.text != "" ? 5px : 0px;
+    preferred-width: max(75px, label.preferred-width + 20px + (root.has-icon ? root.icon-size : 0px) + root.icon-gap);
     preferred-height: 24px;
-    // Layouts don't stretch it, like Qt's buttons
+    // Layouts don't stretch it, like Qt's buttons, and keep it as wide as its text unless
+    // they're given horizontal-stretch
     max-height: 24px;
     min-height: 24px;
+    horizontal-stretch: 0;
     forward-focus: focus;
     accessible-role: button;
     accessible-label: root.text;
@@ -274,15 +291,35 @@ export component Button inherits Rectangle {
         tint: root.suggested && root.enabled ? Theme.focus.with-alpha(0.18) : transparent;
     }
 
-    label := Text {
+    HorizontalLayout {
         x: 2px;
         width: parent.width - 4px;
         height: 100%;
-        text: root.text;
-        color: root.enabled ? Theme.text : Theme.disabled-text;
-        horizontal-alignment: center;
-        vertical-alignment: center;
-        overflow: elide;
+        alignment: center;
+        spacing: root.icon-gap;
+
+        if root.has-icon && root.text != "": Rectangle {
+            width: root.icon-size;
+
+            ButtonIcon {
+                source: root.icon;
+                enabled: root.enabled;
+            }
+        }
+
+        label := Text {
+            text: root.text;
+            color: root.enabled ? Theme.text : Theme.disabled-text;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+    }
+
+    // An icon without text, in the middle, where the layout's empty text would push it aside
+    if root.has-icon && root.text == "": ButtonIcon {
+        source: root.icon;
+        enabled: root.enabled;
     }
 
     touch := TouchArea {
@@ -373,6 +410,29 @@ export component IconToggle inherits Rectangle {
             text: root.tip;
         }
     }
+}
+
+// A small square Button with only a 16px icon from Icons, like the Output Preview's toggles.
+export component IconButton inherits Button {
+    // What it does, for screen readers
+    in property <string> label;
+    width: 24px;
+    accessible-label: root.label;
+}
+
+// The icons of buttons, from Bootstrap Icons, drawn in one color that colorize sets. Their files
+// are named like these, so another icon set only needs other files.
+export global Icons {
+    out property <image> edit: @image-url("../assets/icons/edit.svg");
+    out property <image> new: @image-url("../assets/icons/new.svg");
+    out property <image> add: @image-url("../assets/icons/add.svg");
+    out property <image> duplicate: @image-url("../assets/icons/duplicate.svg");
+    out property <image> remove: @image-url("../assets/icons/remove.svg");
+    out property <image> up: @image-url("../assets/icons/up.svg");
+    out property <image> down: @image-url("../assets/icons/down.svg");
+    out property <image> folder: @image-url("../assets/icons/folder.svg");
+    out property <image> import: @image-url("../assets/icons/import.svg");
+    out property <image> export: @image-url("../assets/icons/export.svg");
 }
 
 // A checkerboard, for the transparency grid's toggle
@@ -1058,7 +1118,8 @@ export component FileName inherits HorizontalLayout {
             color: NameColors.of(part);
         }
 
-        Tooltip {
+        // None for a plain part where there's no path to show, like the split's name
+        if part.meaning != "" || root.path != "": Tooltip {
             Tip {
                 text: part.meaning != "" ? part.meaning : root.path;
             }

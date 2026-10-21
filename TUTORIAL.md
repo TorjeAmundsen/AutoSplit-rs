@@ -186,7 +186,7 @@ Help > View Log says what AutoSplit-rs did and why, like why it didn't split. St
 
 **It never splits.** Watch the similarity viewer during the split: Live has to reach Threshold.
 - Far below: the capture changed since the image was made. Check the capture region, OBS's crop and color filters, and the capture card's settings, then grab the image again.
-- Just below: lower that split's threshold a little. For a preset's split, change it with Edit in Make Split Images, save the preset and save the image again. Otherwise, change it in the image's file name, like `(0.88)`.
+- Just below: lower that split's threshold a little. For a preset's split, change it with the pencil button next to the preset in Make Split Images, save the preset and save the image again. Otherwise, change it in the image's file name, like `(0.88)`.
 
 **It splits too early.** Another screen looks similar enough. Raise that split's threshold, the same way, or give the split before it a longer pause, so it isn't compared during the similar screen. [MANUAL.md](MANUAL.md#split-image-file-names) lists every file name option.
 

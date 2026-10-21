@@ -4,6 +4,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
@@ -379,8 +380,7 @@ fn parse_with_splits<T: serde::de::DeserializeOwned>(
 }
 
 fn read(path: &Path) -> Result<String, PresetError> {
-    std::fs::read_to_string(path)
-        .map_err(|error| PresetError::Unreadable { path: path.to_owned(), reason: error.to_string() })
+    std::fs::read_to_string(path).map_err(|error| unreadable(path, error))
 }
 
 impl Preset {
@@ -480,7 +480,7 @@ pub const SAVESTATES_FOLDER: &str = "savestates";
 /// The note in a preset's savestate folder that says not to copy them from there.
 pub const SAVESTATE_NOTE_FILE: &str = "DO_NOT_COPY.txt";
 
-const SAVESTATE_NOTE: &str = "Don't copy the savestates from this folder yourself.
+pub(crate) const SAVESTATE_NOTE: &str = "Don't copy the savestates from this folder yourself.
 
 Presets reuse savestates for several splits, and their file names aren't in the order of the splits.
 Use Copy Savestates in Make Split Images instead. It copies each split's savestate, numbered and
@@ -664,31 +664,74 @@ pub fn save_preset(source: Option<&Path>, target: &Path, preset: &Preset) -> Res
 /// The start of the hidden name a preset's folder gets while it's deleted.
 const DELETING_PREFIX: &str = ".deleting-";
 
-/// Deletes the preset folder `folder`. It's first renamed to a hidden name next to it, which
-/// fails without changing anything when a file in it is open, as on Windows. Once renamed it's
-/// no longer a preset, so a delete that stops partway leaves a hidden folder instead of half a
-/// preset. Those are deleted again here, the next time.
+/// Deletes the preset folder `folder`. It's first moved aside to a hidden name, so a delete that
+/// stops partway leaves a hidden folder instead of half a preset. Those are deleted again here,
+/// the next time.
 pub fn delete_preset(folder: &Path) -> Result<(), PresetError> {
     let parent = folder.parent().unwrap_or(Path::new("."));
-    if let Ok(entries) = std::fs::read_dir(parent) {
-        for entry in entries.flatten() {
-            if entry.file_name().to_string_lossy().starts_with(DELETING_PREFIX) {
-                let _ = std::fs::remove_dir_all(entry.path());
-            }
-        }
-    }
+    remove_leftovers(parent, DELETING_PREFIX, Duration::ZERO);
+    let hidden = move_aside(folder, DELETING_PREFIX)?;
+    // Not a preset anymore, whether or not all of it goes now
+    let _ = std::fs::remove_dir_all(&hidden);
+    Ok(())
+}
+
+/// Moves the preset folder `folder` aside to a hidden name next to it that starts with
+/// `prefix`, where it's no longer a preset, and returns that. Fails without changing anything
+/// when a file in it is open, as on Windows.
+pub(crate) fn move_aside(folder: &Path, prefix: &str) -> Result<PathBuf, PresetError> {
+    let parent = folder.parent().unwrap_or(Path::new("."));
     let name = folder.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
     let hidden = (1..)
-        .map(|n| parent.join(format!("{DELETING_PREFIX}{name}-{n}")))
+        .map(|n| parent.join(format!("{prefix}{name}-{n}")))
         .find(|path| !path.exists())
         .expect("some number is free");
     std::fs::rename(folder, &hidden).map_err(|error| PresetError::Unwritable {
         path: folder.to_owned(),
         reason: format!("{error}. Close any program that has a file in it open, then try again"),
     })?;
-    // Not a preset anymore, whether or not all of it goes now
-    let _ = std::fs::remove_dir_all(&hidden);
-    Ok(())
+    Ok(hidden)
+}
+
+/// Moves what's left of a preset folder that couldn't all be deleted aside, for the next
+/// delete to delete.
+pub(crate) fn leave_for_deleting(folder: &Path) {
+    let _ = move_aside(folder, DELETING_PREFIX);
+}
+
+/// Deletes the hidden folders in `folder` whose names start with `prefix`, which a delete or
+/// import that stopped partway left, once they're `older_than` that, by when they last changed.
+/// `Duration::ZERO` deletes them all, even ones whose age can't be read.
+pub(crate) fn remove_leftovers(folder: &Path, prefix: &str, older_than: Duration) {
+    let Ok(entries) = std::fs::read_dir(folder) else { return };
+    for entry in entries.flatten() {
+        if !entry.file_name().to_string_lossy().starts_with(prefix) {
+            continue;
+        }
+        let age = entry.metadata().and_then(|metadata| metadata.modified()).ok().and_then(|time| time.elapsed().ok());
+        if older_than.is_zero() || age.is_some_and(|age| age >= older_than) {
+            let _ = std::fs::remove_dir_all(entry.path());
+        }
+    }
+}
+
+/// Writes the file `path` through a `.tmp` file next to it, which `write` writes and which then
+/// takes its place, so a write that fails leaves the old file as it was.
+pub(crate) fn write_through_temporary(
+    path: &Path,
+    write: impl FnOnce(&Path) -> std::io::Result<()>,
+) -> std::io::Result<()> {
+    let name = path.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
+    let temporary = path.with_file_name(format!("{name}.tmp"));
+    let written = write(&temporary).and_then(|()| std::fs::rename(&temporary, path));
+    if written.is_err() {
+        let _ = std::fs::remove_file(&temporary);
+    }
+    written
+}
+
+pub(crate) fn unreadable(path: &Path, error: std::io::Error) -> PresetError {
+    PresetError::Unreadable { path: path.to_owned(), reason: error.to_string() }
 }
 
 pub(crate) fn unwritable(path: &Path, error: std::io::Error) -> PresetError {
@@ -745,12 +788,8 @@ fn write_preset(
         }
     }
     let preset_file = target.join(PRESET_FILE);
-    let temporary = target.join(format!("{PRESET_FILE}.tmp"));
-    let written = std::fs::write(&temporary, saved.to_toml()).and_then(|()| std::fs::rename(&temporary, &preset_file));
-    if let Err(error) = written {
-        let _ = std::fs::remove_file(&temporary);
-        return Err(unwritable(&preset_file, error));
-    }
+    write_through_temporary(&preset_file, |temporary| std::fs::write(temporary, saved.to_toml()))
+        .map_err(|error| unwritable(&preset_file, error))?;
     Ok(saved)
 }
 

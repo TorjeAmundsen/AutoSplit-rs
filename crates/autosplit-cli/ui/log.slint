@@ -39,6 +39,7 @@ export component LogWindow inherits Window {
             }
 
             Button {
+                horizontal-stretch: 1;
                 text: "Open Log File";
                 enabled: root.log-path != "";
                 clicked => { root.open-log-file(); }
