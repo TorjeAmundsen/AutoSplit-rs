@@ -158,6 +158,7 @@ fn missing_profile_file_is_reported_as_invalid_settings() {
 #[test_case("group_split_images"; "group split images")]
 #[test_case("split_image_grid"; "split image grid")]
 #[test_case("fade_color_tolerance"; "fade color tolerance")]
+#[test_case("advanced_maker"; "advanced maker")]
 fn keys_not_in_autosplit_are_left_out_when_unchanged(key: &str) {
     // Act
     let saved = configured().to_toml();

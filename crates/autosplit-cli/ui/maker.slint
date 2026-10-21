@@ -30,6 +30,77 @@ export struct MakerRow {
     shaded: bool,
 }
 
+// The split image folder, like a read-only field without a cursor, with the whole path in its
+// tooltip, and Browse... beside it.
+component FolderPicker inherits HorizontalLayout {
+    // Shown from its end when it's too long, since the end tells folders apart. Empty for none
+    in property <string> folder;
+    in property <length> browse-width: 70px;
+    callback browse();
+
+    height: 24px;
+    spacing: 6px;
+
+    Rectangle {
+        background: Theme.field;
+        border-width: 1px;
+        border-radius: 2px;
+        border-color: Theme.outline;
+
+        Rectangle {
+            x: 6px;
+            width: parent.width - 12px;
+            clip: true;
+
+            // Short, so none of it is cut off
+            if root.folder == "": Text {
+                x: 0px;
+                height: parent.height;
+                vertical-alignment: center;
+                color: Theme.secondary-text;
+                text: "None yet. Use Browse...";
+            }
+
+            // Too long, it's moved left so its end shows, measured as it's drawn
+            folder-text := Text {
+                x: min(0px, parent.width - self.preferred-width);
+                width: self.preferred-width;
+                height: parent.height;
+                vertical-alignment: center;
+                color: Theme.text;
+                text: root.folder;
+            }
+
+            // Covers the cut start
+            if folder-text.preferred-width > parent.width: Rectangle {
+                x: 0px;
+                width: 16px;
+                background: Theme.field;
+
+                Text {
+                    x: 0px;
+                    vertical-alignment: center;
+                    color: Theme.text;
+                    text: "...";
+                }
+            }
+        }
+
+        Tooltip {
+            Tip {
+                text: root.folder == "" ? "No split image folder yet. Pick one with Browse..., where the split images are saved." : root.folder;
+            }
+        }
+    }
+
+    Button {
+        width: root.browse-width;
+        text: "Browse...";
+        clicked => { root.browse(); }
+        tip: "Pick the split image folder, which the profile uses from now on";
+    }
+}
+
 export component MakerWindow inherits Window {
     // While editing, the preset's name too, with a * while it has unsaved changes
     title: !root.editing ? "Make Split Images" : (root.edit-changed ? "*" : "") + "Editing " + (root.edit-name == "" ? "a new preset" : root.edit-name) + " - Make Split Images";
@@ -48,6 +119,10 @@ export component MakerWindow inherits Window {
     in-out property <int> selected: 0;
     // Shown from its end when it's too long, since the end tells folders apart. Empty for none
     in property <string> output-folder;
+    // Shows the file names and every button. Off, the split image folder goes above the list
+    // and only what making split images needs shows. Editing always shows everything.
+    in property <bool> advanced;
+    property <bool> details: root.advanced || root.editing;
     in property <image> live-image;
     in property <string> live-message: "Waiting for capture device...";
     in property <bool> can-grab;
@@ -368,8 +443,9 @@ export component MakerWindow inherits Window {
                         tip: "Make a new preset for this game";
                     }
 
-                    // Sets sharing apart from editing, with one more spacing between them
-                    if !root.editing: Rectangle {
+                    // Sets sharing apart from editing, with one more spacing between them. Import
+                    // alone is spaced like the others, lined up with Browse... below.
+                    if !root.editing && root.advanced: Rectangle {
                         width: 0px;
                     }
 
@@ -381,7 +457,7 @@ export component MakerWindow inherits Window {
                         tip: "Import a preset someone shared, from its .zip file";
                     }
 
-                    if !root.editing: IconButton {
+                    if !root.editing && root.advanced: IconButton {
                         label: "Export";
                         icon: Icons.export;
                         enabled: root.presets.length > 0 && !root.working;
@@ -396,7 +472,25 @@ export component MakerWindow inherits Window {
                     }
                 }
 
-                Label {
+                // Level with Capture Region, which the folder has moved down to
+                if !root.details: HorizontalLayout {
+                    height: 24px;
+                    spacing: 6px;
+
+                    Label {
+                        width: 46px;
+                        text: "Folder:";
+                    }
+
+                    // As wide as the three buttons above it
+                    FolderPicker {
+                        browse-width: 3 * 24px + 2 * 6px;
+                        folder: root.output-folder;
+                        browse => { root.browse-folder(); }
+                    }
+                }
+
+                if root.details: Label {
                     height: 20px;
                     text: "Splits";
                 }
@@ -513,7 +607,7 @@ export component MakerWindow inherits Window {
                                             text: row.heading;
                                         }
 
-                                        Rectangle {
+                                        if root.details: Rectangle {
                                             height: 16px;
                                             clip: true;
 
@@ -528,7 +622,7 @@ export component MakerWindow inherits Window {
                                         alignment: center;
                                         horizontal-stretch: 0;
 
-                                        Label {
+                                        if root.details: Label {
                                             height: 16px;
                                             horizontal-alignment: right;
                                             color: Theme.secondary-text;
@@ -590,7 +684,7 @@ export component MakerWindow inherits Window {
                         tip: root.grab-fade ? "The selected split is a fade split, which is made from its color, not a screenshot. Select another split to use screenshots." : "Make split images from screenshot files instead: one for the selected split, or several for the splits in order from the first, skipping fade splits";
                     }
 
-                    Button {
+                    if root.advanced: Button {
                         horizontal-stretch: 1;
                         text: "Test";
                         enabled: root.can-test;
@@ -598,7 +692,7 @@ export component MakerWindow inherits Window {
                         tip: "Open the selected split's saved split image in the Live Tester";
                     }
 
-                    Button {
+                    if root.advanced: Button {
                         horizontal-stretch: 1;
                         text: "Save Selected";
                         enabled: root.can-save-selected;
@@ -683,74 +777,14 @@ export component MakerWindow inherits Window {
                 width: 320px;
                 spacing: 6px;
 
-                if !root.editing: Label {
+                if !root.editing && root.advanced: Label {
                     height: 24px;
                     text: "Saves to the split image folder:";
                 }
 
-                if !root.editing: HorizontalLayout {
-                    height: 24px;
-                    spacing: 6px;
-
-                    // Like a read-only field, without a cursor; the whole path in its tooltip
-                    Rectangle {
-                        background: Theme.field;
-                        border-width: 1px;
-                        border-radius: 2px;
-                        border-color: Theme.outline;
-
-                        Rectangle {
-                            x: 6px;
-                            width: parent.width - 12px;
-                            clip: true;
-
-                            // Short, so none of it is cut off
-                            if root.output-folder == "": Text {
-                                x: 0px;
-                                height: parent.height;
-                                vertical-alignment: center;
-                                color: Theme.secondary-text;
-                                text: "None yet. Use Browse...";
-                            }
-
-                            // Too long, it's moved left so its end shows, measured as it's drawn
-                            folder-text := Text {
-                                x: min(0px, parent.width - self.preferred-width);
-                                width: self.preferred-width;
-                                height: parent.height;
-                                vertical-alignment: center;
-                                color: Theme.text;
-                                text: root.output-folder;
-                            }
-
-                            // Covers the cut start
-                            if folder-text.preferred-width > parent.width: Rectangle {
-                                x: 0px;
-                                width: 16px;
-                                background: Theme.field;
-
-                                Text {
-                                    x: 0px;
-                                    vertical-alignment: center;
-                                    color: Theme.text;
-                                    text: "...";
-                                }
-                            }
-                        }
-
-                        Tooltip {
-                            Tip {
-                                text: root.output-folder == "" ? "No split image folder yet. Pick one with Browse..., where the split images are saved." : root.output-folder;
-                            }
-                        }
-                    }
-
-                    Button {
-                        width: 70px;
-                        text: "Browse...";
-                        clicked => { root.browse-folder(); }
-                        tip: "Pick the split image folder, which the profile uses from now on";
-                    }
+                if !root.editing && root.advanced: FolderPicker {
+                    folder: root.output-folder;
+                    browse => { root.browse-folder(); }
                 }
 
                 // A fade split is made from its color, so the capture isn't needed for it
@@ -768,9 +802,10 @@ export component MakerWindow inherits Window {
 
                 // The selected split, in the space of the folder and the capture, which the
                 // output preview below shows masked as it's edited. Just as tall, so the window
-                // keeps its size, and it scrolls when problems or notes need more room.
+                // keeps its size, and it scrolls when problems or notes need more room. Without
+                // advanced, the folder isn't in this column, so it's two rows shorter.
                 if root.editing: form-scroll := ScrollView {
-                    height: 326px;
+                    height: root.advanced ? 326px : 266px;
                     content-height: max(self.visible-height, form-panel.preferred-height);
                     content-width: self.visible-width;
 

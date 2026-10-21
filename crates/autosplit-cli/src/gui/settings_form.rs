@@ -38,6 +38,7 @@ pub enum SettingEdit {
     /// 0 for hotkeys, 1 for LiveSplit One, 2 for Molok (only listed on Linux).
     TimerConnection(i32),
     LiveSplitOnePort(f64),
+    AdvancedMaker(bool),
 }
 
 impl SettingEdit {
@@ -96,6 +97,7 @@ pub fn apply(profile: &mut UserProfile, edit: SettingEdit, devices: &[DeviceInfo
         SettingEdit::LoopSplits(on) => profile.loop_splits = on,
         SettingEdit::GroupSplitImages(on) => profile.group_split_images = on,
         SettingEdit::SplitImageGrid(on) => profile.split_image_grid = on,
+        SettingEdit::AdvancedMaker(on) => profile.advanced_maker = on,
         SettingEdit::StartAlsoResets(on) => profile.start_also_resets = on,
         SettingEdit::EnableAutoReset(on) => profile.enable_auto_reset = on,
         SettingEdit::TimerConnection(index) => {

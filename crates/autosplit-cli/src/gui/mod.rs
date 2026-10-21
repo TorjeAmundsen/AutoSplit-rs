@@ -1360,6 +1360,7 @@ impl Gui {
         settings.set_timer_connection(shown.timer_connection);
         settings.set_livesplit_one_port(f32::from(profile.livesplit_one_port));
         settings.set_timer_connection_waiting(shown.timer_connection_waiting);
+        settings.set_advanced_maker(profile.advanced_maker);
     }
 
     /// A setting the settings window changed.
@@ -1396,6 +1397,7 @@ impl Gui {
             Setting::EnableAutoReset => SettingEdit::EnableAutoReset(settings.get_enable_auto_reset()),
             Setting::TimerConnection => SettingEdit::TimerConnection(settings.get_timer_connection()),
             Setting::LivesplitOnePort => SettingEdit::LiveSplitOnePort(settings.get_livesplit_one_port().into()),
+            Setting::AdvancedMaker => SettingEdit::AdvancedMaker(settings.get_advanced_maker()),
         };
         let refresh = edit.changes_other_fields();
         let mut state = self.state.borrow_mut();

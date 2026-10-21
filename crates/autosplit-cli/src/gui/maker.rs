@@ -595,6 +595,7 @@ impl Gui {
         // Empty without one, which the window says
         let folder = self.split_image_folder();
         window.set_output_folder(folder.map(|folder| folder.display().to_string()).unwrap_or_default().into());
+        window.set_advanced(self.state.borrow().document.profile.advanced_maker);
         window.set_preset_problem(view.preset_problem.into());
         window.set_can_grab(view.can_grab && grab_blocker.is_empty());
         window.set_grab_blocker(grab_blocker.into());

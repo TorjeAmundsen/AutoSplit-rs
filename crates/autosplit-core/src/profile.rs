@@ -163,6 +163,10 @@ pub struct UserProfile {
     /// capture. Only written when changed.
     #[serde(skip_serializing_if = "is_default_fade_color_tolerance")]
     pub fade_color_tolerance: i64,
+    /// Not in AutoSplit. Make Split Images shows the split image file names and every button,
+    /// instead of only what making split images needs. Only written when changed.
+    #[serde(skip_serializing_if = "is_default")]
+    pub advanced_maker: bool,
     /// Keys this version doesn't know, kept so saving doesn't drop them.
     #[serde(flatten)]
     pub unknown: toml::Table,
@@ -204,6 +208,7 @@ impl Default for UserProfile {
             group_split_images: false,
             split_image_grid: false,
             fade_color_tolerance: DEFAULT_FADE_COLOR_TOLERANCE,
+            advanced_maker: false,
             unknown: toml::Table::new(),
         }
     }
