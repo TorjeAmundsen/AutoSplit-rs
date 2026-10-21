@@ -53,13 +53,15 @@ fn inside(path: &str) -> Option<String> {
 }
 
 /// The files a preset uses, each once however its path is written, like `a.png` and `./a.png`,
-/// as [`inside`] writes them, each with the first split that uses it. The first split with a
-/// path outside the preset's folder, and the path, when there's one.
-fn used_files(preset: &Preset) -> Result<Vec<(usize, String)>, (usize, &str)> {
+/// as [`inside`] writes them, each with the first split that uses it. Or why not, when a split
+/// uses a path outside the preset's folder.
+fn used_files(preset: &Preset) -> Result<Vec<(usize, String)>, String> {
     let mut used: Vec<(usize, String)> = Vec::new();
     for (index, split) in preset.splits.iter().enumerate() {
         for path in [&split.mask, &split.savestate].into_iter().filter(|path| !path.is_empty()) {
-            let name = inside(path).ok_or((index, path.as_str()))?;
+            let outside =
+                || format!("split {} ({}) uses {path}, which is outside the preset's folder", index + 1, split.name);
+            let name = inside(path).ok_or_else(outside)?;
             if !used.iter().any(|(_, seen)| *seen == name) {
                 used.push((index, name));
             }
@@ -75,11 +77,7 @@ pub fn export_preset(folder: &Path, archive: &Path) -> Result<(), PresetError> {
     let preset_file = folder.join(PRESET_FILE);
     let text = std::fs::read(&preset_file).map_err(|error| unreadable(&preset_file, error))?;
     let preset = Preset::parse(&String::from_utf8_lossy(&text), &preset_file)?;
-    let used = used_files(&preset).map_err(|(index, path)| {
-        let split = &preset.splits[index].name;
-        let reason = format!("split {} ({split}) uses {path}, which is outside the preset's folder", index + 1);
-        PresetError::Invalid { path: preset_file.clone(), reason }
-    })?;
+    let used = used_files(&preset).map_err(|reason| PresetError::Invalid { path: preset_file.clone(), reason })?;
     let too_big = |reason: String| PresetError::Unwritable { path: archive.to_owned(), reason };
     if used.len() + 1 > MAX_FILES {
         return Err(too_big(format!("the preset has more than {MAX_FILES} files, more than importing takes")));
@@ -156,10 +154,7 @@ pub fn read_archive(archive: &Path) -> Result<PresetArchive, PresetError> {
     };
     let text = String::from_utf8_lossy(&files[&format!("{root}{PRESET_FILE}")]).into_owned();
     let mut preset = Preset::parse(&text, &shown)?;
-    let used = used_files(&preset).map_err(|(index, path)| {
-        let split = &preset.splits[index].name;
-        invalid(format!("split {} ({split}) uses {path}, which is outside the preset's folder", index + 1))
-    })?;
+    let used = used_files(&preset).map_err(invalid)?;
     let masks: HashSet<String> = preset.splits.iter().filter_map(|split| inside(&split.mask)).collect();
     let mut kept = Vec::new();
     for (index, name) in used {
