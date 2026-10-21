@@ -16,6 +16,7 @@ pub mod mask;
 #[cfg(target_os = "linux")]
 pub mod molok;
 pub mod preset;
+pub mod preset_archive;
 pub mod profile;
 pub mod runner;
 pub mod split_folder;

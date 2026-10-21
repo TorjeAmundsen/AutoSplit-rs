@@ -480,7 +480,7 @@ pub const SAVESTATES_FOLDER: &str = "savestates";
 /// The note in a preset's savestate folder that says not to copy them from there.
 pub const SAVESTATE_NOTE_FILE: &str = "DO_NOT_COPY.txt";
 
-const SAVESTATE_NOTE: &str = "Don't copy the savestates from this folder yourself.
+pub(crate) const SAVESTATE_NOTE: &str = "Don't copy the savestates from this folder yourself.
 
 Presets reuse savestates for several splits, and their file names aren't in the order of the splits.
 Use Copy Savestates in Make Split Images instead. It copies each split's savestate, numbered and
@@ -662,7 +662,7 @@ pub fn save_preset(source: Option<&Path>, target: &Path, preset: &Preset) -> Res
 }
 
 /// The start of the hidden name a preset's folder gets while it's deleted.
-const DELETING_PREFIX: &str = ".deleting-";
+pub(crate) const DELETING_PREFIX: &str = ".deleting-";
 
 /// Deletes the preset folder `folder`. It's first renamed to a hidden name next to it, which
 /// fails without changing anything when a file in it is open, as on Windows. Once renamed it's

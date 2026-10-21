@@ -11,6 +11,8 @@ serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 thiserror = "2.0.21"
 toml = "1.1.6"
+# Presets shared as .zip files, with only the deflate that png already brings in
+zip = { version = "8.6.0", default-features = false, features = ["deflate-flate2"] }
 
 [dev-dependencies]
 libtest-mimic = "0.8.2"

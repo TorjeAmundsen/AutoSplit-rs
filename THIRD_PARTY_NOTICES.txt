@@ -46,6 +46,14 @@ Project Authors (https://github.com/notofonts/latin-greek-cyrillic). It's licens
 Open Font License, Version 1.1, whose text is in crates/autosplit-cli/assets/fonts/OFL.txt and at
 https://openfontlicense.org.
 
+Bootstrap Icons
+---------------
+
+The icons on some buttons, in crates/autosplit-cli/assets/icons, are from Bootstrap Icons
+(https://icons.getbootstrap.com), embedded in the program. Copyright (c) 2019-2024 The Bootstrap
+Authors. They're licensed under the MIT License, whose text is at
+https://github.com/twbs/icons/blob/main/LICENSE.
+
 Slint
 -----
 

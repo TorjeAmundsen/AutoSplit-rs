@@ -5,6 +5,7 @@ Everything AutoSplit-rs does, to look things up. For setting it up the first tim
 - [The main window](#the-main-window)
 - [Make Split Images](#make-split-images)
 - [Editing presets](#editing-presets)
+- [Sharing presets](#sharing-presets)
 - [Live Tester](#live-tester)
 - [Settings](#settings)
 - [Split image file names](#split-image-file-names)
@@ -104,12 +105,12 @@ A preset with something that needs fixing shows what in the bottom line, with th
 
 ## Editing presets
 
-Edit, next to the preset, edits it, and New starts a new preset for the same game. The window title shows which preset is being edited, with a `*` in front while it has unsaved changes.
+The pencil button next to the preset edits it, and the page button starts a new preset for the same game. The window title shows which preset is being edited, with a `*` in front while it has unsaved changes.
 
 ![Make Split Images while editing a preset: the split list, the selected split's fields, and the Output Preview with its Mask, Live and grid buttons](docs/make-split-images-editing.png)
 
 - The game is picked from a list of the games with presets, or typed after New game....
-- Add, Duplicate, Remove, Move Up and Move Down change the splits. Add puts the cursor in the new split's name.
+- The buttons below the list change the splits: + adds one, the two pages duplicate the selected one, - removes it, and the arrows move it. Adding puts the cursor in the new split's name.
 - Library opens the split library: the ready-made splits for the preset's game.
   - The list on the left has their names. The search field above it narrows them by name and description. Down or Enter in the search field goes to the list.
   - The one you pick shows on the right: a screenshot its mask fits, its settings, what it's for, and the file name its split image gets, with `XX` for the number that comes from where you put it.
@@ -162,6 +163,15 @@ Splits with something to fix have a red name. The bottom line shows the first pr
 - Save as New saves the changes as another preset and leaves the old one as it was. If the game already has a preset with that name, the new one is called `Name (2)`.
 - Cancel, closing the window or quitting asks before throwing changes away.
 - Delete Preset asks, then deletes the preset with its masks and savestates, and ends editing. A preset that was never saved has nothing to delete yet.
+
+## Sharing presets
+
+The two buttons after the pencil and page buttons, next to the preset, share presets as `.zip` files.
+
+- Export (the arrow up) saves the shown preset as a `.zip` file, named like `tlozoot_no_wrong_warp.zip`, with its masks and savestates. Send that file to share the preset.
+- Import (the arrow down) adds the preset in a `.zip` file someone sent and shows it. If the game already has a preset with the same name, Import asks whether to replace that preset or keep both. Keeping both names the new one `Name (2)`.
+
+Import checks the file before it adds anything. It refuses a file whose preset uses a mask or savestate that isn't in it, a mask that isn't a PNG image, or a setting it doesn't know, which a preset from a newer version of AutoSplit-rs can have.
 
 ## Live Tester
 

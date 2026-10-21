@@ -683,9 +683,9 @@ impl Gui {
         }));
     }
 
-    /// Reads the presets again after a save or delete, and shows the one in `folder`, keeping
+    /// Reads the presets again after a save, delete or import, and shows the one in `folder`, keeping
     /// the splits' grabs, or else the one next to a `deleted` one, or else the first.
-    fn reload_presets(&self, folder: Option<&Path>, deleted: Option<&DeletedPreset>) {
+    pub(super) fn reload_presets(&self, folder: Option<&Path>, deleted: Option<&DeletedPreset>) {
         let errors = self.read_presets();
         let mut maker = self.maker.borrow_mut();
         let found = folder.and_then(|folder| maker.presets.find(folder));

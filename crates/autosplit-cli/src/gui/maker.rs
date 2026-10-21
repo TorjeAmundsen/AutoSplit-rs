@@ -34,6 +34,7 @@ mod library;
 mod library_entry;
 mod preview;
 mod savestates;
+mod sharing;
 mod write;
 
 /// Where a split image comes from.
@@ -387,6 +388,7 @@ impl Gui {
         self.connect_editor();
         self.connect_library();
         self.connect_library_entry();
+        self.connect_sharing();
     }
 
     /// Opens Make Split Images beside the main window, with the presets read again.

@@ -253,10 +253,13 @@ export component Button inherits Rectangle {
     in property <bool> suggested;
     // Its tooltip, or none when empty
     in property <string> tip;
+    // A 16px icon from Icons before the text, or none
+    in property <image> icon;
     // The pointer is over it while it can be clicked
     out property <bool> hovered: touch.has-hover && root.enabled;
     callback clicked();
-    preferred-width: max(75px, label.preferred-width + 20px);
+    property <bool> has-icon: root.icon.width > 0;
+    preferred-width: max(75px, label.preferred-width + 20px + (root.has-icon ? 21px : 0px));
     preferred-height: 24px;
     // Layouts don't stretch it, like Qt's buttons
     max-height: 24px;
@@ -274,15 +277,31 @@ export component Button inherits Rectangle {
         tint: root.suggested && root.enabled ? Theme.focus.with-alpha(0.18) : transparent;
     }
 
-    label := Text {
+    HorizontalLayout {
         x: 2px;
         width: parent.width - 4px;
         height: 100%;
-        text: root.text;
-        color: root.enabled ? Theme.text : Theme.disabled-text;
-        horizontal-alignment: center;
-        vertical-alignment: center;
-        overflow: elide;
+        alignment: center;
+        spacing: 5px;
+
+        if root.has-icon: Rectangle {
+            width: 16px;
+
+            Image {
+                width: 16px;
+                height: 16px;
+                source: root.icon;
+                colorize: root.enabled ? Theme.arrow : Theme.disabled-text;
+            }
+        }
+
+        label := Text {
+            text: root.text;
+            color: root.enabled ? Theme.text : Theme.disabled-text;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+            overflow: elide;
+        }
     }
 
     touch := TouchArea {
@@ -373,6 +392,82 @@ export component IconToggle inherits Rectangle {
             text: root.tip;
         }
     }
+}
+
+// A small button drawn like Button, with a 16px icon from Icons instead of text, like the Output
+// Preview's toggles.
+export component IconButton inherits Rectangle {
+    // What it does, for screen readers
+    in property <string> label;
+    in property <image> icon;
+    in property <bool> enabled: true;
+    // Its tooltip, or none when empty
+    in property <string> tip;
+    callback clicked();
+    width: 24px;
+    height: 24px;
+    forward-focus: focus;
+    accessible-role: button;
+    accessible-label: root.label;
+
+    Face {
+        width: 100%;
+        height: 100%;
+        pressed: touch.pressed && root.enabled;
+        hovered: touch.has-hover && root.enabled;
+        outline-color: focus.has-focus ? Theme.focus : Theme.outline;
+    }
+
+    Image {
+        width: 16px;
+        height: 16px;
+        source: root.icon;
+        colorize: root.enabled ? Theme.arrow : Theme.disabled-text;
+    }
+
+    touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: default;
+        clicked => {
+            root.clicked();
+        }
+    }
+
+    // Zero width, so a click reaches the touch area instead of taking the focus first
+    focus := FocusScope {
+        x: 0;
+        width: 0px;
+        enabled: root.enabled;
+        focus-on-click: false;
+        key-pressed(event) => {
+            if (event.text == " " || event.text == "\n") {
+                root.clicked();
+                return accept;
+            }
+            reject
+        }
+    }
+
+    if root.tip != "": Tooltip {
+        Tip {
+            text: root.tip;
+        }
+    }
+}
+
+// The icons of buttons, from Bootstrap Icons, drawn in one color that colorize sets. Named by
+// what they do, so another icon set only needs other files.
+export global Icons {
+    out property <image> edit: @image-url("../assets/icons/edit.svg");
+    out property <image> new: @image-url("../assets/icons/new.svg");
+    out property <image> add: @image-url("../assets/icons/add.svg");
+    out property <image> duplicate: @image-url("../assets/icons/duplicate.svg");
+    out property <image> remove: @image-url("../assets/icons/remove.svg");
+    out property <image> up: @image-url("../assets/icons/up.svg");
+    out property <image> down: @image-url("../assets/icons/down.svg");
+    out property <image> folder: @image-url("../assets/icons/folder.svg");
+    out property <image> import: @image-url("../assets/icons/import.svg");
+    out property <image> export: @image-url("../assets/icons/export.svg");
 }
 
 // A checkerboard, for the transparency grid's toggle
