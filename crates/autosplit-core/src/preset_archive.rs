@@ -217,7 +217,7 @@ impl PresetArchive {
 
     /// Writes the preset's files, the savestate note when it has savestates, and `preset.toml`
     /// into the empty folder `folder`. Each file is new: two names this system takes for one
-    /// file, like `M.png` and `m.png` on Windows, are an error rather than one file written over
+    /// file, like `M.png` and `m.png` on Windows and macOS, are an error rather than one file written over
     /// the other.
     fn write(&self, folder: &Path) -> Result<(), PresetError> {
         let toml = self.preset.to_toml();
@@ -237,7 +237,7 @@ impl PresetArchive {
             match written {
                 Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
                     let reason = "the preset has another file with the same name on this system, like M.png and m.png \
-                                  on Windows"
+                                  on Windows and macOS"
                         .to_owned();
                     return Err(PresetError::Unwritable { path: name.into(), reason });
                 }

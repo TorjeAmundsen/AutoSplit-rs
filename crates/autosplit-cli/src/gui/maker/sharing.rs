@@ -63,7 +63,7 @@ impl Gui {
         let dialog = self
             .file_dialog_over("Export Preset", self.windows.maker.window())
             .set_file_name(file)
-            .add_filter("Zip archive", &["zip"])
+            .add_filter("Zip archive", &["zip", "ZIP"])
             .save_file();
         self.when_picked(dialog, move |gui, mut path| {
             if !gui.still_free("export") {
@@ -88,7 +88,7 @@ impl Gui {
         }
         let dialog = self
             .file_dialog_over("Import Preset", self.windows.maker.window())
-            .add_filter("Zip archive", &["zip"])
+            .add_filter("Zip archive", &["zip", "ZIP"])
             .pick_file();
         self.when_picked(dialog, |gui, path| {
             if gui.still_free("import") {
