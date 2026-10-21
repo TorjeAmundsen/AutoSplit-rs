@@ -65,9 +65,13 @@ impl Gui {
             .set_file_name(file)
             .add_filter("Zip archive", &["zip"])
             .save_file();
-        self.when_picked(dialog, move |gui, path| {
+        self.when_picked(dialog, move |gui, mut path| {
             if !gui.still_free("export") {
                 return;
+            }
+            // Linux's dialogs save a name typed without .zip as it is, which Import wouldn't list
+            if path.extension().is_none() {
+                path.set_extension("zip");
             }
             if let Err(error) = export_preset(&folder, &path) {
                 return gui.show_message(Message::error(format!("Couldn't export the preset. {error}")));
