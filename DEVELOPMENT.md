@@ -49,7 +49,6 @@ The workspace has four crates:
 | Split Library window | `gui/maker/library.rs`, and adding to the library in `gui/maker/library_entry.rs` |
 | Differences between systems | `autosplit-cli/src/platform.rs` (consoles on Windows, App Nap and the menu bar on macOS) |
 | Savestates on the Linux clipboard | `autosplit-cli/src/file_clipboard.rs` |
-| `AutoSplit.com` on Windows | `autosplit-cli/src/bin/autosplit-console.rs` |
 
 A few design notes:
 
@@ -152,7 +151,7 @@ The targets are `windows-x64`, `windows-arm64`, `linux-x64`, `linux-arm64` and `
 ### What's in the zips
 
 - Every zip has the `presets` and `splits` folders.
-- Windows zips have `AutoSplit.exe` and `AutoSplit.com`, renamed from Cargo's `autosplit.exe` and `autosplit-console.exe`. See [Command line](MANUAL.md#command-line) for what each one is for.
+- Windows zips have `AutoSplit.exe`, renamed from Cargo's `autosplit.exe`.
 - Linux zips also have `icon.png` and `install-desktop-entry.sh`, which adds the program to the desktop's app menu.
 - Symbols are stripped unless you pass `--debug`.
 

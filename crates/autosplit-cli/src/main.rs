@@ -2,8 +2,8 @@
 //! split from a capture device without a window, check split image folders, compare images,
 //! replay recorded frames through the split state machine, and benchmark comparisons.
 
-// On Windows, a GUI program, so opening the window shows no console. Terminals run AutoSplit.com
-// instead, which runs this one inside the terminal (src/bin/autosplit-console.rs).
+// On Windows, a GUI program, so opening the window shows no console. Commands attach to the
+// console of the terminal they were started from.
 #![cfg_attr(windows, windows_subsystem = "windows")]
 
 use std::path::{Path, PathBuf};

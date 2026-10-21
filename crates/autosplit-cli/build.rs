@@ -1,8 +1,8 @@
 fn main() {
     slint_build::compile("ui/main.slint").expect("the UI compiles");
     let target_os = std::env::var("CARGO_CFG_TARGET_OS");
-    // The icon Explorer shows for AutoSplit.exe and AutoSplit.com. Only for Windows builds, since
-    // building on Windows for Linux or macOS would otherwise link the Windows resource in too.
+    // The icon Explorer shows for AutoSplit.exe. Only for Windows builds, since building on
+    // Windows for Linux or macOS would otherwise link the Windows resource in too.
     if target_os.as_deref() == Ok("windows") {
         embed_resource::compile("icon.rc", embed_resource::NONE).manifest_optional().expect("the icon compiles");
     }

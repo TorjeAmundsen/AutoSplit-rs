@@ -497,4 +497,4 @@ autosplit bench [split images...] --capture 1920x1080
 
 `run` prints what happens, with the current split image and its similarity on the last line. Press Ctrl+C to stop. Without a capture device, it shows `NO DEVICE` and looks for the device every 2 seconds.
 
-The Windows zip has two programs. `AutoSplit.exe` opens the window without a console, and `AutoSplit.com` is for terminals: typing `autosplit` in a terminal runs it, so output and Ctrl+C work there.
+On Windows, `AutoSplit.exe` is a windowed program, so terminals don't wait for it to finish and the prompt comes back before its output. To make the terminal wait, use `start /wait .\autosplit ...` in Command Prompt, or add `| Out-Host` to the end of the command in PowerShell.

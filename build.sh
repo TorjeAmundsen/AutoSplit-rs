@@ -184,12 +184,9 @@ build() {
     set -- $triples
     local first=$1 binary executables
     if [ "$(os_of "$first")" = windows ]; then
-        # AutoSplit.exe is a GUI program, so the command prompt doesn't wait for it. Typing
-        # autosplit runs AutoSplit.com first, which runs AutoSplit.exe as a console program.
-        # Named like AutoSplit's, where Cargo names them in lowercase.
+        # Named like AutoSplit's, where Cargo names it in lowercase
         binary=AutoSplit.exe
         cp "$target_dir/$first/release/autosplit.exe" "$output/$binary"
-        cp "$target_dir/$first/release/autosplit-console.exe" "$output/AutoSplit.com"
     else
         binary=autosplit
         if [ $# -gt 1 ]; then
