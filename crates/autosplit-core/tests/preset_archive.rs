@@ -4,7 +4,7 @@ use std::io::Write;
 use std::path::Path;
 
 use autosplit_core::preset::{PRESET_FILE, Preset, PresetError, SAVESTATE_NOTE_FILE, load_presets};
-use autosplit_core::preset_archive::{export_preset, read_archive};
+use autosplit_core::preset_archive::{MAX_FILES, export_preset, read_archive};
 use test_case::test_case;
 
 const PRESET: &str = r#"name = "Any%"
@@ -57,8 +57,11 @@ fn entries(path: &Path) -> Vec<String> {
 
 /// The names in `folder`, sorted.
 fn names(folder: &Path) -> Vec<String> {
-    let mut names: Vec<String> =
-        std::fs::read_dir(folder).unwrap().flatten().map(|entry| entry.file_name().to_string_lossy().into_owned()).collect();
+    let mut names: Vec<String> = std::fs::read_dir(folder)
+        .unwrap()
+        .flatten()
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
+        .collect();
     names.sort();
     names
 }
@@ -148,12 +151,15 @@ fn presets_zipped_in_their_folder_are_found() {
     let dir = tempfile::tempdir().unwrap();
     let archive = dir.path().join("any.zip");
     let png = png();
-    zip_with(&archive, &[
-        ("Any/preset.toml", PRESET.as_bytes()),
-        ("Any/reset.png", &png),
-        ("Any/Boss.png", &png),
-        ("Any/savestates/start.gzs", b"state"),
-    ]);
+    zip_with(
+        &archive,
+        &[
+            ("Any/preset.toml", PRESET.as_bytes()),
+            ("Any/reset.png", &png),
+            ("Any/Boss.png", &png),
+            ("Any/savestates/start.gzs", b"state"),
+        ],
+    );
 
     // Act
     let result = read_archive(&archive);
@@ -275,4 +281,84 @@ fn replacing_puts_the_import_in_the_old_folder() {
     assert_eq!(names(&presets), ["Mine"]);
     let (loaded, _) = load_presets(&presets);
     assert_eq!(loaded[0].preset.splits.len(), 2);
+}
+
+#[test]
+fn one_file_written_two_ways_is_shared_once() {
+    // Arrange
+    let dir = tempfile::tempdir().unwrap();
+    let folder = dir.path().join("Any");
+    std::fs::create_dir_all(folder.join("masks")).unwrap();
+    let text = "name = \"Any%\"\n\n[[split]]\nname = \"A\"\nmask = \"masks/Boss.png\"\n\n\
+                [[split]]\nname = \"B\"\nmask = './masks\\Boss.png'\n";
+    std::fs::write(folder.join(PRESET_FILE), text).unwrap();
+    std::fs::write(folder.join("masks/Boss.png"), png()).unwrap();
+    let archive = dir.path().join("any.zip");
+
+    // Act
+    export_preset(&folder, &archive).unwrap();
+    let imported = read_archive(&archive).unwrap();
+
+    // Assert
+    assert_eq!(entries(&archive), ["masks/Boss.png", "preset.toml"]);
+    let masks: Vec<&str> = imported.preset.splits.iter().map(|split| split.mask.as_str()).collect();
+    assert_eq!(masks, ["masks/Boss.png", "masks/Boss.png"]);
+}
+
+#[test]
+fn presets_too_big_to_import_arent_exported() {
+    // Arrange
+    let dir = tempfile::tempdir().unwrap();
+    let folder = dir.path().join("Any");
+    std::fs::create_dir_all(folder.join("savestates")).unwrap();
+    let mut text = String::from("name = \"Any%\"\n");
+    for n in 0..MAX_FILES {
+        text.push_str(&format!("\n[[split]]\nname = \"S{n}\"\nsavestate = \"savestates/{n}.gzs\"\n"));
+        std::fs::write(folder.join(format!("savestates/{n}.gzs")), b"state").unwrap();
+    }
+    std::fs::write(folder.join(PRESET_FILE), text).unwrap();
+    let archive = dir.path().join("any.zip");
+
+    // Act
+    let result = export_preset(&folder, &archive);
+
+    // Assert
+    assert!(matches!(result, Err(PresetError::Unwritable { .. })), "{result:?}");
+    assert!(!archive.exists());
+}
+
+#[cfg(windows)]
+#[test]
+fn names_windows_takes_for_one_file_are_refused() {
+    // Arrange
+    let dir = tempfile::tempdir().unwrap();
+    let archive = dir.path().join("any.zip");
+    let text = "name = \"Any%\"\n\n[[split]]\nname = \"Boss\"\nmask = \"M.png\"\nsavestate = \"m.png\"\n";
+    zip_with(&archive, &[("preset.toml", text.as_bytes()), ("M.png", &png()), ("m.png", b"not a png")]);
+    let presets = dir.path().join("presets");
+
+    // Act
+    let result = read_archive(&archive).unwrap().install(&presets, None);
+
+    // Assert
+    assert!(matches!(result, Err(PresetError::Unwritable { .. })), "{result:?}");
+    assert!(names(&presets).is_empty());
+}
+
+#[test]
+fn an_import_still_being_written_is_left_alone() {
+    // Arrange
+    let dir = tempfile::tempdir().unwrap();
+    preset_folder(&dir.path().join("Any"));
+    let archive = dir.path().join("any.zip");
+    export_preset(&dir.path().join("Any"), &archive).unwrap();
+    let presets = dir.path().join("presets");
+    std::fs::create_dir_all(presets.join(".importing-1")).unwrap();
+
+    // Act
+    let folder = read_archive(&archive).unwrap().install(&presets, None).unwrap();
+
+    // Assert
+    assert_eq!(names(&presets), [".importing-1", "Any%"]);
+    assert_eq!(folder, presets.join("Any%"));
 }
