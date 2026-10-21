@@ -237,7 +237,9 @@ fn files_that_arent_zips_are_refused() {
     let result = read_archive(&archive);
 
     // Assert
-    assert!(matches!(result, Err(PresetError::Invalid { .. })));
+    let error = result.unwrap_err();
+    assert!(matches!(error, PresetError::Invalid { .. }));
+    assert_eq!(error.to_string(), "'any.zip' isn't a valid split image preset: it isn't a zip file");
 }
 
 #[test]

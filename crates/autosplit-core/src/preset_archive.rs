@@ -77,7 +77,7 @@ pub fn export_preset(folder: &Path, archive: &Path) -> Result<(), PresetError> {
     let preset = Preset::parse(&String::from_utf8_lossy(&text), &preset_file)?;
     let used = used_files(&preset).map_err(|(index, path)| {
         let split = &preset.splits[index].name;
-        let reason = format!("split {} ({split}) uses {path}, which isn't in the preset's folder", index + 1);
+        let reason = format!("split {} ({split}) uses {path}, which is outside the preset's folder", index + 1);
         PresetError::Invalid { path: preset_file.clone(), reason }
     })?;
     let too_big = |reason: String| PresetError::Unwritable { path: archive.to_owned(), reason };
@@ -119,19 +119,22 @@ fn write_zip(path: &Path, files: &[(String, Vec<u8>)]) -> std::io::Result<()> {
 
 /// Reads and checks the preset in the archive `archive`. Its `preset.toml` is at the top, or in
 /// one folder, as zipping a preset's folder makes it. Every mask and savestate it uses has to be
-/// in the archive, and masks have to be PNG images. Other files are left out.
+/// in the archive, and masks have to be PNG images. Other files are left out. Errors name the
+/// archive by its file name, which says which one without the folders it was picked from.
 pub fn read_archive(archive: &Path) -> Result<PresetArchive, PresetError> {
-    let invalid = |reason: String| PresetError::Invalid { path: archive.to_owned(), reason };
+    let shown = archive.file_name().map_or_else(|| archive.to_owned(), PathBuf::from);
+    let invalid = |reason: String| PresetError::Invalid { path: shown.clone(), reason };
     let file = std::fs::File::open(archive)
-        .map_err(|error| PresetError::Unreadable { path: archive.to_owned(), reason: error.to_string() })?;
-    let mut zip = zip::ZipArchive::new(file).map_err(|error| invalid(format!("it isn't a zip file ({error})")))?;
+        .map_err(|error| PresetError::Unreadable { path: shown.clone(), reason: error.to_string() })?;
+    let mut zip = zip::ZipArchive::new(file).map_err(|_| invalid("it isn't a zip file".to_owned()))?;
     if zip.len() > MAX_FILES {
         return Err(invalid(format!("it has more than {MAX_FILES} files")));
     }
+    let damaged = || invalid("it's damaged, so its files can't be read".to_owned());
     let mut files: HashMap<String, Vec<u8>> = HashMap::new();
     let mut total = 0u64;
     for index in 0..zip.len() {
-        let mut entry = zip.by_index(index).map_err(|error| invalid(error.to_string()))?;
+        let mut entry = zip.by_index(index).map_err(|_| damaged())?;
         if entry.is_dir() {
             continue;
         }
@@ -141,7 +144,7 @@ pub fn read_archive(archive: &Path) -> Result<PresetArchive, PresetError> {
         // Read no more than what's left, whatever the archive says the file's size is
         let left = MAX_SIZE - total;
         let mut contents = Vec::new();
-        (&mut entry).take(left + 1).read_to_end(&mut contents).map_err(|error| invalid(format!("{name}: {error}")))?;
+        (&mut entry).take(left + 1).read_to_end(&mut contents).map_err(|_| damaged())?;
         total += contents.len() as u64;
         if total > MAX_SIZE {
             return Err(invalid(format!("its files take more than {} MB unpacked", MAX_SIZE / 1024 / 1024)));
@@ -153,16 +156,18 @@ pub fn read_archive(archive: &Path) -> Result<PresetArchive, PresetError> {
         .filter(|folder| folder.is_empty() || (folder.matches('/').count() == 1 && folder.ends_with('/')))
         .collect();
     let root = match roots.as_slice() {
-        [] => return Err(invalid(format!("it has no {PRESET_FILE}"))),
+        [] => return Err(invalid("it has no preset in it".to_owned())),
         [root] => root.to_string(),
         // The top one, when one is in a folder too
         roots => match roots.iter().find(|root| root.is_empty()) {
             Some(_) => String::new(),
-            None => return Err(invalid("it has several presets. Import them one at a time.".to_owned())),
+            None => {
+                return Err(invalid("it has several presets, and a file for importing can only have one".to_owned()));
+            }
         },
     };
     let text = String::from_utf8_lossy(&files[&format!("{root}{PRESET_FILE}")]).into_owned();
-    let mut preset = Preset::parse(&text, archive)?;
+    let mut preset = Preset::parse(&text, &shown)?;
     let used = used_files(&preset).map_err(|(index, path)| {
         let split = &preset.splits[index].name;
         invalid(format!("split {} ({split}) uses {path}, which is outside the preset's folder", index + 1))
@@ -172,7 +177,7 @@ pub fn read_archive(archive: &Path) -> Result<PresetArchive, PresetError> {
     for (index, name) in used {
         let split = &preset.splits[index].name;
         let Some(contents) = files.remove(&format!("{root}{name}")) else {
-            return Err(invalid(format!("split {} ({split}) uses {name}, which isn't in it", index + 1)));
+            return Err(invalid(format!("split {} ({split}) uses {name}, which isn't in the file", index + 1)));
         };
         if masks.contains(&name) && ::image::load_from_memory_with_format(&contents, ::image::ImageFormat::Png).is_err()
         {

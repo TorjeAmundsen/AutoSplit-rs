@@ -627,7 +627,7 @@ impl Gui {
             return false;
         };
         drop(maker);
-        self.show_message(Message::warning(format!("Fix the preset with Edit first. {summary}")));
+        self.show_message(Message::warning(format!("Fix the preset with Fix It first. {summary}")));
         true
     }
 
