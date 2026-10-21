@@ -14,15 +14,42 @@ impl Gui {
         on!(weak, maker, on_export_preset, () gui => gui.pick_export());
     }
 
-    /// Whether the presets can't change now: while one is edited, or split images are written.
-    fn sharing_waits(&self) -> bool {
+    /// Why the presets can't change now, or `None` when they can: while one is edited, or split
+    /// images are written.
+    fn sharing_waits(&self) -> Option<&'static str> {
         let maker = self.maker.borrow();
-        maker.edit.is_some() || maker.working > 0
+        if maker.edit.is_some() {
+            Some("Save or cancel the preset being edited first.")
+        } else if maker.working > 0 {
+            Some("Wait until the split images are written first.")
+        } else {
+            None
+        }
+    }
+
+    /// After a file dialog, which doesn't block the window everywhere: whether the presets can
+    /// still change, and if not, says why.
+    fn still_free(&self, what: &str) -> bool {
+        let Some(reason) = self.sharing_waits() else { return true };
+        self.show_message(Message::warning(format!("Couldn't {what} the preset. {reason}")));
+        false
+    }
+
+    /// Says `text` in the bottom line, or in a message while the line shows the preset's
+    /// problem instead.
+    fn tell_shared(&self, text: String) {
+        let window = &self.windows.maker;
+        let problem = window.get_preset_problem();
+        if problem.is_empty() {
+            window.set_status(text.into());
+        } else {
+            self.show_message(Message::warning(format!("{text} It needs fixing before it's used: {problem}")));
+        }
     }
 
     /// Asks where to save the shown preset as a .zip file, then saves it there.
     fn pick_export(self: &Rc<Self>) {
-        if self.sharing_waits() {
+        if self.sharing_waits().is_some() {
             return;
         }
         let maker = self.maker.borrow();
@@ -36,24 +63,31 @@ impl Gui {
             .add_filter("Zip archive", &["zip"])
             .save_file();
         self.when_picked(dialog, move |gui, path| {
+            if !gui.still_free("export") {
+                return;
+            }
             if let Err(error) = export_preset(&folder, &path) {
                 return gui.show_message(Message::error(format!("Couldn't export the preset. {error}")));
             }
             let file = file_name_text(&path).unwrap_or_default();
-            gui.windows.maker.set_status(format!("Exported the preset {name} as {file}.").into());
+            gui.tell_shared(format!("Exported the preset {name} as {file}."));
         });
     }
 
     /// Asks for a preset's .zip file, then imports it.
     fn pick_import(self: &Rc<Self>) {
-        if self.sharing_waits() {
+        if self.sharing_waits().is_some() {
             return;
         }
         let dialog = self
             .file_dialog_over("Import Preset", self.windows.maker.window())
             .add_filter("Zip archive", &["zip"])
             .pick_file();
-        self.when_picked(dialog, |gui, path| gui.import_preset(&path));
+        self.when_picked(dialog, |gui, path| {
+            if gui.still_free("import") {
+                gui.import_preset(&path);
+            }
+        });
     }
 
     /// Imports the preset in the archive `path`. When its game already has a preset with its
@@ -107,7 +141,16 @@ impl Gui {
             Ok(folder) => folder,
             Err(error) => return self.show_message(Message::error(format!("Couldn't import the preset. {error}"))),
         };
-        self.reload_presets(Some(&folder), None);
-        self.windows.maker.set_status(format!("Imported the preset {}.", archive.preset.name).into());
+        let errors = self.read_presets();
+        let mut maker = self.maker.borrow_mut();
+        // A replaced preset's masks changed under the same names
+        maker.masks.clear();
+        maker.live_mask = None;
+        let index = maker.presets.find(&folder).unwrap_or(0);
+        drop(maker);
+        // Another preset than the one shown, so it starts without the shown one's grabs
+        self.choose_preset(index);
+        self.show_preset_errors(errors);
+        self.tell_shared(format!("Imported the preset {}.", archive.preset.name));
     }
 }
