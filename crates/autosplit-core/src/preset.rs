@@ -701,6 +701,7 @@ pub(crate) fn leave_for_deleting(folder: &Path) {
 
 /// Deletes the hidden folders in `folder` whose names start with `prefix`, which a delete or
 /// import that stopped partway left, once they're `older_than` that, by when they last changed.
+/// `Duration::ZERO` deletes them all, even ones whose age can't be read.
 pub(crate) fn remove_leftovers(folder: &Path, prefix: &str, older_than: Duration) {
     let Ok(entries) = std::fs::read_dir(folder) else { return };
     for entry in entries.flatten() {

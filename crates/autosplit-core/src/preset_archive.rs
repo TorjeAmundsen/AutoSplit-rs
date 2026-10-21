@@ -187,15 +187,16 @@ impl PresetArchive {
         remove_leftovers(presets, IMPORTING_PREFIX, LEFTOVER_AGE);
         std::fs::create_dir_all(presets).map_err(|error| unwritable(presets, error))?;
         // Made here rather than found free, so two imports at once never share one
-        let mut staging = PathBuf::new();
-        for n in 1.. {
-            staging = presets.join(format!("{IMPORTING_PREFIX}{n}"));
-            match std::fs::create_dir(&staging) {
-                Ok(()) => break,
-                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
-                Err(error) => return Err(unwritable(&staging, error)),
-            }
-        }
+        let staging = (1..)
+            .find_map(|n| {
+                let staging = presets.join(format!("{IMPORTING_PREFIX}{n}"));
+                match std::fs::create_dir(&staging) {
+                    Ok(()) => Some(Ok(staging)),
+                    Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => None,
+                    Err(error) => Some(Err(unwritable(&staging, error))),
+                }
+            })
+            .expect("some number is free")?;
         if let Err(error) = self.write(&staging) {
             let _ = std::fs::remove_dir_all(&staging);
             return Err(error);
