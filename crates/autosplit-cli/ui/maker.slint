@@ -35,7 +35,8 @@ export struct MakerRow {
 component FolderPicker inherits HorizontalLayout {
     // Shown from its end when it's too long, since the end tells folders apart. Empty for none
     in property <string> folder;
-    in property <length> browse-width: 70px;
+    // Browse... is a folder icon
+    in property <bool> icon-only;
     callback browse();
 
     height: 24px;
@@ -58,7 +59,7 @@ component FolderPicker inherits HorizontalLayout {
                 height: parent.height;
                 vertical-alignment: center;
                 color: Theme.secondary-text;
-                text: "None yet. Use Browse...";
+                text: root.icon-only ? "None yet. Pick one with the folder button." : "None yet. Use Browse...";
             }
 
             // Too long, it's moved left so its end shows, measured as it's drawn
@@ -88,14 +89,21 @@ component FolderPicker inherits HorizontalLayout {
 
         Tooltip {
             Tip {
-                text: root.folder == "" ? "No split image folder yet. Pick one with Browse..., where the split images are saved." : root.folder;
+                text: root.folder == "" ? "No split image folder yet. Pick one with " + (root.icon-only ? "the folder button" : "Browse...") + ", where the split images are saved." : root.folder;
             }
         }
     }
 
-    Button {
-        width: root.browse-width;
+    if !root.icon-only: Button {
+        width: 70px;
         text: "Browse...";
+        clicked => { root.browse(); }
+        tip: "Pick the split image folder, which the profile uses from now on";
+    }
+
+    if root.icon-only: IconButton {
+        label: "Browse";
+        icon: Icons.folder;
         clicked => { root.browse(); }
         tip: "Pick the split image folder, which the profile uses from now on";
     }
@@ -367,7 +375,8 @@ export component MakerWindow inherits Window {
             spacing: 12px;
 
             VerticalLayout {
-                width: 480px;
+                // Without advanced, the rows have no file names to make room for
+                width: root.details ? 480px : 360px;
                 spacing: 6px;
 
                 HorizontalLayout {
@@ -427,7 +436,7 @@ export component MakerWindow inherits Window {
                         selected => { root.preset-chosen(root.preset-index); }
                     }
 
-                    if !root.editing: IconButton {
+                    if !root.editing && root.advanced: IconButton {
                         label: "Edit";
                         icon: Icons.edit;
                         enabled: root.presets.length > 0 && !root.working;
@@ -435,7 +444,7 @@ export component MakerWindow inherits Window {
                         tip: "Edit this preset's splits, masks and settings";
                     }
 
-                    if !root.editing: IconButton {
+                    if !root.editing && root.advanced: IconButton {
                         label: "New";
                         icon: Icons.new;
                         enabled: !root.working;
@@ -443,8 +452,7 @@ export component MakerWindow inherits Window {
                         tip: "Make a new preset for this game";
                     }
 
-                    // Sets sharing apart from editing, with one more spacing between them. Import
-                    // alone is spaced like the others, lined up with Browse... below.
+                    // Sets sharing apart from editing, with one more spacing between them
                     if !root.editing && root.advanced: Rectangle {
                         width: 0px;
                     }
@@ -482,9 +490,9 @@ export component MakerWindow inherits Window {
                         text: "Folder:";
                     }
 
-                    // As wide as the three buttons above it
+                    // An icon like Import's above it, so the path has room
                     FolderPicker {
-                        browse-width: 3 * 24px + 2 * 6px;
+                        icon-only: true;
                         folder: root.output-folder;
                         browse => { root.browse-folder(); }
                     }
@@ -802,10 +810,9 @@ export component MakerWindow inherits Window {
 
                 // The selected split, in the space of the folder and the capture, which the
                 // output preview below shows masked as it's edited. Just as tall, so the window
-                // keeps its size, and it scrolls when problems or notes need more room. Without
-                // advanced, the folder isn't in this column, so it's two rows shorter.
+                // keeps its size, and it scrolls when problems or notes need more room.
                 if root.editing: form-scroll := ScrollView {
-                    height: root.advanced ? 326px : 266px;
+                    height: 326px;
                     content-height: max(self.visible-height, form-panel.preferred-height);
                     content-width: self.visible-width;
 
@@ -968,7 +975,7 @@ export component MakerWindow inherits Window {
                 // The profile is for this preset's split images, so it needs their folder
                 enabled: root.presets.length > 0 && root.preset-problem == "" && root.output-folder != "";
                 clicked => { root.generate-profile(); }
-                tip: root.output-folder == "" ? "Needs a split image folder. Pick one with Browse... first." : "Save the current settings as a new profile for this game and preset, using this split image folder. You can choose to load it afterwards.";
+                tip: root.output-folder == "" ? "Needs a split image folder. Pick one with " + (root.advanced ? "Browse..." : "the folder button") + " first." : "Save the current settings as a new profile for this game and preset, using this split image folder. You can choose to load it afterwards.";
             }
         }
 

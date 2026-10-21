@@ -540,18 +540,25 @@ impl Gui {
 
     /// Why Grab can't work yet, which its tooltip says, or empty. The hotkey still tries, and says
     /// so in a message. A fade split doesn't need the capture.
-    fn grab_blocker(&self) -> &'static str {
+    fn grab_blocker(&self) -> String {
         if !self.selected_fade() && !self.state.borrow().document.profile.has_capture_device() {
             concat!(
                 "Pick a capture device in Settings (",
                 primary_key!(),
                 "+,) first, which Grab takes the capture region from."
             )
+            .to_owned()
         } else if !self.split_image_folder().is_some_and(|folder| folder.is_dir()) {
-            "Pick a split image folder that exists with Browse... first, which Grab saves into."
+            format!("Pick a split image folder that exists with {} first, which Grab saves into.", self.folder_button())
         } else {
-            ""
+            String::new()
         }
+    }
+
+    /// What the split image folder's button is called in the messages: Browse..., or the folder
+    /// icon that's there instead without advanced.
+    pub(super) fn folder_button(&self) -> &'static str {
+        if self.state.borrow().document.profile.advanced_maker { "Browse..." } else { "the folder button" }
     }
 
     /// The preset's file names, with the profile's defaults for what they leave out.
@@ -783,7 +790,8 @@ impl Gui {
             return;
         }
         if self.split_image_folder().is_none() {
-            return self.show_message(Message::warning("Pick a split image folder with Browse... first."));
+            let message = format!("Pick a split image folder with {} first.", self.folder_button());
+            return self.show_message(Message::warning(message));
         }
         let maker = self.maker.borrow();
         let Some(loaded) = maker.loaded() else { return };

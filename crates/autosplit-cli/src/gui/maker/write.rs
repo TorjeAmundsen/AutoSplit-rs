@@ -42,9 +42,10 @@ impl Gui {
             return true;
         }
         let Some(folder) = self.split_image_folder().filter(|folder| folder.is_dir()) else {
-            self.show_message(Message::error(
-                "Pick a split image folder that exists with Browse... first: the split images are saved there.",
-            ));
+            self.show_message(Message::error(format!(
+                "Pick a split image folder that exists with {} first: the split images are saved there.",
+                self.folder_button()
+            )));
             return false;
         };
         let names = self.maker_file_names();

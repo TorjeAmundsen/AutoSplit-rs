@@ -246,7 +246,7 @@ fn main() {
     maker.set_live_image(solid([90, 140, 90]));
     maker.set_can_grab(true);
     // Without advanced, the folder is above the list and the window two rows shorter
-    save(&window, PhysicalSize::new(828, 612), &folder.join("maker-simple.png"));
+    save(&window, PhysicalSize::new(708, 612), &folder.join("maker-simple.png"));
     maker.set_advanced(true);
     save(&window, PhysicalSize::new(828, 672), &folder.join("maker.png"));
     // A fade split selected, which isn't made from the capture
@@ -363,10 +363,6 @@ Replace them?",
     maker.set_has_problems(true);
     maker.set_saved_preset(true);
     save(&window, PhysicalSize::new(828, 672), &folder.join("maker-edit.png"));
-    // Without advanced, the form is shorter, so the window keeps its size when editing starts
-    maker.set_advanced(false);
-    save(&window, PhysicalSize::new(828, 612), &folder.join("maker-edit-simple.png"));
-    maker.set_advanced(true);
     // Where a ready-made split from Split Library would go
     maker.set_drop_line(3);
     save(&window, PhysicalSize::new(828, 672), &folder.join("maker-edit-drop.png"));
