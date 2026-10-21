@@ -13,9 +13,12 @@ impl Gui {
         on!(weak, maker, on_export_preset, () gui => gui.pick_export());
     }
 
-    /// Why the presets can't change now, or `None` when they can: while one is edited, or split
-    /// images are written.
+    /// Why the presets can't change now, or `None` when they can: while one is edited, split
+    /// images are written, or a message is open, like another import's question.
     fn sharing_waits(&self) -> Option<&'static str> {
+        if self.blocked() {
+            return Some("Answer the open message first.");
+        }
         let maker = self.maker.borrow();
         if maker.edit.is_some() {
             Some("Save or cancel the preset being edited first.")
