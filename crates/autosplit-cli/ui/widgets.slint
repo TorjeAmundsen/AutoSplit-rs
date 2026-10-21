@@ -1118,7 +1118,8 @@ export component FileName inherits HorizontalLayout {
             color: NameColors.of(part);
         }
 
-        Tooltip {
+        // None for a plain part where there's no path to show, like the split's name
+        if part.meaning != "" || root.path != "": Tooltip {
             Tip {
                 text: part.meaning != "" ? part.meaning : root.path;
             }
