@@ -21,6 +21,7 @@ name = "EscapeDummy"
 mask = "EscapeDummy.png"
 threshold = 0.95
 pause = 0.5
+dummy = true
 savestate = "savestates/000-escdmy.gzs"
 
 [[split]]
@@ -45,6 +46,7 @@ name = "HylianShieldDummy"
 mask = "HylianShieldDummy.png"
 threshold = 0.95
 pause = 5.0
+dummy = true
 
 [[split]]
 name = "DekuShield"
@@ -80,6 +82,7 @@ name = "BugsDummy"
 mask = "BugsDummy.png"
 threshold = 0.94
 pause = 15.0
+dummy = true
 savestate = "savestates/006-kokiri_forest.gzs"
 
 [[split]]
@@ -87,6 +90,7 @@ name = "EnterDekuDummy1"
 mask = "EnterDekuDummy1.png"
 threshold = 0.95
 pause = 0.5
+dummy = true
 savestate = "savestates/007-kokiri_forest.gzs"
 
 [[split]]
@@ -95,6 +99,7 @@ with_previous = true
 mask = "EnterDekuDummy2.png"
 threshold = 0.95
 pause = 0.5
+dummy = true
 savestate = "savestates/007-kokiri_forest.gzs"
 
 [[split]]
@@ -103,6 +108,7 @@ with_previous = true
 mask = "EnterDekuDummy3.png"
 threshold = 0.95
 pause = 0.5
+dummy = true
 savestate = "savestates/007-kokiri_forest.gzs"
 
 [[split]]
@@ -111,6 +117,7 @@ with_previous = true
 mask = "EnterDekuDummy4.png"
 threshold = 0.95
 pause = 0.5
+dummy = true
 savestate = "savestates/007-kokiri_forest.gzs"
 
 [[split]]
@@ -139,6 +146,7 @@ name = "DeathDummy"
 mask = "DeathDummy.png"
 threshold = 0.93
 pause = 0.0
+dummy = true
 savestate = "savestates/010-gohma.gzs"
 
 [[split]]
@@ -191,6 +199,7 @@ name = "BombsLeft"
 mask = "BombsLeft.png"
 threshold = 0.94
 pause = 120.0
+savestate = "savestates/019-dodongo's_cavern.gzs"
 
 [[split]]
 name = "BombsRight"
@@ -198,3 +207,200 @@ with_previous = true
 mask = "BombsRight.png"
 threshold = 0.94
 pause = 120.0
+savestate = "savestates/020-dodongo's_cavern.gzs"
+
+[[split]]
+name = "BoleroDummy"
+mask = "BoleroDummy.png"
+threshold = 0.94
+pause = 0.0
+dummy = true
+savestate = "savestates/021-death_mountain_crater.gzs"
+
+[[split]]
+name = "Bolero"
+mask = "FastBlackFade.png"
+fade = "#000000"
+fade_time = 200
+threshold = 0.995
+pause = 120.0
+
+[[split]]
+name = "MinuetDummy1"
+mask = "MinuetDummy1.png"
+threshold = 0.95
+pause = 0.0
+dummy = true
+savestate = "savestates/022-sacred_forest_meadow.gzs"
+
+[[split]]
+name = "MinuetDummy2"
+with_previous = true
+mask = "MinuetDummy2.png"
+threshold = 0.95
+pause = 0.0
+dummy = true
+savestate = "savestates/022-sacred_forest_meadow.gzs"
+
+[[split]]
+name = "MinuetDummy3"
+with_previous = true
+mask = "MinuetDummy3.png"
+threshold = 0.95
+pause = 0.0
+dummy = true
+savestate = "savestates/022-sacred_forest_meadow.gzs"
+
+[[split]]
+name = "MinuetDummy4"
+with_previous = true
+mask = "MinuetDummy4.png"
+threshold = 0.95
+pause = 0.0
+dummy = true
+savestate = "savestates/022-sacred_forest_meadow.gzs"
+
+[[split]]
+name = "Minuet"
+mask = "FastBlackFade (1).png"
+fade = "#000000"
+fade_time = 200
+threshold = 0.995
+pause = 120.0
+
+[[split]]
+name = "FaroresWind"
+mask = "FaroresWind.png"
+threshold = 0.92
+pause = 120.0
+savestate = "savestates/023-fairy_spells.gzs"
+
+[[split]]
+name = "IronBootsLeft"
+mask = "IronBootsLeft.png"
+threshold = 0.94
+pause = 120.0
+savestate = "savestates/024-ice_cavern.gzs"
+
+[[split]]
+name = "IronBootsRight"
+with_previous = true
+mask = "IronBootsRight.png"
+threshold = 0.94
+pause = 120.0
+savestate = "savestates/025-ice_cavern.gzs"
+
+[[split]]
+name = "BoomerangLeft"
+mask = "BoomerangLeft.png"
+threshold = 0.94
+pause = 120.0
+savestate = "savestates/026-jabu_jabu.gzs"
+
+[[split]]
+name = "BoomerangRight"
+with_previous = true
+mask = "BoomerangRight.png"
+threshold = 0.94
+pause = 120.0
+savestate = "savestates/027-jabu_jabu.gzs"
+
+[[split]]
+name = "RutoDummy"
+mask = "RutoDummy.png"
+threshold = 0.94
+pause = 0.0
+dummy = true
+below = true
+savestate = "savestates/028-barinade.gzs"
+
+[[split]]
+name = "JabuWrongWarp"
+mask = "FastBlackFade (1).png"
+fade = "#000000"
+fade_time = 200
+threshold = 0.995
+pause = 60.0
+
+[[split]]
+name = "LakeHyliaDummy"
+mask = "LakeHyliaDummy.png"
+threshold = 0.95
+dummy = true
+savestate = "savestates/029-lake_hylia.gzs"
+
+[[split]]
+name = "EnterWaterTemple"
+mask = "EnterWaterTemple.png"
+fade = "#000000"
+fade_time = 200
+threshold = 0.995
+pause = 120.0
+
+[[split]]
+name = "LongshotLeft"
+mask = "IronBootsLeft.png"
+threshold = 0.94
+pause = 120.0
+savestate = "savestates/030-long1.gzs"
+
+[[split]]
+name = "LongshotRight"
+with_previous = true
+mask = "LongshotRight.png"
+threshold = 0.94
+pause = 120.0
+savestate = "savestates/031-long2.gzs"
+
+[[split]]
+name = "BowLeft"
+mask = "IronBootsLeft.png"
+threshold = 0.94
+pause = 120.0
+savestate = "savestates/032-bow1.gzs"
+
+[[split]]
+name = "BowRight"
+with_previous = true
+mask = "IronBootsLeft.png"
+threshold = 0.94
+pause = 120.0
+savestate = "savestates/033-forest_temple.gzs"
+
+[[split]]
+name = "DeathDummy"
+mask = "DeathDummy (1).png"
+threshold = 0.93
+pause = 0.0
+savestate = "savestates/010-gohma.gzs"
+
+[[split]]
+name = "ForestMedallion"
+mask = "ForestMedallion.png"
+fade = "#000000"
+fade_time = 800
+threshold = 0.995
+pause = 200.0
+below = true
+
+[[split]]
+name = "HeartContainerDummy"
+mask = "HeartContainerDummy.png"
+threshold = 0.94
+pause = 0.0
+dummy = true
+savestate = "savestates/034-morpha.gzs"
+
+[[split]]
+name = "WaterMedallion"
+mask = "FullWhiteFade.png"
+fade = "#a0a0a0"
+fade_time = 800
+threshold = 0.995
+
+[[split]]
+name = "LakeHyliaDummy"
+mask = "LakeHyliaDummy.png"
+threshold = 0.95
+dummy = true
+savestate = "savestates/029-lake_hylia.gzs"

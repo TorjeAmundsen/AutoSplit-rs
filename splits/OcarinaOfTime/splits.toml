@@ -137,3 +137,13 @@ pause = 200.0
 below = true
 base_image = "base_WrongWarpFlash.png"
 then = true
+
+[[split]]
+name = "HeartContainerDummy"
+mask = "HeartContainerDummy.png"
+threshold = 0.94
+pause = 0.0
+dummy = true
+savestate = "034-morpha.gzs"
+description = "A dummy split on a heart container textbox."
+base_image = "base_HeartContainerDummy.png"
