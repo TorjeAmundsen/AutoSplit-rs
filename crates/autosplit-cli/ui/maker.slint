@@ -567,12 +567,13 @@ export component MakerWindow inherits Window {
                 }
 
                 // Where split images come from, then what's done with them, filling the list's
-                // width like the savestate buttons fill the preview's
+                // width like the savestate buttons fill the preview's, wider than their text
                 if !root.editing: HorizontalLayout {
                     height: 24px;
                     spacing: 6px;
 
                     Button {
+                        horizontal-stretch: 1;
                         text: root.grab-fade ? "Grab*" : "Grab";
                         suggested: true;
                         enabled: root.can-grab;
@@ -581,6 +582,7 @@ export component MakerWindow inherits Window {
                     }
 
                     Button {
+                        horizontal-stretch: 1;
                         text: "Use Screenshots...";
                         // A fade split is made from its color, so it takes no screenshot
                         enabled: root.preset-problem == "" && !root.grab-fade;
@@ -589,6 +591,7 @@ export component MakerWindow inherits Window {
                     }
 
                     Button {
+                        horizontal-stretch: 1;
                         text: "Test";
                         enabled: root.can-test;
                         clicked => { root.test(); }
@@ -596,6 +599,7 @@ export component MakerWindow inherits Window {
                     }
 
                     Button {
+                        horizontal-stretch: 1;
                         text: "Save Selected";
                         enabled: root.can-save-selected;
                         clicked => { root.save-selected(); }
@@ -603,6 +607,7 @@ export component MakerWindow inherits Window {
                     }
 
                     Button {
+                        horizontal-stretch: 1;
                         text: "Save All";
                         enabled: root.can-save-all;
                         clicked => { root.save-all(); }
@@ -639,7 +644,6 @@ export component MakerWindow inherits Window {
                     }
 
                     Button {
-                        horizontal-stretch: 0;
                         text: "Library";
                         icon: Icons.folder;
                         clicked => { root.open-library(); }
@@ -647,7 +651,6 @@ export component MakerWindow inherits Window {
                     }
 
                     if root.developer: Button {
-                        horizontal-stretch: 0;
                         text: "Add to Library...";
                         enabled: root.has-split;
                         clicked => { root.add-to-library(); }
@@ -848,6 +851,7 @@ export component MakerWindow inherits Window {
                     spacing: 6px;
 
                     Button {
+                        horizontal-stretch: 1;
                         text: "Copy Savestates";
                         enabled: root.has-savestates;
                         clicked => { root.copy-savestates(); }
@@ -855,6 +859,7 @@ export component MakerWindow inherits Window {
                     }
 
                     Button {
+                        horizontal-stretch: 1;
                         text: "Savestate Instructions";
                         enabled: root.has-instructions;
                         clicked => { root.show-instructions(); }
@@ -899,9 +904,7 @@ export component MakerWindow inherits Window {
                 }
             }
 
-            // The buttons keep their text's width, and the line beside them takes the rest
             if root.preset-problem != "": Button {
-                horizontal-stretch: 0;
                 text: "Fix It";
                 enabled: !root.working;
                 clicked => { root.edit-preset(); }
@@ -920,14 +923,12 @@ export component MakerWindow inherits Window {
             }
 
             if root.preset-problem == "" && root.needs-grouping: Button {
-                horizontal-stretch: 0;
                 text: "Turn It On";
                 clicked => { root.turn-on-grouping(); }
                 tip: "Turn on Compare images with the same number for one split in the profile, which this preset needs. Save the profile to keep it.";
             }
 
             Button {
-                horizontal-stretch: 0;
                 text: "Generate Profile...";
                 // The profile is for this preset's split images, so it needs their folder
                 enabled: root.presets.length > 0 && root.preset-problem == "" && root.output-folder != "";
@@ -990,10 +991,8 @@ export component MakerWindow inherits Window {
                 }
             }
 
-            // A preset saved before can be saved as another, a new one only once. The buttons keep
-            // their text's width, and the line beside them takes the rest
+            // A preset saved before can be saved as another, a new one only once
             if root.saved-preset: Button {
-                horizontal-stretch: 0;
                 text: "Save as New";
                 enabled: !root.has-problems;
                 clicked => { root.save-preset-as-new(); }
@@ -1001,14 +1000,12 @@ export component MakerWindow inherits Window {
             }
 
             Button {
-                horizontal-stretch: 0;
                 text: "Cancel";
                 clicked => { root.cancel-edit(); }
                 tip: "Leave the preset as it was (Escape)";
             }
 
             Button {
-                horizontal-stretch: 0;
                 text: "Save";
                 suggested: true;
                 enabled: root.can-save-preset;

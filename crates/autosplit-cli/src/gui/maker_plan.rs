@@ -279,4 +279,11 @@ impl PresetList {
             .map(|loaded| loaded.preset.name.as_str())
             .collect()
     }
+
+    /// `game`'s preset named `name`, if it has one. Games and names are the same ignoring case
+    /// and extra spaces, like the lists tell them apart.
+    pub fn named(&self, game: &str, name: &str) -> Option<&LoadedPreset> {
+        let (game, name) = (game_key(game), game_key(name));
+        (self.0.iter()).find(|loaded| game_key(&loaded.preset.game) == game && game_key(&loaded.preset.name) == name)
+    }
 }

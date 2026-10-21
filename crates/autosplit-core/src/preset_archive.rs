@@ -8,15 +8,16 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+use crate::image::BgraImage;
 use crate::preset::{
-    DELETING_PREFIX, PRESET_FILE, Preset, PresetError, SAVESTATE_NOTE, SAVESTATE_NOTE_FILE, SAVESTATES_FOLDER,
-    new_preset_folder, unwritable,
+    PRESET_FILE, Preset, PresetError, SAVESTATE_NOTE, SAVESTATE_NOTE_FILE, SAVESTATES_FOLDER, leave_for_deleting,
+    move_aside, new_preset_folder, remove_leftovers, unreadable, unwritable, write_through_temporary,
 };
 
 /// The most files an archive can have, far more than any preset uses.
 pub const MAX_FILES: usize = 4096;
 /// The most an archive's files can take unpacked, far more than any preset uses.
-pub const MAX_SIZE: u64 = 256 * 1024 * 1024;
+const MAX_SIZE: u64 = 256 * 1024 * 1024;
 
 /// The start of the hidden name a preset's folder has while it's imported.
 const IMPORTING_PREFIX: &str = ".importing-";
@@ -29,7 +30,7 @@ const LEFTOVER_AGE: Duration = Duration::from_secs(60 * 60);
 const REPLACED_PREFIX: &str = ".replaced-";
 
 /// A preset read from an archive and checked, with the files it uses, by their paths in it.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Debug)]
 pub struct PresetArchive {
     pub preset: Preset,
     files: Vec<(String, Vec<u8>)>,
@@ -72,8 +73,7 @@ fn used_files(preset: &Preset) -> Result<Vec<(usize, String)>, (usize, &str)> {
 /// error, since the archive would be no use without it, and so is a preset too big to import.
 pub fn export_preset(folder: &Path, archive: &Path) -> Result<(), PresetError> {
     let preset_file = folder.join(PRESET_FILE);
-    let text = std::fs::read(&preset_file)
-        .map_err(|error| PresetError::Unreadable { path: preset_file.clone(), reason: error.to_string() })?;
+    let text = std::fs::read(&preset_file).map_err(|error| unreadable(&preset_file, error))?;
     let preset = Preset::parse(&String::from_utf8_lossy(&text), &preset_file)?;
     let used = used_files(&preset).map_err(|(index, path)| {
         let split = &preset.splits[index].name;
@@ -88,8 +88,7 @@ pub fn export_preset(folder: &Path, archive: &Path) -> Result<(), PresetError> {
     let mut files = vec![(PRESET_FILE.to_owned(), text)];
     for (_, name) in used {
         let file = folder.join(&name);
-        let contents = std::fs::read(&file)
-            .map_err(|error| PresetError::Unreadable { path: file.clone(), reason: error.to_string() })?;
+        let contents = std::fs::read(&file).map_err(|error| unreadable(&file, error))?;
         total += contents.len() as u64;
         if total > MAX_SIZE {
             let size = MAX_SIZE / 1024 / 1024;
@@ -97,14 +96,8 @@ pub fn export_preset(folder: &Path, archive: &Path) -> Result<(), PresetError> {
         }
         files.push((name, contents));
     }
-    let file_name = archive.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
-    let temporary = archive.with_file_name(format!("{file_name}.tmp"));
-    let written = write_zip(&temporary, &files).and_then(|()| std::fs::rename(&temporary, archive));
-    if let Err(error) = written {
-        let _ = std::fs::remove_file(&temporary);
-        return Err(unwritable(archive, error));
-    }
-    Ok(())
+    write_through_temporary(archive, |temporary| write_zip(temporary, &files))
+        .map_err(|error| unwritable(archive, error))
 }
 
 fn write_zip(path: &Path, files: &[(String, Vec<u8>)]) -> std::io::Result<()> {
@@ -124,8 +117,7 @@ fn write_zip(path: &Path, files: &[(String, Vec<u8>)]) -> std::io::Result<()> {
 pub fn read_archive(archive: &Path) -> Result<PresetArchive, PresetError> {
     let shown = archive.file_name().map_or_else(|| archive.to_owned(), PathBuf::from);
     let invalid = |reason: String| PresetError::Invalid { path: shown.clone(), reason };
-    let file = std::fs::File::open(archive)
-        .map_err(|error| PresetError::Unreadable { path: shown.clone(), reason: error.to_string() })?;
+    let file = std::fs::File::open(archive).map_err(|error| unreadable(&shown, error))?;
     let mut zip = zip::ZipArchive::new(file).map_err(|_| invalid("it isn't a zip file".to_owned()))?;
     if zip.len() > MAX_FILES {
         return Err(invalid(format!("it has more than {MAX_FILES} files")));
@@ -159,12 +151,8 @@ pub fn read_archive(archive: &Path) -> Result<PresetArchive, PresetError> {
         [] => return Err(invalid("it has no preset in it".to_owned())),
         [root] => root.to_string(),
         // The top one, when one is in a folder too
-        roots => match roots.iter().find(|root| root.is_empty()) {
-            Some(_) => String::new(),
-            None => {
-                return Err(invalid("it has several presets, and a file for importing can only have one".to_owned()));
-            }
-        },
+        roots if roots.contains(&"") => String::new(),
+        _ => return Err(invalid("it has several presets, and a file for importing can only have one".to_owned())),
     };
     let text = String::from_utf8_lossy(&files[&format!("{root}{PRESET_FILE}")]).into_owned();
     let mut preset = Preset::parse(&text, &shown)?;
@@ -179,8 +167,7 @@ pub fn read_archive(archive: &Path) -> Result<PresetArchive, PresetError> {
         let Some(contents) = files.remove(&format!("{root}{name}")) else {
             return Err(invalid(format!("split {} ({split}) uses {name}, which isn't in the file", index + 1)));
         };
-        if masks.contains(&name) && ::image::load_from_memory_with_format(&contents, ::image::ImageFormat::Png).is_err()
-        {
+        if masks.contains(&name) && BgraImage::decode_png(&contents).is_err() {
             return Err(invalid(format!("the mask {name} of split {} ({split}) isn't a PNG image", index + 1)));
         }
         kept.push((name, contents));
@@ -218,13 +205,13 @@ impl PresetArchive {
             let _ = std::fs::remove_dir_all(&staging);
             return Err(error);
         }
-        let target = match replace {
-            Some(folder) => folder.to_owned(),
-            None => new_preset_folder(presets, &self.preset.name),
-        };
-        let moved = match replace {
-            Some(folder) => swap(folder, &staging),
-            None => std::fs::rename(&staging, &target).map_err(|error| unwritable(&target, error)),
+        let (target, moved) = match replace {
+            Some(folder) => (folder.to_owned(), swap(folder, &staging)),
+            None => {
+                let target = new_preset_folder(presets, &self.preset.name);
+                let moved = std::fs::rename(&staging, &target).map_err(|error| unwritable(&target, error));
+                (target, moved)
+            }
         };
         if moved.is_err() {
             let _ = std::fs::remove_dir_all(&staging);
@@ -269,22 +256,10 @@ impl PresetArchive {
 /// and back when the new one can't take its place. When it can't go back either, it's kept
 /// aside, and the error says where.
 fn swap(folder: &Path, staging: &Path) -> Result<(), PresetError> {
-    let parent = folder.parent().unwrap_or(Path::new("."));
-    remove_leftovers(parent, DELETING_PREFIX, Duration::ZERO);
-    let name = folder.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
-    let free = |prefix: &str| {
-        (1..)
-            .map(|n| parent.join(format!("{prefix}{name}-{n}")))
-            .find(|path| !path.exists())
-            .expect("some number is free")
-    };
-    let aside = free(REPLACED_PREFIX);
-    std::fs::rename(folder, &aside).map_err(|error| PresetError::Unwritable {
-        path: folder.to_owned(),
-        reason: format!("{error}. Close any program that has a file in it open, then try again"),
-    })?;
+    let aside = move_aside(folder, REPLACED_PREFIX)?;
     if let Err(error) = std::fs::rename(staging, folder) {
         if let Err(back) = std::fs::rename(&aside, folder) {
+            let name = folder.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
             let reason = format!(
                 "{error}. The old preset couldn't be put back ({back}), so it's kept in {}. Rename that folder to {name} to get it back",
                 aside.display()
@@ -293,24 +268,9 @@ fn swap(folder: &Path, staging: &Path) -> Result<(), PresetError> {
         }
         return Err(unwritable(folder, error));
     }
-    // Not a preset anymore. What can't go now goes with the next delete's leftovers
+    // Not a preset anymore
     if std::fs::remove_dir_all(&aside).is_err() {
-        let _ = std::fs::rename(&aside, free(DELETING_PREFIX));
+        leave_for_deleting(&aside);
     }
     Ok(())
-}
-
-/// Deletes the hidden folders in `folder` that an import or delete that stopped partway left,
-/// once they're `older_than` that, by when they last changed.
-fn remove_leftovers(folder: &Path, prefix: &str, older_than: Duration) {
-    let Ok(entries) = std::fs::read_dir(folder) else { return };
-    for entry in entries.flatten() {
-        if !entry.file_name().to_string_lossy().starts_with(prefix) {
-            continue;
-        }
-        let age = entry.metadata().and_then(|metadata| metadata.modified()).ok().and_then(|time| time.elapsed().ok());
-        if older_than.is_zero() || age.is_some_and(|age| age >= older_than) {
-            let _ = std::fs::remove_dir_all(entry.path());
-        }
-    }
 }

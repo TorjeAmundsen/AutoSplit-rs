@@ -1,7 +1,7 @@
 //! Sharing presets as .zip files: what's exported, and what importing accepts and refuses.
 
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use autosplit_core::preset::{PRESET_FILE, Preset, PresetError, SAVESTATE_NOTE_FILE, load_presets};
 use autosplit_core::preset_archive::{MAX_FILES, export_preset, read_archive};
@@ -20,6 +20,10 @@ name = "Boss"
 mask = "Boss.png"
 savestate = "savestates/start.gzs"
 "#;
+
+fn bundled(folder: &str) -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../..").join(folder)
+}
 
 fn png() -> Vec<u8> {
     let mut bytes = std::io::Cursor::new(Vec::new());
@@ -121,9 +125,8 @@ fn imported_presets_are_the_exported_ones() {
 
 #[test]
 fn bundled_presets_import_as_they_were_exported() {
-    // Arrange
-    let bundled = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../presets");
-    let (presets, _) = load_presets(&bundled);
+    // Arrange, with the presets that load, which bundled_presets_load_with_all_their_files says are all of them
+    let (presets, _) = load_presets(&bundled("presets"));
     let dir = tempfile::tempdir().unwrap();
 
     for loaded in presets {
@@ -191,11 +194,11 @@ fn paths_written_with_backslashes_are_saved_with_slashes() {
 #[test_case(&[("C:evil.png", b"x")]; "an entry on a drive")]
 #[test_case(&[("readme.txt", b"x")]; "no preset")]
 #[test_case(&[("a/preset.toml", b"x"), ("b/preset.toml", b"x")]; "several presets")]
-fn archives_that_could_write_elsewhere_or_hold_no_preset_are_refused(extra: &[(&str, &[u8])]) {
+fn archives_that_could_write_elsewhere_or_hold_no_preset_are_refused(files: &[(&str, &[u8])]) {
     // Arrange
     let dir = tempfile::tempdir().unwrap();
     let archive = dir.path().join("any.zip");
-    zip_with(&archive, extra);
+    zip_with(&archive, files);
 
     // Act
     let result = read_archive(&archive);
@@ -204,26 +207,23 @@ fn archives_that_could_write_elsewhere_or_hold_no_preset_are_refused(extra: &[(&
     assert!(matches!(result, Err(PresetError::Invalid { .. })), "{result:?}");
 }
 
-#[test_case("mask = \"../outside.png\"", true; "a mask outside the folder")]
-#[test_case("mask = \"/etc/outside.png\"", true; "an absolute mask")]
-#[test_case("mask = \"C:/Users/outside.png\"", true; "a mask on a drive")]
-#[test_case("mask = \"missing.png\"", true; "a mask that isn't in it")]
-#[test_case("mask = \"text.png\"", true; "a mask that isn't a png")]
-#[test_case("treshold = 0.9", true; "an unknown key")]
-#[test_case("savestate = \"../outside.gzs\"", true; "a savestate outside the folder")]
-#[test_case("mask = \"Boss.png\"", false; "a mask in it")]
-fn presets_that_use_files_from_elsewhere_are_refused(line: &str, refused: bool) {
+#[test_case("mask = \"../outside.png\"" => true; "a mask outside the folder")]
+#[test_case("mask = \"/etc/outside.png\"" => true; "an absolute mask")]
+#[test_case("mask = \"C:/Users/outside.png\"" => true; "a mask on a drive")]
+#[test_case("mask = \"missing.png\"" => true; "a mask that isn't in it")]
+#[test_case("mask = \"text.png\"" => true; "a mask that isn't a png")]
+#[test_case("treshold = 0.9" => true; "an unknown key")]
+#[test_case("savestate = \"../outside.gzs\"" => true; "a savestate outside the folder")]
+#[test_case("mask = \"Boss.png\"" => false; "a mask in it")]
+fn a_split_with_files_from_elsewhere_or_unknown_keys_is_refused(line: &str) -> bool {
     // Arrange
     let dir = tempfile::tempdir().unwrap();
     let archive = dir.path().join("any.zip");
     let text = format!("name = \"Any%\"\n\n[[split]]\nname = \"Boss\"\n{line}\n");
     zip_with(&archive, &[("preset.toml", text.as_bytes()), ("Boss.png", &png()), ("text.png", b"not a png")]);
 
-    // Act
-    let result = read_archive(&archive);
-
-    // Assert
-    assert_eq!(result.is_err(), refused, "{result:?}");
+    // Act, with the expected value checked by test_case
+    read_archive(&archive).is_err()
 }
 
 #[test]

@@ -1,6 +1,5 @@
 //! Sharing presets: exporting one as a .zip file, and importing one someone sent.
 
-use autosplit_core::preset::game_key;
 use autosplit_core::preset_archive::{PresetArchive, export_preset, read_archive};
 
 use super::super::preset_form::{known_game, saved_preset_name};
@@ -55,7 +54,8 @@ impl Gui {
         let maker = self.maker.borrow();
         let Some(loaded) = maker.loaded() else { return };
         let (folder, name) = (loaded.folder.clone(), loaded.preset.name.clone());
-        let file = loaded.preset.profile_file_name().replace(".toml", ".zip");
+        let profile = loaded.preset.profile_file_name();
+        let file = format!("{}.zip", profile.strip_suffix(".toml").unwrap_or(&profile));
         drop(maker);
         let dialog = self
             .file_dialog_over("Export Preset", self.windows.maker.window())
@@ -102,17 +102,15 @@ impl Gui {
         if let Some(game) = known_game(&archive.preset.game, &maker.presets.games()) {
             archive.preset.game = game.to_owned();
         }
-        let preset = &archive.preset;
-        let same = (maker.presets.iter())
-            .find(|loaded| {
-                game_key(&loaded.preset.game) == game_key(&preset.game)
-                    && game_key(&loaded.preset.name) == game_key(&preset.name)
-            })
-            .map(|loaded| loaded.folder.clone());
-        let taken: Vec<String> = maker.presets.taken_names(&preset.game, None).into_iter().map(str::to_owned).collect();
-        drop(maker);
-        let Some(existing) = same else { return self.install_import(archive, None) };
         let (game, name) = (&archive.preset.game, &archive.preset.name);
+        let Some(existing) = maker.presets.named(game, name).map(|loaded| loaded.folder.clone()) else {
+            drop(maker);
+            return self.install_import(&archive, None);
+        };
+        // The name Keep Both gives it, like Save as New
+        let both = saved_preset_name(name, &maker.presets.taken_names(game, None), true);
+        let both = both.expect("a new preset always gets a name");
+        drop(maker);
         let clash = if game.is_empty() {
             format!("A preset without a game is already named {name}.")
         } else {
@@ -126,12 +124,10 @@ impl Gui {
         self.show_message(Message::choice(text, ["Replace", "Keep Both", "Cancel"], 1, move |answer| {
             let Some(gui) = weak.upgrade() else { return };
             match answer {
-                Answer::Yes => gui.install_import(archive, Some(existing)),
+                Answer::Yes => gui.install_import(&archive, Some(existing)),
                 Answer::No => {
-                    let taken: Vec<&str> = taken.iter().map(String::as_str).collect();
-                    let name = saved_preset_name(&archive.preset.name, &taken, true);
-                    archive.preset.name = name.expect("a new preset always gets a name");
-                    gui.install_import(archive, None);
+                    archive.preset.name = both;
+                    gui.install_import(&archive, None);
                 }
                 Answer::Cancel => {}
             }
@@ -140,7 +136,7 @@ impl Gui {
 
     /// Puts the imported preset in the presets folder, in place of `replace` if there's one, and
     /// shows it.
-    fn install_import(&self, archive: PresetArchive, replace: Option<PathBuf>) {
+    fn install_import(&self, archive: &PresetArchive, replace: Option<PathBuf>) {
         let folder = match archive.install(&presets_folder(), replace.as_deref()) {
             Ok(folder) => folder,
             Err(error) => return self.show_message(Message::error(format!("Couldn't import the preset. {error}"))),
