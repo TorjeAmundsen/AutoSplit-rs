@@ -113,9 +113,13 @@ impl Gui {
         drop(maker);
         let Some(existing) = same else { return self.install_import(archive, None) };
         let (game, name) = (&archive.preset.game, &archive.preset.name);
-        let game = if game.is_empty() { "The presets without a game" } else { game };
+        let clash = if game.is_empty() {
+            format!("A preset without a game is already named {name}.")
+        } else {
+            format!("{game} already has a preset named {name}.")
+        };
         let text = format!(
-            "{game} already has a preset named {name}. Replace it with the imported one, or keep both?\n\n\
+            "{clash} Replace it with the imported one, or keep both?\n\n\
              Replacing deletes the old preset's folder with its masks and savestates, which can't be undone."
         );
         let weak = Rc::downgrade(self);

@@ -357,7 +357,7 @@ export component MakerWindow inherits Window {
                         icon: Icons.edit;
                         enabled: root.presets.length > 0 && !root.working;
                         clicked => { root.edit-preset(); }
-                        tip: "Change this preset's splits, masks and settings";
+                        tip: "Edit this preset's splits, masks and settings";
                     }
 
                     if !root.editing: IconButton {
@@ -368,12 +368,17 @@ export component MakerWindow inherits Window {
                         tip: "Make a new preset for this game";
                     }
 
+                    // Sets sharing apart from editing, with one more spacing between them
+                    if !root.editing: Rectangle {
+                        width: 0px;
+                    }
+
                     if !root.editing: IconButton {
                         label: "Import";
                         icon: Icons.import;
                         enabled: !root.working;
                         clicked => { root.import-preset(); }
-                        tip: "Add a preset someone shared, from its .zip file";
+                        tip: "Import a preset someone shared, from its .zip file";
                     }
 
                     if !root.editing: IconButton {
@@ -381,7 +386,7 @@ export component MakerWindow inherits Window {
                         icon: Icons.export;
                         enabled: root.presets.length > 0 && !root.working;
                         clicked => { root.export-preset(); }
-                        tip: "Save this preset as a .zip file to share, with its masks and savestates";
+                        tip: "Export this preset as a .zip file to share, with its masks and savestates";
                     }
 
                     if root.editing: TextField {
