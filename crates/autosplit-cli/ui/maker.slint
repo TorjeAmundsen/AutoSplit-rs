@@ -453,11 +453,6 @@ export component MakerWindow inherits Window {
                         tip: "Make a new preset for this game";
                     }
 
-                    // Sets sharing apart from editing, with one more spacing between them
-                    if !root.editing && root.advanced: Rectangle {
-                        width: 0px;
-                    }
-
                     if !root.editing: IconButton {
                         label: "Import";
                         icon: Icons.import;
