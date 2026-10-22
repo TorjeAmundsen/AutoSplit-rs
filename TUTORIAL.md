@@ -89,11 +89,11 @@ The capture region is what gets compared with your split images, so set it befor
 
 AutoSplit-rs comes with presets for some categories: a list of the category's splits, each with a mask that keeps only the part of the screen that tells the split apart, and the settings it needs. Make Split Images turns your capture into split images with them.
 
-![Make Split Images: the preset picker at the top, the splits with their file names on the left, and the capture region and the selected split's Output Preview on the right](docs/make-split-images.png)
+![Make Split Images: the game, preset and folder at the top left, the splits below them, and the capture region and the selected split's Output Preview on the right](docs/make-split-images.png)
 
 1. Open File > Make Split Images. It opens beside the main window.
 2. Pick your game and category's preset at the top.
-3. Click Browse... and pick an empty folder for the split images, like a new folder named after your category.
+3. Click the folder button beside Folder and pick an empty folder for the split images, like a new folder named after your category.
 4. Click Generate Profile..., save the profile, and choose Load It. This saves your settings, with that folder, as a profile for this category.
 5. Set a screenshot hotkey in File > Settings > Hotkeys, if you don't have one. Pick a key you can press while playing.
 6. Get to each split's screen. If Copy Savestates can be clicked, your preset has savestates: load them as in [Savestates](#savestates) below instead of playing. Otherwise, play through the category. At each split, when the screen looks like the split's moment, press the screenshot hotkey, or click Grab. The Output Preview shows what the image will look like before you grab. A grab saves the image of the split that's selected, and right away selects the next split, so the selected split is always the one you grab next. The split you just grabbed flashes green with a check mark on its picture.
@@ -186,7 +186,7 @@ Help > View Log says what AutoSplit-rs did and why, like why it didn't split. St
 
 **It never splits.** Watch the similarity viewer during the split: Live has to reach Threshold.
 - Far below: the capture changed since the image was made. Check the capture region, OBS's crop and color filters, and the capture card's settings, then grab the image again.
-- Just below: lower that split's threshold a little. For a preset's split, change it with the pencil button next to the preset in Make Split Images, save the preset and save the image again. Otherwise, change it in the image's file name, like `(0.88)`.
+- Just below: lower that split's threshold a little. For a preset's split, turn on Advanced Make Split Images in File > Settings > Other, change it with the pencil button next to the preset in Make Split Images, save the preset and save the image again. Otherwise, change it in the image's file name, like `(0.88)`.
 
 **It splits too early.** Another screen looks similar enough. Raise that split's threshold, the same way, or give the split before it a longer pause, so it isn't compared during the similar screen. [MANUAL.md](MANUAL.md#split-image-file-names) lists every file name option.
 
