@@ -65,18 +65,26 @@ Help > View Log lists everything AutoSplit-rs did and why, like why it didn't sp
 
 File > Make Split Images makes split images from a preset: a category's splits, each with a mask that keeps only the part of the screen that tells the split apart, and the threshold, pause, delay and flags it needs. AutoSplit-rs comes with presets for some categories, and you can make your own, see [Editing presets](#editing-presets).
 
-![Make Split Images: the preset picker at the top, the splits with their file names on the left, and the capture region and the selected split's Output Preview on the right](docs/make-split-images.png)
+![Make Split Images: the game, preset and folder at the top left, the splits below them, and the capture region and the selected split's Output Preview on the right](docs/make-split-images.png)
 
-It opens beside the main window. While it's open, the main window only has the Help menu and Settings, so set the capture region first. The split images are saved into the profile's split image folder, which Browse... in this window changes.
+It opens beside the main window. While it's open, the main window only has the Help menu and Settings, so set the capture region first. The split images are saved into the profile's split image folder, which the folder button beside Folder changes.
 
-The list shows each split's name over its file name, colored by what each part of the name does, and what its image is made from. The file names use the profile's defaults for what the preset leaves out, and are numbered from 0, like Toufool's AutoSplit reads them.
+The list shows each split's name and picture, with saved once its split image is in the folder.
+
+With [Advanced Make Split Images](#other) on, the window shows more, for checking file names and editing presets:
+
+- The list shows each split's file name under its name, colored by what each part of the name does, and what its image is made from. The file names use the profile's defaults for what the preset leaves out, and are numbered from 0, like Toufool's AutoSplit reads them.
+- The folder is at the top right, with Browse....
+- Edit, New, Export, Test and Save Selected are there, see below.
+
+![Make Split Images with Advanced Make Split Images on: the splits with their file names on the left, and the split image folder above the capture region on the right](docs/make-split-images-advanced.png)
 
 ### Making the images
 
 - Grab saves the capture region for the selected split, with its mask, and selects the next split. The screenshot hotkey does the same while the window is open, so you can play through the category and press it at each split.
 - On a [fade split](#fade-images), the button reads Grab* and saves the split image from the split's color instead of the capture, then selects the next split. It works without a capture device. The Capture Region is replaced by a note that the split needs no savestate or screen.
-- Use Screenshots... uses screenshot files instead, like the ones Take Screenshot saves. Pick one for the selected split, or several for the splits in order, skipping fade splits. Then press Save Selected or Save All. It's off while a fade split is selected.
-- Test opens the selected split's saved image in the [Live Tester](#live-tester).
+- Use Screenshots... uses screenshot files instead, like the ones Take Screenshot saves. Pick one for the selected split, or several for the splits in order, skipping fade splits. Then press Save All, or with Advanced Make Split Images on, Save Selected for only the selected split. It's off while a fade split is selected.
+- With Advanced Make Split Images on, Test opens the selected split's saved image in the [Live Tester](#live-tester).
 
 Saving asks before replacing split images, and before leaving older images of the same splits under other names, like after a threshold changed. Delete Old Images removes those, Keep Old Images keeps them. Each split saved flashes green, with a check mark on its picture. The Output Preview shows the check mark too when the selected split is one of them. Screenshots that were in the split image folder move into its `base` folder, where they aren't read as split images.
 
@@ -105,7 +113,7 @@ A preset with something that needs fixing shows what in the bottom line, with th
 
 ## Editing presets
 
-The pencil button next to the preset edits it, and the page button starts a new preset for the same game. The window title shows which preset is being edited, with a `*` in front while it has unsaved changes.
+With [Advanced Make Split Images](#other) on, the pencil button next to the preset edits it, and the page button starts a new preset for the same game. With it off, Fix It is the only way in, when a preset has something to fix, and the window shows everything while editing. The window title shows which preset is being edited, with a `*` in front while it has unsaved changes.
 
 ![Make Split Images while editing a preset: the split list, the selected split's fields, and the Output Preview with its Mask, Live and grid buttons](docs/make-split-images-editing.png)
 
@@ -122,7 +130,7 @@ The pencil button next to the preset edits it, and the page button starts a new 
   - A grayed-out name can't be inserted, like a fifth reset image. When you pick it, a red line above the buttons says why.
   - The window stays open. Saving the preset copies the masks and savestates of inserted splits into it.
 
-  ![Split Library: the ready-made splits listed on the left, with where the preset has them already, and KokiriSwordLeft picked on the right, its two images each with a screenshot, settings and file name, above Insert Above and Insert Below](docs/split-library.png)
+  ![Split Library: the search field above the ready-made splits on the left, and EnterDeku picked on the right, its two images, DekuCSDummy and EnterDeku, each with a picture, settings and file name, above Insert Above and Insert Below](docs/split-library.png)
 
 - Grabs and screenshots stay with their splits while you change them. Grab itself is hidden while editing, since a split's file name and mask aren't settled until the preset is saved.
 
@@ -142,7 +150,9 @@ Each split has:
 
 Switching Compare to Fade ticks Threshold and sets it to 0.995, and switching back gives the split its old threshold, color and fade time again.
 
-![Make Split Images while editing a fade split: Compare set to Fade, the Color field with its swatch and Fade ms, the Mask with Clear, and the threshold at 0.995](docs/make-split-images-fade-editing.png)
+![Make Split Images while editing a fade split: Compare set to Fade, the Color field with its swatch and Fade ms, the Mask with Clear, the threshold at 0.995, and the Output Preview showing the live capture where the mask keeps it](docs/make-split-images-fade-editing.png)
+
+While editing a fade split, the Output Preview shows the part of the live capture that the fade is compared against, so you can see what the mask removes. The capture isn't used as the split's image, like a grab is for other splits. A fade split's image is always made from its color.
 
 The Output Preview has two more buttons while editing:
 
@@ -166,9 +176,9 @@ Splits with something to fix have a red name. The bottom line shows the first pr
 
 ## Sharing presets
 
-The two buttons after the pencil and page buttons, next to the preset, share presets as `.zip` files.
+The buttons next to the preset share presets as `.zip` files.
 
-- Export (the arrow up) saves the shown preset as a `.zip` file, named like `tlozoot_no_wrong_warp.zip`, with its masks and savestates. Send that file to share the preset.
+- Export (the arrow up), with [Advanced Make Split Images](#other) on, saves the shown preset as a `.zip` file, named like `tlozoot_no_wrong_warp.zip`, with its masks and savestates. Send that file to share the preset.
 - Import (the arrow down) adds the preset in a `.zip` file someone sent and shows it. If the game already has a preset with the same name, Import asks whether to replace that preset or keep both. Keeping both names the new one `Name (2)`.
 
 Import checks the file before it adds anything. It refuses a file whose preset uses a mask or savestate that isn't in it, a mask that isn't a PNG image, or a setting it doesn't know, which a preset from a newer version of AutoSplit-rs can have.
@@ -252,6 +262,9 @@ With LiveSplit or LiveSplit One controlling the timer, only the screenshot and t
 | --- | --- |
 | Timer | Any timer (hotkeys), LiveSplit One (WebSocket), or Molok (POSIX signals, Linux only). See [Timers](#timers). |
 | LiveSplit One port | The port LiveSplit One connects to, 16835 by default. A typed port is used once you press Enter or leave the box. |
+| Advanced Make Split Images | Off by default. Shows the split image file names, what each image is made from, and the Edit, New, Export, Test and Save Selected buttons in [Make Split Images](#make-split-images). Off, it shows only what making split images needs. |
+
+![The Other tab with the timer connection, the LiveSplit One port and Advanced Make Split Images](docs/settings-other.png)
 
 ## Split image file names
 

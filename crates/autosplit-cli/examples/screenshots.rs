@@ -62,7 +62,7 @@ fn main() {
     main.set_live_message("Waiting for capture device...".into());
     main.set_current_image_file("05_Bottle_(0.93)_[35]_#1100#_{b}.png".into());
     main.set_current_image_message("None (Paused). 9.9 seconds remaining".into());
-    main.set_window_title("AutoSplit v0.2.2".into());
+    main.set_window_title("AutoSplit v0.3.0".into());
     main.show().unwrap();
     save(&window, PhysicalSize::new(786, 450), &folder.join("main.png"));
     // A message box drawn in the window, like under Wayland
@@ -126,7 +126,7 @@ fn main() {
     settings.hide().unwrap();
 
     let about = AboutWindow::new().unwrap();
-    about.set_version("0.2.2".into());
+    about.set_version("0.3.0".into());
     about.show().unwrap();
     save(&window, PhysicalSize::new(264, 250), &folder.join("about.png"));
     about.hide().unwrap();
@@ -245,6 +245,9 @@ fn main() {
     maker.set_live_message("".into());
     maker.set_live_image(solid([90, 140, 90]));
     maker.set_can_grab(true);
+    // Without advanced, the folder is above the list and the window two rows shorter
+    save(&window, PhysicalSize::new(708, 612), &folder.join("maker-simple.png"));
+    maker.set_advanced(true);
     save(&window, PhysicalSize::new(828, 672), &folder.join("maker.png"));
     // A fade split selected, which isn't made from the capture
     maker.set_grab_fade(true);

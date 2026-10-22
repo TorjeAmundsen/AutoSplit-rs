@@ -24,6 +24,7 @@ export enum Setting {
     enable-auto-reset,
     timer-connection,
     livesplit-one-port,
+    advanced-maker,
 }
 
 export struct HotkeyRow {
@@ -66,6 +67,7 @@ export component SettingsWindow inherits Window {
     in-out property <bool> loop-splits;
     in-out property <bool> group-split-images;
     in-out property <bool> split-image-grid;
+    in-out property <bool> advanced-maker;
     in-out property <bool> start-also-resets;
     in-out property <bool> enable-auto-reset: true;
     in property <[HotkeyRow]> hotkeys;
@@ -647,6 +649,22 @@ export component SettingsWindow inherits Window {
                 text: root.auto-controlled
                     ? "LiveSplit started AutoSplit, so it controls the timer."
                     : "The new timer connection is used once the run ends.";
+            }
+
+            CheckBox {
+                x: 10px;
+                y: 124px;
+                width: 360px;
+                height: 24px;
+                text: "Advanced Make Split Images";
+                checked <=> root.advanced-maker;
+                toggled => { root.changed(Setting.advanced-maker); }
+
+                Tooltip {
+                    Tip {
+                        text: "Show the split image file names, where each split's image comes from, and the Edit, New, Test, Save Selected and Export buttons in Make Split Images. Off shows only what making split images needs.";
+                    }
+                }
             }
         }
     }

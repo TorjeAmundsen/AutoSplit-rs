@@ -540,18 +540,25 @@ impl Gui {
 
     /// Why Grab can't work yet, which its tooltip says, or empty. The hotkey still tries, and says
     /// so in a message. A fade split doesn't need the capture.
-    fn grab_blocker(&self) -> &'static str {
+    fn grab_blocker(&self) -> String {
         if !self.selected_fade() && !self.state.borrow().document.profile.has_capture_device() {
             concat!(
                 "Pick a capture device in Settings (",
                 primary_key!(),
                 "+,) first, which Grab takes the capture region from."
             )
+            .to_owned()
         } else if !self.split_image_folder().is_some_and(|folder| folder.is_dir()) {
-            "Pick a split image folder that exists with Browse... first, which Grab saves into."
+            format!("Pick a split image folder that exists with {} first, which Grab saves into.", self.folder_button())
         } else {
-            ""
+            String::new()
         }
+    }
+
+    /// What the split image folder's button is called in the messages: Browse..., or the folder
+    /// icon that's there instead without advanced.
+    pub(super) fn folder_button(&self) -> &'static str {
+        if self.state.borrow().document.profile.advanced_maker { "Browse..." } else { "the folder button" }
     }
 
     /// The preset's file names, with the profile's defaults for what they leave out.
@@ -595,6 +602,7 @@ impl Gui {
         // Empty without one, which the window says
         let folder = self.split_image_folder();
         window.set_output_folder(folder.map(|folder| folder.display().to_string()).unwrap_or_default().into());
+        window.set_advanced(self.state.borrow().document.profile.advanced_maker);
         window.set_preset_problem(view.preset_problem.into());
         window.set_can_grab(view.can_grab && grab_blocker.is_empty());
         window.set_grab_blocker(grab_blocker.into());
@@ -741,7 +749,11 @@ impl Gui {
         self.make_thumbnails(set);
         // Unlike a grab, they're saved when asked
         let status = match paths.len() {
-            1 => "Screenshot set for the selected split. Save Selected writes its split image.".to_owned(),
+            // Save Selected is only there with advanced
+            1 => format!(
+                "Screenshot set for the selected split. {} writes its split image.",
+                if self.state.borrow().document.profile.advanced_maker { "Save Selected" } else { "Save All" }
+            ),
             n if n == count && fades == 0 => {
                 format!("{n} screenshots set, one for each split. Save All writes their split images.")
             }
@@ -782,7 +794,8 @@ impl Gui {
             return;
         }
         if self.split_image_folder().is_none() {
-            return self.show_message(Message::warning("Pick a split image folder with Browse... first."));
+            let message = format!("Pick a split image folder with {} first.", self.folder_button());
+            return self.show_message(Message::warning(message));
         }
         let maker = self.maker.borrow();
         let Some(loaded) = maker.loaded() else { return };
