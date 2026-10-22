@@ -749,7 +749,11 @@ impl Gui {
         self.make_thumbnails(set);
         // Unlike a grab, they're saved when asked
         let status = match paths.len() {
-            1 => "Screenshot set for the selected split. Save Selected writes its split image.".to_owned(),
+            // Save Selected is only there with advanced
+            1 => format!(
+                "Screenshot set for the selected split. {} writes its split image.",
+                if self.state.borrow().document.profile.advanced_maker { "Save Selected" } else { "Save All" }
+            ),
             n if n == count && fades == 0 => {
                 format!("{n} screenshots set, one for each split. Save All writes their split images.")
             }
