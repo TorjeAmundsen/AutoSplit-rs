@@ -2,6 +2,7 @@
 
 use std::path::{Path, PathBuf};
 
+use autosplit_core::compare::ComparisonMethod;
 use autosplit_core::filename::{
     BELOW_FLAG, DUMMY_FLAG, FADE_FLAG, comparison_method_from_filename, delay_time_from_filename,
     fade_time_from_filename, filename_warnings, flags_from_filename, pause_from_filename, threshold_from_filename,
@@ -169,6 +170,7 @@ fn split_keys_are_the_fields_of_a_split() {
         mask: "deku.png".into(),
         fade: Some("#000000".into()),
         fade_time: Some(1000),
+        comparison_method: ComparisonMethod::Histograms,
         threshold: Some(0.9),
         pause: Some(1.0),
         delay: Some(100),
@@ -221,15 +223,19 @@ const PROFILE: SplitDefaults = SplitDefaults {
 fn bundled_file_names_read_back_as_their_settings(defaults: Option<SplitDefaults>) {
     // Arrange
     let (presets, _) = load_presets(&bundled("presets"));
+    let l2_norm = ComparisonMethod::L2Norm;
+    let other_profile = defaults.is_some_and(|defaults| defaults.comparison_method != l2_norm.index());
     let reads_back = |split: &PresetSplit, name: &str| {
         let name = name.to_lowercase();
         let flags = flags_from_filename(&name);
+        let method = split.comparison_method;
+        let written = method != l2_norm || other_profile;
         filename_warnings(&name).is_empty()
             && threshold_from_filename(&name) == split.threshold
             && pause_from_filename(&name) == split.pause
             && delay_time_from_filename(&name) == split.delay.map(i64::from)
             // Fade images always compare by color
-            && (defaults.is_none() || split.is_fade() || comparison_method_from_filename(&name) == Some(0))
+            && (split.is_fade() || comparison_method_from_filename(&name) == written.then(|| method.index()))
             && (flags & DUMMY_FLAG != 0) == split.dummy
             && (flags & BELOW_FLAG != 0) == split.below
             && (flags & FADE_FLAG != 0) == split.is_fade()
@@ -492,4 +498,31 @@ fn fade_split_without_a_mask_reads_and_names_its_image() {
         (split.fade_color(), split.mask.as_str(), preset.file_names(None)),
         (Some([0xa0, 0xa0, 0xa0]), "", vec!["0_EnterDeku_(0.995)_~1000~_{f}.png".to_owned()])
     );
+}
+
+#[test]
+fn comparison_methods_read_by_name_and_default_to_l2_norm() {
+    // Arrange
+    let text = "name = \"Any%\"\n\n[[split]]\nname = \"FireArrows\"\nmask = \"a.png\"\ncomparison_method = \"histograms\"\n\n[[split]]\nname = \"Door\"\nmask = \"b.png\"\n";
+
+    // Act
+    let preset = Preset::parse(text, Path::new("")).unwrap();
+
+    // Assert: the default isn't written back
+    let methods: Vec<ComparisonMethod> = preset.splits.iter().map(|split| split.comparison_method).collect();
+    assert_eq!(methods, vec![ComparisonMethod::Histograms, ComparisonMethod::L2Norm]);
+    assert_eq!(preset.file_names(None), vec!["0_FireArrows_^1^.png", "1_Door.png"]);
+    assert_eq!(preset.to_toml().matches("comparison_method").count(), 1);
+}
+
+#[test]
+fn unknown_comparison_methods_are_refused() {
+    // Arrange
+    let text = "name = \"Any%\"\n\n[[split]]\nname = \"Door\"\nmask = \"b.png\"\ncomparison_method = \"l1\"\n";
+
+    // Act
+    let parsed = Preset::parse(text, Path::new(""));
+
+    // Assert
+    assert!(matches!(parsed, Err(PresetError::Invalid { .. })), "{parsed:?}");
 }

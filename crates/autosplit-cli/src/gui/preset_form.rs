@@ -5,6 +5,7 @@
 
 use std::path::Path;
 
+use autosplit_core::compare::ComparisonMethod;
 use autosplit_core::filename::{
     DEFAULT_FADE_TIME, MAX_FADE_TIME, MIN_FADE_TIME, NamePart, PartKind, RESET_KEYWORD, START_KEYWORD, name_parts,
     validate_split_name,
@@ -103,9 +104,9 @@ pub enum SplitEdit {
     Name(String),
     /// A path relative to the preset's folder, or a picked file's absolute path.
     Mask(String),
-    /// Whether it's compared by a fade to a color, or else a screenshot. A fade split starts at
-    /// [`FADE_THRESHOLD`], with the color and fade time it had before, or [`FADE_COLOR`].
-    Compare(bool),
+    /// A fade split starts at [`FADE_THRESHOLD`], with the color and fade time it had before, or
+    /// [`FADE_COLOR`].
+    Compare(CompareBy),
     /// A fade split's color, as typed.
     Color(String),
     /// A fade split's fade time in milliseconds, rounded to whole ones.
@@ -124,6 +125,32 @@ pub enum SplitEdit {
     /// again.
     Savestate(String),
     Instructions(String),
+}
+
+/// What a split is compared by, which the form's Compare picks: a screenshot made into the split
+/// image with the mask, compared with a method, or a fade to a color.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CompareBy {
+    Screenshot(ComparisonMethod),
+    Fade,
+}
+
+impl CompareBy {
+    /// In the form's order: the methods by their index, then Fade.
+    pub const ALL: [CompareBy; 4] = [
+        Self::Screenshot(ComparisonMethod::L2Norm),
+        Self::Screenshot(ComparisonMethod::Histograms),
+        Self::Screenshot(ComparisonMethod::PHash),
+        Self::Fade,
+    ];
+
+    pub fn of(split: &PresetSplit) -> Self {
+        if split.is_fade() { Self::Fade } else { Self::Screenshot(split.comparison_method) }
+    }
+
+    pub fn index(self) -> usize {
+        Self::ALL.iter().position(|&by| by == self).unwrap_or(0)
+    }
 }
 
 /// The field of a split that a problem is about, to show it next to.
@@ -224,14 +251,17 @@ impl Draft {
             SplitEdit::Kind(_) => {}
             SplitEdit::Name(name) => split.name = name,
             SplitEdit::Mask(mask) => split.mask = mask,
-            SplitEdit::Compare(true) if !split.is_fade() => {
+            SplitEdit::Compare(CompareBy::Fade) if !split.is_fade() => {
                 let (color, time) = split.remembered.fade.take().unwrap_or((FADE_COLOR.to_owned(), None));
                 split.fade = Some(color);
                 split.fade_time = Some(time.unwrap_or(DEFAULT_FADE_TIME));
+                // It always compares by color, so it isn't written
+                split.comparison_method = ComparisonMethod::default();
                 split.remembered.threshold = Some(split.threshold);
                 split.threshold = Some(FADE_THRESHOLD);
             }
-            SplitEdit::Compare(false) => {
+            SplitEdit::Compare(CompareBy::Screenshot(method)) => {
+                split.comparison_method = method;
                 if let Some(color) = split.fade.take() {
                     split.remembered.fade = Some((color, split.fade_time.take()));
                 }
@@ -240,7 +270,7 @@ impl Draft {
                     split.threshold = threshold;
                 }
             }
-            SplitEdit::Compare(true) => {}
+            SplitEdit::Compare(CompareBy::Fade) => {}
             SplitEdit::Color(color) if split.is_fade() => split.fade = Some(color),
             SplitEdit::Color(_) => {}
             SplitEdit::FadeTime(time) if split.is_fade() => {
@@ -641,6 +671,7 @@ pub fn changed_settings(step: &PresetSplit, from: &PresetSplit) -> Vec<String> {
     compare("delay", shown(&step.delay), shown(&from.delay));
     compare("fade", shown(&step.fade), shown(&from.fade));
     compare("fade time", shown(&step.fade_time), shown(&from.fade_time));
+    compare("comparison method", step.comparison_method.name().into(), from.comparison_method.name().into());
     compare("dummy", step.dummy.to_string(), from.dummy.to_string());
     compare("below", step.below.to_string(), from.below.to_string());
     compare("with previous", step.with_previous.to_string(), from.with_previous.to_string());

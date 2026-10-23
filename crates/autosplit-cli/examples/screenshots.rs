@@ -371,7 +371,7 @@ Replace them?",
     maker.set_form(SplitForm { savestate_copied: false, ..maker.get_form() });
     save(&window, PhysicalSize::new(828, 672), &folder.join("maker-edit-plain.png"));
     // A fade split of the whole screen
-    values.set_compare(1);
+    values.set_compare(3);
     values.set_color("#a0a0a0".into());
     values.set_threshold(0.995);
     maker.set_form(SplitForm {

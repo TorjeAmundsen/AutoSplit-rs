@@ -18,8 +18,8 @@ use super::super::maker_plan::DeletedPreset;
 use super::super::messages::{Answer, Message};
 use super::super::paths::{canonical, file_name_text};
 use super::super::preset_form::{
-    Draft, FADE_MASK_NAME_CHARS, Field, ListChange, MASK_NAME_CHARS, SAVESTATE_NAME_CHARS, SplitEdit, SplitKind,
-    elide_middle, field_problems, field_value,
+    CompareBy, Draft, FADE_MASK_NAME_CHARS, Field, ListChange, MASK_NAME_CHARS, SAVESTATE_NAME_CHARS, SplitEdit,
+    SplitKind, elide_middle, field_problems, field_value,
 };
 use super::super::preset_form::{
     ONE_COPY_LABELS, discard_question, known_game, next_problem_split, one_copy_question, problem_flags, problem_list,
@@ -334,7 +334,10 @@ impl Gui {
                 Some(&kind) => SplitEdit::Kind(kind),
                 None => return,
             },
-            SplitField::Compare => SplitEdit::Compare(values.get_compare() == 1),
+            SplitField::Compare => match CompareBy::ALL.get(values.get_compare() as usize) {
+                Some(&by) => SplitEdit::Compare(by),
+                None => return,
+            },
             SplitField::Color => SplitEdit::Color(values.get_color().into()),
             SplitField::FadeTime => SplitEdit::FadeTime(field_value(values.get_fade_time())),
             SplitField::Threshold => {
@@ -444,7 +447,7 @@ impl Gui {
         values.set_generation(values.get_generation().wrapping_add(1));
         values.set_name(split.name.as_str().into());
         values.set_kind(SplitKind::of(&split).index() as i32);
-        values.set_compare(i32::from(split.is_fade()));
+        values.set_compare(CompareBy::of(&split).index() as i32);
         values.set_color(split.fade.as_deref().unwrap_or_default().into());
         values.set_fade_time(split.fade_time.unwrap_or(DEFAULT_FADE_TIME) as f32);
         // Unticked, they show the profile's defaults, which ticking or editing starts from

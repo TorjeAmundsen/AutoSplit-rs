@@ -6,6 +6,8 @@
 use std::ops::Range;
 use std::sync::OnceLock;
 
+use serde::{Deserialize, Serialize};
+
 use crate::image::BgraImage;
 use crate::imgproc::{self, ResizeBuffers};
 
@@ -14,11 +16,16 @@ const PHASH_INPUT_SIZE: usize = 8;
 const PHASH_DCT_SIZE: usize = 32;
 const HISTOGRAM_BINS: usize = 8 * 8 * 8;
 
-/// The comparison methods, by the index used in profiles and in `^n^` filename flags.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// The comparison methods, by the index used in profiles and in `^n^` filename flags. Presets
+/// write them by name, and leave out L2 Norm, which they're made for.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ComparisonMethod {
+    #[default]
+    #[serde(rename = "l2_norm")]
     L2Norm,
+    #[serde(rename = "histograms")]
     Histograms,
+    #[serde(rename = "phash")]
     PHash,
 }
 

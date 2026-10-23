@@ -8,6 +8,7 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
+use crate::compare::ComparisonMethod;
 use crate::filename::{DEFAULT_FADE_TIME, RESET_KEYWORD, START_KEYWORD, SplitSpec, build_filename};
 use crate::split_image::SplitDefaults;
 
@@ -49,6 +50,10 @@ pub struct PresetSplit {
     /// later default doesn't change them.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fade_time: Option<u32>,
+    /// How a screenshot split is compared, `^n^`. Without one, L2 Norm, which presets were made
+    /// for. Fade splits always compare by color, so theirs is ignored.
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub comparison_method: ComparisonMethod,
     /// While editing, what switching between a screenshot and a fade brings back. Never saved.
     #[serde(skip)]
     pub remembered: Remembered,
@@ -118,6 +123,7 @@ impl PresetSplit {
             dummy: self.dummy,
             below: self.below,
             fade_time: self.is_fade().then(|| self.fade_time.unwrap_or(DEFAULT_FADE_TIME)),
+            comparison_method: self.comparison_method,
         }
     }
 }
@@ -291,6 +297,7 @@ pub const SPLIT_KEYS: &[&str] = &[
     "mask",
     "fade",
     "fade_time",
+    "comparison_method",
     "threshold",
     "pause",
     "delay",

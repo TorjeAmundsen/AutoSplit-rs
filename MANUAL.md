@@ -139,7 +139,7 @@ Each split has:
 | Field | What it is |
 | --- | --- |
 | Type | Split, Start Image or Reset Image. Start and reset images are named `start_auto_splitter` and `reset`, so their name can't be changed. A preset can have up to 4 of each. |
-| Compare | Screenshot compares the screen with a grab or screenshot. Fade waits for the screen to fade to a color, see [Fade images](#fade-images). |
+| Compare | L2 Norm, Histograms and pHash compare the screen with a grab or screenshot, each the way Default Comparison Method in [Image Settings](#image-settings) describes. A method other than L2 Norm goes in the file name as `^1^` or `^2^`. Fade waits for the screen to fade to a color, see [Fade images](#fade-images). |
 | Name | The part of the file name after the number. It can't contain `reset` or `start_auto_splitter`, or the characters `#@{}()[]^~`, which file names use for settings. |
 | Color, Fade ms | For a fade split: the color the screen fades to, as a hex code like `#000000`, and about how long the fade takes in milliseconds. |
 | Mask | A PNG that's opaque where the screen is compared. A fade split doesn't need one, and Clear removes it. |
@@ -148,7 +148,7 @@ Each split has:
 | Same split as the one above | Compares the split for the same split as the one above it, so either one matching splits. Up to 4 splits can be together. See [Several images for one split](#several-images-for-one-split). |
 | Savestate and instructions | For Copy Savestates and Savestate Instructions. A fade split doesn't have them, since its image comes from its color. |
 
-Switching Compare to Fade ticks Threshold and sets it to 0.995, and switching back gives the split its old threshold, color and fade time again.
+Switching Compare to Fade ticks Threshold and sets it to 0.995, and switching back to a method gives the split its old threshold, color and fade time again.
 
 ![Make Split Images while editing a fade split: Compare set to Fade, the Color field with its swatch and Fade ms, the Mask with Clear, the threshold at 0.995, and the Output Preview showing the live capture where the mask keeps it](docs/make-split-images-fade-editing.png)
 

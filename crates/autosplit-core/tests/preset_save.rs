@@ -2,6 +2,7 @@
 
 use std::path::Path;
 
+use autosplit_core::compare::ComparisonMethod;
 use autosplit_core::preset::{
     PRESET_FILE, Preset, PresetError, PresetSplit, SAVESTATE_NOTE_FILE, delete_preset, duplicate_savestates,
     duplicates_among, load_presets, new_preset_folder, same_contents_as, sanitize_file_name, save_preset,
@@ -395,6 +396,7 @@ fn a_preset_with_every_field_set_reads_back_as_saved() {
         mask: file(&picked.path().join("door.png"), "o"),
         fade: Some("#a0a0a0".into()),
         fade_time: Some(1000),
+        comparison_method: ComparisonMethod::Histograms,
         threshold: Some(0.93),
         pause: Some(1.5),
         delay: Some(250),
