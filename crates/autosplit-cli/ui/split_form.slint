@@ -63,7 +63,7 @@ export global SplitValues {
     in-out property <int> generation;
     in-out property <string> name;
     in-out property <int> kind;
-    // 0 to 2 for a screenshot compared with L2 Norm, Histograms or pHash, 3 for a fade to a color
+    // Where it is in CompareBy::ALL: 0 to 2 for a screenshot's method, 3 for a fade to a color
     in-out property <int> compare;
     out property <bool> fade: compare == 3;
     // A fade split's color as typed, kept when it's switched to a screenshot and back
@@ -90,6 +90,7 @@ export component SplitFormPanel inherits VerticalLayout {
     in property <bool> has-split;
     in property <SplitForm> form;
     in property <[string]> kinds;
+    in property <[string]> compares;
     // Raised to move the focus to the Name field, like after Add
     in property <int> name-focus-request;
     callback split-edited(SplitField);
@@ -135,13 +136,13 @@ export component SplitFormPanel inherits VerticalLayout {
             // Beside the type, since any type can be either
             ComboBox {
                 horizontal-stretch: 1;
-                model: ["L2 Norm", "Histograms", "pHash", "Fade"];
+                model: root.compares;
                 current-index <=> SplitValues.compare;
                 selected => { root.split-edited(SplitField.compare); }
 
                 Tooltip {
                     Tip {
-                        text: "Compare by: a screenshot made into the split image with the mask, compared with a method, or a fade to a color, which splits on the frame the fade ends and not on a cut to the color. L2 Norm compares every pixel. Histograms compares the colors wherever they are, for a moving or rotating target. pHash compares the overall shape, so don't use it with a mask.";
+                        text: "Compare by: a screenshot made into the split image with the mask, compared with a method, or a fade to a color, which splits on the frame the fade ends and not on a cut to the color. L2 Norm compares every pixel. Histograms compares the colors wherever they are, for a moving or rotating target. pHash compares the overall shape. The mask's transparent part is black in both images, so other screens score higher too. Check its threshold against them.";
                     }
                 }
             }

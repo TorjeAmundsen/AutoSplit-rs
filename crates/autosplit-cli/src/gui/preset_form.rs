@@ -151,6 +151,13 @@ impl CompareBy {
     pub fn index(self) -> usize {
         Self::ALL.iter().position(|&by| by == self).unwrap_or(0)
     }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Screenshot(method) => method.name(),
+            Self::Fade => "Fade",
+        }
+    }
 }
 
 /// The field of a split that a problem is about, to show it next to.

@@ -325,6 +325,8 @@ Replace them?",
     maker.set_editing(true);
     let kinds: Vec<slint::SharedString> = ["Split", "Start Image", "Reset Image"].map(Into::into).into();
     maker.set_kinds(std::rc::Rc::new(slint::VecModel::from(kinds)).into());
+    let compares: Vec<slint::SharedString> = ["L2 Norm", "Histograms", "pHash", "Fade"].map(Into::into).into();
+    maker.set_compares(std::rc::Rc::new(slint::VecModel::from(compares)).into());
     let games: Vec<slint::SharedString> =
         ["The Legend of Zelda: Ocarina of Time", "New game..."].map(Into::into).into();
     maker.set_edit_games(std::rc::Rc::new(slint::VecModel::from(games)).into());

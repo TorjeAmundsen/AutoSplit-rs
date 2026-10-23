@@ -1211,6 +1211,15 @@ fn the_compare_choices_are_the_methods_by_index_then_fade() {
 }
 
 #[test]
+fn the_compare_choices_are_named_like_the_profile_methods() {
+    // Act
+    let labels: Vec<&str> = CompareBy::ALL.iter().map(|by| by.label()).collect();
+
+    // Assert
+    assert_eq!(labels, vec!["L2 Norm", "Histograms", "pHash", "Fade"]);
+}
+
+#[test]
 fn a_ready_made_split_taking_another_method_says_so() {
     // Arrange
     let from = PresetSplit { comparison_method: ComparisonMethod::Histograms, ..split("Boss") };

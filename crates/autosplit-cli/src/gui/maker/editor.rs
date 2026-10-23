@@ -98,6 +98,8 @@ impl Gui {
         on!(weak, maker, on_name_edited, (text) gui => gui.edit_preset(|preset| preset.name = text.to_string()));
         let kinds: Vec<SharedString> = SplitKind::ALL.iter().map(|kind| kind.label().into()).collect();
         maker.set_kinds(ModelRc::new(VecModel::from(kinds)));
+        let compares: Vec<SharedString> = CompareBy::ALL.iter().map(|by| by.label().into()).collect();
+        maker.set_compares(ModelRc::new(VecModel::from(compares)));
         on!(weak, maker, on_split_edited, (field) gui => gui.split_field_edited(field));
         on!(weak, maker, on_choose_mask, () gui => gui.choose_split_file(false));
         on!(weak, maker, on_preview_toggled, () gui => gui.show_maker_preview());

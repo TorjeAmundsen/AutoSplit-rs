@@ -183,6 +183,8 @@ export component MakerWindow inherits Window {
     in property <SplitForm> form;
     // The Type list: a split, the start image, a reset image, in SplitKind::ALL's order
     in property <[string]> kinds;
+    // The Compare list: the comparison methods, then a fade, in CompareBy::ALL's order
+    in property <[string]> compares;
     // Whether a split is selected to edit
     in property <bool> has-split;
     // What has to be fixed before saving, or that it's ready
@@ -821,6 +823,7 @@ export component MakerWindow inherits Window {
                         has-split: root.has-split;
                         form: root.form;
                         kinds: root.kinds;
+                        compares: root.compares;
                         split-edited(field) => { root.split-edited(field); }
                         choose-mask => { root.choose-mask(); }
                         choose-savestate => { root.choose-savestate(); }
