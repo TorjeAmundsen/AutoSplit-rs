@@ -5,11 +5,12 @@ use autosplit_core::preset::{LibrarySplit, LoadedLibrary, PresetSplit, game_key,
 use slint::Model;
 use slint::winit_030::WinitWindowAccessor;
 
+use autosplit_core::compare::ComparisonMethod;
 use autosplit_core::split_image::SplitDefaults;
 
 use super::super::name_parts_model;
 use super::super::preset_form::{
-    import_blocker, in_preset, library_file_name, library_file_parts, library_heading, matches_search,
+    CompareBy, import_blocker, in_preset, library_file_name, library_file_parts, library_heading, matches_search,
 };
 use super::super::ui::{LibraryItem, LibraryStep};
 use super::*;
@@ -124,6 +125,10 @@ fn library_step(
             (None, _) => String::new(),
         }
         .into(),
+        method: match CompareBy::of(split) {
+            CompareBy::Screenshot(method) if method != ComparisonMethod::L2Norm => method.name().into(),
+            _ => Default::default(),
+        },
     }
 }
 

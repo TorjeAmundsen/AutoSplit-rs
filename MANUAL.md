@@ -139,7 +139,7 @@ Each split has:
 | Field | What it is |
 | --- | --- |
 | Type | Split, Start Image or Reset Image. Start and reset images are named `start_auto_splitter` and `reset`, so their name can't be changed. A preset can have up to 4 of each. |
-| Compare | Screenshot compares the screen with a grab or screenshot. Fade waits for the screen to fade to a color, see [Fade images](#fade-images). |
+| Compare | L2 Norm, Histograms and pHash compare the screen with a grab or screenshot, see Default Comparison Method in [Image Settings](#image-settings). A method other than L2 Norm goes in the file name as `^1^` or `^2^`. Fade waits for the screen to fade to a color, see [Fade images](#fade-images). |
 | Name | The part of the file name after the number. It can't contain `reset` or `start_auto_splitter`, or the characters `#@{}()[]^~`, which file names use for settings. |
 | Color, Fade ms | For a fade split: the color the screen fades to, as a hex code like `#000000`, and about how long the fade takes in milliseconds. |
 | Mask | A PNG that's opaque where the screen is compared. A fade split doesn't need one, and Clear removes it. |
@@ -148,7 +148,7 @@ Each split has:
 | Same split as the one above | Compares the split for the same split as the one above it, so either one matching splits. Up to 4 splits can be together. See [Several images for one split](#several-images-for-one-split). |
 | Savestate and instructions | For Copy Savestates and Savestate Instructions. A fade split doesn't have them, since its image comes from its color. |
 
-Switching Compare to Fade ticks Threshold and sets it to 0.995, and switching back gives the split its old threshold, color and fade time again.
+Switching Compare to Fade ticks Threshold and sets it to 0.995, and switching back to a method gives the split its old threshold, color and fade time again.
 
 ![Make Split Images while editing a fade split: Compare set to Fade, the Color field with its swatch and Fade ms, the Mask with Clear, the threshold at 0.995, and the Output Preview showing the live capture where the mask keeps it](docs/make-split-images-fade-editing.png)
 
@@ -230,7 +230,7 @@ The defaults for split images whose file names don't set their own.
 
 | Setting | What it does |
 | --- | --- |
-| Default Comparison Method | L2 Norm compares every pixel, fast and fine for most images. Histograms compares the colors, good for masked images. pHash compares the overall shape, so don't use it with masked images. |
+| Default Comparison Method | L2 Norm compares every pixel, fast and fine for most images. Histograms compares the colors, good for masked images. pHash compares the overall shape. With masked images, the transparent part is black in both images, so other screens score higher too. Check the threshold against them. |
 | Default Similarity Threshold | The similarity an image has to reach to split. |
 | Default Delay Time | How long to wait after a match before splitting, in milliseconds. |
 | Default Pause Time | How long to stop comparing after a split, in seconds. It keeps two similar images in a row from splitting at once. |
@@ -307,7 +307,7 @@ An image with `reset` in its name, as a whole word, resets the timer when it mat
 
 ### Masked images
 
-When only part of the screen is always the same, like text over a changing background, make the rest transparent. Only the parts that aren't transparent are compared. Make Split Images does this with a preset's masks. By hand, take a screenshot and erase the rest in an editor like paint.net or GIMP. Use L2 Norm or Histograms for these, not pHash.
+When only part of the screen is always the same, like text over a changing background, make the rest transparent. Only the parts that aren't transparent are compared. Make Split Images does this with a preset's masks. By hand, take a screenshot and erase the rest in an editor like paint.net or GIMP. L2 Norm and Histograms work best for these. pHash works too, but the transparent part is black in both images, so other screens score higher. Check its threshold against them.
 
 ![A screenshot before and after masking: the full picture, then only the small part that tells the split apart, with the rest transparent](docs/masked-image.png)
 

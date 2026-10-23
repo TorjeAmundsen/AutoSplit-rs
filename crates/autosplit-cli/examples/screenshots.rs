@@ -325,6 +325,8 @@ Replace them?",
     maker.set_editing(true);
     let kinds: Vec<slint::SharedString> = ["Split", "Start Image", "Reset Image"].map(Into::into).into();
     maker.set_kinds(std::rc::Rc::new(slint::VecModel::from(kinds)).into());
+    let compares: Vec<slint::SharedString> = ["L2 Norm", "Histograms", "pHash", "Fade"].map(Into::into).into();
+    maker.set_compares(std::rc::Rc::new(slint::VecModel::from(compares)).into());
     let games: Vec<slint::SharedString> =
         ["The Legend of Zelda: Ocarina of Time", "New game..."].map(Into::into).into();
     maker.set_edit_games(std::rc::Rc::new(slint::VecModel::from(games)).into());
@@ -371,7 +373,7 @@ Replace them?",
     maker.set_form(SplitForm { savestate_copied: false, ..maker.get_form() });
     save(&window, PhysicalSize::new(828, 672), &folder.join("maker-edit-plain.png"));
     // A fade split of the whole screen
-    values.set_compare(1);
+    values.set_compare(3);
     values.set_color("#a0a0a0".into());
     values.set_threshold(0.995);
     maker.set_form(SplitForm {
@@ -454,6 +456,7 @@ Replace them?",
                 dummy,
                 below,
                 fade: Default::default(),
+                method: Default::default(),
                 // As release builds show it
                 savestate: "".into(),
                 savestate_shown: false,
