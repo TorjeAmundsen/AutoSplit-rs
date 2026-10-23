@@ -142,7 +142,7 @@ export component SplitFormPanel inherits VerticalLayout {
 
                 Tooltip {
                     Tip {
-                        text: "Compare by: a screenshot made into the split image with the mask, compared with a method, or a fade to a color, which splits on the frame the fade ends and not on a cut to the color. L2 Norm compares every pixel. Histograms compares the colors wherever they are, for a moving or rotating target. pHash compares the overall shape. The mask's transparent part is black in both images, so other screens score higher too. Check its threshold against them.";
+                        text: "Compare by: a screenshot made into the split image with the mask, or a fade to a color, which splits on the frame the fade ends and not on a cut to the color. L2 Norm compares every pixel. Histograms compares the colors wherever they are, for a moving or rotating target. pHash compares the overall shape. The mask's transparent part is black in both images, so other screens score higher too. Check its threshold against them.";
                     }
                 }
             }
@@ -222,7 +222,7 @@ export component SplitFormPanel inherits VerticalLayout {
             if root.form.drops-savestate: FieldProblem {
                 label-width: root.label-width;
                 color: Theme.secondary-text;
-                text: "Its savestate isn't saved with a fade split. Switch back to a screenshot method like L2 Norm to keep it.";
+                text: "Its savestate isn't saved with a fade split. Switch Compare to L2 Norm, Histograms or pHash to keep it.";
             }
         }
 

@@ -19,12 +19,12 @@ const HISTOGRAM_BINS: usize = 8 * 8 * 8;
 /// The comparison methods, by the index used in profiles and in `^n^` filename flags. Presets
 /// write them by name, and leave out L2 Norm, which they're made for.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ComparisonMethod {
     #[default]
-    #[serde(rename = "l2_norm")]
     L2Norm,
-    #[serde(rename = "histograms")]
     Histograms,
+    // Not p_hash
     #[serde(rename = "phash")]
     PHash,
 }

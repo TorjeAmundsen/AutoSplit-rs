@@ -1220,6 +1220,32 @@ fn the_compare_choices_are_named_like_the_profile_methods() {
 }
 
 #[test]
+fn fade_splits_taking_each_others_settings_ignore_their_methods() {
+    // Arrange: a method written by hand on a fade split, which it doesn't compare with
+    let fade = PresetSplit { fade: Some("#000000".into()), ..split("Boss") };
+    let from = PresetSplit { comparison_method: ComparisonMethod::Histograms, ..fade.clone() };
+
+    // Act
+    let changes = settings_changes(&fade, &from, None);
+
+    // Assert
+    assert_eq!(changes, "From Boss: no changes");
+}
+
+#[test]
+fn fade_splits_are_saved_without_a_method() {
+    // Arrange: a method written by hand on a fade split
+    let fade =
+        PresetSplit { fade: Some("#000000".into()), comparison_method: ComparisonMethod::Histograms, ..split("Boss") };
+
+    // Act
+    let saved = saved_split(&fade);
+
+    // Assert
+    assert_eq!(saved.comparison_method, ComparisonMethod::L2Norm);
+}
+
+#[test]
 fn a_ready_made_split_taking_another_method_says_so() {
     // Arrange
     let from = PresetSplit { comparison_method: ComparisonMethod::Histograms, ..split("Boss") };

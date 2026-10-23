@@ -104,8 +104,9 @@ pub enum SplitEdit {
     Name(String),
     /// A path relative to the preset's folder, or a picked file's absolute path.
     Mask(String),
-    /// A fade split starts at [`FADE_THRESHOLD`], with the color and fade time it had before, or
-    /// [`FADE_COLOR`].
+    /// Whether it's compared by a screenshot with a method, or by a fade to a color. A fade split
+    /// starts at [`FADE_THRESHOLD`], with the color and fade time it had before, or
+    /// [`FADE_COLOR`], and its method goes back to L2 Norm.
     Compare(CompareBy),
     /// A fade split's color, as typed.
     Color(String),
@@ -136,20 +137,21 @@ pub enum CompareBy {
 }
 
 impl CompareBy {
-    /// In the form's order: the methods by their index, then Fade.
-    pub const ALL: [CompareBy; 4] = [
+    /// In the order the form lists them: the methods by their index, then Fade.
+    pub const ALL: [Self; 4] = [
         Self::Screenshot(ComparisonMethod::L2Norm),
         Self::Screenshot(ComparisonMethod::Histograms),
         Self::Screenshot(ComparisonMethod::PHash),
         Self::Fade,
     ];
 
-    pub fn of(split: &PresetSplit) -> Self {
-        if split.is_fade() { Self::Fade } else { Self::Screenshot(split.comparison_method) }
+    /// Where it is in `ALL`, which the Compare list shows in that order.
+    pub fn index(self) -> usize {
+        Self::ALL.iter().position(|&each| each == self).unwrap_or_default()
     }
 
-    pub fn index(self) -> usize {
-        Self::ALL.iter().position(|&by| by == self).unwrap_or(0)
+    pub fn of(split: &PresetSplit) -> Self {
+        if split.is_fade() { Self::Fade } else { Self::Screenshot(split.comparison_method) }
     }
 
     pub fn label(self) -> &'static str {
@@ -678,7 +680,10 @@ pub fn changed_settings(step: &PresetSplit, from: &PresetSplit) -> Vec<String> {
     compare("delay", shown(&step.delay), shown(&from.delay));
     compare("fade", shown(&step.fade), shown(&from.fade));
     compare("fade time", shown(&step.fade_time), shown(&from.fade_time));
-    compare("comparison method", step.comparison_method.name().into(), from.comparison_method.name().into());
+    // A fade compares by color, and the fade lines say when one starts or stops
+    if !step.is_fade() && !from.is_fade() {
+        compare("comparison method", step.comparison_method.name().into(), from.comparison_method.name().into());
+    }
     compare("dummy", step.dummy.to_string(), from.dummy.to_string());
     compare("below", step.below.to_string(), from.below.to_string());
     compare("with previous", step.with_previous.to_string(), from.with_previous.to_string());
@@ -741,11 +746,13 @@ pub fn import_blocker(preset: &Preset, steps: &[PresetSplit]) -> Option<String> 
 
 /// `split` as it's saved, into the preset or the split library: instructions only go with a
 /// savestate, and fade splits have neither, since there's no screen to get to for a screenshot.
-/// While editing they're kept, for a split switched to a fade and back.
+/// While editing they're kept, for a split switched to a fade and back. Nor a method, which only
+/// a preset written by hand gives a fade split.
 pub fn saved_split(split: &PresetSplit) -> PresetSplit {
     let mut split = split.clone();
     if split.is_fade() {
         split.savestate.clear();
+        split.comparison_method = ComparisonMethod::default();
     }
     if split.savestate.is_empty() {
         split.instructions.clear();

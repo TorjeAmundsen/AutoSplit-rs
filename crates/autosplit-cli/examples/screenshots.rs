@@ -456,6 +456,7 @@ Replace them?",
                 dummy,
                 below,
                 fade: Default::default(),
+                method: Default::default(),
                 // As release builds show it
                 savestate: "".into(),
                 savestate_shown: false,

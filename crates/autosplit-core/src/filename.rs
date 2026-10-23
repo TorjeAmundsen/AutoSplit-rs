@@ -528,8 +528,8 @@ pub struct SplitSpec<'a> {
 }
 
 /// The file name of split image `index` (from 0) of `count`, like AutoMask names them. Only the
-/// settings the split has are in it, so the others are the profile's. Another method than L2 Norm
-/// is always in it. With the profile's `defaults`, L2 Norm is too, when the profile compares
+/// settings the split has are in it, so the others are the profile's. A method other than L2
+/// Norm is always in it. With the profile's `defaults`, L2 Norm is too, when the profile compares
 /// another way.
 ///
 /// `reset_(0.96)_[0.1].png`, `05_Bottle_(0.93)_[35]_#1100#_{b}.png`: the number has as many
