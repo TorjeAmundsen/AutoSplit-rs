@@ -3,6 +3,7 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
+use autosplit_core::fade::FadeNoise;
 use autosplit_core::image::BgraImage;
 use autosplit_core::runner::Captured;
 use autosplit_core::split_image::{LoadError, SplitDefaults};
@@ -21,6 +22,7 @@ const DEFAULTS: SplitDefaults = SplitDefaults {
     pause_time: 0.0,
     fps_limit: 60,
     fade_tolerance: 10,
+    fade_noise: FadeNoise::NONE,
 };
 
 fn solid(color: Bgr) -> BgraImage {
@@ -409,4 +411,17 @@ fn info_shows_the_fade_tolerance_comparisons_use() {
 
     // Assert
     assert_eq!(info[1], "METHOD: fade to #ff0000 (about 600 ms, tolerance 255 levels)");
+}
+
+#[test]
+fn info_shows_the_fade_noise_when_set() {
+    // Arrange
+    let fade_noise = FadeNoise { black: [0.5, 0.25, 0.25], gray: [2.5, 0.25, 0.25] };
+    let harness = Harness::with_defaults("1_split_~600~_{f}.png", SplitDefaults { fade_noise, ..DEFAULTS });
+
+    // Act
+    let info = harness.info();
+
+    // Assert: red is past gray, so it has gray's noise
+    assert_eq!(info[1], "METHOD: fade to #ff0000 (about 600 ms, tolerance 10 levels, noise 2.50 0.25 0.25)");
 }

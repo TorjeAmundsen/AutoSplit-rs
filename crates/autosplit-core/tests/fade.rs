@@ -3,7 +3,7 @@
 use std::path::Path;
 use std::time::Duration;
 
-use autosplit_core::fade::FadeTracker;
+use autosplit_core::fade::{FadeNoise, FadeTracker, NOISE_GRAY, NoiseError, measure_noise};
 use autosplit_core::image::BgraImage;
 use autosplit_core::split_image::{LoadError, SplitDefaults, SplitImage};
 use test_case::test_case;
@@ -45,6 +45,16 @@ const CUT: [f64; 120] = {
 const STRIP_FADE: [f64; 22] = [
     0.826, 0.827, 0.833, 0.848, 0.857, 0.869, 0.874, 0.885, 0.893, 0.897, 0.769, 0.832, 0.880, 0.909, 0.925, 0.937,
     0.945, 0.954, 0.965, 0.975, 0.988, 0.996,
+];
+
+/// Similarities against black of the whole screen, one per frame the game draws at 20 FPS, from
+/// an HDMI capture of Ocarina of Time entering the Deku Tree. The camera turns into the tree's
+/// black mouth (at 18), so the fade jumps and then barely changes while only Link is left in it,
+/// and is fully black at 22.
+#[allow(clippy::approx_constant, reason = "measured similarities, one of them near pi / 4")]
+const DEKU_FADE: [f64; 23] = [
+    0.7850, 0.7854, 0.7797, 0.7801, 0.7914, 0.8048, 0.8170, 0.8337, 0.8620, 0.8877, 0.9199, 0.9356, 0.9283, 0.9400,
+    0.9500, 0.9621, 0.9743, 0.9839, 0.9937, 0.9943, 0.9947, 0.9978, 1.0000,
 ];
 
 /// The first frame of `trace`, played at 60 FPS, that a fade reached `threshold` on.
@@ -139,6 +149,44 @@ fn fade_with_big_first_steps_is_found_on_its_last_frame() {
 
     // Assert
     assert_eq!(found, [Some(21); 3]);
+}
+
+#[test]
+fn fade_that_jumps_then_barely_changes_before_the_color_is_found_on_its_last_frame() {
+    // Arrange: each game frame shown for 3 capture frames, starting at each of 6, so the samples
+    // land on every other game frame both ways
+    let traces = [0, 1, 2, 3, 4, 5].map(|phase| {
+        let mut trace = vec![DEKU_FADE[0]; 30 + phase];
+        trace.extend(DEKU_FADE.iter().flat_map(|similarity| [*similarity; 3]));
+        trace.extend([1.0; 30]);
+        (30 + phase, trace)
+    });
+
+    // Act
+    let found = traces.map(|(start, trace)| first_fade(&trace, 0.999, 800).map(|frame| (frame - start) / 3));
+
+    // Assert
+    assert_eq!(found, [Some(22); 6]);
+}
+
+#[test]
+fn cut_after_the_scene_kept_changing_is_not_a_fade() {
+    // Arrange: a camera turning toward something dark, slower for the last 3 samples, then a cut
+    // to the color that makes 0.926 of their rise
+    let mut trace = vec![0.5; 60];
+    for step in 1..=12 {
+        trace.extend([0.5 + 0.03 * f64::from(step); 3]);
+    }
+    for similarity in [0.865, 0.870, 0.875] {
+        trace.extend([similarity; 6]);
+    }
+    trace.extend([1.0; 60]);
+
+    // Act
+    let found = [0.97, 0.995].map(|threshold| first_fade(&trace, threshold, 800));
+
+    // Assert
+    assert_eq!(found, [None; 2]);
 }
 
 #[test]
@@ -285,6 +333,7 @@ const DEFAULTS: SplitDefaults = SplitDefaults {
     pause_time: 0.0,
     fps_limit: 60,
     fade_tolerance: 10,
+    fade_noise: FadeNoise::NONE,
 };
 
 fn image(path: &Path, width: usize, height: usize, pixel: impl Fn(usize, usize) -> [u8; 4]) {
@@ -335,6 +384,173 @@ fn colors_off_by_the_tolerance_count_as_the_color() {
     let off = 1.0 - (3.0_f64 * 81.0).sqrt() / (255.0 * 3.0_f64.sqrt());
     assert_eq!(similarities[0], 1.0);
     assert!((similarities[1] - off).abs() < 1e-12, "{} isn't {off}", similarities[1]);
+}
+
+#[test]
+fn noise_up_to_the_fade_noise_counts_as_the_color() {
+    // Arrange: a noisy capture of the color, every channel 2 levels above or below it, the same
+    // size as the image so it isn't shrunk to one pixel
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("01_fade_{f}.png");
+    image(&path, 4, 2, |_, _| [160, 160, 160, 255]);
+    let image = SplitImage::load(&path);
+    let capture = BgraImage::from_raw(
+        4,
+        2,
+        (0..8).flat_map(|i| if i % 2 == 0 { [158, 158, 158, 255] } else { [162, 162, 162, 255] }).collect(),
+    );
+
+    // Act
+    let similarities = [[2.0; 3], [0.0; 3]].map(|gray| {
+        let defaults =
+            SplitDefaults { fade_tolerance: 0, fade_noise: FadeNoise { gray, ..FadeNoise::NONE }, ..DEFAULTS };
+        image.similarity(Some(capture.view()), &defaults, &mut Default::default())
+    });
+
+    // Assert
+    let noisy = 1.0 - (3.0_f64 * 4.0).sqrt() / (255.0 * 3.0_f64.sqrt());
+    assert_eq!(similarities[0], 1.0);
+    assert!((similarities[1] - noisy).abs() < 1e-12, "{} isn't {noisy}", similarities[1]);
+}
+
+#[test]
+fn fade_noise_only_takes_the_noise_out_of_a_scene() {
+    // Arrange: a scene still 30 levels either side of the color, near the end of a fade
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("01_fade_{f}.png");
+    image(&path, 4, 2, |_, _| [160, 160, 160, 255]);
+    let image = SplitImage::load(&path);
+    let capture = BgraImage::from_raw(
+        4,
+        2,
+        (0..8).flat_map(|i| if i % 2 == 0 { [130, 130, 130, 255] } else { [190, 190, 190, 255] }).collect(),
+    );
+    let defaults =
+        SplitDefaults { fade_tolerance: 0, fade_noise: FadeNoise { gray: [2.0; 3], ..FadeNoise::NONE }, ..DEFAULTS };
+
+    // Act
+    let similarity = image.similarity(Some(capture.view()), &defaults, &mut Default::default());
+
+    // Assert: only the 2 levels of noise come off its spread of 30 per channel
+    let expected = 1.0 - (3.0 * (900.0 - 4.0_f64)).sqrt() / (255.0 * 3.0_f64.sqrt());
+    assert!((similarity - expected).abs() < 1e-12, "{similarity} isn't {expected}");
+}
+
+#[test]
+fn fade_noise_near_black_is_at_most_half_the_mean() {
+    // Arrange: what's left of a scene fading to black, 2 levels either side of a mean of 2
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("01_fade_{f}.png");
+    image(&path, 4, 2, |_, _| [0, 0, 0, 255]);
+    let image = SplitImage::load(&path);
+    let capture = BgraImage::from_raw(
+        4,
+        2,
+        (0..8).flat_map(|i| if i % 2 == 0 { [0, 0, 0, 255] } else { [4, 4, 4, 255] }).collect(),
+    );
+    let defaults =
+        SplitDefaults { fade_tolerance: 15, fade_noise: FadeNoise { black: [2.0; 3], ..FadeNoise::NONE }, ..DEFAULTS };
+
+    // Act
+    let similarity = image.similarity(Some(capture.view()), &defaults, &mut Default::default());
+
+    // Assert: 1 level of noise comes off, not 2
+    let expected = 1.0 - (3.0 * (4.0 - 1.0_f64)).sqrt() / (255.0 * 3.0_f64.sqrt());
+    assert!((similarity - expected).abs() < 1e-12, "{similarity} isn't {expected}");
+}
+
+#[test]
+fn fade_noise_goes_from_blacks_to_grays_by_each_channels_level() {
+    // Arrange
+    let noise = FadeNoise { black: [1.0, 1.0, 1.0], gray: [3.0, 3.0, 3.0] };
+
+    // Act
+    let at = noise.at([80, 0, 255]);
+
+    // Assert: halfway to gray, black, and past gray
+    assert_eq!(at, [2.0, 1.0, 3.0]);
+}
+
+#[test]
+fn fade_noise_of_a_hand_edited_profile_stays_within_a_channel() {
+    // Arrange
+    let noise = FadeNoise { black: [-1.0, f64::NAN, 300.0], gray: [0.0; 3] };
+
+    // Act
+    let at = noise.at([0, 0, 0]);
+
+    // Assert
+    assert_eq!(at, [0.0, 0.0, 255.0]);
+}
+
+/// A capture of `width` by `height` with the middle that [`measure_noise`] reads alternating
+/// between `even` and `odd` (BGRA), and white around it.
+fn noisy_middle(width: usize, height: usize, even: [u8; 4], odd: [u8; 4]) -> BgraImage {
+    let middle = |x: usize, y: usize| {
+        (width * 5 / 16..width * 11 / 16).contains(&x) && (height / 4..height * 3 / 4).contains(&y)
+    };
+    let data = (0..height)
+        .flat_map(|y| (0..width).map(move |x| (x, y)))
+        .flat_map(|(x, y)| match middle(x, y) {
+            true if (x + y) % 2 == 0 => even,
+            true => odd,
+            false => [255, 255, 255, 255],
+        })
+        .collect();
+    BgraImage::from_raw(width, height, data)
+}
+
+#[test]
+fn noise_is_measured_per_channel_in_the_middle() {
+    // Arrange: gray with red 2 levels either side of it and blue 1, and white edges
+    let capture = noisy_middle(32, 16, [159, 160, 158, 255], [161, 160, 162, 255]);
+
+    // Act
+    let noise = measure_noise(capture.view(), NOISE_GRAY, 15);
+
+    // Assert
+    assert_eq!(noise, Ok([2.0, 0.0, 1.0]));
+}
+
+#[test]
+fn noise_is_measured_in_hundredths() {
+    // Arrange: a raised black, like a Wii2HDMI's, one in three pixels a level up
+    let capture = BgraImage::from_raw(
+        48,
+        16,
+        (0..48 * 16).flat_map(|i| if i % 3 == 0 { [8, 6, 6, 255] } else { [7, 5, 5, 255] }).collect(),
+    );
+
+    // Act
+    let noise = measure_noise(capture.view(), [0, 0, 0], 15);
+
+    // Assert: sqrt(2) / 3
+    assert_eq!(noise, Ok([0.47, 0.47, 0.47]));
+}
+
+#[test]
+fn noise_isnt_measured_on_another_color() {
+    // Arrange: black, measured as gray
+    let capture = BgraImage::solid([0, 0, 0], 32, 16);
+
+    // Act
+    let noise = measure_noise(capture.view(), NOISE_GRAY, 15);
+
+    // Assert
+    assert_eq!(noise, Err(NoiseError::NotTheColor { expected: "#a0a0a0".into(), found: "#000000".into() }));
+}
+
+#[test]
+fn noise_isnt_measured_on_a_scene() {
+    // Arrange: gray with 3 levels either side of it, like the frame before a fade ends, where a
+    // twentieth of the scene is left
+    let capture = noisy_middle(32, 16, [157, 157, 157, 255], [163, 163, 163, 255]);
+
+    // Act
+    let noise = measure_noise(capture.view(), NOISE_GRAY, 15);
+
+    // Assert
+    assert_eq!(noise, Err(NoiseError::NotSolid { expected: "#a0a0a0".into(), spread: "3.0".into() }));
 }
 
 #[test]

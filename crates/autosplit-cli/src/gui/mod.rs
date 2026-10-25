@@ -857,6 +857,14 @@ impl Gui {
             gui.hotkey_typed(action, &text)
         });
         on!(weak, settings, on_open_readme, () gui => gui.open(IMAGE_SETTINGS_URL));
+        on!(weak, settings, on_measure_fade_noise, (gray) gui => gui.send(UiCommand::MeasureFadeNoise { gray }));
+        on!(weak, settings, on_reset_fade_noise, () gui => {
+            let mut state = gui.state.borrow_mut();
+            let profile = &mut state.document.profile;
+            (profile.fade_noise_black, profile.fade_noise_gray) = (None, None);
+            drop(state);
+            gui.profile_edited();
+        });
         on!(always weak, settings, on_blocked_clicked, () gui => gui.focus_message());
         on!(always weak, settings.window(), on_close_requested, () gui => {
             gui.record_hotkey(None);
@@ -1336,6 +1344,8 @@ impl Gui {
         settings.set_default_delay_time(profile.default_delay_time as f32);
         settings.set_default_pause_time(profile.default_pause_time as f32);
         settings.set_fade_color_tolerance(profile.fade_color_tolerance as f32);
+        settings.set_fade_noise(settings_form::fade_noise_text(profile).into());
+        settings.set_fade_noise_measured(profile.fade_noise_black.is_some() || profile.fade_noise_gray.is_some());
         settings.set_loop_splits(profile.loop_splits);
         settings.set_group_split_images(profile.group_split_images);
         settings.set_split_image_grid(profile.split_image_grid);
@@ -1432,6 +1442,13 @@ impl Gui {
                 if let Some(gui) = self.me.upgrade() {
                     gui.grabbed(image);
                 }
+            }
+            Notice::FadeNoiseMeasured { gray, noise } => {
+                let mut state = self.state.borrow_mut();
+                let profile = &mut state.document.profile;
+                *if gray { &mut profile.fade_noise_gray } else { &mut profile.fade_noise_black } = Some(noise);
+                drop(state);
+                self.profile_edited();
             }
             Notice::CroppedRegion(region) => {
                 self.state.borrow_mut().document.profile.capture_region = region;

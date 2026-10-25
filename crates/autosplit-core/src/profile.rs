@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::commands::Command;
+use crate::fade::FadeNoise;
 use crate::image::Rect;
 use crate::split_image::SplitDefaults;
 
@@ -163,6 +164,13 @@ pub struct UserProfile {
     /// capture. Only written when changed.
     #[serde(skip_serializing_if = "is_default_fade_color_tolerance")]
     pub fade_color_tolerance: i64,
+    /// Not in AutoSplit. The noise of each channel (red, green, blue) of the capture, measured on
+    /// black, taken out of fade images' similarity. Only written once measured.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fade_noise_black: Option<[f64; 3]>,
+    /// Not in AutoSplit. The same, measured on [`crate::fade::NOISE_GRAY`].
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fade_noise_gray: Option<[f64; 3]>,
     /// Not in AutoSplit. Make Split Images shows the split image file names and every button,
     /// instead of only what making split images needs. Only written when changed.
     #[serde(skip_serializing_if = "is_default")]
@@ -208,6 +216,8 @@ impl Default for UserProfile {
             group_split_images: false,
             split_image_grid: false,
             fade_color_tolerance: DEFAULT_FADE_COLOR_TOLERANCE,
+            fade_noise_black: None,
+            fade_noise_gray: None,
             advanced_maker: false,
             unknown: toml::Table::new(),
         }
@@ -321,6 +331,10 @@ impl UserProfile {
             pause_time: self.default_pause_time,
             fps_limit: self.fps_limit,
             fade_tolerance: self.fade_color_tolerance,
+            fade_noise: FadeNoise {
+                black: self.fade_noise_black.unwrap_or_default(),
+                gray: self.fade_noise_gray.unwrap_or_default(),
+            },
         }
     }
 }

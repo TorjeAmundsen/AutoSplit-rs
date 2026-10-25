@@ -36,6 +36,11 @@ pub fn hex_color([red, green, blue]: [u8; 3]) -> String {
     format!("#{red:02x}{green:02x}{blue:02x}")
 }
 
+/// A capture's noise in red, green and blue, like `0.23 0.23 0.36`.
+pub fn noise_text(noise: [f64; 3]) -> String {
+    noise.map(|noise| format!("{noise:.2}")).join(" ")
+}
+
 /// [`decimal`], or `-` for no value.
 pub fn decimal_or_dash(value: Option<f64>) -> String {
     value.map_or("-".into(), decimal)
@@ -215,8 +220,12 @@ pub fn tester_info(tester: &Tester) -> Vec<InfoCell> {
         cell(ACTS_CELL, action, if image.is_dummy() { "dummy" } else { "" }),
         match (image.fade_color(), image.comparison_method(defaults)) {
             (Some(color), _) => {
-                let note =
+                let mut note =
                     format!("about {} ms, tolerance {} levels", image.fade_time_ms(), defaults.fade_tolerance_levels());
+                let noise = defaults.fade_noise.at(color);
+                if noise.iter().any(|&noise| noise > 0.0) {
+                    note += &format!(", noise {}", noise_text(noise));
+                }
                 cell("METHOD", format!("fade to {}", hex_color(color)), &note)
             }
             (None, Some(method)) => cell("METHOD", method.name().into(), from_profile(image.names_comparison_method())),

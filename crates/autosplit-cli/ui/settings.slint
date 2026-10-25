@@ -38,7 +38,7 @@ export component SettingsWindow inherits Window {
     title: "Settings";
     icon: @image-url("../assets/icon.png");
     width: 380px;
-    height: 414px;
+    height: 474px;
     default-font-family: "Noto Sans";
     default-font-size: 12px;
 
@@ -64,6 +64,9 @@ export component SettingsWindow inherits Window {
     in-out property <float> default-delay-time: 0;
     in-out property <float> default-pause-time: 10;
     in-out property <float> fade-color-tolerance: 15;
+    // The capture's noise measured for fade images, or that it wasn't
+    in property <string> fade-noise: "Black not measured, gray not measured";
+    in property <bool> fade-noise-measured;
     in-out property <bool> loop-splits;
     in-out property <bool> group-split-images;
     in-out property <bool> split-image-grid;
@@ -96,6 +99,9 @@ export component SettingsWindow inherits Window {
     // Returns whether the name is a hotkey; when not, the field shows the hotkey again
     callback hotkey-typed(int, string) -> bool;
     callback open-readme();
+    // On fade gray when true, else on black
+    callback measure-fade-noise(bool);
+    callback reset-fade-noise();
     callback blocked-clicked();
 
     // For screenshots of each tab
@@ -442,9 +448,56 @@ export component SettingsWindow inherits Window {
                 }
             }
 
-            CheckBox {
+            Label {
                 x: 10px;
                 y: 160px;
+                width: 185px;
+                height: 26px;
+                text: "Fade Noise:";
+            }
+
+            Button {
+                x: 200px;
+                y: 160px;
+                width: 82px;
+                height: 26px;
+                text: "Measure Black";
+                tip: "Measures the noise your capture adds to black, for fade images. Show a frame that's all black first, like the end of a fade to black.";
+                clicked => { root.measure-fade-noise(false); }
+            }
+
+            Button {
+                x: 288px;
+                y: 160px;
+                width: 82px;
+                height: 26px;
+                text: "Measure Gray";
+                tip: "Measures the noise your capture adds to gray, for fade images. Show a frame that's all #a0a0a0 first, like the end of a fade to white in Ocarina of Time.";
+                clicked => { root.measure-fade-noise(true); }
+            }
+
+            Label {
+                x: 10px;
+                y: 190px;
+                width: 285px;
+                height: 26px;
+                text: root.fade-noise;
+            }
+
+            Button {
+                x: 300px;
+                y: 190px;
+                width: 70px;
+                height: 26px;
+                text: "Reset";
+                tip: "Forgets the measured noise, as for a clean capture.";
+                enabled: root.fade-noise-measured;
+                clicked => { root.reset-fade-noise(); }
+            }
+
+            CheckBox {
+                x: 10px;
+                y: 220px;
                 width: 360px;
                 height: 24px;
                 text: "Loop Last Split Image to First Split Image";
@@ -454,7 +507,7 @@ export component SettingsWindow inherits Window {
 
             CheckBox {
                 x: 10px;
-                y: 184px;
+                y: 244px;
                 width: 360px;
                 height: 24px;
                 text: "Start also Resets";
@@ -464,7 +517,7 @@ export component SettingsWindow inherits Window {
 
             CheckBox {
                 x: 10px;
-                y: 208px;
+                y: 268px;
                 width: 360px;
                 height: 24px;
                 text: "Enable auto reset image";
@@ -474,7 +527,7 @@ export component SettingsWindow inherits Window {
 
             CheckBox {
                 x: 10px;
-                y: 232px;
+                y: 292px;
                 width: 360px;
                 height: 24px;
                 text: "Compare images with the same number for one split";
@@ -490,7 +543,7 @@ export component SettingsWindow inherits Window {
 
             CheckBox {
                 x: 30px;
-                y: 256px;
+                y: 316px;
                 width: 340px;
                 height: 24px;
                 text: "Show a split's images in a 2x2 grid";
@@ -502,7 +555,7 @@ export component SettingsWindow inherits Window {
             Text {
                 color: Theme.text;
                 x: 10px;
-                y: 286px;
+                y: 346px;
                 width: 360px;
                 height: 61px;
                 wrap: word-wrap;
@@ -511,7 +564,7 @@ export component SettingsWindow inherits Window {
 
             Button {
                 x: 150px;
-                y: 352px;
+                y: 412px;
                 width: 80px;
                 height: 28px;
                 text: "Tutorial";
