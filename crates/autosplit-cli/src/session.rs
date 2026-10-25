@@ -13,6 +13,7 @@ use std::time::{Duration, Instant, SystemTime};
 use autosplit_capture::Frame;
 use autosplit_core::auto_controlled::parse_control_line;
 use autosplit_core::commands::{Command, ControlRequest, Output, TimerLink, TimerReport, outputs_for};
+use autosplit_core::fade::{NOISE_GRAY, measure_noise};
 use autosplit_core::hotkeys::HotkeyAction;
 use autosplit_core::image::BgraImage;
 use autosplit_core::profile::{Region, UserProfile, capture_method_name};
@@ -21,7 +22,7 @@ use autosplit_core::split_folder::{
     FolderLoad, SplitSet, ValidationError, load_profile_folder, load_profile_folder_to_start,
 };
 use autosplit_core::tester::Tester;
-use autosplit_core::text::{Compared, status_line};
+use autosplit_core::text::{Compared, noise_text, status_line};
 
 use crate::console::Console;
 use crate::device::{self, Device, Opened};
@@ -101,6 +102,10 @@ pub enum UiCommand {
     Grab,
     /// The capture region becomes the 4:3 picture in the middle of the capture's frames.
     CropTo4x3,
+    /// Measures the capture's noise for fade images, on black or on fade gray.
+    MeasureFadeNoise {
+        gray: bool,
+    },
 }
 
 /// What the session tells the window, besides what [`View::update`] shows.
@@ -123,6 +128,8 @@ pub enum Notice {
     FullFrameRegion(Region),
     /// The capture region was cropped to the 4:3 picture in the middle of the frames.
     CroppedRegion(Region),
+    /// The capture's noise was measured on black or on fade gray.
+    FadeNoiseMeasured { gray: bool, noise: [f64; 3] },
 }
 
 /// What a [`View`] shows of the session.
@@ -647,6 +654,7 @@ impl Session {
                 }
             }
             UiCommand::Grab => self.grab(),
+            UiCommand::MeasureFadeNoise { gray } => self.measure_fade_noise(gray),
         }
         self.handle_effects();
     }
@@ -971,6 +979,37 @@ impl Session {
         let Region { x, y, width, height } = region;
         self.console.log(format_args!("Capture region cropped to 4:3: X {x}, Y {y}, {width}x{height}"));
         self.notify(Notice::CroppedRegion(region));
+    }
+
+    /// Measures the noise of the newest frame's capture region, which shows black or fade gray,
+    /// and keeps it in the profile.
+    fn measure_fade_noise(&mut self, gray: bool) {
+        let Some(frame) = self.device.latest().filter(|_| self.device.receiving()) else {
+            return self.dialog(concat!(
+                "There's no capture to measure. Check the capture device in Settings (",
+                primary_key!(),
+                "+,)."
+            ));
+        };
+        let Some(view) = frame.region_view(&self.profile.capture_region).filter(|view| !view.is_empty()) else {
+            return self.dialog(
+                "The capture region is empty or outside the capture. Set X, Y, Width and Height in the main window.",
+            );
+        };
+        let color = if gray { NOISE_GRAY } else { [0, 0, 0] };
+        let tolerance = self.profile.split_defaults().fade_tolerance_levels();
+        let noise = match measure_noise(view, color, tolerance) {
+            Ok(noise) => noise,
+            Err(error) => return self.dialog(error),
+        };
+        let (name, measured) = match gray {
+            true => ("gray", &mut self.profile.fade_noise_gray),
+            false => ("black", &mut self.profile.fade_noise_black),
+        };
+        *measured = Some(noise);
+        self.settings_changed();
+        self.console.log(format_args!("Fade noise on {name}: {}", noise_text(noise)));
+        self.notify(Notice::FadeNoiseMeasured { gray, noise });
     }
 
     fn screenshot(&mut self) {

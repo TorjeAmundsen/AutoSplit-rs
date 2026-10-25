@@ -226,7 +226,7 @@ File > Settings has four tabs.
 
 The defaults for split images whose file names don't set their own.
 
-![The Image Settings tab with the default comparison method, threshold, delay and pause, the Fade Color Tolerance, and the checkboxes below them](docs/settings-image.png)
+![The Image Settings tab with the default comparison method, threshold, delay and pause, the Fade Color Tolerance, the Fade Noise measurements, and the checkboxes below them](docs/settings-image.png)
 
 | Setting | What it does |
 | --- | --- |
@@ -235,6 +235,7 @@ The defaults for split images whose file names don't set their own.
 | Default Delay Time | How long to wait after a match before splitting, in milliseconds. |
 | Default Pause Time | How long to stop comparing after a split, in seconds. It keeps two similar images in a row from splitting at once. |
 | Fade Color Tolerance | How far off, in levels out of 255, each color channel of the screen can be from a [fade image](#fade-images)'s color and still count as that color. 15 by default. Raise it if a capture shows the color a little off. |
+| Fade Noise | Measure Black and Measure Gray measure how much noise the capture adds to each color channel, on a frame that's all black or all #a0a0a0, for [fade images](#fade-images). They read the middle of the capture region, away from the edges. The line below shows what was measured, and Reset forgets it, as for a clean capture. |
 | Loop Last Split Image to First Split Image | After the last image splits, start over with the first. |
 | Start also Resets | When the start image matches, reset the timer first, then start it. |
 | Enable auto reset image | Use the reset image. The toggle auto reset image hotkey turns it on and off. |
@@ -337,7 +338,9 @@ Make Split Images makes them from a preset's fade splits, with Grab*. By hand, g
 - Fade images always compare by color, so `^N^` and the comparison method are ignored for them.
 - At least 3 comparisons have to fall within the fade, so a short fade with a low Comparison FPS Limit warns when the folder loads.
 
-The similarity is how close the screen is to the color, counting how even it is, so a dark scene with something lit in it stays below the threshold. Use a high threshold, 0.995 is a good start, so it splits on the first frame that's fully the color and not the one before. On a noisy capture, like an analog one, the screen never quite reaches 1: open the image in the [Live Tester](#live-tester), let the fade happen, and set the threshold about 0.002 below the similarity the faded screen settles at.
+The similarity is how close the screen is to the color, counting how even it is, so a dark scene with something lit in it stays below the threshold. Use a high threshold, 0.995 is a good start, so it splits on the first frame that's fully the color and not the one before. On a capture that adds noise, like an analog one or one whose black is a little gray, the screen never quite reaches 1. Measure the noise instead of lowering the threshold, which would split a frame early. Show a frame that's all black, like the end of a fade held with a practice tool's frame advance or a savestate, and click Measure Black in [Image Settings](#image-settings). Then do the same on a frame that's all #a0a0a0 with Measure Gray. Fade images leave that noise out, so the faded screen reaches the threshold. Fades to other colors use what's between the two, by how bright each channel is.
+
+Measure on the faded frame itself. The frame before it still shows a little of the scene, which counts as noise if it's measured, and makes the split come a frame early. Measuring refuses a frame that's far from the color or uneven, but the frame before the end can be close enough to get through.
 
 If something stays on screen through the fade, like an area name or a lighter part at the top, mask it out.
 
@@ -366,6 +369,7 @@ timer_connection = "livesplit_one"  # optional, see Timers
 group_split_images = true  # optional, see Several images for one split
 split_image_grid = true  # optional, shows those images in a 2x2 grid
 fade_color_tolerance = 20  # optional, see Fade images
+fade_noise_gray = [1.52, 0.78, 1.0]  # optional, set by Measure Gray, see Fade images
 
 [capture_region]  # in pixels of the device's frames; `autosplit grab` shows their size
 x = 0

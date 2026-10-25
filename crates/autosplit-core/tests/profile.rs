@@ -3,6 +3,7 @@
 use std::path::{Path, PathBuf};
 
 use autosplit_core::commands::Command;
+use autosplit_core::fade::FadeNoise;
 use autosplit_core::image::Rect;
 use autosplit_core::profile::{
     NEW_PROFILE_REGION, ProfileError, Region, RegionFit, TimerConnection, UserProfile, capture_method_name,
@@ -158,6 +159,7 @@ fn missing_profile_file_is_reported_as_invalid_settings() {
 #[test_case("group_split_images"; "group split images")]
 #[test_case("split_image_grid"; "split image grid")]
 #[test_case("fade_color_tolerance"; "fade color tolerance")]
+#[test_case("fade_noise"; "fade noise")]
 #[test_case("advanced_maker"; "advanced maker")]
 fn keys_not_in_autosplit_are_left_out_when_unchanged(key: &str) {
     // Act
@@ -324,4 +326,18 @@ fn fade_color_tolerance_loads_back() {
 
     // Assert
     assert_eq!((reloaded.fade_color_tolerance, reloaded.split_defaults().fade_tolerance), (24, 24));
+}
+
+#[test]
+fn fade_noise_loads_back() {
+    // Arrange: black measured as noiseless, which isn't the same as not measured
+    let profile =
+        UserProfile { fade_noise_black: Some([0.0; 3]), fade_noise_gray: Some([1.5, 0.8, 1.0]), ..configured() };
+
+    // Act
+    let reloaded = UserProfile::parse(&profile.to_toml()).unwrap();
+
+    // Assert
+    assert_eq!((reloaded.fade_noise_black, reloaded.fade_noise_gray), (Some([0.0; 3]), Some([1.5, 0.8, 1.0])));
+    assert_eq!(reloaded.split_defaults().fade_noise, FadeNoise { black: [0.0; 3], gray: [1.5, 0.8, 1.0] });
 }

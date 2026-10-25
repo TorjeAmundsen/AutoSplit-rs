@@ -17,7 +17,7 @@ use autosplit::gui::maker_plan::{
 use autosplit::gui::messages::{Answer, Buttons, Message, MessageQueue};
 use autosplit::gui::placement::{Area, beside, centered_over};
 use autosplit::gui::recorder::key_code;
-use autosplit::gui::settings_form::{SettingEdit, Shown, apply, pick_default_device};
+use autosplit::gui::settings_form::{SettingEdit, Shown, apply, fade_noise_text, pick_default_device};
 use autosplit::gui::view::{KeptFrames, Picture, Pixels, TesterUpdate, Update};
 use autosplit::gui::{THUMB_SIZE, thumbnail};
 use autosplit_capture::DeviceInfo;
@@ -329,6 +329,18 @@ fn listing_no_devices_picks_none() {
 
     // Assert
     assert_eq!((picked, profile), (false, UserProfile::default()));
+}
+
+#[test]
+fn fade_noise_shows_what_was_measured() {
+    // Arrange: black measured as noiseless, which isn't the same as not measured
+    let profile = UserProfile { fade_noise_black: Some([0.0; 3]), ..UserProfile::default() };
+
+    // Act
+    let text = fade_noise_text(&profile);
+
+    // Assert
+    assert_eq!(text, "Black 0.00 0.00 0.00, gray not measured");
 }
 
 #[test]

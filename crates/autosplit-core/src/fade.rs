@@ -5,8 +5,9 @@ use std::collections::VecDeque;
 use std::time::Duration;
 
 use crate::compare::Mask;
-use crate::image::BgraImage;
+use crate::image::{BgraImage, BgraView};
 use crate::split_image::SplitImage;
+use crate::text::hex_color;
 
 /// The largest RGB distance: from black to white.
 const MAX_DISTANCE: f64 = 441.672_955_930_063_7; // 255 * sqrt(3)
@@ -23,8 +24,10 @@ const ARRIVAL_STEPS: usize = 3;
 /// The most one of the [`ARRIVAL_STEPS`] may make of their rise. A fade still rises in the steps
 /// before the last one, while a cut after something that held still, like a dark room entered
 /// with a cut, makes all of it in one. Without this, the earlier cut would count toward the
-/// fade's depth and make the later one look small.
-const MAX_ARRIVAL_SHARE: f64 = 0.75;
+/// fade's depth and make the later one look small. A fade can still make up to about 0.83 of it
+/// in one, when the camera turns toward something dark just before the end, and cuts make 0.95
+/// and up.
+const MAX_ARRIVAL_SHARE: f64 = 0.9;
 /// How much bigger than the steps after it a step of a fade may be. A fade's steps grow or shrink
 /// a little at a time, while a cut is a jump between small ones. So a cut that lands just under the
 /// threshold and then creeps up to it doesn't count as the gradual part of a fade, which has to be
@@ -35,14 +38,113 @@ const MAX_DIP: f64 = 0.03;
 const MIN_SAMPLE_INTERVAL: Duration = Duration::from_millis(50);
 const MAX_SAMPLE_INTERVAL: Duration = Duration::from_millis(100);
 
+/// The gray that noise is measured on besides black: OoT's fades to white, #a0a0a0.
+pub const NOISE_GRAY: [u8; 3] = [160, 160, 160];
+/// The most noise a channel may measure. Analog captures of OoT's #a0a0a0 measure up to 1.52,
+/// and the frame before it, with a twentieth of the scene left, 2.46 and up. So more is a scene
+/// rather than noise, and measuring it would make fades reach the threshold a frame early.
+const MAX_MEASURED_NOISE: f64 = 2.0;
+
+/// How much noise a capture adds to each channel (red, green, blue), measured on black and on
+/// [`NOISE_GRAY`]. Analog captures have noise that black hides when they crush it, so the two
+/// are measured apart.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct FadeNoise {
+    pub black: [f64; 3],
+    pub gray: [f64; 3],
+}
+
+impl FadeNoise {
+    /// No noise measured, as for a clean capture.
+    pub const NONE: Self = Self { black: [0.0; 3], gray: [0.0; 3] };
+
+    /// The noise of each channel at `color` (red, green, blue): from black's to gray's by the
+    /// channel's level, and gray's above it. A hand-edited profile's values are kept within 0
+    /// to 255.
+    pub fn at(&self, color: [u8; 3]) -> [f64; 3] {
+        std::array::from_fn(|channel| {
+            let share = (f64::from(color[channel]) / f64::from(NOISE_GRAY[channel])).min(1.0);
+            let [black, gray] = [self.black[channel], self.gray[channel]]
+                .map(|noise| if noise.is_nan() { 0.0 } else { noise.clamp(0.0, 255.0) });
+            black + (gray - black) * share
+        })
+    }
+}
+
+/// Why [`measure_noise`] measured nothing.
+#[derive(Debug, thiserror::Error, Clone, PartialEq)]
+pub enum NoiseError {
+    #[error("There's no capture to measure.")]
+    Empty,
+    #[error(
+        "The middle of the capture is {found}, too far from {expected}. Show a frame that's all {expected}, \
+         like the end of a fade, and measure again."
+    )]
+    NotTheColor { expected: String, found: String },
+    #[error(
+        "The middle of the capture isn't one solid color: one of red, green and blue is {spread} levels \
+         from its mean on average. Show a frame that's all {expected}, like the end of a fade, and measure again."
+    )]
+    NotSolid { expected: String, spread: String },
+}
+
+/// The noise of each channel (red, green, blue) of a capture that shows `color`: how far its
+/// pixels are from their mean, rounded to hundredths. Only the middle is read, where presets'
+/// fade masks are: x 5/16 to 11/16 and y 1/4 to 3/4, away from the edges that analog captures
+/// light unevenly. It has to be within `tolerance` levels of `color`, and look like noise rather
+/// than a scene.
+pub fn measure_noise(capture: BgraView, color: [u8; 3], tolerance: u8) -> Result<[f64; 3], NoiseError> {
+    let (width, height) = (capture.width(), capture.height());
+    let middle = capture.crop(width * 5 / 16, width * 11 / 16, height / 4, height * 3 / 4);
+    if middle.is_empty() {
+        return Err(NoiseError::Empty);
+    }
+    let (mut sums, mut squares) = ([0_u64; 3], [0_u64; 3]);
+    for y in 0..middle.height() {
+        for pixel in middle.row(y).as_chunks::<4>().0 {
+            // BGRA to red, green, blue
+            for (channel, &value) in [pixel[2], pixel[1], pixel[0]].iter().enumerate() {
+                sums[channel] += u64::from(value);
+                squares[channel] += u64::from(value) * u64::from(value);
+            }
+        }
+    }
+    let count = (middle.width() * middle.height()) as f64;
+    let mean: [f64; 3] = std::array::from_fn(|channel| sums[channel] as f64 / count);
+    let noise: [f64; 3] = std::array::from_fn(|channel| {
+        (squares[channel] as f64 / count - mean[channel] * mean[channel]).max(0.0).sqrt()
+    });
+    let expected = hex_color(color);
+    if mean.iter().zip(color).any(|(mean, color)| (mean - f64::from(color)).abs() > f64::from(tolerance)) {
+        return Err(NoiseError::NotTheColor { expected, found: hex_color(mean.map(|mean| mean.round() as u8)) });
+    }
+    let spread = noise.iter().copied().fold(0.0, f64::max);
+    if spread > MAX_MEASURED_NOISE {
+        return Err(NoiseError::NotSolid { expected, spread: format!("{spread:.1}") });
+    }
+    Ok(noise.map(|noise| (noise * 100.0).round() / 100.0))
+}
+
 /// The similarity of `capture` to a solid `color` (BGR), over the pixels `mask` shows:
 /// `1 - sqrt(offset^2 + spread^2) / max`, where the offset is how far the capture's mean color is
 /// from `color` and the spread how far its pixels are from that mean. Each channel's mean may be
-/// up to `tolerance` levels off for free, for capture setups whose colors are a little off.
+/// up to `tolerance` levels off for free, for capture setups whose colors are a little off, and
+/// each channel's `noise` (BGR) is taken out of its spread, for capture setups that add noise,
+/// like analog ones. Noise adds to a scene's spread as variance, so this takes out about what the
+/// noise added, and frames before the fade ends stay about as far from the color as without it.
+/// A capture clips its noise at black and white, so a channel with a mean near either has at most
+/// half that distance taken out. Otherwise the last frames of a fade to black, whose spread is
+/// all that's left of the scene, would reach the threshold early.
 ///
 /// Unlike AutoSplit's L2 norm, alpha isn't counted, so 1.0 and 0.0 mean the same with or without
 /// a mask.
-pub(crate) fn similarity(color: [u8; 3], capture: &BgraImage, mask: Option<&Mask>, tolerance: u8) -> f64 {
+pub(crate) fn similarity(
+    color: [u8; 3],
+    capture: &BgraImage,
+    mask: Option<&Mask>,
+    tolerance: u8,
+    noise: [f64; 3],
+) -> f64 {
     let mut count = 0_u64;
     let mut sums = [0_u64; 3];
     let mut squares = [0_u64; 3];
@@ -67,7 +169,8 @@ pub(crate) fn similarity(color: [u8; 3], capture: &BgraImage, mask: Option<&Mask
     let mut squared = 0.0;
     for channel in 0..3 {
         let mean = sums[channel] as f64 / count;
-        let variance = (squares[channel] as f64 / count - mean * mean).max(0.0);
+        let noise = noise[channel].min(mean.min(255.0 - mean) / 2.0);
+        let variance = (squares[channel] as f64 / count - mean * mean - noise * noise).max(0.0);
         let offset = ((mean - f64::from(color[channel])).abs() - f64::from(tolerance)).max(0.0);
         squared += offset * offset + variance;
     }
