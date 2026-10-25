@@ -13,7 +13,7 @@ use std::time::{Duration, Instant, SystemTime};
 use autosplit_capture::Frame;
 use autosplit_core::auto_controlled::parse_control_line;
 use autosplit_core::commands::{Command, ControlRequest, Output, TimerLink, TimerReport, outputs_for};
-use autosplit_core::fade::{NOISE_GRAY, measure_noise};
+use autosplit_core::fade::{NoiseColor, measure_noise};
 use autosplit_core::hotkeys::HotkeyAction;
 use autosplit_core::image::BgraImage;
 use autosplit_core::profile::{Region, UserProfile, capture_method_name};
@@ -102,9 +102,11 @@ pub enum UiCommand {
     Grab,
     /// The capture region becomes the 4:3 picture in the middle of the capture's frames.
     CropTo4x3,
-    /// Measures the capture's noise for fade images, on black or on fade gray.
+    /// Measures the capture's noise for fade images, on black or on fade gray. `request` numbers
+    /// the window's requests, which the answer tells it back.
     MeasureFadeNoise {
-        gray: bool,
+        color: NoiseColor,
+        request: u64,
     },
 }
 
@@ -128,8 +130,8 @@ pub enum Notice {
     FullFrameRegion(Region),
     /// The capture region was cropped to the 4:3 picture in the middle of the frames.
     CroppedRegion(Region),
-    /// The capture's noise was measured on black or on fade gray.
-    FadeNoiseMeasured { gray: bool, noise: [f64; 3] },
+    /// The capture's noise was measured on black or on fade gray, for the window's `request`.
+    FadeNoiseMeasured { color: NoiseColor, noise: [f64; 3], request: u64 },
 }
 
 /// What a [`View`] shows of the session.
@@ -654,7 +656,7 @@ impl Session {
                 }
             }
             UiCommand::Grab => self.grab(),
-            UiCommand::MeasureFadeNoise { gray } => self.measure_fade_noise(gray),
+            UiCommand::MeasureFadeNoise { color, request } => self.measure_fade_noise(color, request),
         }
         self.handle_effects();
     }
@@ -981,35 +983,24 @@ impl Session {
         self.notify(Notice::CroppedRegion(region));
     }
 
-    /// Measures the noise of the newest frame's capture region, which shows black or fade gray,
-    /// and keeps it in the profile.
-    fn measure_fade_noise(&mut self, gray: bool) {
+    /// Measures the noise of the newest frame's capture region, which shows `color`, for the
+    /// window to keep in the profile. It answers `request` with it.
+    fn measure_fade_noise(&mut self, color: NoiseColor, request: u64) {
         let Some(frame) = self.device.latest().filter(|_| self.device.receiving()) else {
-            return self.dialog(concat!(
-                "There's no capture to measure. Check the capture device in Settings (",
-                primary_key!(),
-                "+,)."
-            ));
+            return self.dialog("There's no capture to measure. Check the capture device on the Capture Settings tab.");
         };
         let Some(view) = frame.region_view(&self.profile.capture_region).filter(|view| !view.is_empty()) else {
             return self.dialog(
                 "The capture region is empty or outside the capture. Set X, Y, Width and Height in the main window.",
             );
         };
-        let color = if gray { NOISE_GRAY } else { [0, 0, 0] };
-        let tolerance = self.profile.split_defaults().fade_tolerance_levels();
-        let noise = match measure_noise(view, color, tolerance) {
-            Ok(noise) => noise,
-            Err(error) => return self.dialog(error),
-        };
-        let (name, measured) = match gray {
-            true => ("gray", &mut self.profile.fade_noise_gray),
-            false => ("black", &mut self.profile.fade_noise_black),
-        };
-        *measured = Some(noise);
-        self.settings_changed();
-        self.console.log(format_args!("Fade noise on {name}: {}", noise_text(noise)));
-        self.notify(Notice::FadeNoiseMeasured { gray, noise });
+        match measure_noise(view, color, self.profile.fade_tolerance_levels()) {
+            Ok(noise) => {
+                self.console.log(format_args!("Fade noise on {color}: {}", noise_text(noise)));
+                self.notify(Notice::FadeNoiseMeasured { color, noise, request });
+            }
+            Err(error) => self.dialog(error),
+        }
     }
 
     fn screenshot(&mut self) {

@@ -7,6 +7,7 @@ use autosplit::console::Console;
 use autosplit::screenshot::Saved;
 use autosplit::session::{Event, Notice, Session, Snapshot, UiCommand, View};
 use autosplit_core::commands::TimerLink;
+use autosplit_core::fade::NoiseColor;
 use autosplit_core::hotkeys::HotkeyAction;
 use autosplit_core::image::BgraImage;
 use autosplit_core::profile::{TimerConnection, UserProfile};
@@ -73,7 +74,7 @@ impl View for FakeView {
             Notice::ScreenshotSaved(path) => format!("screenshot {}", path.display()),
             Notice::FullFrameRegion(region) => format!("full frame {}x{}", region.width, region.height),
             Notice::CroppedRegion(region) => format!("cropped {}x{}", region.width, region.height),
-            Notice::FadeNoiseMeasured { gray, noise } => format!("fade noise gray {gray} {noise:?}"),
+            Notice::FadeNoiseMeasured { color, noise, request } => format!("fade noise {color} {noise:?} {request}"),
         };
         self.0.notices.lock().unwrap().push(text);
     }
@@ -394,12 +395,14 @@ fn grab_without_a_capture_says_so() {
 #[test]
 fn measuring_fade_noise_without_a_capture_says_so() {
     // Act
-    let seen = run(UserProfile::default(), vec![Event::Ui(UiCommand::MeasureFadeNoise { gray: true })]);
+    let command = UiCommand::MeasureFadeNoise { color: NoiseColor::Gray, request: 1 };
+    let seen = run(UserProfile::default(), vec![Event::Ui(command)]);
 
-    // Assert
-    let key = if cfg!(target_os = "macos") { "Cmd" } else { "Ctrl" };
-    let expected = format!("dialog: There's no capture to measure. Check the capture device in Settings ({key}+,).");
-    assert_eq!(seen.notices(), [expected]);
+    // Assert: Settings, where the measuring is, has the capture device
+    assert_eq!(
+        seen.notices(),
+        ["dialog: There's no capture to measure. Check the capture device on the Capture Settings tab."]
+    );
 }
 
 #[test]

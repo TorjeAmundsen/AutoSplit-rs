@@ -22,6 +22,7 @@ use autosplit::gui::view::{KeptFrames, Picture, Pixels, TesterUpdate, Update};
 use autosplit::gui::{THUMB_SIZE, thumbnail};
 use autosplit_capture::DeviceInfo;
 use autosplit_core::commands::{Command, TimerLink};
+use autosplit_core::fade::NoiseColor;
 use autosplit_core::preset::{LoadedPreset, Preset};
 use autosplit_core::profile::{TimerConnection, UserProfile, VIDEO_CAPTURE_DEVICE};
 use autosplit_input::KeyCode;
@@ -329,6 +330,50 @@ fn listing_no_devices_picks_none() {
 
     // Assert
     assert_eq!((picked, profile), (false, UserProfile::default()));
+}
+
+#[test]
+fn measured_fade_noise_is_kept_for_the_profile_it_was_asked_for() {
+    // Arrange
+    let mut document = Document::untitled();
+    document.measuring(1);
+
+    // Act
+    let kept = document.noise_measured(NoiseColor::Gray, [1.5, 0.8, 1.0], 1);
+
+    // Assert
+    assert_eq!((kept, document.profile.fade_noise_gray), (true, Some([1.5, 0.8, 1.0])));
+}
+
+#[test]
+fn fade_noise_measured_for_another_profile_is_dropped() {
+    // Arrange: asked for while another profile was open, then this one opened
+    let mut document = Document::untitled();
+
+    // Act
+    let kept = document.noise_measured(NoiseColor::Black, [0.2; 3], 1);
+
+    // Assert
+    assert_eq!((kept, document.profile.fade_noise_black), (false, None));
+}
+
+#[test]
+fn fade_noise_measured_before_a_reset_is_dropped() {
+    // Arrange: black asked for, the noise reset, then gray asked for
+    let mut document = Document::untitled();
+    document.measuring(1);
+    document.reset_noise();
+    document.measuring(2);
+
+    // Act
+    let kept = [
+        document.noise_measured(NoiseColor::Black, [0.2; 3], 1),
+        document.noise_measured(NoiseColor::Gray, [1.0; 3], 2),
+    ];
+
+    // Assert
+    assert_eq!(kept, [false, true]);
+    assert_eq!((document.profile.fade_noise_black, document.profile.fade_noise_gray), (None, Some([1.0; 3])));
 }
 
 #[test]

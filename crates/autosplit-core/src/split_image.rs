@@ -76,7 +76,7 @@ pub struct SplitDefaults {
 impl SplitDefaults {
     /// The fade tolerance comparisons use: a hand-edited profile can have one outside 0 to 255.
     pub fn fade_tolerance_levels(&self) -> u8 {
-        self.fade_tolerance.clamp(0, 255) as u8
+        fade::tolerance_levels(self.fade_tolerance)
     }
 }
 
@@ -218,10 +218,8 @@ impl SplitImage {
         match self.fade_color {
             Some(color) => {
                 let tolerance = defaults.fade_tolerance_levels();
-                let [red, green, blue] = defaults.fade_noise.at([color[2], color[1], color[0]]);
-                let noise = [blue, green, red];
                 self.compare_resized(capture, scratch, |resized, mask, _| {
-                    fade::similarity(color, resized, mask, tolerance, noise)
+                    fade::similarity(color, resized, mask, tolerance, &defaults.fade_noise)
                 })
             }
             None => self.compare(capture, self.comparison_method(defaults), scratch),

@@ -26,6 +26,7 @@ use std::time::{Duration, Instant};
 
 use autosplit_capture::{DeviceInfo, list_devices};
 use autosplit_core::commands::{Command, TimerLink};
+use autosplit_core::fade::NoiseColor;
 use autosplit_core::hotkeys::HotkeyAction;
 use autosplit_core::profile::UserProfile;
 use autosplit_core::split_folder::{MAX_GROUP_SIZE, user_files};
@@ -109,6 +110,8 @@ const MAX_POSITION: i64 = 999_999_999;
 const FIRST_MESSAGES_FALLBACK: Duration = Duration::from_secs(2);
 /// How long log lines are gathered before the log window shows them.
 const LOG_DELAY: Duration = Duration::from_millis(100);
+/// How long the settings window highlights a fade noise it just measured.
+const FADE_NOISE_FLASH: Duration = Duration::from_millis(1500);
 
 /// The capture devices in the settings window.
 #[derive(Default)]
@@ -133,6 +136,8 @@ struct State {
     /// The tool windows that are open, the newest last, which the main window can't be used
     /// beside.
     tools: Vec<Tool>,
+    /// Numbers the fade noise measurements asked for.
+    noise_requests: u64,
 }
 
 /// The windows the main window can't be used beside.
@@ -183,6 +188,8 @@ struct Gui {
     /// it and in front of it.
     first_messages: RefCell<Vec<Message>>,
     first_messages_fallback: slint::Timer,
+    /// Ends the highlight of the measured fade noise.
+    fade_noise_flash: slint::Timer,
 }
 
 /// Whether a window can be seen, for the previews only made while one can: shown, and not
@@ -573,6 +580,7 @@ pub fn run(options: Options) -> Result<(), Error> {
             log: LogLines::default(),
             messages: MessageQueue::default(),
             tools: Vec::new(),
+            noise_requests: 0,
         }),
         events: events.clone(),
         seen: Seen::new(visible.clone()),
@@ -583,6 +591,7 @@ pub fn run(options: Options) -> Result<(), Error> {
         log_dirty: Cell::new(false),
         first_messages: RefCell::new(Vec::new()),
         first_messages_fallback: slint::Timer::default(),
+        fade_noise_flash: slint::Timer::default(),
     });
     GUI.with(|cell| *cell.borrow_mut() = Some(gui.clone()));
     gui.connect();
@@ -723,6 +732,46 @@ impl Gui {
         (!directory.is_empty()).then(|| state.document.resolve(&exe_folder(), directory))
     }
 
+    /// Asks the session to measure the capture's noise on `color`, for the profile open now.
+    fn measure_fade_noise(&self, color: NoiseColor) {
+        let mut state = self.state.borrow_mut();
+        state.noise_requests += 1;
+        let request = state.noise_requests;
+        state.document.measuring(request);
+        drop(state);
+        self.send(UiCommand::MeasureFadeNoise { color, request });
+    }
+
+    /// Keeps the noise the session measured, unless another profile was opened or the noise
+    /// reset since it was asked for, and highlights it.
+    fn fade_noise_measured(&self, color: NoiseColor, noise: [f64; 3], request: u64) {
+        if !self.state.borrow_mut().document.noise_measured(color, noise, request) {
+            return;
+        }
+        self.profile_edited();
+        let settings = &self.windows.settings;
+        settings.set_fade_noise_fresh(true);
+        let weak = self.me.clone();
+        self.fade_noise_flash.start(slint::TimerMode::SingleShot, FADE_NOISE_FLASH, move || {
+            if let Some(gui) = weak.upgrade() {
+                gui.windows.settings.set_fade_noise_fresh(false);
+            }
+        });
+    }
+
+    /// Forgets the measured noise once that's confirmed, since measuring it again takes finding
+    /// those frames again.
+    fn reset_fade_noise(&self) {
+        let weak = self.me.clone();
+        let text = "Forget the noise measured on black and on gray? Measuring it again needs a frame that's all \
+                    black and one that's all gray.";
+        self.show_message(Message::choice(text, ["Forget Both", "", "Cancel"], 2, move |answer| {
+            let (Some(gui), Answer::Yes) = (weak.upgrade(), answer) else { return };
+            gui.state.borrow_mut().document.reset_noise();
+            gui.profile_edited();
+        }));
+    }
+
     /// The profile changed in a way the windows show elsewhere too.
     fn profile_edited(&self) {
         self.send_profile(false);
@@ -857,14 +906,10 @@ impl Gui {
             gui.hotkey_typed(action, &text)
         });
         on!(weak, settings, on_open_readme, () gui => gui.open(IMAGE_SETTINGS_URL));
-        on!(weak, settings, on_measure_fade_noise, (gray) gui => gui.send(UiCommand::MeasureFadeNoise { gray }));
-        on!(weak, settings, on_reset_fade_noise, () gui => {
-            let mut state = gui.state.borrow_mut();
-            let profile = &mut state.document.profile;
-            (profile.fade_noise_black, profile.fade_noise_gray) = (None, None);
-            drop(state);
-            gui.profile_edited();
+        on!(weak, settings, on_measure_fade_noise, (gray) gui => {
+            gui.measure_fade_noise(if gray { NoiseColor::Gray } else { NoiseColor::Black });
         });
+        on!(weak, settings, on_reset_fade_noise, () gui => gui.reset_fade_noise());
         on!(always weak, settings, on_blocked_clicked, () gui => gui.focus_message());
         on!(always weak, settings.window(), on_close_requested, () gui => {
             gui.record_hotkey(None);
@@ -1443,13 +1488,7 @@ impl Gui {
                     gui.grabbed(image);
                 }
             }
-            Notice::FadeNoiseMeasured { gray, noise } => {
-                let mut state = self.state.borrow_mut();
-                let profile = &mut state.document.profile;
-                *if gray { &mut profile.fade_noise_gray } else { &mut profile.fade_noise_black } = Some(noise);
-                drop(state);
-                self.profile_edited();
-            }
+            Notice::FadeNoiseMeasured { color, noise, request } => self.fade_noise_measured(color, noise, request),
             Notice::CroppedRegion(region) => {
                 self.state.borrow_mut().document.profile.capture_region = region;
                 self.region_set_for_user();
