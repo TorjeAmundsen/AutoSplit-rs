@@ -67,6 +67,8 @@ export component SettingsWindow inherits Window {
     // The capture's noise measured for fade images, or that it wasn't
     in property <string> fade-noise: "Black not measured, gray not measured";
     in property <bool> fade-noise-measured;
+    // Just measured, which the values line shows highlighted
+    in property <bool> fade-noise-fresh;
     in-out property <bool> loop-splits;
     in-out property <bool> group-split-images;
     in-out property <bool> split-image-grid;
@@ -451,46 +453,49 @@ export component SettingsWindow inherits Window {
             Label {
                 x: 10px;
                 y: 160px;
-                width: 185px;
+                width: 175px;
                 height: 26px;
                 text: "Fade Noise:";
             }
 
             Button {
-                x: 200px;
+                x: 190px;
                 y: 160px;
-                width: 82px;
+                width: 88px;
                 height: 26px;
                 text: "Measure Black";
-                tip: "Measures the noise your capture adds to black, for fade images. Show a frame that's all black first, like the end of a fade to black.";
+                tip: "Measures the noise your capture adds to black, for fade images, in the middle of the capture region. Show a frame that's all black first, like the end of a fade to black.";
                 clicked => { root.measure-fade-noise(false); }
             }
 
             Button {
-                x: 288px;
+                x: 282px;
                 y: 160px;
-                width: 82px;
+                width: 88px;
                 height: 26px;
                 text: "Measure Gray";
-                tip: "Measures the noise your capture adds to gray, for fade images. Show a frame that's all #a0a0a0 first, like the end of a fade to white in Ocarina of Time.";
+                tip: "Measures the noise your capture adds to gray, for fade images, in the middle of the capture region. Show a frame that's all gray (#a0a0a0) first, like the end of a fade to white in Ocarina of Time.";
                 clicked => { root.measure-fade-noise(true); }
             }
 
             Label {
                 x: 10px;
                 y: 190px;
-                width: 285px;
+                width: 265px;
                 height: 26px;
                 text: root.fade-noise;
+                // Briefly, after a measurement, since measuring again often shows about the same
+                color: root.fade-noise-fresh ? Theme.focus : Theme.text;
+                animate color { duration: 300ms; }
             }
 
             Button {
-                x: 300px;
+                x: 282px;
                 y: 190px;
-                width: 70px;
+                width: 88px;
                 height: 26px;
                 text: "Reset";
-                tip: "Forgets the measured noise, as for a clean capture.";
+                tip: "Forgets the noise measured on both black and gray, as for a clean capture. It asks first.";
                 enabled: root.fade-noise-measured;
                 clicked => { root.reset-fade-noise(); }
             }

@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::commands::Command;
-use crate::fade::FadeNoise;
+use crate::fade::{self, FadeNoise, NoiseColor};
 use crate::image::Rect;
 use crate::split_image::SplitDefaults;
 
@@ -321,6 +321,19 @@ impl UserProfile {
     pub fn window_capture_method(&self) -> Option<&str> {
         let method = self.capture_method.as_str();
         (!method.is_empty() && method != VIDEO_CAPTURE_DEVICE).then_some(method)
+    }
+
+    /// The fade color tolerance comparisons use: a hand-edited profile can have one outside 0 to 255.
+    pub fn fade_tolerance_levels(&self) -> u8 {
+        fade::tolerance_levels(self.fade_color_tolerance)
+    }
+
+    /// The noise measured on `color`, or `None` when it wasn't.
+    pub fn fade_noise_mut(&mut self, color: NoiseColor) -> &mut Option<[f64; 3]> {
+        match color {
+            NoiseColor::Black => &mut self.fade_noise_black,
+            NoiseColor::Gray => &mut self.fade_noise_gray,
+        }
     }
 
     pub fn split_defaults(&self) -> SplitDefaults {

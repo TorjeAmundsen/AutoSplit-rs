@@ -3,7 +3,7 @@
 use std::path::Path;
 use std::time::Duration;
 
-use autosplit_core::fade::{FadeNoise, FadeTracker, NOISE_GRAY, NoiseError, measure_noise};
+use autosplit_core::fade::{FadeNoise, FadeTracker, NoiseColor, NoiseError, measure_noise};
 use autosplit_core::image::BgraImage;
 use autosplit_core::split_image::{LoadError, SplitDefaults, SplitImage};
 use test_case::test_case;
@@ -386,76 +386,82 @@ fn colors_off_by_the_tolerance_count_as_the_color() {
     assert!((similarities[1] - off).abs() < 1e-12, "{} isn't {off}", similarities[1]);
 }
 
-#[test]
-fn noise_up_to_the_fade_noise_counts_as_the_color() {
-    // Arrange: a noisy capture of the color, every channel 2 levels above or below it, the same
-    // size as the image so it isn't shrunk to one pixel
+/// A 4x2 fade image of `color` (BGR), and a capture that alternates between `even` and `odd`
+/// (BGR), the same size so it isn't shrunk to one pixel.
+fn alternating(color: [u8; 3], even: [u8; 3], odd: [u8; 3]) -> (tempfile::TempDir, SplitImage, BgraImage) {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("01_fade_{f}.png");
-    image(&path, 4, 2, |_, _| [160, 160, 160, 255]);
-    let image = SplitImage::load(&path);
-    let capture = BgraImage::from_raw(
-        4,
-        2,
-        (0..8).flat_map(|i| if i % 2 == 0 { [158, 158, 158, 255] } else { [162, 162, 162, 255] }).collect(),
-    );
+    image(&path, 4, 2, |_, _| [color[0], color[1], color[2], 255]);
+    let pixels = (0..8).flat_map(|i| {
+        let [blue, green, red] = if i % 2 == 0 { even } else { odd };
+        [blue, green, red, 255]
+    });
+    (directory, SplitImage::load(&path), BgraImage::from_raw(4, 2, pixels.collect()))
+}
+
+fn noisy_similarity(image: &SplitImage, capture: &BgraImage, fade_tolerance: i64, fade_noise: FadeNoise) -> f64 {
+    let defaults = SplitDefaults { fade_tolerance, fade_noise, ..DEFAULTS };
+    image.similarity(Some(capture.view()), &defaults, &mut Default::default())
+}
+
+/// `1 - sqrt(squared) / max`, worked out another way than the code does.
+fn from_squared(squared: f64) -> f64 {
+    1.0 - squared.sqrt() / (255.0 * 3.0_f64.sqrt())
+}
+
+#[test]
+fn noise_up_to_the_fade_noise_counts_as_the_color() {
+    // Arrange: a noisy capture of the color, every channel 2 levels above or below it
+    let (_directory, image, capture) = alternating([160; 3], [158; 3], [162; 3]);
 
     // Act
-    let similarities = [[2.0; 3], [0.0; 3]].map(|gray| {
-        let defaults =
-            SplitDefaults { fade_tolerance: 0, fade_noise: FadeNoise { gray, ..FadeNoise::NONE }, ..DEFAULTS };
-        image.similarity(Some(capture.view()), &defaults, &mut Default::default())
-    });
+    let similarities =
+        [[2.0; 3], [0.0; 3]].map(|gray| noisy_similarity(&image, &capture, 0, FadeNoise { gray, ..FadeNoise::NONE }));
 
     // Assert
-    let noisy = 1.0 - (3.0_f64 * 4.0).sqrt() / (255.0 * 3.0_f64.sqrt());
+    let noisy = from_squared(3.0 * 4.0);
     assert_eq!(similarities[0], 1.0);
     assert!((similarities[1] - noisy).abs() < 1e-12, "{} isn't {noisy}", similarities[1]);
 }
 
 #[test]
+fn fade_noise_is_taken_out_of_each_channel_by_itself() {
+    // Arrange: only red is noisy, 2 levels either side of the color
+    let (_directory, image, capture) = alternating([160; 3], [160, 160, 158], [160, 160, 162]);
+
+    // Act: measured on red, then on blue
+    let similarities = [[2.0, 0.0, 0.0], [0.0, 0.0, 2.0]]
+        .map(|gray| noisy_similarity(&image, &capture, 0, FadeNoise { gray, ..FadeNoise::NONE }));
+
+    // Assert
+    let red_left = from_squared(4.0);
+    assert_eq!(similarities[0], 1.0);
+    assert!((similarities[1] - red_left).abs() < 1e-12, "{} isn't {red_left}", similarities[1]);
+}
+
+#[test]
 fn fade_noise_only_takes_the_noise_out_of_a_scene() {
     // Arrange: a scene still 30 levels either side of the color, near the end of a fade
-    let directory = tempfile::tempdir().unwrap();
-    let path = directory.path().join("01_fade_{f}.png");
-    image(&path, 4, 2, |_, _| [160, 160, 160, 255]);
-    let image = SplitImage::load(&path);
-    let capture = BgraImage::from_raw(
-        4,
-        2,
-        (0..8).flat_map(|i| if i % 2 == 0 { [130, 130, 130, 255] } else { [190, 190, 190, 255] }).collect(),
-    );
-    let defaults =
-        SplitDefaults { fade_tolerance: 0, fade_noise: FadeNoise { gray: [2.0; 3], ..FadeNoise::NONE }, ..DEFAULTS };
+    let (_directory, image, capture) = alternating([160; 3], [130; 3], [190; 3]);
 
     // Act
-    let similarity = image.similarity(Some(capture.view()), &defaults, &mut Default::default());
+    let similarity = noisy_similarity(&image, &capture, 0, FadeNoise { gray: [2.0; 3], ..FadeNoise::NONE });
 
     // Assert: only the 2 levels of noise come off its spread of 30 per channel
-    let expected = 1.0 - (3.0 * (900.0 - 4.0_f64)).sqrt() / (255.0 * 3.0_f64.sqrt());
+    let expected = from_squared(3.0 * (900.0 - 4.0));
     assert!((similarity - expected).abs() < 1e-12, "{similarity} isn't {expected}");
 }
 
 #[test]
 fn fade_noise_near_black_is_at_most_half_the_mean() {
     // Arrange: what's left of a scene fading to black, 2 levels either side of a mean of 2
-    let directory = tempfile::tempdir().unwrap();
-    let path = directory.path().join("01_fade_{f}.png");
-    image(&path, 4, 2, |_, _| [0, 0, 0, 255]);
-    let image = SplitImage::load(&path);
-    let capture = BgraImage::from_raw(
-        4,
-        2,
-        (0..8).flat_map(|i| if i % 2 == 0 { [0, 0, 0, 255] } else { [4, 4, 4, 255] }).collect(),
-    );
-    let defaults =
-        SplitDefaults { fade_tolerance: 15, fade_noise: FadeNoise { black: [2.0; 3], ..FadeNoise::NONE }, ..DEFAULTS };
+    let (_directory, image, capture) = alternating([0; 3], [0; 3], [4; 3]);
 
     // Act
-    let similarity = image.similarity(Some(capture.view()), &defaults, &mut Default::default());
+    let similarity = noisy_similarity(&image, &capture, 15, FadeNoise { black: [2.0; 3], ..FadeNoise::NONE });
 
     // Assert: 1 level of noise comes off, not 2
-    let expected = 1.0 - (3.0 * (4.0 - 1.0_f64)).sqrt() / (255.0 * 3.0_f64.sqrt());
+    let expected = from_squared(3.0 * (4.0 - 1.0));
     assert!((similarity - expected).abs() < 1e-12, "{similarity} isn't {expected}");
 }
 
@@ -506,7 +512,7 @@ fn noise_is_measured_per_channel_in_the_middle() {
     let capture = noisy_middle(32, 16, [159, 160, 158, 255], [161, 160, 162, 255]);
 
     // Act
-    let noise = measure_noise(capture.view(), NOISE_GRAY, 15);
+    let noise = measure_noise(capture.view(), NoiseColor::Gray, 15);
 
     // Assert
     assert_eq!(noise, Ok([2.0, 0.0, 1.0]));
@@ -522,7 +528,7 @@ fn noise_is_measured_in_hundredths() {
     );
 
     // Act
-    let noise = measure_noise(capture.view(), [0, 0, 0], 15);
+    let noise = measure_noise(capture.view(), NoiseColor::Black, 15);
 
     // Assert: sqrt(2) / 3
     assert_eq!(noise, Ok([0.47, 0.47, 0.47]));
@@ -534,10 +540,10 @@ fn noise_isnt_measured_on_another_color() {
     let capture = BgraImage::solid([0, 0, 0], 32, 16);
 
     // Act
-    let noise = measure_noise(capture.view(), NOISE_GRAY, 15);
+    let noise = measure_noise(capture.view(), NoiseColor::Gray, 15);
 
     // Assert
-    assert_eq!(noise, Err(NoiseError::NotTheColor { expected: "#a0a0a0".into(), found: "#000000".into() }));
+    assert_eq!(noise, Err(NoiseError::NotTheColor { color: NoiseColor::Gray, found: [0, 0, 0] }));
 }
 
 #[test]
@@ -547,10 +553,39 @@ fn noise_isnt_measured_on_a_scene() {
     let capture = noisy_middle(32, 16, [157, 157, 157, 255], [163, 163, 163, 255]);
 
     // Act
-    let noise = measure_noise(capture.view(), NOISE_GRAY, 15);
+    let noise = measure_noise(capture.view(), NoiseColor::Gray, 15);
 
     // Assert
-    assert_eq!(noise, Err(NoiseError::NotSolid { expected: "#a0a0a0".into(), spread: "3.0".into() }));
+    assert_eq!(noise, Err(NoiseError::NotSolid { color: NoiseColor::Gray, spread: 3.0 }));
+}
+
+#[test]
+fn noise_isnt_measured_in_a_region_too_small_for_a_middle() {
+    // Arrange
+    let capture = BgraImage::solid([0, 0, 0], 3, 1);
+
+    // Act
+    let noise = measure_noise(capture.view(), NoiseColor::Black, 15);
+
+    // Assert
+    assert_eq!(noise, Err(NoiseError::RegionTooSmall));
+}
+
+#[test]
+fn noise_off_the_color_points_to_the_tolerance() {
+    // Arrange: a capture whose black is a little gray
+    let error = NoiseError::NotTheColor { color: NoiseColor::Black, found: [20, 20, 20] };
+
+    // Act
+    let message = error.to_string();
+
+    // Assert
+    assert_eq!(
+        message,
+        "The middle of the capture region is #141414, further from black than Fade Color Tolerance allows. Show a \
+         frame that's all black, like the end of a fade, and measure again. If your capture shows black a little \
+         off, raise Fade Color Tolerance."
+    );
 }
 
 #[test]
