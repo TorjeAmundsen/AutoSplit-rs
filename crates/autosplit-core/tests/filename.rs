@@ -2,7 +2,6 @@
 //! checked against AutoSplit by the golden tests.
 
 use autosplit_core::compare::ComparisonMethod;
-use autosplit_core::fade::FadeNoise;
 use autosplit_core::filename::{
     FilenameWarning, NameError, RESET_KEYWORD, START_KEYWORD, Setting, SplitSpec, build_filename,
     delay_time_from_filename, fade_time_from_filename, filename_warnings, has_keyword, name_parts,
@@ -179,7 +178,6 @@ fn defaults(delay_time: i64, comparison_method: i64) -> SplitDefaults {
         pause_time: 10.0,
         fps_limit: 60,
         fade_tolerance: 10,
-        fade_noise: FadeNoise::NONE,
     }
 }
 

@@ -3,7 +3,7 @@
 use std::path::{Path, PathBuf};
 
 use crate::compare::{self, CompareScratch, ComparisonMethod, Mask, SourceFeatures};
-use crate::fade::{self, FadeNoise};
+use crate::fade;
 use crate::filename::{
     self, BELOW_FLAG, DEFAULT_FADE_TIME, DUMMY_FLAG, FADE_FLAG, FilenameWarning, PAUSE_FLAG, RESET_KEYWORD,
     START_KEYWORD,
@@ -69,14 +69,12 @@ pub struct SplitDefaults {
     pub fps_limit: i64,
     /// How many levels each channel of a fade image's color may be off.
     pub fade_tolerance: i64,
-    /// The capture's noise, taken out of fade images' similarity.
-    pub fade_noise: FadeNoise,
 }
 
 impl SplitDefaults {
     /// The fade tolerance comparisons use: a hand-edited profile can have one outside 0 to 255.
     pub fn fade_tolerance_levels(&self) -> u8 {
-        fade::tolerance_levels(self.fade_tolerance)
+        self.fade_tolerance.clamp(0, 255) as u8
     }
 }
 
@@ -219,7 +217,7 @@ impl SplitImage {
             Some(color) => {
                 let tolerance = defaults.fade_tolerance_levels();
                 self.compare_resized(capture, scratch, |resized, mask, _| {
-                    fade::similarity(color, resized, mask, tolerance, &defaults.fade_noise)
+                    fade::similarity(color, resized, mask, tolerance)
                 })
             }
             None => self.compare(capture, self.comparison_method(defaults), scratch),
