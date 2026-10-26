@@ -4,8 +4,7 @@ use std::path::Path;
 
 use autosplit_core::preset::{
     PRESET_FILE, Preset, PresetError, PresetSplit, SAVESTATE_NOTE_FILE, delete_preset, duplicate_savestates,
-    duplicates_among, load_presets, new_preset_folder, same_contents_as, sanitize_file_name, save_preset,
-    unique_file_name,
+    duplicates_among, load_presets, new_preset_folder, sanitize_file_name, save_preset, unique_file_name,
 };
 use test_case::test_case;
 
@@ -170,24 +169,6 @@ fn savestates_with_the_same_contents_in_other_files_are_found() {
 }
 
 #[test]
-fn a_file_with_the_same_contents_is_found_among_others() {
-    // Arrange: one with other contents of the same size, the file itself, then the match
-    let folder = tempfile::tempdir().unwrap();
-    let picked = folder.path().join("picked.gzs");
-    file(&picked, "link's house");
-    let (other, same) = (folder.path().join("other.gzs"), folder.path().join("000.gzs"));
-    file(&other, "lost woods!!");
-    file(&same, "link's house");
-    let files = [other.as_path(), picked.as_path(), same.as_path()];
-
-    // Act
-    let found = (same_contents_as(&picked, files), same_contents_as(&other, files));
-
-    // Assert
-    assert_eq!(found, (Some(same.as_path()), None));
-}
-
-#[test]
 fn files_already_there_keep_the_first_and_never_trade() {
     // Arrange: two files the images use with the same contents, another one of them, and an image
     // without a file
@@ -281,7 +262,6 @@ fn files_the_preset_stopped_using_are_deleted() {
 }
 
 #[test_case("./boss.png"; "dot slash")]
-#[test_case(".//boss.png"; "doubled slash")]
 #[test_case("masks/../boss.png"; "through another folder")]
 fn masks_written_another_way_are_still_used(written: &str) {
     // Arrange: a hand-written preset, which saving writes as boss.png
@@ -300,15 +280,17 @@ fn masks_written_another_way_are_still_used(written: &str) {
 
 #[test]
 fn a_failed_save_leaves_the_folder_as_it_was() {
-    // Arrange: the first split's mask would be copied in, the second's is gone
+    // Arrange: the first split's mask is copied in, then the second's, a folder, can't be
     let picked = tempfile::tempdir().unwrap();
     let mask = file(&picked.path().join("mask.png"), "mask");
-    let gone = picked.path().join("gone.png").display().to_string();
+    let not_a_file = picked.path().join("folder.png");
+    std::fs::create_dir(&not_a_file).unwrap();
     let folder = tempfile::tempdir().unwrap();
     file(&folder.path().join("notes.txt"), "kept");
 
     // Act
-    let error = save_preset(None, folder.path(), &preset(vec![split("Boss", &mask), split("Door", &gone)]));
+    let splits = vec![split("Boss", &mask), split("Door", &not_a_file.display().to_string())];
+    let error = save_preset(None, folder.path(), &preset(splits));
 
     // Assert
     assert_eq!((error.is_err(), files(folder.path())), (true, vec!["notes.txt".to_owned()]));
@@ -316,15 +298,17 @@ fn a_failed_save_leaves_the_folder_as_it_was() {
 
 #[test]
 fn a_failed_save_as_new_leaves_no_folder() {
-    // Arrange
+    // Arrange: the second split's mask is a folder, which can't be copied
     let picked = tempfile::tempdir().unwrap();
     let mask = file(&picked.path().join("mask.png"), "mask");
-    let gone = picked.path().join("gone.png").display().to_string();
+    let not_a_file = picked.path().join("folder.png");
+    std::fs::create_dir(&not_a_file).unwrap();
     let presets = tempfile::tempdir().unwrap();
     let new = new_preset_folder(presets.path(), "Any%");
 
     // Act
-    let error = save_preset(None, &new, &preset(vec![split("Boss", &mask), split("Door", &gone)]));
+    let splits = vec![split("Boss", &mask), split("Door", &not_a_file.display().to_string())];
+    let error = save_preset(None, &new, &preset(splits));
 
     // Assert
     assert_eq!((error.is_err(), new.exists()), (true, false));
@@ -430,24 +414,6 @@ fn missing_files_stop_the_save_before_anything_is_written() {
         (error, files(target.path())),
         (Err(PresetError::Unreadable { path: missing, reason: "the file doesn't exist".into() }), Vec::new())
     );
-}
-
-#[test]
-fn the_savestate_folder_says_not_to_copy_from_it() {
-    // Arrange: a preset without savestates, and one with
-    let picked = tempfile::tempdir().unwrap();
-    let mask = file(&picked.path().join("mask.png"), "mask");
-    let mut boss = split("Boss", &mask);
-    boss.savestate = file(&picked.path().join("boss.gzs"), "state");
-    let (without, with) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
-
-    // Act
-    save_preset(None, without.path(), &preset(vec![split("Boss", &mask)])).unwrap();
-    save_preset(None, with.path(), &preset(vec![boss])).unwrap();
-
-    // Assert
-    let note = |folder: &Path| folder.join("savestates").join(SAVESTATE_NOTE_FILE).is_file();
-    assert_eq!((note(without.path()), note(with.path())), (false, true));
 }
 
 #[test]

@@ -576,7 +576,7 @@ pub fn duplicate_savestates(from: &Path, preset: &Preset) -> Vec<(usize, String)
 
 /// The first of `files` with the same contents as `file` but in another file, which can be used
 /// instead of a copy of it. Sizes are compared first, so a file of another size is never read.
-pub fn same_contents_as<'a>(file: &Path, files: impl IntoIterator<Item = &'a Path>) -> Option<&'a Path> {
+fn same_contents_as<'a>(file: &Path, files: impl IntoIterator<Item = &'a Path>) -> Option<&'a Path> {
     let own = std::fs::canonicalize(file).ok()?;
     let size = std::fs::metadata(&own).ok()?.len();
     let mut contents = None;

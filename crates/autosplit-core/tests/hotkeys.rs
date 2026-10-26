@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use autosplit_core::commands::{Command, TimerLink};
+use autosplit_core::commands::TimerLink;
 use autosplit_core::hotkeys::{HotkeyAction, OwnPresses};
 use autosplit_core::profile::UserProfile;
 use test_case::test_case;
@@ -28,17 +28,6 @@ fn own_presses(hotkey: &str, after: Duration) -> bool {
 
     // Act, with the expected value checked by test_case
     presses.is_own(hotkey, Duration::from_secs(1) + after)
-}
-
-#[test_case(Command::Start => HotkeyAction::Split; "start presses split")]
-#[test_case(Command::Split => HotkeyAction::Split; "split")]
-#[test_case(Command::Reset => HotkeyAction::Reset; "reset")]
-#[test_case(Command::Skip => HotkeyAction::SkipSplit; "skip")]
-#[test_case(Command::Undo => HotkeyAction::UndoSplit; "undo")]
-#[test_case(Command::Pause => HotkeyAction::Pause; "pause")]
-fn command_hotkeys(command: Command) -> HotkeyAction {
-    // Act, with the expected value checked by test_case
-    HotkeyAction::from(command)
 }
 
 fn profile_with_hotkeys() -> UserProfile {

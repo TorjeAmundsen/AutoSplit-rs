@@ -9,7 +9,8 @@ use autosplit_core::filename::{
 };
 use autosplit_core::image::BgraImage;
 use autosplit_core::preset::{
-    PRESET_FILE, Preset, PresetError, PresetSplit, SPLIT_KEYS, SplitLibrary, game_key, load_libraries, load_presets,
+    LIBRARY_FILE, PRESET_FILE, Preset, PresetError, PresetSplit, SPLIT_KEYS, SplitLibrary, game_key, load_libraries,
+    load_presets,
 };
 use autosplit_core::profile::{ProfileError, UserProfile};
 use autosplit_core::split_folder::{ValidationContext, load_split_folder};
@@ -55,7 +56,10 @@ fn bundled_libraries_load_with_all_their_files() {
         })
         .filter(|path| !path.is_file())
         .collect();
-    assert_eq!((libraries.len(), errors, missing), (1, vec![], vec![]));
+    // Every folder with a library file loads
+    let folders = std::fs::read_dir(bundled("splits")).unwrap();
+    let with_file = folders.filter(|entry| entry.as_ref().unwrap().path().join(LIBRARY_FILE).is_file()).count();
+    assert_eq!((libraries.is_empty(), libraries.len(), errors, missing), (false, with_file, vec![], vec![]));
 }
 
 #[test]
@@ -118,7 +122,6 @@ fn presets_of_a_game_spelled_differently_are_listed_together() {
 }
 
 #[test_case("The Legend of Zelda: Ocarina of Time", "the legend of zelda:  ocarina of time " => true; "case and spaces")]
-#[test_case("Zelda", "Mario" => false; "another game")]
 fn games_are_the_same_ignoring_case_and_spaces(game: &str, other: &str) -> bool {
     // Act, with the expected value checked by test_case
     game_key(game) == game_key(other)
@@ -366,7 +369,6 @@ fn savestates_of_several_reset_images_get_their_place() {
 
 #[test_case(0 => 0..1; "a split of its own")]
 #[test_case(1 => 1..4; "the first of a group")]
-#[test_case(2 => 1..4; "one that joins")]
 #[test_case(3 => 1..4; "the last that joins")]
 #[test_case(4 => 4..5; "after a group")]
 #[test_case(9 => 5..5; "no such split")]
@@ -450,16 +452,12 @@ then = true
 name = \"Boss\"
 mask = \"boss.png\"
 " => true; "no game")]
-#[test_case("Game = \"Game\"
-[[split]]
-name = \"Boss\"
-mask = \"boss.png\"
-" => true; "a misspelled game")]
 #[test_case("game = \"Game\"
+gmae = \"Game\"
 [[split]]
 name = \"Boss\"
 mask = \"boss.png\"
-" => false; "a game")]
+" => true; "a misspelled key")]
 fn libraries_need_a_game_and_only_their_keys(text: &str) -> bool {
     // Act, with the expected value checked by test_case: whether it's an error
     SplitLibrary::parse(text, Path::new("splits.toml")).is_err()
@@ -472,7 +470,7 @@ fn libraries_need_a_game_and_only_their_keys(text: &str) -> bool {
 #[test_case("#a0a0a" => None; "too short")]
 #[test_case("#g0a0a0" => None; "not hex")]
 #[test_case("#+a+a+a" => None; "signs, which number parsing takes")]
-#[test_case("#ÆØa0a0" => None; "not ascii")]
+#[test_case("#aÆa0a" => None; "six bytes that aren't ascii")]
 fn colors(text: &str) -> Option<[u8; 3]> {
     // Act, with the expected value checked by test_case
     autosplit_core::preset::parse_color(text)

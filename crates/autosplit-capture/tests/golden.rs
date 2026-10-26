@@ -95,9 +95,10 @@ fn padded(case: &YuvCase) -> (Vec<u8>, Layout) {
 }
 
 /// The odd area converted in the area trials: one pixel in from the top left, to the right
-/// edge minus one.
+/// edge minus one, and at least one pixel wide.
 fn odd_area(case: &YuvCase) -> Rect {
-    Rect { left: 1.min(case.width - 1), top: 1.min(case.height - 1), right: case.width - 1, bottom: case.height }
+    let left = 1.min(case.width - 1);
+    Rect { left, top: 1.min(case.height - 1), right: (case.width - 1).max(left + 1), bottom: case.height }
 }
 
 fn yuv_trials(cases: Vec<YuvCase>) -> Vec<Trial> {

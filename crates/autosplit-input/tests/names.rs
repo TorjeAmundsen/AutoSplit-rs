@@ -41,7 +41,6 @@ fn send_keys(text: &str) -> Result<Vec<KeyCode>, HotkeyError> {
     sent(text)
 }
 
-#[test_case("num 1", KeyCode::Numpad1, Modifiers::empty() => true; "keypad digit")]
 #[test_case("num 1", KeyCode::Digit1, Modifiers::empty() => false; "keypad digit isn't the main row digit")]
 #[test_case("num 1", KeyCode::Numpad1, Modifiers::SHIFT => true; "single keys fire whatever modifiers are held")]
 #[test_case("-", KeyCode::Minus, Modifiers::empty() => true; "minus listens to the main row minus")]

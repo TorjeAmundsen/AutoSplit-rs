@@ -245,7 +245,7 @@ fn toggle_auto_reset_hotkey_tells_the_window() {
 }
 
 #[test]
-fn starting_without_a_split_hotkey_shows_one_dialog() {
+fn starting_without_a_split_hotkey_shows_one_dialog_and_leaves_the_folder_usable() {
     // Arrange
     let folder = split_folder();
     let profile =
@@ -255,21 +255,13 @@ fn starting_without_a_split_hotkey_shows_one_dialog() {
     let seen = run(profile, vec![Event::Ui(UiCommand::StartAutoSplitter)]);
 
     // Assert
-    assert_eq!(seen.notices(), ["dialog: No split hotkey is set, so the timer can't be started."]);
-}
-
-#[test]
-fn starting_without_a_split_hotkey_leaves_the_folder_usable() {
-    // Arrange
-    let folder = split_folder();
-    let profile =
-        UserProfile { split_image_directory: folder.path().to_string_lossy().into_owned(), ..UserProfile::default() };
-
-    // Act
-    let seen = run(profile, vec![Event::Ui(UiCommand::StartAutoSplitter)]);
-
-    // Assert
-    assert_eq!(seen.last_idle(), "can't start: the profile has no split hotkey");
+    assert_eq!(
+        (seen.notices(), seen.last_idle()),
+        (
+            vec!["dialog: No split hotkey is set, so the timer can't be started.".to_owned()],
+            "can't start: the profile has no split hotkey".to_owned()
+        )
+    );
 }
 
 #[test]
@@ -356,8 +348,8 @@ fn closing_the_live_tester_drops_its_image() {
     // Act
     let seen = run(UserProfile::default(), vec![open_tester(folder.path().join("001_split.png")), close]);
 
-    // Assert
-    assert_eq!(seen.last_tester(), None);
+    // Assert: no dialog, which an image that couldn't be opened would show, and closed
+    assert_eq!((seen.notices(), seen.last_tester()), (Vec::<String>::new(), None));
 }
 
 #[test]

@@ -80,7 +80,8 @@ fn a_game_without_a_library_gets_one() {
     // Act
     let (splits, _preset, folder) = with_boss();
 
-    // Assert: it loads, one ready-made split of two images, with copies of their masks
+    // Assert: it loads, one ready-made split of two images, with copies of their masks and small
+    // base images
     let (libraries, errors) = load_libraries(splits.path());
     let library = load(&folder);
     let steps: Vec<(&str, &str, bool, &str)> = (library.splits.iter())
@@ -103,17 +104,7 @@ fn a_game_without_a_library_gets_one() {
         files(&folder),
         ["Ganon.png", "Ganon_intro.png", "base_Ganon.png", "base_Ganon_intro.png", LIBRARY_FILE]
     );
-}
-
-#[test]
-fn base_images_are_written_small() {
-    // Arrange
-    let (_splits, _preset, folder) = with_boss();
-
-    // Act
     let base = BgraImage::open_png(&folder.join("base_Ganon.png")).unwrap();
-
-    // Assert
     assert_eq!((base.width(), base.height()), BASE_IMAGE_SIZE);
 }
 
@@ -366,11 +357,14 @@ fn contents(folder: &Path) -> Vec<(String, Vec<u8>)> {
 
 #[test]
 fn a_replace_that_fails_changes_nothing() {
-    // Arrange: the boss made again, its second image's savestate missing
+    // Arrange: the boss made again, the first image written before the second's savestate, a
+    // folder, can't be copied
     let (_splits, preset, folder) = with_boss();
     let before = contents(&folder);
     let mut flash = step(preset.path(), "Ganon");
-    flash.savestate = Some(preset.path().join("missing.gzs"));
+    let not_a_file = preset.path().join("flash.gzs");
+    std::fs::create_dir(&not_a_file).unwrap();
+    flash.savestate = Some(not_a_file);
     let mut intro = step(preset.path(), "Ganon intro");
     std::fs::write(intro.mask.as_ref().unwrap(), b"another mask").unwrap();
     intro.split.dummy = true;
@@ -523,8 +517,10 @@ fn new_files_never_share_a_name_in_another_case() {
     let folder = add_ready_made(splits.path(), GAME, "Gohma", vec![upper, lower]).unwrap();
 
     // Assert: each its own mask and base image
-    let names: Vec<String> = load(&folder).splits.iter().map(|step| step.split.mask.to_lowercase()).collect();
-    assert_ne!(names[0], names[1]);
+    let library = load(&folder);
+    let names: Vec<(&str, &str)> =
+        (library.splits.iter()).map(|step| (step.split.mask.as_str(), step.base_image.as_str())).collect();
+    assert_eq!(names, [("Gohma.png", "base_Gohma.png"), ("gohma (1).png", "base_gohma (1).png")]);
 }
 
 #[test]

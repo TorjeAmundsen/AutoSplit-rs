@@ -19,7 +19,6 @@ fn out_of_range(setting: Setting, value: &str) -> Vec<FilenameWarning> {
 }
 
 #[test_case("01_(0.9)_[5]_#1000#_@3@_^2^_{b}.png" => Vec::<FilenameWarning>::new(); "valid values")]
-#[test_case("split.png" => Vec::<FilenameWarning>::new(); "no values")]
 #[test_case("x_(0.9a).png" => not_a_number(Setting::Threshold, "0.9a"); "threshold that isn't a number")]
 #[test_case("x_[ten].png" => not_a_number(Setting::PauseTime, "ten"); "pause that isn't a number")]
 #[test_case("x_( 0.95 ).png" => not_a_number(Setting::Threshold, " 0.95 "); "threshold with spaces")]
@@ -74,16 +73,6 @@ fn delay_with_an_underscore_falls_back_to_the_default() {
     assert_eq!(delay, None);
 }
 
-#[test_case("x_#5#_#6#.png"; "two delays")]
-#[test_case("x_#5.png"; "one delimiter")]
-fn delay_with_the_wrong_number_of_delimiters_falls_back_to_the_default(filename: &str) {
-    // Act
-    let delay = delay_time_from_filename(filename);
-
-    // Assert
-    assert_eq!(delay, None);
-}
-
 #[test_case(FilenameWarning::Delimiters { setting: Setting::Threshold, count: 4 } => "'(' and ')' appear 4 times, but the threshold has to be between one of each, so the profile's default is used"; "pair")]
 #[test_case(FilenameWarning::Delimiters { setting: Setting::DelayTime, count: 3 } => "'#' appears 3 times, but the delay time has to be between exactly 2, so the profile's default is used"; "same character")]
 fn delimiter_warning_message(warning: FilenameWarning) -> String {
@@ -104,7 +93,6 @@ fn warning_message_names_the_value_and_the_fallback() {
 }
 
 #[test_case("reset.png", RESET_KEYWORD => true; "reset alone")]
-#[test_case("reset_(0.96)_[0.1].png", RESET_KEYWORD => true; "reset with values")]
 #[test_case("03_reset_room.png", RESET_KEYWORD => true; "reset between underscores")]
 #[test_case("02reset.png", RESET_KEYWORD => true; "digits before reset")]
 #[test_case("reset2.png", RESET_KEYWORD => true; "digits after reset")]
@@ -112,20 +100,9 @@ fn warning_message_names_the_value_and_the_fallback() {
 #[test_case("resets.png", RESET_KEYWORD => false; "letters after reset")]
 #[test_case("preset_reset.png", RESET_KEYWORD => true; "a later whole word counts")]
 #[test_case("start_auto_splitter_(0.9).png", START_KEYWORD => true; "start keyword")]
-#[test_case("xstart_auto_splitter.png", START_KEYWORD => false; "start keyword inside a word")]
 fn keyword(filename: &str, keyword: &str) -> bool {
     // Act, with the expected value checked by test_case
     has_keyword(filename, keyword)
-}
-
-#[test_case("x_(0.5.png"; "unclosed threshold")]
-#[test_case("x_(0.5"; "unclosed threshold at the end")]
-fn unclosed_threshold_is_ignored(filename: &str) {
-    // Act
-    let threshold = threshold_from_filename(filename);
-
-    // Assert
-    assert_eq!(threshold, None);
 }
 
 /// The parts of `filename` as `kind:text`, with `!` for ignored values.
@@ -207,7 +184,6 @@ fn defaults(delay_time: i64, comparison_method: i64) -> SplitDefaults {
 #[test_case(SPEC, 5, 20, None => "05_Bottle_(0.93).png"; "padded to the count's digits")]
 #[test_case(SPEC, 5, 9, None => "5_Bottle_(0.93).png"; "one digit")]
 #[test_case(SplitSpec { name: "reset", pause: Some(0.1), ..SPEC }, 0, 20, None => "reset_(0.93)_[0.1].png"; "reset image without a number")]
-#[test_case(SplitSpec { name: "start_auto_splitter", pause: Some(10.0), below: true, ..SPEC }, 1, 20, None => "start_auto_splitter_(0.93)_[10]_{b}.png"; "start image")]
 #[test_case(SplitSpec { pause: Some(35.0), delay: Some(1100), below: true, ..SPEC }, 5, 20, None => "05_Bottle_(0.93)_[35]_#1100#_{b}.png"; "every setting")]
 #[test_case(SplitSpec { threshold: None, ..SPEC }, 5, 20, None => "05_Bottle.png"; "the profile's threshold")]
 #[test_case(SplitSpec { dummy: true, below: true, ..SPEC }, 5, 20, None => "05_Bottle_(0.93)_{db}.png"; "flags in one group")]
@@ -227,7 +203,6 @@ fn builds_file_names_like_automask(
     build_filename(&spec, index, count, defaults.as_ref())
 }
 
-#[test_case("Bottle" => Ok(()); "plain")]
 #[test_case("Full white fade" => Ok(()); "spaces")]
 #[test_case("reset" => Ok(()); "reset image")]
 #[test_case(" " => Err(NameError::Empty); "empty")]

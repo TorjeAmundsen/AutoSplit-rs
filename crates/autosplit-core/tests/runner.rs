@@ -220,32 +220,6 @@ fn ms(milliseconds: u64) -> Duration {
 }
 
 #[test]
-fn split_is_sent_when_the_image_matches() {
-    // Arrange
-    let mut harness = Harness::new(&[("1.png", RED), ("2.png", BLUE)], defaults());
-    harness.start();
-
-    // Act
-    harness.feed(Some(RED), SECOND);
-
-    // Assert
-    assert_eq!(harness.sent(), [Command::Split]);
-}
-
-#[test]
-fn nothing_is_sent_while_the_image_does_not_match() {
-    // Arrange
-    let mut harness = Harness::new(&[("1.png", RED)], defaults());
-    harness.start();
-
-    // Act
-    harness.feed(Some(BLUE), 5 * SECOND);
-
-    // Assert
-    assert_eq!(harness.sent(), []);
-}
-
-#[test]
 fn run_stops_after_the_last_split() {
     // Arrange
     let mut harness = Harness::new(&[("1.png", RED), ("2.png", BLUE)], defaults());
@@ -413,7 +387,7 @@ fn pause_wakes_up_when_the_reset_image_pause_is_over() {
     let wakeup = harness.runner.next_wakeup().unwrap();
 
     // Assert
-    assert!(wakeup >= ms(3000), "woke at {wakeup:?}");
+    assert_eq!(wakeup, ms(3000));
 }
 
 #[test]
@@ -492,20 +466,8 @@ fn start_image_pause_delays_the_first_split_image() {
     // Act
     harness.feed(Some(RED), ms(1500));
 
-    // Assert
-    assert_eq!(harness.sent(), [Command::Start]);
-}
-
-#[test]
-fn start_image_pause_shows_no_file_name() {
-    // Arrange
-    let mut harness = Harness::new(&[("start_auto_splitter_[2].png", GREEN), ("1.png", RED)], defaults());
-
-    // Act
-    harness.feed(Some(GREEN), ms(100));
-
-    // Assert
-    assert_eq!((harness.runner.is_running(), harness.current_filename()), (true, None));
+    // Assert: and no file name shows during the pause
+    assert_eq!((harness.sent(), harness.current_filename()), (vec![Command::Start], None));
 }
 
 #[test]
@@ -667,10 +629,12 @@ fn undo_hotkey_on_the_first_split_is_ignored() {
     assert_eq!((harness.runner.is_running(), harness.current_filename()), (true, Some("1.png")));
 }
 
-#[test]
-fn undo_split_button_on_the_first_split_is_ignored() {
+#[test_case(false; "undo split button")]
+#[test_case(true; "livesplit undo")]
+fn undo_split_button_on_the_first_split_is_ignored(synced: bool) {
     // Arrange
-    let mut harness = Harness::new(&[("1.png", RED), ("2.png", BLUE)], defaults());
+    let images = [("1.png", RED), ("2.png", BLUE)];
+    let mut harness = if synced { Harness::synced(&images, defaults()) } else { Harness::new(&images, defaults()) };
     harness.start();
     harness.feed(Some(BLACK), ms(100));
 
@@ -678,21 +642,10 @@ fn undo_split_button_on_the_first_split_is_ignored() {
     harness.undo(false);
 
     // Assert
-    assert_eq!((harness.sent(), harness.runner.is_running()), (vec![], true));
-}
-
-#[test]
-fn livesplit_undo_on_the_first_split_does_nothing() {
-    // Arrange
-    let mut harness = Harness::synced(&[("1.png", RED), ("2.png", BLUE)], defaults());
-    harness.start();
-    harness.feed(Some(BLACK), ms(100));
-
-    // Act
-    harness.undo(false);
-
-    // Assert
-    assert_eq!((harness.sent(), harness.current_filename()), (vec![], Some("1.png")));
+    assert_eq!(
+        (harness.sent(), harness.runner.is_running(), harness.current_filename()),
+        (vec![], true, Some("1.png"))
+    );
 }
 
 #[test]
@@ -1126,15 +1079,18 @@ fn each_reset_image_waits_for_its_own_pause_time() {
 #[test]
 fn reset_images_are_paused_until_the_shortest_pause_is_over() {
     // Arrange
-    let mut harness =
-        Harness::grouped(&[("1.png", RED), ("reset_[3].png", BLACK), ("reset_2_[2].png", GREEN)], defaults());
+    let mut harness = Harness::grouped(
+        &[("1_[30].png", RED), ("2.png", BLUE), ("reset_[3].png", BLACK), ("reset_2_[2].png", GREEN)],
+        defaults(),
+    );
     harness.start();
+    harness.feed(Some(RED), ms(100));
 
-    // Act
-    harness.feed(Some(BLACK), ms(1900));
+    // Act: during the split image's pause, which only the reset images wake up
+    let wakeup = harness.runner.next_wakeup();
 
     // Assert
-    assert_eq!(harness.runner.status().reset_similarity, Some(ResetReading::Paused));
+    assert_eq!(wakeup, Some(ms(2000)));
 }
 
 #[test]

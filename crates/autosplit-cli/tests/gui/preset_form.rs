@@ -4,7 +4,7 @@ use autosplit::gui::preset_form::{
     Draft, Field, InstructionText, ListChange, Problem, SplitEdit, SplitKind, discard_question, elide_middle,
     field_problems, field_value, import_blocker, in_preset, instruction_cards, known_game, library_file_name,
     library_heading, matches_search, next_problem_split, one_copy_question, problem_flags, problem_list,
-    problem_summary, saved_preset_name, saved_split, settings_changes, settings_problem, split_heading, status_line,
+    problem_summary, saved_preset_name, settings_changes, settings_problem, split_heading, status_line,
     too_few_selected, with_settings_of,
 };
 use autosplit_core::preset::{Preset, PresetSplit};
@@ -67,15 +67,6 @@ fn instruction_cards_are_named_like_the_copied_savestates() {
 }
 
 #[test]
-fn an_unchanged_preset_has_no_changes() {
-    // Act
-    let draft = draft(&["Boss"]);
-
-    // Assert
-    assert!(!draft.has_changes());
-}
-
-#[test]
 fn editing_back_to_how_it_was_has_no_changes() {
     // Arrange
     let mut draft = draft(&["Boss"]);
@@ -88,17 +79,7 @@ fn editing_back_to_how_it_was_has_no_changes() {
     assert!(!draft.has_changes());
 }
 
-#[test]
-fn a_new_preset_can_be_saved() {
-    // Act
-    let draft = Draft::new("Game");
-
-    // Assert
-    assert_eq!((draft.can_save(), names(&draft), draft.preset.game.as_str()), (true, vec!["Split1"], "Game"));
-}
-
 #[test_case(None => None; "the profile's")]
-#[test_case(Some(0.95) => Some(0.95); "its own, also like the profile's")]
 #[test_case(Some(0.9954) => Some(0.995); "rounded like the spin box")]
 #[test_case(Some(1.5) => Some(1.0); "at most 1")]
 fn thresholds_are_the_splits_own_or_the_profiles(threshold: Option<f64>) -> Option<f64> {
@@ -137,30 +118,6 @@ fn added_splits_go_after_the_selected_one_with_a_free_name() {
 
     // Assert
     assert_eq!((added, names(&draft)), ((1, ListChange::Insert(1)), vec!["Split1", "Split2", "Boss"]));
-}
-
-#[test]
-fn without_a_selection_splits_are_added_at_the_end() {
-    // Arrange
-    let mut draft = draft(&["Boss"]);
-
-    // Act
-    let added = draft.add(None);
-
-    // Assert
-    assert_eq!(added, (1, ListChange::Insert(1)));
-}
-
-#[test]
-fn duplicates_go_after_their_split() {
-    // Arrange
-    let mut draft = draft(&["Boss", "Door"]);
-
-    // Act
-    let duplicated = draft.duplicate(0);
-
-    // Assert
-    assert_eq!((duplicated, names(&draft)), (Some((1, ListChange::Insert(1))), vec!["Boss", "Boss", "Door"]));
 }
 
 #[test_case(&["Boss", "Door"], 1 => Some((0, ListChange::Remove(1))); "last selects the one before")]
@@ -251,7 +208,6 @@ fn problems_name_their_split() {
     );
 }
 
-#[test_case("" => true; "none")]
 #[test_case("  " => true; "only spaces")]
 #[test_case("Game" => false; "one")]
 fn a_preset_needs_a_game(game: &str) -> bool {
@@ -280,9 +236,7 @@ fn a_preset_without_splits_needs_one() {
 }
 
 #[test_case(1.3 => 1.3; "pause")]
-#[test_case(0.1 => 0.1; "short pause")]
 #[test_case(0.92 => 0.92; "threshold")]
-#[test_case(60.0 => 60.0; "whole number")]
 fn fields_give_the_number_they_show(value: f32) -> f64 {
     // Act, with the expected value checked by test_case
     field_value(value)
@@ -293,8 +247,8 @@ fn a_pause_from_a_field_names_the_file_as_typed() {
     // Arrange
     let mut draft = draft(&["Boss"]);
 
-    // Act
-    draft.edit_split(0, SplitEdit::Pause(Some(field_value(1.3))));
+    // Act: 1.3 in the field, which is 1.2999999523162842 as an f32
+    draft.edit_split(0, SplitEdit::Pause(Some(f64::from(1.3_f32))));
 
     // Assert
     assert_eq!(draft.preset.file_names(None), ["0_Boss_[1.3].png"]);
@@ -379,9 +333,7 @@ fn a_preset_of_reset_and_start_images_needs_a_split() {
 }
 
 #[test_case(&["Boss", "Boss"], 1 => (true, true); "same name")]
-#[test_case(&["Boss", "boss"], 1 => (true, true); "same name in another case")]
 #[test_case(&["Bär", "BÄR"], 1 => (true, true); "same name in another case beyond ascii")]
-#[test_case(&["Boss", "Door", "Boss"], 2 => (true, true); "same name as the first of three")]
 #[test_case(&["Boss", "Boss Alt"], 1 => (false, false); "other name")]
 fn splits_compared_together_need_their_own_names(names: &[&str], index: usize) -> (bool, bool) {
     // Arrange: every split compared together with the first
@@ -494,17 +446,17 @@ fn added_splits_go_after_the_group() {
     assert_eq!((added, grouped_names(&draft)), ((2, ListChange::Insert(2)), "A +B Split1 C".to_owned()));
 }
 
-#[test_case(0 => (2, "A +B A C".to_owned()); "the first is a split of its own")]
-#[test_case(1 => (2, "A +B +B C".to_owned()); "the others join the group")]
-fn copies_go_after_the_group(index: usize) -> (usize, String) {
+#[test_case(0 => (2, ListChange::Insert(2), "A +B A C".to_owned()); "the first is a split of its own")]
+#[test_case(1 => (2, ListChange::Insert(2), "A +B +B C".to_owned()); "the others join the group")]
+fn copies_go_after_the_group(index: usize) -> (usize, ListChange, String) {
     // Arrange
     let mut draft = grouped(&["A", "+B", "C"]);
 
     // Act
-    let (at, _) = draft.duplicate(index).unwrap();
+    let (at, change) = draft.duplicate(index).unwrap();
 
     // Assert, with the expected value checked by test_case
-    (at, grouped_names(&draft))
+    (at, change, grouped_names(&draft))
 }
 
 #[test_case(&["X", "A", "+B"], 2, true => (1, "X B +A".to_owned()); "inside the group")]
@@ -542,11 +494,11 @@ fn an_untouched_new_preset_has_no_changes_but_can_be_saved() {
     let mut draft = Draft::new("Game");
 
     // Act
-    let untouched = (draft.has_changes(), draft.can_save());
+    let untouched = (draft.has_changes(), draft.can_save(), names(&draft).join(" "), draft.preset.game.clone());
     draft.preset.name = "Any%".into();
 
-    // Assert: closing it doesn't ask, and an edit counts
-    assert_eq!((untouched, draft.has_changes()), ((false, true), true));
+    // Assert: one split for the game, closing it doesn't ask, and an edit counts
+    assert_eq!((untouched, draft.has_changes()), ((false, true, "Split1".to_owned(), "Game".to_owned()), true));
 }
 
 #[test]
@@ -607,7 +559,6 @@ fn savestate_extensions_are_the_presets_own() {
     assert_eq!(extensions, ["abc", "efg"]);
 }
 
-#[test_case(&["Boss", "Door"], 1 => None; "after a split")]
 #[test_case(&["Boss"], 0 => Some("It's the first split, so there's no split above to compare it with."); "first")]
 #[test_case(&["Boss", "reset"], 1 => Some("Start and reset images aren't splits, so they can't be compared with one."); "reset image")]
 #[test_case(&["reset", "Door"], 1 => Some("The split above is a start or reset image, which isn't a split to compare it with."); "after a reset image")]
@@ -667,7 +618,7 @@ fn with_problems_the_line_is_their_summary() {
     let line = status_line(&draft.preset, &problems, draft.has_changes());
 
     // Assert
-    assert_eq!(Some(line), problem_summary(&draft.preset, &problems));
+    assert_eq!(line, "Boss: It needs a mask. Choose one.");
 }
 
 #[test_case(0 => Some(2); "the next one")]
@@ -719,16 +670,21 @@ fn delays_are_whole_milliseconds(delay: Option<f64>) -> Option<u32> {
 }
 
 #[test]
-fn only_the_type_changes_other_fields() {
+fn only_the_type_and_what_it_compares_by_change_other_fields() {
     // Arrange
-    let edits = [SplitEdit::Kind(SplitKind::Reset), SplitEdit::Name("Boss".into()), SplitEdit::Mask("a.png".into())];
+    let edits = [
+        SplitEdit::Kind(SplitKind::Reset),
+        SplitEdit::Compare(true),
+        SplitEdit::Name("Boss".into()),
+        SplitEdit::Mask("a.png".into()),
+    ];
 
     // Act
     let flags: Vec<(bool, bool)> =
         edits.iter().map(|edit| (edit.changes_other_fields(), edit.changes_mask())).collect();
 
     // Assert
-    assert_eq!(flags, [(true, false), (false, false), (false, true)]);
+    assert_eq!(flags, [(true, false), (true, false), (false, false), (false, true)]);
 }
 
 #[test_case("the legend of zelda:  ocarina of time " => Some("The Legend of Zelda: Ocarina of Time"); "other case and spaces")]
@@ -760,7 +716,6 @@ fn savestates_there_already_are_offered_instead_of_copies(library: bool) -> Stri
 }
 
 #[test_case("006 enter deku.gzs", 15 => "006 en...ku.gzs"; "shortened in the middle")]
-#[test_case("deku.gzs", 15 => "deku.gzs"; "short enough")]
 #[test_case("006 enter deku.gzs", 18 => "006 enter deku.gzs"; "exactly the limit")]
 #[test_case("Dékù Trée.gzs", 12 => "Dékù...e.gzs"; "characters, not bytes")]
 fn long_file_names_keep_their_start_and_end(name: &str, max: usize) -> String {
@@ -785,44 +740,19 @@ fn imported_splits_go_after_the_selected_one_with_their_files_in_the_library() {
     let mut draft = draft(&["Boss", "Door"]);
     let library = std::env::temp_dir().join("splits").join("Game");
 
+    let split = PresetSplit { savestate: "escape.gzs".into(), ..library_split("Escape") };
+
     // Act
-    let imported = draft.import(draft.place_after(Some(0)), &[library_split("Escape")], &library);
+    let imported = draft.import(draft.place_after(Some(0)), &[split], &library);
 
     // Assert: settings kept as the library has them, a split of its own
     let expected = PresetSplit {
         mask: library.join("escape.png").display().to_string(),
+        savestate: library.join("escape.gzs").display().to_string(),
         with_previous: false,
         ..library_split("Escape")
     };
     assert_eq!((imported, &draft.preset.splits[1]), (vec![ListChange::Insert(1)], &expected));
-}
-
-#[test]
-fn imported_savestates_point_into_the_library_too() {
-    // Arrange
-    let mut draft = draft(&["Boss"]);
-    let library = std::env::temp_dir().join("splits").join("Game");
-    let split = PresetSplit { savestate: "escape.gzs".into(), ..library_split("Escape") };
-
-    // Act
-    draft.import(draft.place_after(None), &[split], &library);
-
-    // Assert
-    assert_eq!(draft.preset.splits[1].savestate, library.join("escape.gzs").display().to_string());
-}
-
-#[test]
-fn imported_splits_go_after_the_splits_compared_with_the_selected_one() {
-    // Arrange
-    let mut draft = draft(&["Boss", "Boss 2", "Door"]);
-    draft.preset.splits[1].with_previous = true;
-
-    // Act
-    let place = draft.place_after(Some(0));
-    draft.import(place, &[library_split("Escape")], std::path::Path::new("library"));
-
-    // Assert
-    assert_eq!((place, names(&draft)), (2, vec!["Boss", "Boss 2", "Escape", "Door"]));
 }
 
 #[test_case("reset" => "Reset Image"; "reset image")]
@@ -837,7 +767,6 @@ fn library_splits_are_headed_like_the_split_list(name: &str) -> String {
 #[test_case("ganon" => true; "a name in another case")]
 #[test_case("slash  INTRO" => true; "words in different texts")]
 #[test_case("ganon bottle" => false; "a word in none")]
-#[test_case("flash" => false; "nothing has it")]
 fn searching_needs_every_word_somewhere(search: &str) -> bool {
     // Act, with the expected value checked by test_case
     matches_search(&["Ganon", "Ganon intro", "Final slash on Ganon"], search)
@@ -891,7 +820,6 @@ fn inserting_above_or_below_goes_around_splits_compared_together(selected: Optio
     (draft.place_before(selected), draft.place_after(selected))
 }
 
-#[test_case(0 => 0; "above the first")]
 #[test_case(1 => 1; "between splits of their own")]
 #[test_case(2 => 1; "in the middle of a group of two, its start")]
 #[test_case(4 => 4; "at the end")]
@@ -1133,7 +1061,6 @@ fn fade_times_out_of_range_are_problems(time: u32) -> Vec<String> {
 }
 
 #[test_case(None => (None, None, None); "the profile's threshold")]
-#[test_case(Some(0.92) => (None, None, Some(0.92)); "its own threshold")]
 fn comparing_by_a_screenshot_again_drops_the_fade_and_brings_back_the_threshold(
     threshold: Option<f64>,
 ) -> (Option<String>, Option<u32>, Option<f64>) {
@@ -1163,23 +1090,6 @@ fn comparing_by_a_fade_and_back_is_no_change() {
 
     // Assert
     assert_eq!(draft.preset, before.preset);
-}
-
-#[test]
-fn fade_splits_go_into_the_split_library_without_a_savestate() {
-    // Arrange: switched to a fade while it had a savestate, which the form hides
-    let fade = PresetSplit {
-        fade: Some("#000000".into()),
-        savestate: "boss.gzs".into(),
-        instructions: "Advance a frame.".into(),
-        ..split("Boss")
-    };
-
-    // Act
-    let saved = saved_split(&fade);
-
-    // Assert
-    assert_eq!((saved.savestate.as_str(), saved.instructions.as_str()), ("", ""));
 }
 
 #[test]

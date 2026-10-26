@@ -100,7 +100,7 @@ fn placeholder_keeps_the_previous_frame() {
 }
 
 #[test]
-fn placeholder_alone_is_not_a_frame() {
+fn placeholder_alone_is_noticed_but_not_a_frame() {
     // Arrange
     let slot = FrameSlot::default();
 
@@ -108,7 +108,7 @@ fn placeholder_alone_is_not_a_frame() {
     slot.receive(&PLACEHOLDER, NV12);
 
     // Assert
-    assert!(!slot.receiving(Instant::now()));
+    assert_eq!((slot.receiving(Instant::now()), slot.placeholder_seen()), (false, true));
 }
 
 #[test]
@@ -122,18 +122,6 @@ fn placeholder_while_not_wanted_is_not_a_frame() {
 
     // Assert
     assert!(!slot.receiving(Instant::now()));
-}
-
-#[test]
-fn placeholder_is_noticed() {
-    // Arrange
-    let slot = FrameSlot::default();
-
-    // Act
-    slot.receive(&PLACEHOLDER, NV12);
-
-    // Assert
-    assert!(slot.placeholder_seen());
 }
 
 #[test]
@@ -169,10 +157,13 @@ fn kept_frame_times_out_from_its_arrival() {
     // Arrange
     let slot = FrameSlot::default();
     slot.set_wanted(false);
+    let arrival = Instant::now();
     slot.receive(&[1, 1, 1, 1], GRAY);
+    // Converted well after it arrived
+    std::thread::sleep(Duration::from_millis(50));
 
     // Act
-    let latest = slot.latest(Instant::now() + FRAME_TIMEOUT + Duration::from_millis(1));
+    let latest = slot.latest(arrival + FRAME_TIMEOUT + Duration::from_millis(10));
 
     // Assert
     assert!(latest.is_none());

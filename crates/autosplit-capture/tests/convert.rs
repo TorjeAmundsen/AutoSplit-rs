@@ -93,19 +93,25 @@ fn odd_sized_yuv_420_frame_isnt_converted() {
     assert_eq!(converted, None);
 }
 
-#[test]
-fn corners_are_the_frame_corners() {
+fn nv12_frame() -> (Vec<u8>, Layout) {
+    let layout = Layout::packed(PixelFormat::Yuv420(Yuv420::Nv12), 6, 4);
+    ((0..layout.frame_len()).map(|i| (i * 37 % 251) as u8).collect(), layout)
+}
+
+#[test_case(frame(PixelFormat::Gray); "gray")]
+#[test_case(nv12_frame(); "nv12, which converts more than the corner pixel")]
+fn corners_are_the_frame_corners((data, layout): (Vec<u8>, Layout)) {
     // Arrange
-    let (data, layout) = frame(PixelFormat::Gray);
+    let (width, height) = (layout.width, layout.height);
     let mut full = BgraImage::default();
-    layout.convert(&data, Rect::full(WIDTH, HEIGHT), &mut full).unwrap();
-    let pixel = |x: usize, y: usize| -> [u8; 4] { full.data()[(y * WIDTH + x) * 4..][..4].try_into().unwrap() };
+    layout.convert(&data, Rect::full(width, height), &mut full).unwrap();
+    let pixel = |x: usize, y: usize| -> [u8; 4] { full.data()[(y * width + x) * 4..][..4].try_into().unwrap() };
 
     // Act
     let corners = layout.corners(&data, &mut BgraImage::default());
 
     // Assert
-    assert_eq!(corners, Some([pixel(0, 0), pixel(WIDTH - 1, 0), pixel(0, HEIGHT - 1), pixel(WIDTH - 1, HEIGHT - 1)]));
+    assert_eq!(corners, Some([pixel(0, 0), pixel(width - 1, 0), pixel(0, height - 1), pixel(width - 1, height - 1)]));
 }
 
 #[test_case(Layout::packed(PixelFormat::Yuv420(Yuv420::Nv12), 4, 2) => 12; "nv12")]

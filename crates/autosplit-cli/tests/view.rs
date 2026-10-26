@@ -104,7 +104,7 @@ fn preview_without_a_device_says_to_pick_one() {
 }
 
 #[test]
-fn maker_without_a_device_says_to_close_it_first() {
+fn maker_without_a_device_says_to_pick_one_in_settings() {
     // Arrange
     let delivered = Delivered::default();
     let into = delivered.clone();
