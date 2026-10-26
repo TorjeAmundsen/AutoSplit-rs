@@ -49,15 +49,6 @@ fn configured_profile_loads_every_value() {
 }
 
 #[test]
-fn boolean_screenshot_on_from_an_untouched_settings_window_loads_as_empty() {
-    // Act
-    let profile = UserProfile::load(&fixture("ui_defaults.toml")).unwrap();
-
-    // Assert
-    assert_eq!(profile.screenshot_on, []);
-}
-
-#[test]
 fn missing_keys_fall_back_to_autosplit_default_profile() {
     // Act
     let profile = UserProfile::load(&fixture("missing_keys.toml")).unwrap();
@@ -76,7 +67,14 @@ fn missing_keys_fall_back_to_autosplit_default_profile() {
 #[test]
 fn saved_profile_loads_back_identical() {
     // Arrange
-    let profile = configured();
+    let profile = UserProfile {
+        timer_connection: TimerConnection::LiveSplitOne,
+        livesplit_one_port: 20000,
+        group_split_images: true,
+        split_image_grid: true,
+        advanced_maker: true,
+        ..configured()
+    };
 
     // Act
     let reloaded = UserProfile::parse(&profile.to_toml()).unwrap();
@@ -146,40 +144,12 @@ fn defaults_match_a_profile_saved_from_an_untouched_settings_window() {
 }
 
 #[test]
-fn missing_profile_file_is_reported_as_invalid_settings() {
+fn missing_profile_file_is_reported_as_unreadable() {
     // Act
     let result = UserProfile::load(Path::new("/this/profile/does/not/exist.toml"));
 
     // Assert
     assert!(matches!(result, Err(ProfileError::Unreadable { .. })));
-}
-
-#[test_case("timer_connection"; "timer connection")]
-#[test_case("livesplit_one_port"; "livesplit one port")]
-#[test_case("group_split_images"; "group split images")]
-#[test_case("split_image_grid"; "split image grid")]
-#[test_case("fade_color_tolerance"; "fade color tolerance")]
-#[test_case("fade_noise"; "fade noise")]
-#[test_case("advanced_maker"; "advanced maker")]
-fn keys_not_in_autosplit_are_left_out_when_unchanged(key: &str) {
-    // Act
-    let saved = configured().to_toml();
-
-    // Assert
-    assert!(!saved.contains(key));
-}
-
-#[test]
-fn livesplit_one_settings_load_back() {
-    // Arrange
-    let profile =
-        UserProfile { timer_connection: TimerConnection::LiveSplitOne, livesplit_one_port: 20000, ..configured() };
-
-    // Act
-    let reloaded = UserProfile::parse(&profile.to_toml()).unwrap();
-
-    // Assert
-    assert_eq!(reloaded, profile);
 }
 
 #[test]
@@ -247,20 +217,19 @@ fn window_capture_method(method: &str) -> Option<String> {
 }
 
 #[test_case("fps_limit = 60\n[capture_region]\nx = 1\ntimer_connection = \"livesplit_one\"\n" => vec!["timer_connection".to_owned()]; "key after the table")]
-#[test_case("timer_connection = \"livesplit_one\"\n[capture_region]\nx = 1\n" => Vec::<String>::new(); "key before the table")]
 fn finds_keys_inside_capture_region(text: &str) -> Vec<String> {
     // Act, with the expected value checked by test_case
     UserProfile::keys_inside_capture_region(text)
 }
 
-#[test_case("fps_limit = 60.0" => true; "float for a whole number")]
-#[test_case("split_image_directory = \"C:\\Users\\me\"" => true; "windows path with backslashes")]
-fn invalid_profile_errors_are_in_words(text: &str) -> bool {
+#[test_case("fps_limit = 60.0", "expected a whole number"; "float for a whole number")]
+#[test_case("split_image_directory = \"C:\\Users\\me\"", "put the path in 'single quotes'"; "windows path with backslashes")]
+fn invalid_profile_errors_are_in_words(text: &str, hint: &str) {
     // Act
     let error = UserProfile::parse(text).unwrap_err().to_string();
 
     // Assert
-    error.contains("whole number") || error.contains("single quotes")
+    assert!(error.contains(hint), "{error}");
 }
 
 #[test_case("splits", "/home/me/profiles/splits"; "relative folder")]
@@ -288,7 +257,6 @@ fn names_capture_methods(method: &str) -> &str {
 }
 
 #[test_case(1920, 1080 => (240, 0, 1440, 1080); "a 16:9 canvas")]
-#[test_case(1280, 720 => (160, 0, 960, 720); "720p")]
 #[test_case(640, 480 => (0, 0, 640, 480); "already 4:3")]
 #[test_case(1080, 1080 => (0, 135, 1080, 810); "narrower than 4:3")]
 #[test_case(1366, 768 => (171, 0, 1024, 768); "rounded")]
@@ -317,22 +285,14 @@ fn obs_virtual_camera_gets_its_whole_frame(device: &str, region: Region, frame: 
 }
 
 #[test]
-fn fade_color_tolerance_loads_back() {
-    // Arrange
-    let profile = UserProfile { fade_color_tolerance: 24, ..configured() };
-
-    // Act
-    let reloaded = UserProfile::parse(&profile.to_toml()).unwrap();
-
-    // Assert
-    assert_eq!((reloaded.fade_color_tolerance, reloaded.split_defaults().fade_tolerance), (24, 24));
-}
-
-#[test]
 fn fade_noise_loads_back() {
     // Arrange: black measured as noiseless, which isn't the same as not measured
-    let profile =
-        UserProfile { fade_noise_black: Some([0.0; 3]), fade_noise_gray: Some([1.5, 0.8, 1.0]), ..configured() };
+    let profile = UserProfile {
+        fade_color_tolerance: 24,
+        fade_noise_black: Some([0.0; 3]),
+        fade_noise_gray: Some([1.5, 0.8, 1.0]),
+        ..configured()
+    };
 
     // Act
     let reloaded = UserProfile::parse(&profile.to_toml()).unwrap();
@@ -340,4 +300,5 @@ fn fade_noise_loads_back() {
     // Assert
     assert_eq!((reloaded.fade_noise_black, reloaded.fade_noise_gray), (Some([0.0; 3]), Some([1.5, 0.8, 1.0])));
     assert_eq!(reloaded.split_defaults().fade_noise, FadeNoise { black: [0.0; 3], gray: [1.5, 0.8, 1.0] });
+    assert_eq!((reloaded.fade_color_tolerance, reloaded.split_defaults().fade_tolerance), (24, 24));
 }

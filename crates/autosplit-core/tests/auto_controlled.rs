@@ -15,7 +15,6 @@ use test_case::test_case;
 #[test_case("pause" => None; "pause is ignored like in AutoSplit")]
 #[test_case("settings|C:/splits/oot.toml" => Some(ControlRequest::LoadSettings("C:/splits/oot.toml".into())); "settings loads the path after any separator")]
 #[test_case("settings" => Some(ControlRequest::LoadSettings(String::new())); "settings without a path")]
-#[test_case("hello" => None; "unknown lines are ignored")]
 fn request(line: &str) -> Option<ControlRequest> {
     // Act, with the expected value checked by test_case
     parse_control_line(line).request

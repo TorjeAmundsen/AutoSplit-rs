@@ -97,22 +97,11 @@ fn keeps_the_frame_that_splits() {
 
     // Act
     harness.feed(Some(BLUE), SECOND);
+    let highest_before = harness.tester.highest().is_some();
     harness.feed(Some(RED), SECOND);
 
-    // Assert
-    assert_eq!(harness.kept(), [(TriggerKind::Acted { delay: 0 }, true)]);
-}
-
-#[test]
-fn keeps_nothing_while_the_image_does_not_match() {
-    // Arrange
-    let mut harness = Harness::new("1_split.png");
-
-    // Act
-    harness.feed(Some(BLUE), SECOND);
-
-    // Assert
-    assert_eq!((harness.kept(), harness.tester.highest().is_some()), (vec![], true));
+    // Assert: what didn't match still shows as the highest
+    assert_eq!((highest_before, harness.kept()), (true, vec![(TriggerKind::Acted { delay: 0 }, true)]));
 }
 
 #[test]
@@ -208,7 +197,7 @@ fn keeps_nothing_more_until_rearmed() {
     let mut harness = Harness::new("1_split.png");
     harness.feed(Some(RED), SECOND);
     harness.feed(Some(BLUE), SECOND);
-    let before = (harness.kept().len(), harness.tester.generation());
+    let before = (harness.kept().len(), harness.tester.highest().is_some(), harness.tester.generation());
 
     // Act
     harness.tester.rearm();
@@ -216,7 +205,7 @@ fn keeps_nothing_more_until_rearmed() {
     harness.feed(Some(RED), SECOND);
 
     // Assert
-    assert_eq!((before, cleared, harness.kept().len(), harness.tester.generation()), ((1, 0), (0, None), 1, 1));
+    assert_eq!((before, cleared, harness.kept().len(), harness.tester.generation()), ((1, true, 0), (0, None), 1, 1));
 }
 
 #[test]

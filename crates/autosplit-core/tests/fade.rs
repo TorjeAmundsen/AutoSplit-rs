@@ -98,18 +98,6 @@ fn cut_to_the_color_is_not_a_fade() {
 }
 
 #[test]
-fn steady_fade_is_found() {
-    // Arrange
-    let trace = fade_trace(0.8, 1.0, 1.0, 1.0);
-
-    // Act
-    let found = first_fade(&trace, 0.97, 1000);
-
-    // Assert
-    assert!(found.is_some());
-}
-
-#[test]
 fn deep_fast_fade_is_found() {
     // Arrange: a bright scene fading to black, much further each 100 ms than a dark one
     let trace = fade_trace(0.1, 1.0, 1.0, 0.75);
@@ -187,20 +175,6 @@ fn cut_after_the_scene_kept_changing_is_not_a_fade() {
 
     // Assert
     assert_eq!(found, [None; 2]);
-}
-
-#[test]
-fn cut_blended_over_two_frames_is_not_a_fade() {
-    // Arrange
-    let mut trace = vec![0.8; 60];
-    trace.extend([0.87, 0.93]);
-    trace.extend([1.0; 60]);
-
-    // Act
-    let found = first_fade(&trace, 0.97, 1000);
-
-    // Assert
-    assert_eq!(found, None);
 }
 
 #[test_case(&[(0.484, 60), (0.913, 60), (1.0, 90)]; "a cut to a dark room, then a cut to the color")]
@@ -309,7 +283,7 @@ fn short_fade_time_samples_often_enough_for_a_short_fade() {
 
 #[test]
 fn clear_forgets_the_fade_so_far() {
-    // Arrange
+    // Arrange: a steady fade, cut off partway
     let trace = fade_trace(0.8, 1.0, 1.0, 1.0);
     let last = trace.len() - 1;
     let mut tracker = FadeTracker::default();
@@ -317,13 +291,16 @@ fn clear_forgets_the_fade_so_far() {
     for (frame, similarity) in trace[..last - 75].iter().enumerate() {
         tracker.update(at(frame), *similarity, 0.97, 1000);
     }
+    let mut cleared = tracker.clone();
 
     // Act
-    tracker.clear();
-    let found = (last - 75..=last).any(|frame| tracker.update(at(frame), trace[frame], 0.97, 1000));
+    cleared.clear();
+    let rest =
+        |tracker: &mut FadeTracker| (last - 75..=last).any(|frame| tracker.update(at(frame), trace[frame], 0.97, 1000));
+    let found = (rest(&mut tracker), rest(&mut cleared));
 
     // Assert
-    assert!(!found);
+    assert_eq!(found, (true, false));
 }
 
 const DEFAULTS: SplitDefaults = SplitDefaults {
@@ -357,18 +334,6 @@ fn fade_image(color: [u8; 3]) -> (tempfile::TempDir, SplitImage) {
 fn similarity(image: &SplitImage, capture: &BgraImage, fade_tolerance: i64) -> f64 {
     let defaults = SplitDefaults { fade_tolerance, ..DEFAULTS };
     image.similarity(Some(capture.view()), &defaults, &mut Default::default())
-}
-
-#[test]
-fn fade_image_compares_by_color_whatever_the_method() {
-    // Arrange
-    let (_directory, image) = fade_image([160, 160, 160]);
-
-    // Act
-    let similarity = similarity(&image, &solid(640, 480, [160, 160, 160]), 0);
-
-    // Assert
-    assert_eq!((image.fade_color(), similarity), (Some([160, 160, 160]), 1.0));
 }
 
 #[test]

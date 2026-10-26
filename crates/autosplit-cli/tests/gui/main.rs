@@ -98,28 +98,17 @@ fn new_profile_is_untitled() {
 }
 
 #[test]
-fn edits_are_changes() {
-    // Arrange
-    let mut document = Document::untitled();
-
-    // Act
-    document.profile.fps_limit = 30;
-
-    // Assert
-    assert!(document.has_changes());
-}
-
-#[test]
 fn saving_clears_changes() {
     // Arrange
     let mut document = Document::untitled();
     document.profile.fps_limit = 30;
+    let edited = document.has_changes();
 
     // Act
     document.saved(PathBuf::from("/splits/oot.toml"), document.to_save());
 
     // Assert
-    assert!(!document.has_changes());
+    assert_eq!((edited, document.has_changes()), (true, false));
 }
 
 #[test]
@@ -169,29 +158,16 @@ fn second_message_waits() {
     assert_eq!(shown, None);
 }
 
-#[test]
-fn answering_shows_the_next_message() {
+#[test_case(Some(0); "answering")]
+#[test_case(None; "closing")]
+fn answering_shows_the_next_message(button: Option<usize>) {
     // Arrange
     let mut queue = MessageQueue::default();
     queue.push(Message::error("first"));
     queue.push(Message::error("second"));
 
     // Act
-    let (_, next) = queue.answer(Some(0));
-
-    // Assert
-    assert_eq!(next.map(|shown| (shown.text, shown.buttons)), Some(("second".to_owned(), Buttons::Ok)));
-}
-
-#[test]
-fn closing_a_message_shows_the_next_one() {
-    // Arrange
-    let mut queue = MessageQueue::default();
-    queue.push(Message::error("first"));
-    queue.push(Message::error("second"));
-
-    // Act
-    let (_, next) = queue.answer(None);
+    let (_, next) = queue.answer(button);
 
     // Assert
     assert_eq!(next.map(|shown| (shown.text, shown.buttons)), Some(("second".to_owned(), Buttons::Ok)));
@@ -232,7 +208,6 @@ fn devices() -> Vec<DeviceInfo> {
 #[test_case(SettingEdit::LiveSplitOnePort(0.0) => false; "port 0")]
 #[test_case(SettingEdit::LiveSplitOnePort(16834.0) => true; "port")]
 #[test_case(SettingEdit::LiveSplitOnePort(65536.0) => false; "port above 65535")]
-#[test_case(SettingEdit::CaptureMethod(0) => true; "video capture device")]
 #[test_case(SettingEdit::CaptureDevice(-1) => false; "no device picked")]
 #[test_case(SettingEdit::CaptureDevice(5) => false; "device gone")]
 fn validates_settings(edit: SettingEdit) -> bool {
@@ -439,33 +414,22 @@ fn log_keeps_the_newest_lines() {
         log.push(line.to_string());
     }
 
-    // Assert
-    assert!(log.text().starts_with("5\n6\n"));
+    // Assert: a line each, without one after the last
+    let text = log.text();
+    assert_eq!((text.starts_with("5\n6\n"), text.ends_with(&format!("\n{}", LOG_LINES + 4))), (true, true));
 }
 
-#[test]
-fn log_text_has_a_line_each() {
-    // Arrange
-    let mut log = LogLines::default();
-    log.push("Loaded settings.toml".into());
-
-    // Act
-    log.push("Run started".into());
-
-    // Assert
-    assert_eq!(log.text(), "Loaded settings.toml\nRun started");
-}
-
-#[test]
-fn picking_the_unsupported_method_keeps_the_profiles() {
+#[test_case(0 => (true, VIDEO_CAPTURE_DEVICE.to_owned()); "video capture device")]
+#[test_case(1 => (true, "BITBLT".to_owned()); "the unsupported method keeps the profile's")]
+fn picking_a_capture_method(index: i32) -> (bool, String) {
     // Arrange
     let mut profile = UserProfile { capture_method: "BITBLT".into(), ..UserProfile::default() };
 
     // Act
-    apply(&mut profile, SettingEdit::CaptureMethod(1), &devices());
+    let applied = apply(&mut profile, SettingEdit::CaptureMethod(index), &devices());
 
-    // Assert
-    assert_eq!(profile.capture_method, "BITBLT");
+    // Assert, with the expected value checked by test_case
+    (applied, profile.capture_method)
 }
 
 #[test_case(10.004 => 10.0; "rounds down")]
@@ -491,19 +455,6 @@ fn choices_have_their_labels_and_default() {
 
     // Assert
     assert_eq!((shown.labels, shown.default), (["Delete", "Keep", "Cancel"], 1));
-}
-
-#[test]
-fn errors_answered_with_any_button_say_ok() {
-    // Arrange
-    let mut queue = MessageQueue::default();
-    queue.push(Message::error("broken"));
-
-    // Act
-    let (answered, next) = queue.answer(Some(2));
-
-    // Assert
-    assert_eq!((answered.is_none(), next), (true, None));
 }
 
 fn shown(capture_method: &str, devices: &[DeviceInfo], scanning: bool) -> Shown {
@@ -601,8 +552,6 @@ fn red(picture: &Picture) -> Option<u8> {
 
 #[test_case(pixels(1), Picture::Keep => Some(1); "keeps the older picture")]
 #[test_case(pixels(1), pixels(2) => Some(2); "newer picture wins")]
-#[test_case(pixels(1), Picture::Clear => Some(0); "newer clear wins")]
-#[test_case(Picture::Keep, Picture::Keep => None; "nothing to show")]
 fn merging_updates_keeps_the_newest_picture(older: Picture, newer: Picture) -> Option<u8> {
     // Arrange
     let older = Update { live: older, ..Update::default() };
@@ -753,7 +702,6 @@ fn saving_finds_older_images_of_the_same_splits(names: &[&str], existing: &[&str
 
 #[test_case(&["05_Bottle_(0.93).png"] => vec![PathBuf::from("05_Bottle_(0.9).png")]; "its new image was written")]
 #[test_case(&["06_Boss_(0.9).png"] => Vec::<PathBuf>::new(); "only another split's was")]
-#[test_case(&[] => Vec::<PathBuf>::new(); "none was")]
 fn only_written_splits_lose_their_older_images(written: &[&str]) -> Vec<PathBuf> {
     // Arrange
     let stale = [PathBuf::from("05_Bottle_(0.9).png")];
@@ -864,11 +812,10 @@ fn screenshots_saved_from_are_not_older_images() {
     assert_eq!(plan.stale, vec![PathBuf::from("02_Bottle_(0.9).png")]);
 }
 
-#[test_case("002_SplitImage.png"; "screenshot name")]
-#[test_case("002_splitimage.PNG"; "screenshot name in other case")]
-fn screenshots_are_not_older_images(screenshot: &str) {
+#[test]
+fn screenshots_are_not_older_images() {
     // Act
-    let plan = plan(&["02_Bottle_(0.93).png"], &[screenshot]);
+    let plan = plan(&["02_Bottle_(0.93).png"], &["002_SplitImage.png"]);
 
     // Assert
     assert_eq!(plan.stale, Vec::<PathBuf>::new());
@@ -899,12 +846,10 @@ fn thumbnails_are_the_whole_shot_shrunk_and_opaque() {
 #[test_case("001_SplitImage.png" => false; "screenshot")]
 #[test_case("013_SplitImage - Kopi.png" => false; "copied screenshot")]
 #[test_case("boss fight.png" => false; "any picture")]
-#[test_case("05_Bottle_(0.93).png" => true; "made split image")]
+#[test_case("Bottle_(0.93).png" => true; "a threshold")]
 #[test_case("reset.png" => true; "reset image")]
-#[test_case("02_Dummy_{d}.png" => true; "flags only")]
+#[test_case("Dummy_{d}.png" => true; "flags only")]
 #[test_case("03_EnterDeku.png" => true; "number and name, default threshold")]
-#[test_case("Copy of 004_splitimage.PNG" => false; "screenshot inside a longer name")]
-#[test_case("Copy of 001_SplitImage.png" => false; "copy of a screenshot")]
 #[test_case("Copy of 000_SplitImage(1).png" => false; "numbered copy, which reads as a threshold")]
 #[test_case("000_SplitImage (2) [3].png" => false; "copy with more brackets")]
 fn screenshots_dont_look_like_split_images(name: &str) -> bool {

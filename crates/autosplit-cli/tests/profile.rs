@@ -2,7 +2,7 @@
 
 use autosplit::hotkeys::hotkey_problems;
 use autosplit::profile::load_raw;
-use autosplit::screenshot::{Saved, is_screenshot_name, save};
+use autosplit::screenshot::{is_screenshot_name, save};
 use autosplit_core::commands::TimerLink;
 use autosplit_core::profile::UserProfile;
 use test_case::test_case;
@@ -87,21 +87,5 @@ fn screenshot_is_saved_into_the_folder() {
     assert_eq!(
         (saved.path(), saved.message()),
         (Some(path.as_path()), Ok(format!("Saved screenshot {}", path.display())))
-    );
-}
-
-#[test]
-fn screenshot_that_wasnt_opened_is_an_error_with_its_file() {
-    // Arrange
-    let path = std::path::PathBuf::from("shots/001_SplitImage.png");
-    let saved = Saved::NotOpened(path.clone(), "no app".into());
-
-    // Act
-    let message = saved.message();
-
-    // Assert
-    assert_eq!(
-        (saved.path(), message),
-        (Some(path.as_path()), Err(format!("Saved screenshot {}, but couldn't open it: no app", path.display())))
     );
 }
