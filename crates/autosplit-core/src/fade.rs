@@ -40,7 +40,7 @@ const MAX_SAMPLE_INTERVAL: Duration = Duration::from_millis(100);
 
 /// The most noise taken out of a channel. Analog captures have up to about 1.5 levels, and fine
 /// detail left of a scene just before a fade ends mustn't count as more than that.
-const MAX_NOISE: f64 = 2.0;
+pub(crate) const MAX_NOISE: f64 = 2.0;
 /// The share of an image's height between the pixels noise is estimated from: about 8 pixels at
 /// 1080 lines. Closer ones share their noise in analog captures scaled up from 480 lines, which
 /// spread each speck over about 2 pixels.
@@ -50,14 +50,23 @@ const NOISE_DISTANCE: f64 = 1.0 / 135.0;
 /// the time.
 const NOISE_ROW_STEP: usize = 4;
 
+/// How close a capture is to a fade image's color.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct FadeComparison {
+    pub similarity: f64,
+    /// The noise left out of each channel (red, green, blue), in levels.
+    pub noise: [f64; 3],
+}
+
 /// The similarity of `capture` to a solid `color` (BGR), over the pixels `mask` shows:
 /// `1 - sqrt(offset^2 + spread^2) / max`, where the offset is how far the capture's mean color is
 /// from `color` and the spread how far its pixels are from that mean. Each channel's mean may be
 /// up to `tolerance` levels off for free, for capture setups whose colors are a little off. With
 /// `ignore_noise`, the capture's [`noise`] is taken out of its spread, for capture setups that add
-/// noise, like analog ones, and games with film grain or dithering. A capture clips its noise at black and white, so a channel with a mean near
-/// either has at most half that distance taken out. Otherwise the last frames of a fade to
-/// black, whose spread is all that's left of the scene, would reach the threshold early.
+/// noise, like analog ones, and games with film grain or dithering. A capture clips its noise at
+/// black and white, so a channel with a mean near either has at most half that distance taken
+/// out. Otherwise the last frames of a fade to black, whose spread is all that's left of the
+/// scene, would reach the threshold early.
 ///
 /// Unlike AutoSplit's L2 norm, alpha isn't counted, so 1.0 and 0.0 mean the same with or without
 /// a mask.
@@ -67,7 +76,7 @@ pub(crate) fn similarity(
     mask: Option<&Mask>,
     tolerance: u8,
     ignore_noise: bool,
-) -> f64 {
+) -> FadeComparison {
     let mut count = 0_u64;
     let mut sums = [0_u64; 3];
     let mut squares = [0_u64; 3];
@@ -86,19 +95,22 @@ pub(crate) fn similarity(
         None => add(capture.data()),
     }
     if count == 0 {
-        return 0.0;
+        return FadeComparison::default();
     }
-    let noise = if ignore_noise { noise(capture, mask) } else { [0.0; 3] };
+    let estimated = if ignore_noise { noise(capture, mask) } else { [0.0; 3] };
     let count = count as f64;
     let mut squared = 0.0;
+    let mut left_out = [0.0; 3];
     for channel in 0..3 {
         let mean = sums[channel] as f64 / count;
-        let noise = noise[channel].min(mean.min(255.0 - mean) / 2.0);
+        let noise = estimated[channel].min(mean.min(255.0 - mean) / 2.0);
         let variance = (squares[channel] as f64 / count - mean * mean - noise * noise).max(0.0);
         let offset = ((mean - f64::from(color[channel])).abs() - f64::from(tolerance)).max(0.0);
         squared += offset * offset + variance;
+        left_out[channel] = noise;
     }
-    1.0 - squared.sqrt() / MAX_DISTANCE
+    left_out.reverse();
+    FadeComparison { similarity: 1.0 - squared.sqrt() / MAX_DISTANCE, noise: left_out }
 }
 
 /// The noise of each channel (BGR) of `capture` where `mask` shows it, up to [`MAX_NOISE`]: the

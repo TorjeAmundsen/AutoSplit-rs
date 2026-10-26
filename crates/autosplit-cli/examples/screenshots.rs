@@ -182,6 +182,8 @@ fn main() {
         live: "0.951".into(),
         highest: "0.962".into(),
         threshold: "0.930".into(),
+        // Not a fade image
+        noise: Default::default(),
         reached: true,
         highest_reached: true,
         live_value: 0.951,

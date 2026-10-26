@@ -13,8 +13,8 @@ use autosplit_core::split_folder::MAX_GROUP_SIZE;
 use autosplit_core::split_image::{SplitContent, SplitImage};
 use autosplit_core::tester::Phase;
 use autosplit_core::text::{
-    InfoCell, WindowTexts, decimal, decimal_or_dash, tester_ignored, tester_info, tester_status, trigger_caption,
-    window_texts,
+    InfoCell, WindowTexts, decimal, decimal_or_dash, tester_ignored, tester_info, tester_noise, tester_status,
+    trigger_caption, window_texts,
 };
 use slint::{Rgba8Pixel, SharedPixelBuffer};
 
@@ -77,6 +77,9 @@ pub struct TesterTexts {
     pub live: String,
     pub highest: String,
     pub threshold: String,
+    /// The noise a fade image left out of the live frame in red, green and blue, or why there's
+    /// none, or nothing for other images.
+    pub noise: Vec<String>,
     /// The live similarity reaches the threshold.
     pub reached: bool,
     /// The highest similarity reached the threshold, which stays until the tester starts over.
@@ -369,6 +372,7 @@ impl GuiView {
             live: decimal_or_dash(similarity),
             highest: decimal_or_dash(tester.highest()),
             threshold: decimal(threshold),
+            noise: tester_noise(tester, snapshot.receiving),
             // A fade image at the threshold without a fade there, like after a cut, hasn't reached
             // it, which the status says
             reached: similarity.is_some_and(|similarity| similarity >= threshold)

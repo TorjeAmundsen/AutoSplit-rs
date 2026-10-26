@@ -3,6 +3,7 @@
 use std::time::Duration;
 
 use crate::commands::Command;
+use crate::fade::MAX_NOISE;
 use crate::runner::{ImageRef, ResetReading, Showing, StartStatus, Status};
 use crate::split_folder::MAX_GROUP_SIZE;
 use crate::split_image::ImageType;
@@ -34,6 +35,21 @@ pub fn seconds_remaining_text(seconds: f64) -> String {
 /// `#rrggbb`, from RGB.
 pub fn hex_color([red, green, blue]: [u8; 3]) -> String {
     format!("#{red:02x}{green:02x}{blue:02x}")
+}
+
+/// The noise the Live Tester's fade image left out of the last frame, one text per channel (red,
+/// green, blue), like `1.52`. A channel at [`MAX_NOISE`] shows as `2+`, since it had more, like a
+/// scene's detail before the fade ends. Without a frame `receiving`, one `-`, and where it's
+/// turned off when the profile keeps noise in. Nothing for other images.
+pub fn tester_noise(tester: &Tester, receiving: bool) -> Vec<String> {
+    if !tester.image().is_fade() {
+        return Vec::new();
+    }
+    if !tester.defaults().fade_ignore_noise {
+        return vec!["off in Settings".into()];
+    }
+    let Some(noise) = tester.noise().filter(|_| receiving) else { return vec!["-".into()] };
+    noise.map(|noise| if noise >= MAX_NOISE { format!("{MAX_NOISE}+") } else { format!("{noise:.2}") }).to_vec()
 }
 
 /// [`decimal`], or `-` for no value.

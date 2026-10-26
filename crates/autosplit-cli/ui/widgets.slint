@@ -41,6 +41,10 @@ export global Theme {
     out property <color> meter: dark ? #3d9bff : #1f6fe0;
     // The highest similarity's mark in the Live Tester's meter
     out property <color> highest: dark ? #ffb84d : #d97706;
+    // The Live Tester's noise in red, green and blue, each in its channel's color
+    out property <color> red-channel: dark ? #ff7a7a : #c42b1c;
+    out property <color> green-channel: dark ? #7ee08f : #1e8c3a;
+    out property <color> blue-channel: dark ? #7ab4ff : #1f6fe0;
     // Something that's ignored, like a value in a split image's name
     out property <color> warning: dark ? #e0a040 : #a65f00;
     // Something that has to be fixed, like a split without a mask
