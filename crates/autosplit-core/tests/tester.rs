@@ -21,6 +21,7 @@ const DEFAULTS: SplitDefaults = SplitDefaults {
     pause_time: 0.0,
     fps_limit: 60,
     fade_tolerance: 10,
+    fade_ignore_noise: true,
 };
 
 fn solid(color: Bgr) -> BgraImage {

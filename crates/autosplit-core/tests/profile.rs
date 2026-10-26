@@ -71,6 +71,7 @@ fn saved_profile_loads_back_identical() {
         livesplit_one_port: 20000,
         group_split_images: true,
         split_image_grid: true,
+        fade_ignore_noise: false,
         advanced_maker: true,
         ..configured()
     };
@@ -80,6 +81,18 @@ fn saved_profile_loads_back_identical() {
 
     // Assert
     assert_eq!(reloaded, profile);
+}
+
+#[test]
+fn split_images_leave_noise_in_when_the_profile_says_so() {
+    // Arrange
+    let profile = UserProfile { fade_ignore_noise: false, ..UserProfile::default() };
+
+    // Act
+    let defaults = profile.split_defaults();
+
+    // Assert, with the default as a control
+    assert_eq!((defaults.fade_ignore_noise, UserProfile::default().split_defaults().fade_ignore_noise), (false, true));
 }
 
 #[test]

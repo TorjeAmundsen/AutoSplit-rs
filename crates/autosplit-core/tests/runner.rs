@@ -33,6 +33,7 @@ fn defaults() -> RunnerSettings {
             pause_time: 0.0,
             fps_limit: 60,
             fade_tolerance: 10,
+            fade_ignore_noise: true,
         },
         loop_splits: false,
         enable_auto_reset: true,

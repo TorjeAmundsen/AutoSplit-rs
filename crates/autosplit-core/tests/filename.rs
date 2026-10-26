@@ -176,6 +176,7 @@ fn defaults(delay_time: i64, comparison_method: i64) -> SplitDefaults {
         pause_time: 10.0,
         fps_limit: 60,
         fade_tolerance: 10,
+        fade_ignore_noise: true,
     }
 }
 

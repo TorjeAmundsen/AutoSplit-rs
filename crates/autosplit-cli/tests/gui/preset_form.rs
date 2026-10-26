@@ -985,6 +985,7 @@ fn splits_in_the_preset_are_named_like_the_split_list() {
         pause_time: 10.0,
         fps_limit: 60,
         fade_tolerance: 10,
+        fade_ignore_noise: true,
     };
 
     // Act

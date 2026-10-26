@@ -53,15 +53,21 @@ const NOISE_ROW_STEP: usize = 4;
 /// The similarity of `capture` to a solid `color` (BGR), over the pixels `mask` shows:
 /// `1 - sqrt(offset^2 + spread^2) / max`, where the offset is how far the capture's mean color is
 /// from `color` and the spread how far its pixels are from that mean. Each channel's mean may be
-/// up to `tolerance` levels off for free, for capture setups whose colors are a little off, and
-/// the capture's [`noise`] is taken out of its spread, for capture setups that add noise, like
-/// analog ones. A capture clips its noise at black and white, so a channel with a mean near
+/// up to `tolerance` levels off for free, for capture setups whose colors are a little off. With
+/// `ignore_noise`, the capture's [`noise`] is taken out of its spread, for capture setups that add
+/// noise, like analog ones, and games with film grain or dithering. A capture clips its noise at black and white, so a channel with a mean near
 /// either has at most half that distance taken out. Otherwise the last frames of a fade to
 /// black, whose spread is all that's left of the scene, would reach the threshold early.
 ///
 /// Unlike AutoSplit's L2 norm, alpha isn't counted, so 1.0 and 0.0 mean the same with or without
 /// a mask.
-pub(crate) fn similarity(color: [u8; 3], capture: &BgraImage, mask: Option<&Mask>, tolerance: u8) -> f64 {
+pub(crate) fn similarity(
+    color: [u8; 3],
+    capture: &BgraImage,
+    mask: Option<&Mask>,
+    tolerance: u8,
+    ignore_noise: bool,
+) -> f64 {
     let mut count = 0_u64;
     let mut sums = [0_u64; 3];
     let mut squares = [0_u64; 3];
@@ -82,7 +88,7 @@ pub(crate) fn similarity(color: [u8; 3], capture: &BgraImage, mask: Option<&Mask
     if count == 0 {
         return 0.0;
     }
-    let noise = noise(capture, mask);
+    let noise = if ignore_noise { noise(capture, mask) } else { [0.0; 3] };
     let count = count as f64;
     let mut squared = 0.0;
     for channel in 0..3 {

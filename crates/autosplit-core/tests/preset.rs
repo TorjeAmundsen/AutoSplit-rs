@@ -217,6 +217,7 @@ const PROFILE: SplitDefaults = SplitDefaults {
     pause_time: 10.0,
     fps_limit: 60,
     fade_tolerance: 10,
+    fade_ignore_noise: true,
 };
 
 #[test_case(None; "without a profile")]

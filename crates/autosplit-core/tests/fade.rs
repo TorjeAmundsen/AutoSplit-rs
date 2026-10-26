@@ -310,6 +310,7 @@ const DEFAULTS: SplitDefaults = SplitDefaults {
     pause_time: 0.0,
     fps_limit: 60,
     fade_tolerance: 10,
+    fade_ignore_noise: true,
 };
 
 fn image(path: &Path, width: usize, height: usize, pixel: impl Fn(usize, usize) -> [u8; 4]) {
@@ -394,6 +395,24 @@ fn noise_spread_over_neighboring_pixels_counts_as_the_color() {
     // Assert: without taking the noise out it would be about 0.996, and comparing neighboring
     // pixels would only find part of it
     assert_eq!(similarity, 1.0);
+}
+
+#[test]
+fn noise_counts_against_the_color_when_it_isnt_left_out() {
+    // Arrange: every channel 1 level either side of the color
+    let (_directory, image) = fade_image([160, 160, 160]);
+    let capture = capture(|x, y| blocks(x, y, 159, 161));
+
+    // Act: left out, then not
+    let similarities = [true, false].map(|fade_ignore_noise| {
+        let defaults = SplitDefaults { fade_tolerance: 0, fade_ignore_noise, ..DEFAULTS };
+        image.similarity(Some(capture.view()), &defaults, &mut Default::default())
+    });
+
+    // Assert
+    let noisy = from_squared(3.0);
+    assert_eq!(similarities[0], 1.0);
+    assert!((similarities[1] - noisy).abs() < 1e-12, "{} isn't {noisy}", similarities[1]);
 }
 
 #[test]
