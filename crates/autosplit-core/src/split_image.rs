@@ -253,7 +253,6 @@ impl SplitImage {
         })
     }
 
-    /// `compare` with the capture resized to the image's size.
     /// What `compare` makes of the capture resized to the image, or its default, like a
     /// similarity of 0, without a capture or a usable image.
     fn compare_resized<T: Default>(

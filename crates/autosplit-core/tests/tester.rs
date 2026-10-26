@@ -401,13 +401,12 @@ fn info_shows_the_fade_tolerance_comparisons_use() {
     assert_eq!(info[1], "METHOD: fade to #ff0000 (about 600 ms, tolerance 255 levels)");
 }
 
-/// A red frame with blue in 2x2 blocks of 0 and 4: noise around a mean of 2, of which a capture
-/// clipping it at black lets 1 level come off.
-fn noisy_red() -> BgraImage {
+/// A red frame with blue in 2x2 blocks of 0 and `high`.
+fn red_with_blue_blocks(high: u8) -> BgraImage {
     let data = (0..320 * 240)
         .flat_map(|index: usize| {
             let (x, y) = (index % 320, index / 320);
-            [if (x / 2 + y / 2).is_multiple_of(2) { 0 } else { 4 }, 0, 255, 255]
+            [if (x / 2 + y / 2).is_multiple_of(2) { 0 } else { high }, 0, 255, 255]
         })
         .collect();
     BgraImage::from_raw(320, 240, data)
@@ -415,9 +414,10 @@ fn noisy_red() -> BgraImage {
 
 #[test]
 fn noise_shows_what_a_fade_left_out_of_each_channel() {
-    // Arrange
+    // Arrange: blue noise around a mean of 2, of which a capture clipping it at black lets 1 level
+    // come off
     let mut harness = Harness::new("1_split_~600~_{f}.png");
-    let frame = noisy_red();
+    let frame = red_with_blue_blocks(4);
 
     // Act
     harness.tester.tick(Duration::ZERO, Some(Captured { view: frame.view(), sequence: 1 }));
@@ -431,13 +431,7 @@ fn noise_shows_what_a_fade_left_out_of_each_channel() {
 fn noise_at_the_most_left_out_shows_that_there_was_more() {
     // Arrange: red with blue in 2x2 blocks of 0 and 40, far more than noise, like a scene's detail
     let mut harness = Harness::new("1_split_~600~_{f}.png");
-    let data = (0..320 * 240)
-        .flat_map(|index: usize| {
-            let (x, y) = (index % 320, index / 320);
-            [if (x / 2 + y / 2).is_multiple_of(2) { 0 } else { 40 }, 0, 255, 255]
-        })
-        .collect();
-    let frame = BgraImage::from_raw(320, 240, data);
+    let frame = red_with_blue_blocks(40);
 
     // Act
     harness.tester.tick(Duration::ZERO, Some(Captured { view: frame.view(), sequence: 1 }));
@@ -451,7 +445,7 @@ fn noise_says_when_it_is_turned_off() {
     // Arrange
     let mut harness =
         Harness::with_defaults("1_split_~600~_{f}.png", SplitDefaults { fade_ignore_noise: false, ..DEFAULTS });
-    let frame = noisy_red();
+    let frame = red_with_blue_blocks(4);
 
     // Act
     harness.tester.tick(Duration::ZERO, Some(Captured { view: frame.view(), sequence: 1 }));
@@ -464,7 +458,7 @@ fn noise_says_when_it_is_turned_off() {
 fn noise_isnt_shown_for_images_that_dont_fade() {
     // Arrange
     let mut harness = Harness::new("1_split.png");
-    let frame = noisy_red();
+    let frame = red_with_blue_blocks(4);
 
     // Act
     harness.tester.tick(Duration::ZERO, Some(Captured { view: frame.view(), sequence: 1 }));

@@ -188,7 +188,10 @@ impl Tester {
                 let view = Some(capture.view);
                 match self.image.fade_comparison(view, &self.defaults, &mut self.scratch) {
                     Some(fade) => (fade.similarity, Some(fade.noise)),
-                    None => (self.image.similarity(view, &self.defaults, &mut self.scratch), None),
+                    None => {
+                        let method = self.image.comparison_method(&self.defaults);
+                        (self.image.compare(view, method, &mut self.scratch), None)
+                    }
                 }
             }
             (None, _) => (0.0, None),
