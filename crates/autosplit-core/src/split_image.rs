@@ -69,6 +69,8 @@ pub struct SplitDefaults {
     pub fps_limit: i64,
     /// How many levels each channel of a fade image's color may be off.
     pub fade_tolerance: i64,
+    /// Whether fade images leave the capture's noise out of their similarity.
+    pub fade_ignore_noise: bool,
 }
 
 impl SplitDefaults {
@@ -215,9 +217,9 @@ impl SplitImage {
     pub fn similarity(&self, capture: Option<BgraView>, defaults: &SplitDefaults, scratch: &mut CompareScratch) -> f64 {
         match self.fade_color {
             Some(color) => {
-                let tolerance = defaults.fade_tolerance_levels();
+                let (tolerance, ignore_noise) = (defaults.fade_tolerance_levels(), defaults.fade_ignore_noise);
                 self.compare_resized(capture, scratch, |resized, mask, _| {
-                    fade::similarity(color, resized, mask, tolerance)
+                    fade::similarity(color, resized, mask, tolerance, ignore_noise)
                 })
             }
             None => self.compare(capture, self.comparison_method(defaults), scratch),

@@ -109,6 +109,10 @@ fn is_default_fade_color_tolerance(tolerance: &i64) -> bool {
     *tolerance == DEFAULT_FADE_COLOR_TOLERANCE
 }
 
+fn is_true(value: &bool) -> bool {
+    *value
+}
+
 /// A settings profile. Field order is the key order AutoSplit writes.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -163,6 +167,10 @@ pub struct UserProfile {
     /// capture. Only written when changed.
     #[serde(skip_serializing_if = "is_default_fade_color_tolerance")]
     pub fade_color_tolerance: i64,
+    /// Not in AutoSplit. Fade images leave the capture's noise out of their similarity, which
+    /// they tell apart from the scene in each frame. On by default, and only written when off.
+    #[serde(skip_serializing_if = "is_true")]
+    pub fade_ignore_noise: bool,
     /// Not in AutoSplit. Make Split Images shows the split image file names and every button,
     /// instead of only what making split images needs. Only written when changed.
     #[serde(skip_serializing_if = "is_default")]
@@ -208,6 +216,7 @@ impl Default for UserProfile {
             group_split_images: false,
             split_image_grid: false,
             fade_color_tolerance: DEFAULT_FADE_COLOR_TOLERANCE,
+            fade_ignore_noise: true,
             advanced_maker: false,
             unknown: toml::Table::new(),
         }
@@ -321,6 +330,7 @@ impl UserProfile {
             pause_time: self.default_pause_time,
             fps_limit: self.fps_limit,
             fade_tolerance: self.fade_color_tolerance,
+            fade_ignore_noise: self.fade_ignore_noise,
         }
     }
 }

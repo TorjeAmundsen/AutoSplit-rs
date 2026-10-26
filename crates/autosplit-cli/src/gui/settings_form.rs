@@ -30,6 +30,7 @@ pub enum SettingEdit {
     DefaultDelayTime(f64),
     DefaultPauseTime(f64),
     FadeColorTolerance(f64),
+    FadeIgnoreNoise(bool),
     LoopSplits(bool),
     GroupSplitImages(bool),
     SplitImageGrid(bool),
@@ -94,6 +95,7 @@ pub fn apply(profile: &mut UserProfile, edit: SettingEdit, devices: &[DeviceInfo
         SettingEdit::FadeColorTolerance(value) if (0.0..=255.0).contains(&value) => {
             profile.fade_color_tolerance = value.round() as i64;
         }
+        SettingEdit::FadeIgnoreNoise(on) => profile.fade_ignore_noise = on,
         SettingEdit::LoopSplits(on) => profile.loop_splits = on,
         SettingEdit::GroupSplitImages(on) => profile.group_split_images = on,
         SettingEdit::SplitImageGrid(on) => profile.split_image_grid = on,
