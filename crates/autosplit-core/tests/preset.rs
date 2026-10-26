@@ -2,7 +2,6 @@
 
 use std::path::{Path, PathBuf};
 
-use autosplit_core::fade::FadeNoise;
 use autosplit_core::filename::{
     BELOW_FLAG, DUMMY_FLAG, FADE_FLAG, comparison_method_from_filename, delay_time_from_filename,
     fade_time_from_filename, filename_warnings, flags_from_filename, pause_from_filename, threshold_from_filename,
@@ -218,7 +217,6 @@ const PROFILE: SplitDefaults = SplitDefaults {
     pause_time: 10.0,
     fps_limit: 60,
     fade_tolerance: 10,
-    fade_noise: FadeNoise::NONE,
 };
 
 #[test_case(None; "without a profile")]

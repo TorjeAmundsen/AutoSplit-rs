@@ -3,7 +3,6 @@
 use autosplit_capture::DeviceInfo;
 use autosplit_core::commands::{Command, TimerLink};
 use autosplit_core::profile::{TimerConnection, UserProfile, VIDEO_CAPTURE_DEVICE, capture_method_name};
-use autosplit_core::text::noise_text;
 
 /// A field's new value, as the settings window has it.
 #[derive(Clone, Debug, PartialEq)]
@@ -131,13 +130,6 @@ pub fn pick_default_device(profile: &mut UserProfile, devices: &[DeviceInfo]) ->
     }
     let obs = devices.iter().position(|device| device.name.to_lowercase().contains("obs virtual cam"));
     apply(profile, SettingEdit::CaptureDevice(obs.unwrap_or(0) as i32), devices)
-}
-
-/// The capture's measured noise in red, green and blue, like
-/// `Black 0.23 0.23 0.36, gray not measured`.
-pub fn fade_noise_text(profile: &UserProfile) -> String {
-    let shown = |noise: Option<[f64; 3]>| noise.map_or("not measured".into(), noise_text);
-    format!("Black {}, gray {}", shown(profile.fade_noise_black), shown(profile.fade_noise_gray))
 }
 
 /// What the settings window shows that isn't a profile value as it is.

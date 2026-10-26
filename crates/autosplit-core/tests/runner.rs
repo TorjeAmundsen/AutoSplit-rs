@@ -4,7 +4,6 @@ use std::time::Duration;
 
 use autosplit_core::commands::Command;
 use autosplit_core::compare::{CompareScratch, ComparisonMethod};
-use autosplit_core::fade::FadeNoise;
 use autosplit_core::image::BgraImage;
 use autosplit_core::runner::{Buttons, Captured, Effect, ResetReading, Runner, RunnerSettings, StartStatus};
 use autosplit_core::split_folder::{SplitSet, ValidationContext, load_split_folder};
@@ -34,7 +33,6 @@ fn defaults() -> RunnerSettings {
             pause_time: 0.0,
             fps_limit: 60,
             fade_tolerance: 10,
-            fade_noise: FadeNoise::NONE,
         },
         loop_splits: false,
         enable_auto_reset: true,

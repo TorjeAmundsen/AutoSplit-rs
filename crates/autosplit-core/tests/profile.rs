@@ -3,7 +3,6 @@
 use std::path::{Path, PathBuf};
 
 use autosplit_core::commands::Command;
-use autosplit_core::fade::FadeNoise;
 use autosplit_core::image::Rect;
 use autosplit_core::profile::{
     NEW_PROFILE_REGION, ProfileError, Region, RegionFit, TimerConnection, UserProfile, capture_method_name,
@@ -282,23 +281,4 @@ fn obs_virtual_camera_gets_its_whole_frame(device: &str, region: Region, frame: 
 
     // Assert, with the expected value checked by test_case
     full.map(|region| (region.width, region.height))
-}
-
-#[test]
-fn fade_noise_loads_back() {
-    // Arrange: black measured as noiseless, which isn't the same as not measured
-    let profile = UserProfile {
-        fade_color_tolerance: 24,
-        fade_noise_black: Some([0.0; 3]),
-        fade_noise_gray: Some([1.5, 0.8, 1.0]),
-        ..configured()
-    };
-
-    // Act
-    let reloaded = UserProfile::parse(&profile.to_toml()).unwrap();
-
-    // Assert
-    assert_eq!((reloaded.fade_noise_black, reloaded.fade_noise_gray), (Some([0.0; 3]), Some([1.5, 0.8, 1.0])));
-    assert_eq!(reloaded.split_defaults().fade_noise, FadeNoise { black: [0.0; 3], gray: [1.5, 0.8, 1.0] });
-    assert_eq!((reloaded.fade_color_tolerance, reloaded.split_defaults().fade_tolerance), (24, 24));
 }

@@ -2,7 +2,6 @@
 
 use std::path::{Path, PathBuf};
 
-use autosplit_core::fade::NoiseColor;
 use autosplit_core::profile::{self, NEW_PROFILE_REGION, UserProfile, VIDEO_CAPTURE_DEVICE};
 
 pub struct Document {
@@ -11,14 +10,11 @@ pub struct Document {
     pub path: Option<PathBuf>,
     /// As last loaded or saved, to tell whether there are changes to save.
     saved: UserProfile,
-    /// The first fade noise measurement asked for while it's open, since the noise was last
-    /// reset. Answers to earlier ones are for another profile, or were reset, so they're dropped.
-    measuring_from: Option<u64>,
 }
 
 impl Document {
     pub fn new(profile: UserProfile, path: Option<PathBuf>) -> Self {
-        Self { saved: profile.clone(), profile, path, measuring_from: None }
+        Self { saved: profile.clone(), profile, path }
     }
 
     /// AutoSplit's settings for a new profile: its window starts with a 640x480 region at the
@@ -32,27 +28,6 @@ impl Document {
             },
             None,
         )
-    }
-
-    /// Asks for a fade noise measurement numbered `request`, the numbers going up.
-    pub fn measuring(&mut self, request: u64) {
-        self.measuring_from.get_or_insert(request);
-    }
-
-    /// Keeps the noise measured on `color` for `request`, unless it was asked for before this
-    /// profile was open or its noise was last reset. Returns whether it kept it.
-    pub fn noise_measured(&mut self, color: NoiseColor, noise: [f64; 3], request: u64) -> bool {
-        let keep = self.measuring_from.is_some_and(|from| request >= from);
-        if keep {
-            *self.profile.fade_noise_mut(color) = Some(noise);
-        }
-        keep
-    }
-
-    /// Forgets the measured noise, and the measurements asked for until now.
-    pub fn reset_noise(&mut self) {
-        self.measuring_from = None;
-        (self.profile.fade_noise_black, self.profile.fade_noise_gray) = (None, None);
     }
 
     pub fn has_changes(&self) -> bool {
