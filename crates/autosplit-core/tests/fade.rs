@@ -482,6 +482,51 @@ fn noise_is_only_estimated_from_visible_pixels() {
     assert!((similarity - expected).abs() < 0.0005, "{similarity} isn't about {expected}");
 }
 
+/// A 320x240 fade image of gray that only shows the rows `shown` picks, across the whole width.
+fn gray_rows(shown: impl Fn(usize) -> bool) -> (tempfile::TempDir, SplitImage) {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("01_fade_{f}.png");
+    image(&path, 320, 240, |_, y| if shown(y) { [160, 160, 160, 255] } else { [0, 0, 0, 0] });
+    let image = SplitImage::load(&path);
+    (directory, image)
+}
+
+fn noise_left_out(image: &SplitImage, capture: &BgraImage) -> [f64; 3] {
+    let defaults = SplitDefaults { fade_tolerance: 15, ..DEFAULTS };
+    image.fade_comparison(Some(capture.view()), &defaults, &mut Default::default()).unwrap().noise
+}
+
+#[test]
+fn noise_isnt_estimated_across_the_end_of_a_row() {
+    // Arrange: rows showing across the whole width, which the mask keeps as one run of pixels
+    // going on from one row into the next. The capture goes slowly from 130 on the left to 190
+    // on the right, so pixels at the end of a row and the start of the next are 60 apart.
+    let (_directory, image) = gray_rows(|y| y < 118);
+    let capture = capture(|x, _| [(130 + x * 60 / 320) as u8; 3]);
+
+    // Act
+    let noise = noise_left_out(&image, &capture);
+
+    // Assert: pixels 2 apart within a row are at most a level apart. Pairs going on into the
+    // next row would have made it the most there is, 2.
+    assert!(noise.iter().all(|&noise| noise < 0.5), "{noise:?}");
+}
+
+#[test]
+fn noise_is_estimated_from_every_row_when_the_sampled_ones_dont_show() {
+    // Arrange: a strip only rows 1 to 3 show, none of them a row noise is usually estimated from,
+    // with every channel 1 level either side of the color
+    let (_directory, image) = gray_rows(|y| (1..=3).contains(&y));
+    let capture = capture(|x, y| blocks(x, y, 159, 161));
+
+    // Act
+    let noise = noise_left_out(&image, &capture);
+
+    // Assert: pixels 2 apart always differ by 2 levels, which is the square root of 2 of noise
+    let expected = 2.0_f64.sqrt();
+    assert!(noise.iter().all(|noise| (noise - expected).abs() < 1e-12), "{noise:?}");
+}
+
 #[test]
 fn fade_image_only_compares_its_visible_pixels() {
     // Arrange: black on the left, transparent on the right, and a capture white on the right

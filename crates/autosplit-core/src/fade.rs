@@ -45,9 +45,9 @@ pub(crate) const MAX_NOISE: f64 = 2.0;
 /// 1080 lines. Closer ones share their noise in analog captures scaled up from 480 lines, which
 /// spread each speck over about 2 pixels.
 const NOISE_DISTANCE: f64 = 1.0 / 135.0;
-/// Noise is estimated from every this many rows. Noise is the same all over, so a quarter of
-/// them, tens of thousands of pixels, estimate it about as well as all of them, at a quarter of
-/// the time.
+/// Noise is estimated from every this many rows, or from all of them when those have no pairs.
+/// Noise is the same all over, so a quarter of them, tens of thousands of pixels, estimate it
+/// about as well as all of them, at a quarter of the time.
 const NOISE_ROW_STEP: usize = 4;
 
 /// How close a capture is to a fade image's color.
@@ -119,8 +119,22 @@ pub(crate) fn similarity(
 /// near the end of a fade changes slowly across the picture, so this is about the noise alone,
 /// and the capture doesn't have to be measured first.
 fn noise(capture: &BgraImage, mask: Option<&Mask>) -> [f64; 3] {
+    let distance = ((capture.height() as f64 * NOISE_DISTANCE).round() as usize).max(1);
+    // A mask can show too few rows for the sampled ones to have pairs, like a thin strip
+    let (pairs, squares) = match pair_squares(capture, mask, distance, NOISE_ROW_STEP) {
+        (0, _) => pair_squares(capture, mask, distance, 1),
+        found => found,
+    };
+    if pairs == 0 {
+        return [0.0; 3];
+    }
+    squares.map(|squares| (squares as f64 / pairs as f64 / 2.0).sqrt().min(MAX_NOISE))
+}
+
+/// How many pairs of visible pixels `distance` apart there are, across and down, on every
+/// `step`th row, and each channel's sum (BGR) of their squared differences.
+fn pair_squares(capture: &BgraImage, mask: Option<&Mask>, distance: usize, step: usize) -> (u64, [u64; 3]) {
     let (width, height) = (capture.width(), capture.height());
-    let distance = ((height as f64 * NOISE_DISTANCE).round() as usize).max(1);
     let data = capture.data();
     let mut pairs = 0_u64;
     let mut squares = [0_u64; 3];
@@ -136,12 +150,12 @@ fn noise(capture: &BgraImage, mask: Option<&Mask>) -> [f64; 3] {
         pairs += from.len() as u64;
     };
     // Each sampled row's visible runs, as pixel indices: masks' spans can go on into the next row
-    let rows = (0..height).step_by(NOISE_ROW_STEP).map(|y| y * width..(y + 1) * width);
+    let rows = (0..height).step_by(step).map(|y| y * width..(y + 1) * width);
     let runs: Box<dyn Iterator<Item = Range<usize>>> = match mask {
         None => Box::new(rows),
         Some(mask) => Box::new(mask.spans().iter().flat_map(move |span| {
             (span.start / width..=(span.end - 1) / width)
-                .filter(|y| y.is_multiple_of(NOISE_ROW_STEP))
+                .filter(move |y| y.is_multiple_of(step))
                 .map(move |y| span.start.max(y * width)..span.end.min((y + 1) * width))
         })),
     };
@@ -168,10 +182,7 @@ fn noise(capture: &BgraImage, mask: Option<&Mask>) -> [f64; 3] {
             }
         }
     }
-    if pairs == 0 {
-        return [0.0; 3];
-    }
-    squares.map(|squares| (squares as f64 / pairs as f64 / 2.0).sqrt().min(MAX_NOISE))
+    (pairs, squares)
 }
 
 /// Whether `image` reached `threshold` at `now`, for the runner and the Live Tester: a fade image
