@@ -58,6 +58,8 @@ pub struct Tester {
     frame: Option<u64>,
     /// `None` without a capture, which compares as 0 like in the runner.
     similarity: Option<f64>,
+    /// The noise a fade image left out of the last frame (red, green, blue), with a capture.
+    noise: Option<[f64; 3]>,
     highest: Option<f64>,
     phase: Phase,
     /// For a fade image, which only reaches the threshold by a fade.
@@ -82,6 +84,7 @@ impl Tester {
             next_tick: now,
             frame: None,
             similarity: None,
+            noise: None,
             highest: None,
             phase: Phase::Waiting,
             fade: FadeTracker::default(),
@@ -108,6 +111,12 @@ impl Tester {
     /// The similarity of the last frame, or `None` without a capture.
     pub fn similarity(&self) -> Option<f64> {
         self.similarity
+    }
+
+    /// The noise a fade image left out of the last frame (red, green, blue), or `None` without a
+    /// capture or for other images.
+    pub fn noise(&self) -> Option<[f64; 3]> {
+        self.noise
     }
 
     /// The highest similarity since opening or the last [`Tester::rearm`].
@@ -172,16 +181,21 @@ impl Tester {
         }
         self.next_tick = next_grid_tick(self.epoch, now, interval(self.defaults.fps_limit));
         let capture = capture.filter(|capture| !capture.view.is_empty());
-        let similarity = match (capture, self.similarity) {
-            (Some(capture), Some(similarity)) if self.frame == Some(capture.sequence) => similarity,
+        let (similarity, noise) = match (capture, self.similarity) {
+            (Some(capture), Some(similarity)) if self.frame == Some(capture.sequence) => (similarity, self.noise),
             (Some(capture), _) => {
                 self.scratch.begin_frame(capture.sequence);
-                self.image.similarity(Some(capture.view), &self.defaults, &mut self.scratch)
+                let view = Some(capture.view);
+                match self.image.fade_comparison(view, &self.defaults, &mut self.scratch) {
+                    Some(fade) => (fade.similarity, Some(fade.noise)),
+                    None => (self.image.similarity(view, &self.defaults, &mut self.scratch), None),
+                }
             }
-            (None, _) => 0.0,
+            (None, _) => (0.0, None),
         };
         self.frame = capture.map(|capture| capture.sequence);
         self.similarity = capture.map(|_| similarity);
+        self.noise = noise;
         self.highest = Some(self.highest.map_or(similarity, |highest| highest.max(similarity)));
 
         let threshold = self.threshold();

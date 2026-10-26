@@ -3,7 +3,7 @@
 use std::path::{Path, PathBuf};
 
 use crate::compare::{self, CompareScratch, ComparisonMethod, Mask, SourceFeatures};
-use crate::fade;
+use crate::fade::{self, FadeComparison};
 use crate::filename::{
     self, BELOW_FLAG, DEFAULT_FADE_TIME, DUMMY_FLAG, FADE_FLAG, FilenameWarning, PAUSE_FLAG, RESET_KEYWORD,
     START_KEYWORD,
@@ -215,15 +215,24 @@ impl SplitImage {
 
     /// The similarity a run goes by: to a fade image's color, or by the image's comparison method.
     pub fn similarity(&self, capture: Option<BgraView>, defaults: &SplitDefaults, scratch: &mut CompareScratch) -> f64 {
-        match self.fade_color {
-            Some(color) => {
-                let (tolerance, ignore_noise) = (defaults.fade_tolerance_levels(), defaults.fade_ignore_noise);
-                self.compare_resized(capture, scratch, |resized, mask, _| {
-                    fade::similarity(color, resized, mask, tolerance, ignore_noise)
-                })
-            }
+        match self.fade_comparison(capture, defaults, scratch) {
+            Some(fade) => fade.similarity,
             None => self.compare(capture, self.comparison_method(defaults), scratch),
         }
+    }
+
+    /// A fade image's similarity, with the noise it left out, or `None` for other images.
+    pub fn fade_comparison(
+        &self,
+        capture: Option<BgraView>,
+        defaults: &SplitDefaults,
+        scratch: &mut CompareScratch,
+    ) -> Option<FadeComparison> {
+        let color = self.fade_color?;
+        let (tolerance, ignore_noise) = (defaults.fade_tolerance_levels(), defaults.fade_ignore_noise);
+        Some(self.compare_resized(capture, scratch, |resized, mask, _| {
+            fade::similarity(color, resized, mask, tolerance, ignore_noise)
+        }))
     }
 
     /// `compare_with_capture`. A missing or empty capture (lost window or device) compares as 0.
@@ -245,17 +254,19 @@ impl SplitImage {
     }
 
     /// `compare` with the capture resized to the image's size.
-    fn compare_resized(
+    /// What `compare` makes of the capture resized to the image, or its default, like a
+    /// similarity of 0, without a capture or a usable image.
+    fn compare_resized<T: Default>(
         &self,
         capture: Option<BgraView>,
         scratch: &mut CompareScratch,
-        compare: impl FnOnce(&BgraImage, Option<&Mask>, (&mut Vec<u8>, &mut ResizeBuffers)) -> f64,
-    ) -> f64 {
+        compare: impl FnOnce(&BgraImage, Option<&Mask>, (&mut Vec<u8>, &mut ResizeBuffers)) -> T,
+    ) -> T {
         let Some(capture) = capture.filter(|capture| !capture.is_empty()) else {
-            return 0.0;
+            return T::default();
         };
         let SplitContent::Image { pixels, mask, .. } = &self.content else {
-            return 0.0;
+            return T::default();
         };
         let size = (pixels.width(), pixels.height());
         let CompareScratch { resize, resized, resized_visible, masked, resized_for_frame, frame_active, .. } = scratch;

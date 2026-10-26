@@ -4,7 +4,7 @@
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
-use slint::{ComponentHandle, SharedString};
+use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
 
 use super::paths::{canonical, file_name_text};
 use super::placement::beside;
@@ -237,6 +237,7 @@ impl Gui {
                 live: texts.live.into(),
                 highest: texts.highest.into(),
                 threshold: texts.threshold.into(),
+                noise: ModelRc::new(VecModel::from_iter(texts.noise.into_iter().map(SharedString::from))),
                 reached: texts.reached,
                 highest_reached: texts.highest_reached,
                 live_value,
