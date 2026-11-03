@@ -63,8 +63,9 @@ export global SplitValues {
     in-out property <int> generation;
     in-out property <string> name;
     in-out property <int> kind;
-    // 0 for a screenshot, 1 for a fade to a color
+    // Where it is in CompareBy::ALL: 0 to 2 for a screenshot's method, 3 for a fade to a color
     in-out property <int> compare;
+    out property <bool> fade: compare == 3;
     // A fade split's color as typed, kept when it's switched to a screenshot and back
     in-out property <string> color;
     // Milliseconds
@@ -89,6 +90,7 @@ export component SplitFormPanel inherits VerticalLayout {
     in property <bool> has-split;
     in property <SplitForm> form;
     in property <[string]> kinds;
+    in property <[string]> compares;
     // Raised to move the focus to the Name field, like after Add
     in property <int> name-focus-request;
     callback split-edited(SplitField);
@@ -134,19 +136,19 @@ export component SplitFormPanel inherits VerticalLayout {
             // Beside the type, since any type can be either
             ComboBox {
                 horizontal-stretch: 1;
-                model: ["Screenshot", "Fade"];
+                model: root.compares;
                 current-index <=> SplitValues.compare;
                 selected => { root.split-edited(SplitField.compare); }
 
                 Tooltip {
                     Tip {
-                        text: "Compare by: a screenshot made into the split image with the mask, or a fade to a color, which splits on the frame the fade ends and not on a cut to the color.";
+                        text: "Compare by: a screenshot made into the split image with the mask, or a fade to a color, which splits on the frame the fade ends and not on a cut to the color. L2 Norm compares every pixel. Histograms compares the colors wherever they are, for a moving or rotating target. pHash compares the overall shape. The mask's transparent part is black in both images, so other screens score higher too. Check its threshold against them.";
                     }
                 }
             }
         }
 
-        if SplitValues.compare == 1: VerticalLayout {
+        if SplitValues.fade: VerticalLayout {
             spacing: 2px;
 
             // Tighter than the other rows, which have fewer fields
@@ -220,7 +222,7 @@ export component SplitFormPanel inherits VerticalLayout {
             if root.form.drops-savestate: FieldProblem {
                 label-width: root.label-width;
                 color: Theme.secondary-text;
-                text: "Its savestate isn't saved with a fade split. Switch back to Screenshot to keep it.";
+                text: "Its savestate isn't saved with a fade split. Switch Compare to L2 Norm, Histograms or pHash to keep it.";
             }
         }
 
@@ -278,7 +280,7 @@ export component SplitFormPanel inherits VerticalLayout {
                     horizontal-stretch: 1;
                     color: root.form.mask-problem != "" ? Theme.error : root.form.mask == "" ? Theme.secondary-text : Theme.text;
                     // A fade split without one compares the whole screen
-                    text: root.form.mask != "" ? root.form.mask : SplitValues.compare == 1 ? "None, the whole screen" : "None yet";
+                    text: root.form.mask != "" ? root.form.mask : SplitValues.fade ? "None, the whole screen" : "None yet";
 
                     Tooltip {
                         Tip {
@@ -290,12 +292,12 @@ export component SplitFormPanel inherits VerticalLayout {
                 Button {
                     width: 80px;
                     text: "Choose...";
-                    suggested: root.form.mask == "" && SplitValues.compare == 0;
+                    suggested: root.form.mask == "" && !SplitValues.fade;
                     clicked => { root.choose-mask(); }
                 }
 
                 // A fade split without a mask compares the whole screen, which then has the room
-                if SplitValues.compare == 1 && root.form.mask != "": Button {
+                if SplitValues.fade && root.form.mask != "": Button {
                     width: 50px;
                     text: "Clear";
                     clicked => { root.clear-mask(); }
@@ -443,7 +445,7 @@ export component SplitFormPanel inherits VerticalLayout {
 
                 Tooltip {
                     Tip {
-                        text: SplitValues.compare == 1 ? "Split when the color goes away after the fade, like when the next area shows" : "Split when the similarity drops back below the threshold after reaching it, like when a screen goes away";
+                        text: SplitValues.fade ? "Split when the color goes away after the fade, like when the next area shows" : "Split when the similarity drops back below the threshold after reaching it, like when a screen goes away";
                     }
                 }
             }
@@ -487,7 +489,7 @@ export component SplitFormPanel inherits VerticalLayout {
         }
 
         // A fade split is made from its color, so there's no screen to get to for a screenshot
-        if SplitValues.compare == 0: VerticalLayout {
+        if !SplitValues.fade: VerticalLayout {
             spacing: 2px;
 
             HorizontalLayout {
@@ -533,7 +535,7 @@ export component SplitFormPanel inherits VerticalLayout {
         }
 
         // Always two lines, however much is above it
-        if SplitValues.compare == 0: TextArea {
+        if !SplitValues.fade: TextArea {
             vertical-stretch: 1;
             min-height: 42px;
             enabled: root.form.savestate != "";
@@ -542,7 +544,7 @@ export component SplitFormPanel inherits VerticalLayout {
             edited => { root.split-edited(SplitField.instructions); }
         }
 
-        if SplitValues.compare == 1: Rectangle {
+        if SplitValues.fade: Rectangle {
             vertical-stretch: 1;
         }
     }

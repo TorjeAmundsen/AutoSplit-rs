@@ -22,6 +22,8 @@ export struct LibraryStep {
     below: bool,
     // A fade split's color and fade time, or empty
     fade: string,
+    // Its comparison method when it isn't L2 Norm, or empty, shown next to its name
+    method: string,
     // The file name it gets, with XX for its number, which comes from where it's put
     file-parts: [NamePart],
     file: string,
@@ -159,6 +161,12 @@ component Settings inherits VerticalLayout {
         value: root.flags;
         kind: NameKind.flags;
     }
+}
+
+// An image's comparison method next to its name, in the file name's color for it
+component MethodTag inherits Text {
+    font-weight: 600;
+    color: NameColors.of({ kind: NameKind.method });
 }
 
 // An image's file name and savestate, under its picture and settings so they get the pane's whole
@@ -517,13 +525,25 @@ export component LibraryWindow inherits Window {
                             padding: 10px;
                             spacing: 8px;
 
-                            Text {
-                                font-size: 14px;
-                                font-weight: 600;
-                                color: Theme.text;
-                                text: root.item.heading;
-                                // A long name wraps instead of being cut off
-                                wrap: word-wrap;
+                            // With the method of its only image after it, which a ready-made split
+                            // of several images has after each image's name instead
+                            HorizontalLayout {
+                                alignment: start;
+                                spacing: 8px;
+
+                                Text {
+                                    font-size: 14px;
+                                    font-weight: 600;
+                                    color: Theme.text;
+                                    text: root.item.heading;
+                                    // A long name wraps instead of being cut off
+                                    wrap: word-wrap;
+                                }
+
+                                if root.item.steps.length == 1 && root.item.steps[0].method != "": MethodTag {
+                                    font-size: 14px;
+                                    text: root.item.steps[0].method;
+                                }
                             }
 
                             // Under its name, since it's for the whole ready-made split, not just
@@ -555,11 +575,21 @@ export component LibraryWindow inherits Window {
                                         alignment: start;
                                         spacing: 3px;
 
-                                        if root.item.steps.length > 1: Text {
-                                            font-weight: 600;
-                                            color: Theme.text;
-                                            text: (step-index + 1) + ". " + step.heading;
-                                            overflow: elide;
+                                        if root.item.steps.length > 1: HorizontalLayout {
+                                            alignment: start;
+                                            spacing: 6px;
+
+                                            Text {
+                                                min-width: 0px;
+                                                font-weight: 600;
+                                                color: Theme.text;
+                                                text: (step-index + 1) + ". " + step.heading;
+                                                overflow: elide;
+                                            }
+
+                                            if step.method != "": MethodTag {
+                                                text: step.method;
+                                            }
                                         }
 
                                         // Two columns once the pane leaves the settings about

@@ -1,14 +1,18 @@
 //! The preset editor's draft: edits, list operations kept in step with other lists, and problems.
 
 use autosplit::gui::preset_form::{
-    Draft, Field, InstructionText, ListChange, Problem, SplitEdit, SplitKind, discard_question, elide_middle,
-    field_problems, field_value, import_blocker, in_preset, instruction_cards, known_game, library_file_name,
-    library_heading, matches_search, next_problem_split, one_copy_question, problem_flags, problem_list,
-    problem_summary, saved_preset_name, saved_split, settings_changes, settings_problem, split_heading, status_line,
-    too_few_selected, with_settings_of,
+    CompareBy, Draft, Field, InstructionText, ListChange, Problem, SplitEdit, SplitKind, discard_question,
+    elide_middle, field_problems, field_value, import_blocker, in_preset, instruction_cards, known_game,
+    library_file_name, library_heading, matches_search, next_problem_split, one_copy_question, problem_flags,
+    problem_list, problem_summary, saved_preset_name, saved_split, settings_changes, settings_problem, split_heading,
+    status_line, too_few_selected, with_settings_of,
 };
+use autosplit_core::compare::ComparisonMethod;
 use autosplit_core::preset::{Preset, PresetSplit};
 use test_case::test_case;
+
+const L2_NORM: CompareBy = CompareBy::Screenshot(ComparisonMethod::L2Norm);
+const HISTOGRAMS: CompareBy = CompareBy::Screenshot(ComparisonMethod::Histograms);
 
 fn split(name: &str) -> PresetSplit {
     PresetSplit { name: name.into(), mask: format!("{name}.png"), ..PresetSplit::default() }
@@ -1079,7 +1083,7 @@ fn comparing_by_a_fade_starts_black_at_0_995() {
     draft.edit_split(0, SplitEdit::Threshold(Some(0.92)));
 
     // Act
-    draft.edit_split(0, SplitEdit::Compare(true));
+    draft.edit_split(0, SplitEdit::Compare(CompareBy::Fade));
 
     // Assert
     assert_eq!(fade_fields(&draft, 0), (Some("#000000"), Some(1000), Some(0.995)));
@@ -1089,13 +1093,13 @@ fn comparing_by_a_fade_starts_black_at_0_995() {
 fn comparing_by_a_fade_again_brings_back_its_color_and_fade_time() {
     // Arrange: a fade split, switched to a screenshot
     let mut draft = draft(&["Boss"]);
-    draft.edit_split(0, SplitEdit::Compare(true));
+    draft.edit_split(0, SplitEdit::Compare(CompareBy::Fade));
     draft.edit_split(0, SplitEdit::Color("#a0a0a0".into()));
     draft.edit_split(0, SplitEdit::FadeTime(800.0));
-    draft.edit_split(0, SplitEdit::Compare(false));
+    draft.edit_split(0, SplitEdit::Compare(L2_NORM));
 
     // Act
-    draft.edit_split(0, SplitEdit::Compare(true));
+    draft.edit_split(0, SplitEdit::Compare(CompareBy::Fade));
 
     // Assert
     assert_eq!(fade_fields(&draft, 0), (Some("#a0a0a0"), Some(800), Some(0.995)));
@@ -1105,11 +1109,11 @@ fn comparing_by_a_fade_again_brings_back_its_color_and_fade_time() {
 fn another_split_switched_to_a_fade_starts_black() {
     // Arrange: one split made a fade to gray, which the form showed last
     let mut draft = draft(&["Boss", "Door"]);
-    draft.edit_split(0, SplitEdit::Compare(true));
+    draft.edit_split(0, SplitEdit::Compare(CompareBy::Fade));
     draft.edit_split(0, SplitEdit::Color("#a0a0a0".into()));
 
     // Act
-    draft.edit_split(1, SplitEdit::Compare(true));
+    draft.edit_split(1, SplitEdit::Compare(CompareBy::Fade));
 
     // Assert
     assert_eq!(fade_fields(&draft, 1).0, Some("#000000"));
@@ -1121,7 +1125,7 @@ fn another_split_switched_to_a_fade_starts_black() {
 fn fade_times_out_of_range_are_problems(time: u32) -> Vec<String> {
     // Arrange: written by hand, since the form keeps it in range
     let mut draft = draft(&["Boss"]);
-    draft.edit_split(0, SplitEdit::Compare(true));
+    draft.edit_split(0, SplitEdit::Compare(CompareBy::Fade));
     draft.preset.splits[0].fade_time = Some(time);
 
     // Act
@@ -1139,10 +1143,10 @@ fn comparing_by_a_screenshot_again_drops_the_fade_and_brings_back_the_threshold(
     // Arrange
     let mut draft = draft(&["Boss"]);
     draft.edit_split(0, SplitEdit::Threshold(threshold));
-    draft.edit_split(0, SplitEdit::Compare(true));
+    draft.edit_split(0, SplitEdit::Compare(CompareBy::Fade));
 
     // Act
-    draft.edit_split(0, SplitEdit::Compare(false));
+    draft.edit_split(0, SplitEdit::Compare(L2_NORM));
 
     // Assert, with the expected value checked by test_case
     let (fade, time, threshold) = fade_fields(&draft, 0);
@@ -1157,11 +1161,100 @@ fn comparing_by_a_fade_and_back_is_no_change() {
     let before = draft.clone();
 
     // Act
-    draft.edit_split(0, SplitEdit::Compare(true));
-    draft.edit_split(0, SplitEdit::Compare(false));
+    draft.edit_split(0, SplitEdit::Compare(CompareBy::Fade));
+    draft.edit_split(0, SplitEdit::Compare(L2_NORM));
 
     // Assert
     assert_eq!(draft.preset, before.preset);
+}
+
+#[test]
+fn another_method_is_kept_and_named_in_the_file_name() {
+    // Arrange
+    let mut draft = draft(&["FireArrows"]);
+
+    // Act
+    draft.edit_split(0, SplitEdit::Compare(HISTOGRAMS));
+
+    // Assert
+    let split = &draft.preset.splits[0];
+    assert_eq!(
+        (CompareBy::of(split), draft.preset.file_names(None)),
+        (HISTOGRAMS, vec!["0_FireArrows_^1^.png".to_owned()])
+    );
+}
+
+#[test]
+fn a_method_then_a_fade_and_back_to_l2_norm_is_no_change() {
+    // Arrange
+    let mut draft = draft(&["FireArrows"]);
+    let before = draft.clone();
+    draft.edit_split(0, SplitEdit::Compare(HISTOGRAMS));
+
+    // Act: a fade compares by color, so its method goes
+    draft.edit_split(0, SplitEdit::Compare(CompareBy::Fade));
+    let method = draft.preset.splits[0].comparison_method;
+    draft.edit_split(0, SplitEdit::Compare(L2_NORM));
+
+    // Assert
+    assert_eq!((method, &draft.preset), (ComparisonMethod::L2Norm, &before.preset));
+}
+
+#[test]
+fn the_compare_choices_are_the_methods_by_index_then_fade() {
+    // Act
+    let indexes: Vec<usize> = CompareBy::ALL.iter().map(|by| by.index()).collect();
+    let methods: Vec<i64> = ComparisonMethod::ALL.iter().map(|method| method.index()).collect();
+
+    // Assert: the form's 0 to 2 are the methods' own indexes
+    assert_eq!((indexes, methods), (vec![0, 1, 2, 3], vec![0, 1, 2]));
+}
+
+#[test]
+fn the_compare_choices_are_named_like_the_profile_methods() {
+    // Act
+    let labels: Vec<&str> = CompareBy::ALL.iter().map(|by| by.label()).collect();
+
+    // Assert
+    assert_eq!(labels, vec!["L2 Norm", "Histograms", "pHash", "Fade"]);
+}
+
+#[test]
+fn fade_splits_taking_each_others_settings_ignore_their_methods() {
+    // Arrange: a method written by hand on a fade split, which it doesn't compare with
+    let fade = PresetSplit { fade: Some("#000000".into()), ..split("Boss") };
+    let from = PresetSplit { comparison_method: ComparisonMethod::Histograms, ..fade.clone() };
+
+    // Act
+    let changes = settings_changes(&fade, &from, None);
+
+    // Assert
+    assert_eq!(changes, "From Boss: no changes");
+}
+
+#[test]
+fn fade_splits_are_saved_without_a_method() {
+    // Arrange: a method written by hand on a fade split
+    let fade =
+        PresetSplit { fade: Some("#000000".into()), comparison_method: ComparisonMethod::Histograms, ..split("Boss") };
+
+    // Act
+    let saved = saved_split(&fade);
+
+    // Assert
+    assert_eq!(saved.comparison_method, ComparisonMethod::L2Norm);
+}
+
+#[test]
+fn a_ready_made_split_taking_another_method_says_so() {
+    // Arrange
+    let from = PresetSplit { comparison_method: ComparisonMethod::Histograms, ..split("Boss") };
+
+    // Act
+    let changes = settings_changes(&split("Boss"), &from, None);
+
+    // Assert
+    assert_eq!(changes, "From Boss: comparison method L2 Norm to Histograms");
 }
 
 #[test]
@@ -1200,7 +1293,7 @@ fn color_and_fade_time_only_change_fade_splits() {
 fn fade_times_are_kept_in_range(time: f64) -> Option<u32> {
     // Arrange
     let mut draft = draft(&["Boss"]);
-    draft.edit_split(0, SplitEdit::Compare(true));
+    draft.edit_split(0, SplitEdit::Compare(CompareBy::Fade));
 
     // Act
     draft.edit_split(0, SplitEdit::FadeTime(time));
@@ -1214,7 +1307,7 @@ fn fade_split_needs_no_mask_but_a_color_written_right() {
     // Arrange
     let mut draft = draft(&["Boss"]);
     draft.edit_split(0, SplitEdit::Mask(String::new()));
-    draft.edit_split(0, SplitEdit::Compare(true));
+    draft.edit_split(0, SplitEdit::Compare(CompareBy::Fade));
 
     // Act
     draft.edit_split(0, SplitEdit::Color("#a0a0".into()));
@@ -1235,7 +1328,7 @@ fn fade_splits_are_saved_without_a_savestate() {
     draft.edit_split(0, SplitEdit::Instructions("Advance a frame.".into()));
 
     // Act
-    draft.edit_split(0, SplitEdit::Compare(true));
+    draft.edit_split(0, SplitEdit::Compare(CompareBy::Fade));
 
     // Assert: kept for switching back, but not saved
     let saved = &draft.to_save().splits[0];

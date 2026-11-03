@@ -1,6 +1,7 @@
 //! Filename values AutoSplit ignores are reported as warnings. The values themselves are
 //! checked against AutoSplit by the golden tests.
 
+use autosplit_core::compare::ComparisonMethod;
 use autosplit_core::filename::{
     FilenameWarning, NameError, RESET_KEYWORD, START_KEYWORD, Setting, SplitSpec, build_filename,
     delay_time_from_filename, fade_time_from_filename, filename_warnings, has_keyword, name_parts,
@@ -189,6 +190,7 @@ const SPEC: SplitSpec = SplitSpec {
     dummy: false,
     below: false,
     fade_time: None,
+    comparison_method: ComparisonMethod::L2Norm,
 };
 
 fn defaults(delay_time: i64, comparison_method: i64) -> SplitDefaults {
@@ -213,6 +215,10 @@ fn defaults(delay_time: i64, comparison_method: i64) -> SplitDefaults {
 #[test_case(SplitSpec { delay: Some(500), ..SPEC }, 5, 20, Some(defaults(500, 0)) => "05_Bottle_(0.93)_#500#.png"; "its own delay, like the profile's")]
 #[test_case(SplitSpec { delay: Some(0), ..SPEC }, 5, 20, Some(defaults(500, 0)) => "05_Bottle_(0.93)_#0#.png"; "no delay against the profile's")]
 #[test_case(SPEC, 5, 20, Some(defaults(0, 2)) => "05_Bottle_(0.93)_^0^.png"; "l2 norm against the profile's method")]
+#[test_case(SplitSpec { comparison_method: ComparisonMethod::Histograms, ..SPEC }, 5, 20, None => "05_Bottle_(0.93)_^1^.png"; "its own method")]
+#[test_case(SplitSpec { comparison_method: ComparisonMethod::Histograms, ..SPEC }, 5, 20, Some(defaults(0, 1)) => "05_Bottle_(0.93)_^1^.png"; "its own method, like the profile's")]
+#[test_case(SplitSpec { comparison_method: ComparisonMethod::PHash, ..SPEC }, 5, 20, Some(defaults(0, 1)) => "05_Bottle_(0.93)_^2^.png"; "its own method against the profile's")]
+#[test_case(SplitSpec { fade_time: Some(350), comparison_method: ComparisonMethod::Histograms, ..SPEC }, 5, 20, None => "05_Bottle_(0.93)_~350~_{f}.png"; "fade split, which leaves out its method")]
 #[test_case(SplitSpec { threshold: Some(0.995), fade_time: Some(1000), ..SPEC }, 5, 20, None => "05_Bottle_(0.995)_~1000~_{f}.png"; "fade split")]
 #[test_case(SplitSpec { fade_time: Some(350), dummy: true, ..SPEC }, 5, 20, Some(defaults(0, 2)) => "05_Bottle_(0.93)_~350~_{df}.png"; "fade split, which never asks for a method")]
 fn builds_file_names_like_automask(

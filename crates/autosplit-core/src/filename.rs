@@ -523,12 +523,14 @@ pub struct SplitSpec<'a> {
     pub below: bool,
     /// Milliseconds, for a fade split, `{f}`. `None` for one made from a screenshot.
     pub fade_time: Option<u32>,
+    /// `^n^`, which a fade split doesn't have.
+    pub comparison_method: ComparisonMethod,
 }
 
 /// The file name of split image `index` (from 0) of `count`, like AutoMask names them. Only the
-/// settings the split has are in it, so the others are the profile's. With the profile's
-/// `defaults`, it asks for L2 Norm, which presets are made for, when the profile compares another
-/// way.
+/// settings the split has are in it, so the others are the profile's. A method other than L2
+/// Norm is always in it. With the profile's `defaults`, L2 Norm is too, when the profile compares
+/// another way.
 ///
 /// `reset_(0.96)_[0.1].png`, `05_Bottle_(0.93)_[35]_#1100#_{b}.png`: the number has as many
 /// digits as `count`, so the images sort in order.
@@ -550,9 +552,10 @@ pub fn build_filename(spec: &SplitSpec, index: usize, count: usize, defaults: Op
         name += &format!("_~{fade_time}~");
     }
     // Fade images always compare by color
+    let method = spec.comparison_method;
     let other_method = defaults.is_some_and(|defaults| defaults.comparison_method != ComparisonMethod::L2Norm.index());
-    if other_method && spec.fade_time.is_none() {
-        name += "_^0^";
+    if (method != ComparisonMethod::L2Norm || other_method) && spec.fade_time.is_none() {
+        name += &format!("_^{}^", method.index());
     }
     let flags: String = [(spec.dummy, 'd'), (spec.below, 'b'), (spec.fade_time.is_some(), 'f')]
         .iter()
