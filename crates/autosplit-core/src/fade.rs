@@ -2,6 +2,7 @@
 //! by a gradual fade rather than a cut. Not in AutoSplit.
 
 use std::collections::VecDeque;
+use std::ops::Range;
 use std::time::Duration;
 
 use crate::compare::Mask;
@@ -23,8 +24,10 @@ const ARRIVAL_STEPS: usize = 3;
 /// The most one of the [`ARRIVAL_STEPS`] may make of their rise. A fade still rises in the steps
 /// before the last one, while a cut after something that held still, like a dark room entered
 /// with a cut, makes all of it in one. Without this, the earlier cut would count toward the
-/// fade's depth and make the later one look small.
-const MAX_ARRIVAL_SHARE: f64 = 0.75;
+/// fade's depth and make the later one look small. A fade can still make up to about 0.83 of it
+/// in one, when the camera turns toward something dark just before the end, and cuts make 0.95
+/// and up.
+const MAX_ARRIVAL_SHARE: f64 = 0.9;
 /// How much bigger than the steps after it a step of a fade may be. A fade's steps grow or shrink
 /// a little at a time, while a cut is a jump between small ones. So a cut that lands just under the
 /// threshold and then creeps up to it doesn't count as the gradual part of a fade, which has to be
@@ -35,14 +38,45 @@ const MAX_DIP: f64 = 0.03;
 const MIN_SAMPLE_INTERVAL: Duration = Duration::from_millis(50);
 const MAX_SAMPLE_INTERVAL: Duration = Duration::from_millis(100);
 
+/// The most noise taken out of a channel. Analog captures have up to about 1.5 levels, and fine
+/// detail left of a scene just before a fade ends mustn't count as more than that.
+pub(crate) const MAX_NOISE: f64 = 2.0;
+/// The share of an image's height between the pixels noise is estimated from: about 8 pixels at
+/// 1080 lines. Closer ones share their noise in analog captures scaled up from 480 lines, which
+/// spread each speck over about 2 pixels.
+const NOISE_DISTANCE: f64 = 1.0 / 135.0;
+/// Noise is estimated from every this many rows, or from all of them when those have no pairs.
+/// Noise is the same all over, so a quarter of them, tens of thousands of pixels, estimate it
+/// about as well as all of them, at a quarter of the time.
+const NOISE_ROW_STEP: usize = 4;
+
+/// How close a capture is to a fade image's color.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct FadeComparison {
+    pub similarity: f64,
+    /// The noise left out of each channel (red, green, blue), in levels.
+    pub noise: [f64; 3],
+}
+
 /// The similarity of `capture` to a solid `color` (BGR), over the pixels `mask` shows:
 /// `1 - sqrt(offset^2 + spread^2) / max`, where the offset is how far the capture's mean color is
 /// from `color` and the spread how far its pixels are from that mean. Each channel's mean may be
-/// up to `tolerance` levels off for free, for capture setups whose colors are a little off.
+/// up to `tolerance` levels off for free, for capture setups whose colors are a little off. With
+/// `ignore_noise`, the capture's [`noise`] is taken out of its spread, for capture setups that add
+/// noise, like analog ones, and games with film grain or dithering. A capture clips its noise at
+/// black and white, so a channel with a mean near either has at most half that distance taken
+/// out. Otherwise the last frames of a fade to black, whose spread is all that's left of the
+/// scene, would reach the threshold early.
 ///
 /// Unlike AutoSplit's L2 norm, alpha isn't counted, so 1.0 and 0.0 mean the same with or without
 /// a mask.
-pub(crate) fn similarity(color: [u8; 3], capture: &BgraImage, mask: Option<&Mask>, tolerance: u8) -> f64 {
+pub(crate) fn similarity(
+    color: [u8; 3],
+    capture: &BgraImage,
+    mask: Option<&Mask>,
+    tolerance: u8,
+    ignore_noise: bool,
+) -> FadeComparison {
     let mut count = 0_u64;
     let mut sums = [0_u64; 3];
     let mut squares = [0_u64; 3];
@@ -61,17 +95,94 @@ pub(crate) fn similarity(color: [u8; 3], capture: &BgraImage, mask: Option<&Mask
         None => add(capture.data()),
     }
     if count == 0 {
-        return 0.0;
+        return FadeComparison::default();
     }
+    let estimated = if ignore_noise { noise(capture, mask) } else { [0.0; 3] };
     let count = count as f64;
     let mut squared = 0.0;
+    let mut left_out = [0.0; 3];
     for channel in 0..3 {
         let mean = sums[channel] as f64 / count;
-        let variance = (squares[channel] as f64 / count - mean * mean).max(0.0);
+        let noise = estimated[channel].min(mean.min(255.0 - mean) / 2.0);
+        let variance = (squares[channel] as f64 / count - mean * mean - noise * noise).max(0.0);
         let offset = ((mean - f64::from(color[channel])).abs() - f64::from(tolerance)).max(0.0);
         squared += offset * offset + variance;
+        left_out[channel] = noise;
     }
-    1.0 - squared.sqrt() / MAX_DISTANCE
+    left_out.reverse();
+    FadeComparison { similarity: 1.0 - squared.sqrt() / MAX_DISTANCE, noise: left_out }
+}
+
+/// The noise of each channel (BGR) of `capture` where `mask` shows it, up to [`MAX_NOISE`]: the
+/// root mean square difference between visible pixels [`NOISE_DISTANCE`] apart, across and down,
+/// over the square root of 2. Noise differs from pixel to pixel, while what's left of a scene
+/// near the end of a fade changes slowly across the picture, so this is about the noise alone,
+/// and the capture doesn't have to be measured first.
+fn noise(capture: &BgraImage, mask: Option<&Mask>) -> [f64; 3] {
+    let distance = ((capture.height() as f64 * NOISE_DISTANCE).round() as usize).max(1);
+    // A mask can show too few rows for the sampled ones to have pairs, like a thin strip
+    let (pairs, squares) = match pair_squares(capture, mask, distance, NOISE_ROW_STEP) {
+        (0, _) => pair_squares(capture, mask, distance, 1),
+        found => found,
+    };
+    if pairs == 0 {
+        return [0.0; 3];
+    }
+    squares.map(|squares| (squares as f64 / pairs as f64 / 2.0).sqrt().min(MAX_NOISE))
+}
+
+/// How many pairs of visible pixels `distance` apart there are, across and down, on every
+/// `step`th row, and each channel's sum (BGR) of their squared differences.
+fn pair_squares(capture: &BgraImage, mask: Option<&Mask>, distance: usize, step: usize) -> (u64, [u64; 3]) {
+    let (width, height) = (capture.width(), capture.height());
+    let data = capture.data();
+    let mut pairs = 0_u64;
+    let mut squares = [0_u64; 3];
+    // Pixels at the same place in two runs of the same length
+    let mut add = |from: Range<usize>, to: usize| {
+        let pixels = |start: usize| data[start * 4..(start + from.len()) * 4].as_chunks::<4>().0;
+        for (a, b) in pixels(from.start).iter().zip(pixels(to)) {
+            for channel in 0..3 {
+                let difference = u64::from(a[channel].abs_diff(b[channel]));
+                squares[channel] += difference * difference;
+            }
+        }
+        pairs += from.len() as u64;
+    };
+    // Each sampled row's visible runs, as pixel indices: masks' spans can go on into the next row
+    let rows = (0..height).step_by(step).map(|y| y * width..(y + 1) * width);
+    let runs: Box<dyn Iterator<Item = Range<usize>>> = match mask {
+        None => Box::new(rows),
+        Some(mask) => Box::new(mask.spans().iter().flat_map(move |span| {
+            (span.start / width..=(span.end - 1) / width)
+                .filter(move |y| y.is_multiple_of(step))
+                .map(move |y| span.start.max(y * width)..span.end.min((y + 1) * width))
+        })),
+    };
+    for run in runs {
+        // Across, within the run
+        if run.len() > distance {
+            add(run.start..run.end - distance, run.start + distance);
+        }
+        // Down, where the pixels below show too
+        if run.start / width + distance < height {
+            let below = run.start + distance * width;
+            match mask {
+                None => add(run.clone(), below),
+                Some(mask) => {
+                    let shown = &mask.bytes()[below..below + run.len()];
+                    let mut offset = 0;
+                    for part in shown.chunk_by(|a, b| (*a != 0) == (*b != 0)) {
+                        if part[0] != 0 {
+                            add(run.start + offset..run.start + offset + part.len(), below + offset);
+                        }
+                        offset += part.len();
+                    }
+                }
+            }
+        }
+    }
+    (pairs, squares)
 }
 
 /// Whether `image` reached `threshold` at `now`, for the runner and the Live Tester: a fade image

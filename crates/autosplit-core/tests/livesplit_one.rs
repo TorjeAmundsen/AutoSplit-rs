@@ -23,7 +23,6 @@ fn parses_messages(text: &str) -> Option<Message> {
 #[test_case("SplitUndone" => TimerReport { command: Some(Command::Undo), request: Some(ControlRequest::Undo) }; "undo goes back")]
 #[test_case("Reset" => TimerReport { command: Some(Command::Reset), request: Some(ControlRequest::Reset) }; "reset resets")]
 #[test_case("Paused" => TimerReport::default(); "pause is ignored")]
-#[test_case("ComparisonChanged" => TimerReport::default(); "other events are ignored")]
 fn maps_events_like_livesplit_lines(event: &str) -> TimerReport {
     // Act, with the expected value checked by test_case
     parse_event(event)

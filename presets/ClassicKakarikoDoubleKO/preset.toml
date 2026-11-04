@@ -36,8 +36,8 @@ savestate = "savestates/001-hyrule field.gzs"
 name = "Kakariko"
 mask = "Kakariko.png"
 fade = "#a0a0a0"
-fade_time = 800
-threshold = 0.995
+fade_time = 1000
+threshold = 0.997
 pause = 100.0
 
 [[split]]
@@ -59,11 +59,12 @@ savestate = "savestates/004-kokiri forest.gzs"
 
 [[split]]
 name = "EnterDeku"
-mask = "EnterDeku.png"
-fade = "#000000"
-fade_time = 800
-threshold = 0.995
+mask = "006_a_button_flip.png"
+threshold = 0.92
 pause = 60.0
+delay = 1000
+savestate = "savestates/005-kokiri forest.gzs"
+instructions = "After loading, advance 1 frame before taking your screenshot. The A button doesn't render correctly if the savestate is on the frame itself, so it had to be 1 frame before."
 
 [[split]]
 name = "ScrubsDummyHigh"
@@ -86,10 +87,9 @@ savestate = "savestates/015-deku_tree.gzs"
 
 [[split]]
 name = "Scrubs"
-mask = "Scrubs.png"
 fade = "#000000"
-fade_time = 800
-threshold = 0.995
+fade_time = 1000
+threshold = 0.999
 
 [[split]]
 name = "DoubleKO"
@@ -109,8 +109,8 @@ savestate = "savestates/009-tower collapse.gzs"
 name = "Collapse"
 mask = "Collapse.png"
 fade = "#a0a0a0"
-fade_time = 800
-threshold = 0.995
+fade_time = 1000
+threshold = 0.997
 pause = 60.0
 
 [[split]]

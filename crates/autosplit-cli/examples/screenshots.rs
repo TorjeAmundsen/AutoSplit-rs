@@ -62,7 +62,7 @@ fn main() {
     main.set_live_message("Waiting for capture device...".into());
     main.set_current_image_file("05_Bottle_(0.93)_[35]_#1100#_{b}.png".into());
     main.set_current_image_message("None (Paused). 9.9 seconds remaining".into());
-    main.set_window_title("AutoSplit v0.3.0".into());
+    main.set_window_title("AutoSplit v0.4.0".into());
     main.show().unwrap();
     save(&window, PhysicalSize::new(786, 450), &folder.join("main.png"));
     // A message box drawn in the window, like under Wayland
@@ -121,12 +121,12 @@ fn main() {
     settings.show().unwrap();
     for tab in 0..4 {
         settings.invoke_show_tab(tab);
-        save(&window, PhysicalSize::new(380, 414), &folder.join(format!("settings{tab}.png")));
+        save(&window, PhysicalSize::new(380, 438), &folder.join(format!("settings{tab}.png")));
     }
     settings.hide().unwrap();
 
     let about = AboutWindow::new().unwrap();
-    about.set_version("0.3.0".into());
+    about.set_version("0.4.0".into());
     about.show().unwrap();
     save(&window, PhysicalSize::new(264, 250), &folder.join("about.png"));
     about.hide().unwrap();
@@ -182,6 +182,8 @@ fn main() {
         live: "0.951".into(),
         highest: "0.962".into(),
         threshold: "0.930".into(),
+        // Not a fade image
+        noise: Default::default(),
         reached: true,
         highest_reached: true,
         live_value: 0.951,

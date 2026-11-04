@@ -62,11 +62,14 @@ component Meter inherits Rectangle {
 }
 
 // The live similarity in a box: the number large, the highest and the threshold small in the
-// top right corner, and a meter along the bottom. `met` turns it green.
+// top right corner with a fade image's noise under them, and a meter along the bottom. `met`
+// turns it green.
 component LiveReading inherits Rectangle {
     in property <string> live;
     in property <string> highest;
     in property <string> threshold;
+    // Shown under them, unless empty
+    in property <[string]> noise;
     in property <float> live-value;
     in property <float> highest-value;
     in property <float> threshold-value;
@@ -96,45 +99,95 @@ component LiveReading inherits Rectangle {
         color: root.met ? Theme.reached : Theme.text;
     }
 
+    // The highest and the threshold, and a fade image's noise under them, lined up on the left
+    // in the top right corner
     HorizontalLayout {
         x: 8px;
         y: 4px;
         width: parent.width - 16px;
-        height: 14px;
-        spacing: 12px;
         alignment: end;
 
-        for info in [
-            { name: "HIGHEST", value: root.highest, met: root.highest-met },
-            { name: "THRESHOLD", value: root.threshold, met: false },
-        ]: HorizontalLayout {
-            spacing: 4px;
+        VerticalLayout {
+            spacing: 2px;
 
-            // A dot before a value that reached the threshold
-            if info.met: VerticalLayout {
-                alignment: center;
+            HorizontalLayout {
+                height: 14px;
+                spacing: 12px;
+                alignment: start;
 
-                Rectangle {
-                    width: 6px;
-                    height: 6px;
-                    border-radius: 3px;
-                    background: Theme.reached;
+                for info in [
+                    { name: "HIGHEST", value: root.highest, met: root.highest-met },
+                    { name: "THRESHOLD", value: root.threshold, met: false },
+                ]: HorizontalLayout {
+                    spacing: 4px;
+
+                    // A dot before a value that reached the threshold
+                    if info.met: VerticalLayout {
+                        alignment: center;
+
+                        Rectangle {
+                            width: 6px;
+                            height: 6px;
+                            border-radius: 3px;
+                            background: Theme.reached;
+                        }
+                    }
+
+                    Text {
+                        text: info.name;
+                        font-size: 10px;
+                        vertical-alignment: center;
+                        color: info.met ? Theme.reached : Theme.secondary-text;
+                    }
+
+                    Text {
+                        text: info.value;
+                        font-size: 12px;
+                        font-weight: 600;
+                        vertical-alignment: center;
+                        color: info.met ? Theme.reached : Theme.text;
+                    }
                 }
             }
 
-            Text {
-                text: info.name;
-                font-size: 10px;
-                vertical-alignment: center;
-                color: info.met ? Theme.reached : Theme.secondary-text;
-            }
+            if root.noise.length > 0: HorizontalLayout {
+                height: 14px;
+                spacing: 4px;
+                alignment: start;
 
-            Text {
-                text: info.value;
-                font-size: 12px;
-                font-weight: 600;
-                vertical-alignment: center;
-                color: info.met ? Theme.reached : Theme.text;
+                // As wide as the dot before the highest, so the names line up
+                if root.highest-met: Rectangle {
+                    width: 6px;
+                }
+
+                Text {
+                    text: "NOISE LEFT OUT";
+                    font-size: 10px;
+                    vertical-alignment: center;
+                    color: Theme.secondary-text;
+                }
+
+                // A slot of the same width per channel, so nothing moves when the digits change
+                if root.noise.length == 3: HorizontalLayout {
+                    spacing: 4px;
+
+                    for value[channel] in root.noise: Text {
+                        width: 28px;
+                        text: value;
+                        font-size: 12px;
+                        font-weight: 600;
+                        vertical-alignment: center;
+                        color: channel == 0 ? Theme.red-channel : channel == 1 ? Theme.green-channel : Theme.blue-channel;
+                    }
+                }
+
+                if root.noise.length == 1: Text {
+                    width: 92px;
+                    text: root.noise[0];
+                    font-size: 10px;
+                    vertical-alignment: center;
+                    color: Theme.secondary-text;
+                }
             }
         }
     }
@@ -212,6 +265,9 @@ export struct TesterReading {
     live: string,
     highest: string,
     threshold: string,
+    // The noise a fade image left out of the live frame in red, green and blue, or one text for
+    // why there's none, or nothing for other images
+    noise: [string],
     reached: bool,
     // The highest similarity reached the threshold, which stays until Start Over
     highest-reached: bool,
@@ -429,6 +485,7 @@ export component TesterWindow inherits Window {
                 live: root.reading.live;
                 highest: root.reading.highest;
                 threshold: root.reading.threshold;
+                noise: root.reading.noise;
                 live-value: root.reading.live-value;
                 highest-value: root.reading.highest-value;
                 threshold-value: root.reading.threshold-value;

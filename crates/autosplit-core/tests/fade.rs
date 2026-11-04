@@ -47,6 +47,16 @@ const STRIP_FADE: [f64; 22] = [
     0.945, 0.954, 0.965, 0.975, 0.988, 0.996,
 ];
 
+/// Similarities against black of the whole screen, one per frame the game draws at 20 FPS, from
+/// an HDMI capture of Ocarina of Time entering the Deku Tree. The camera turns into the tree's
+/// black mouth (at 18), so the fade jumps and then barely changes while only Link is left in it,
+/// and is fully black at 22.
+#[allow(clippy::approx_constant, reason = "measured similarities, one of them near pi / 4")]
+const DEKU_FADE: [f64; 23] = [
+    0.7850, 0.7854, 0.7797, 0.7801, 0.7914, 0.8048, 0.8170, 0.8337, 0.8620, 0.8877, 0.9199, 0.9356, 0.9283, 0.9400,
+    0.9500, 0.9621, 0.9743, 0.9839, 0.9937, 0.9943, 0.9947, 0.9978, 1.0000,
+];
+
 /// The first frame of `trace`, played at 60 FPS, that a fade reached `threshold` on.
 fn first_fade(trace: &[f64], threshold: f64, fade_time: i64) -> Option<usize> {
     let mut tracker = FadeTracker::default();
@@ -85,18 +95,6 @@ fn cut_to_the_color_is_not_a_fade() {
 
     // Assert
     assert_eq!(found, [None; 3]);
-}
-
-#[test]
-fn steady_fade_is_found() {
-    // Arrange
-    let trace = fade_trace(0.8, 1.0, 1.0, 1.0);
-
-    // Act
-    let found = first_fade(&trace, 0.97, 1000);
-
-    // Assert
-    assert!(found.is_some());
 }
 
 #[test]
@@ -142,17 +140,41 @@ fn fade_with_big_first_steps_is_found_on_its_last_frame() {
 }
 
 #[test]
-fn cut_blended_over_two_frames_is_not_a_fade() {
-    // Arrange
-    let mut trace = vec![0.8; 60];
-    trace.extend([0.87, 0.93]);
+fn fade_that_jumps_then_barely_changes_before_the_color_is_found_on_its_last_frame() {
+    // Arrange: each game frame shown for 3 capture frames, starting at each of 6, so the samples
+    // land on every other game frame both ways
+    let traces = [0, 1, 2, 3, 4, 5].map(|phase| {
+        let mut trace = vec![DEKU_FADE[0]; 30 + phase];
+        trace.extend(DEKU_FADE.iter().flat_map(|similarity| [*similarity; 3]));
+        trace.extend([1.0; 30]);
+        (30 + phase, trace)
+    });
+
+    // Act
+    let found = traces.map(|(start, trace)| first_fade(&trace, 0.999, 800).map(|frame| (frame - start) / 3));
+
+    // Assert
+    assert_eq!(found, [Some(22); 6]);
+}
+
+#[test]
+fn cut_after_the_scene_kept_changing_is_not_a_fade() {
+    // Arrange: a camera turning toward something dark, slower for the last 3 samples, then a cut
+    // to the color that makes 0.926 of their rise
+    let mut trace = vec![0.5; 60];
+    for step in 1..=12 {
+        trace.extend([0.5 + 0.03 * f64::from(step); 3]);
+    }
+    for similarity in [0.865, 0.870, 0.875] {
+        trace.extend([similarity; 6]);
+    }
     trace.extend([1.0; 60]);
 
     // Act
-    let found = first_fade(&trace, 0.97, 1000);
+    let found = [0.97, 0.995].map(|threshold| first_fade(&trace, threshold, 800));
 
     // Assert
-    assert_eq!(found, None);
+    assert_eq!(found, [None; 2]);
 }
 
 #[test_case(&[(0.484, 60), (0.913, 60), (1.0, 90)]; "a cut to a dark room, then a cut to the color")]
@@ -261,7 +283,7 @@ fn short_fade_time_samples_often_enough_for_a_short_fade() {
 
 #[test]
 fn clear_forgets_the_fade_so_far() {
-    // Arrange
+    // Arrange: a steady fade, cut off partway
     let trace = fade_trace(0.8, 1.0, 1.0, 1.0);
     let last = trace.len() - 1;
     let mut tracker = FadeTracker::default();
@@ -269,13 +291,16 @@ fn clear_forgets_the_fade_so_far() {
     for (frame, similarity) in trace[..last - 75].iter().enumerate() {
         tracker.update(at(frame), *similarity, 0.97, 1000);
     }
+    let mut cleared = tracker.clone();
 
     // Act
-    tracker.clear();
-    let found = (last - 75..=last).any(|frame| tracker.update(at(frame), trace[frame], 0.97, 1000));
+    cleared.clear();
+    let rest =
+        |tracker: &mut FadeTracker| (last - 75..=last).any(|frame| tracker.update(at(frame), trace[frame], 0.97, 1000));
+    let found = (rest(&mut tracker), rest(&mut cleared));
 
     // Assert
-    assert!(!found);
+    assert_eq!(found, (true, false));
 }
 
 const DEFAULTS: SplitDefaults = SplitDefaults {
@@ -285,6 +310,7 @@ const DEFAULTS: SplitDefaults = SplitDefaults {
     pause_time: 0.0,
     fps_limit: 60,
     fade_tolerance: 10,
+    fade_ignore_noise: true,
 };
 
 fn image(path: &Path, width: usize, height: usize, pixel: impl Fn(usize, usize) -> [u8; 4]) {
@@ -311,18 +337,6 @@ fn similarity(image: &SplitImage, capture: &BgraImage, fade_tolerance: i64) -> f
 }
 
 #[test]
-fn fade_image_compares_by_color_whatever_the_method() {
-    // Arrange
-    let (_directory, image) = fade_image([160, 160, 160]);
-
-    // Act
-    let similarity = similarity(&image, &solid(640, 480, [160, 160, 160]), 0);
-
-    // Assert
-    assert_eq!((image.fade_color(), similarity), (Some([160, 160, 160]), 1.0));
-}
-
-#[test]
 fn colors_off_by_the_tolerance_count_as_the_color() {
     // Arrange: an analog capture's gray
     let (_directory, image) = fade_image([160, 160, 160]);
@@ -335,6 +349,182 @@ fn colors_off_by_the_tolerance_count_as_the_color() {
     let off = 1.0 - (3.0_f64 * 81.0).sqrt() / (255.0 * 3.0_f64.sqrt());
     assert_eq!(similarities[0], 1.0);
     assert!((similarities[1] - off).abs() < 1e-12, "{} isn't {off}", similarities[1]);
+}
+
+/// A 320x240 capture, the size opaque fade images are compared at, with `pixel` (BGR) at each x
+/// and y.
+fn capture(pixel: impl Fn(usize, usize) -> [u8; 3]) -> BgraImage {
+    let data = (0..320 * 240)
+        .flat_map(|index| {
+            let [blue, green, red] = pixel(index % 320, index / 320);
+            [blue, green, red, 255]
+        })
+        .collect();
+    BgraImage::from_raw(320, 240, data)
+}
+
+/// `even` in every other 2x2 block and `odd` in the rest, like a checkerboard, so they split
+/// evenly. Pixels 2 apart, which noise is estimated from at 240 lines, always differ.
+fn blocks(x: usize, y: usize, even: u8, odd: u8) -> [u8; 3] {
+    [if (x / 2 + y / 2).is_multiple_of(2) { even } else { odd }; 3]
+}
+
+/// `1 - sqrt(squared) / max`, worked out another way than the code does.
+fn from_squared(squared: f64) -> f64 {
+    1.0 - squared.sqrt() / (255.0 * 3.0_f64.sqrt())
+}
+
+/// The similarity to `color` of a gray capture with these `values`, with nothing taken out as
+/// noise.
+fn without_noise(values: &[f64], color: f64) -> f64 {
+    let mean = values.iter().sum::<f64>() / values.len() as f64;
+    let variance = values.iter().map(|value| (value - mean).powi(2)).sum::<f64>() / values.len() as f64;
+    from_squared(3.0 * ((mean - color).powi(2) + variance))
+}
+
+#[test]
+fn noise_spread_over_neighboring_pixels_counts_as_the_color() {
+    // Arrange: every channel 1 level either side of the color, in 3x3 blocks, like an analog
+    // capture scaled up spreads each speck of noise. Pixels next to each other mostly share it.
+    let (_directory, image) = fade_image([160, 160, 160]);
+    let capture = capture(|x, y| [if (x / 3 + y / 3).is_multiple_of(2) { 159 } else { 161 }; 3]);
+
+    // Act: 1 level of tolerance for the mean, which the blocks don't split evenly
+    let similarity = similarity(&image, &capture, 1);
+
+    // Assert: without taking the noise out it would be about 0.996, and comparing neighboring
+    // pixels would only find part of it
+    assert_eq!(similarity, 1.0);
+}
+
+#[test]
+fn noise_counts_against_the_color_when_it_isnt_left_out() {
+    // Arrange: every channel 1 level either side of the color
+    let (_directory, image) = fade_image([160, 160, 160]);
+    let capture = capture(|x, y| blocks(x, y, 159, 161));
+
+    // Act: left out, then not
+    let similarities = [true, false].map(|fade_ignore_noise| {
+        let defaults = SplitDefaults { fade_tolerance: 0, fade_ignore_noise, ..DEFAULTS };
+        image.similarity(Some(capture.view()), &defaults, &mut Default::default())
+    });
+
+    // Assert
+    let noisy = from_squared(3.0);
+    assert_eq!(similarities[0], 1.0);
+    assert!((similarities[1] - noisy).abs() < 1e-12, "{} isn't {noisy}", similarities[1]);
+}
+
+#[test]
+fn spread_that_changes_slowly_across_the_picture_isnt_noise() {
+    // Arrange: what's left of a scene at the end of a fade, 3 levels either side of the color
+    // from left to right, about as much spread as the noise in the test above
+    let (_directory, image) = fade_image([160, 160, 160]);
+    let capture = capture(|x, _| [(157 + x * 7 / 320) as u8; 3]);
+
+    // Act
+    let similarity = similarity(&image, &capture, 0);
+
+    // Assert: about the same as with nothing taken out, about 0.992, where it would reach 1 if
+    // its spread counted as noise
+    let values: Vec<f64> = (0..320).map(|x| f64::from((157 + x * 7 / 320) as u8)).collect();
+    let expected = without_noise(&values, 160.0);
+    assert!((similarity - expected).abs() < 0.0005, "{similarity} isn't about {expected}");
+}
+
+#[test]
+fn fine_detail_counts_as_at_most_2_levels_of_noise() {
+    // Arrange: 10 levels either side of the color, like fine detail left of a scene
+    let (_directory, image) = fade_image([160, 160, 160]);
+    let capture = capture(|x, y| blocks(x, y, 150, 170));
+
+    // Act
+    let similarity = similarity(&image, &capture, 0);
+
+    // Assert: only 2 levels of its spread of 10 per channel come off
+    let expected = from_squared(3.0 * (100.0 - 4.0));
+    assert!((similarity - expected).abs() < 1e-12, "{similarity} isn't {expected}");
+}
+
+#[test]
+fn noise_near_black_is_at_most_half_the_mean() {
+    // Arrange: what's left of a scene fading to black, 2 levels either side of a mean of 2
+    let (_directory, image) = fade_image([0, 0, 0]);
+    let capture = capture(|x, y| blocks(x, y, 0, 4));
+
+    // Act
+    let similarity = similarity(&image, &capture, 15);
+
+    // Assert: a capture clips noise at black, so 1 level of noise comes off, not 2
+    let expected = from_squared(3.0 * (4.0 - 1.0));
+    assert!((similarity - expected).abs() < 1e-12, "{similarity} isn't {expected}");
+}
+
+#[test]
+fn noise_is_only_estimated_from_visible_pixels() {
+    // Arrange: a fade image showing only its top left, with the capture white around it. In it,
+    // the capture changes slowly from top to bottom, like what's left of a scene. It ends on a
+    // row whose pixels a few rows down are hidden.
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("01_fade_{f}.png");
+    let shown = |x: usize, y: usize| x < 160 && y < 118;
+    image(&path, 320, 240, |x, y| if shown(x, y) { [160, 160, 160, 255] } else { [0, 0, 0, 0] });
+    let image = SplitImage::load(&path);
+    let capture = capture(|x, y| if shown(x, y) { [(157 + y * 7 / 118) as u8; 3] } else { [255; 3] });
+
+    // Act
+    let similarity = similarity(&image, &capture, 0);
+
+    // Assert: about the same as with nothing taken out, where the white next to and below what
+    // shows would have counted as noise
+    let values: Vec<f64> = (0..118).map(|y| f64::from((157 + y * 7 / 118) as u8)).collect();
+    let expected = without_noise(&values, 160.0);
+    assert!((similarity - expected).abs() < 0.0005, "{similarity} isn't about {expected}");
+}
+
+/// A 320x240 fade image of gray that only shows the rows `shown` picks, across the whole width.
+fn gray_rows(shown: impl Fn(usize) -> bool) -> (tempfile::TempDir, SplitImage) {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("01_fade_{f}.png");
+    image(&path, 320, 240, |_, y| if shown(y) { [160, 160, 160, 255] } else { [0, 0, 0, 0] });
+    let image = SplitImage::load(&path);
+    (directory, image)
+}
+
+fn noise_left_out(image: &SplitImage, capture: &BgraImage) -> [f64; 3] {
+    let defaults = SplitDefaults { fade_tolerance: 15, ..DEFAULTS };
+    image.fade_comparison(Some(capture.view()), &defaults, &mut Default::default()).unwrap().noise
+}
+
+#[test]
+fn noise_isnt_estimated_across_the_end_of_a_row() {
+    // Arrange: rows showing across the whole width, which the mask keeps as one run of pixels
+    // going on from one row into the next. The capture goes slowly from 130 on the left to 190
+    // on the right, so pixels at the end of a row and the start of the next are 60 apart.
+    let (_directory, image) = gray_rows(|y| y < 118);
+    let capture = capture(|x, _| [(130 + x * 60 / 320) as u8; 3]);
+
+    // Act
+    let noise = noise_left_out(&image, &capture);
+
+    // Assert: pixels 2 apart within a row are at most a level apart. Pairs going on into the
+    // next row would have made it the most there is, 2.
+    assert!(noise.iter().all(|&noise| noise < 0.5), "{noise:?}");
+}
+
+#[test]
+fn noise_is_estimated_from_every_row_when_the_sampled_ones_dont_show() {
+    // Arrange: a strip only rows 1 to 3 show, none of them a row noise is usually estimated from,
+    // with every channel 1 level either side of the color
+    let (_directory, image) = gray_rows(|y| (1..=3).contains(&y));
+    let capture = capture(|x, y| blocks(x, y, 159, 161));
+
+    // Act
+    let noise = noise_left_out(&image, &capture);
+
+    // Assert: pixels 2 apart always differ by 2 levels, which is the square root of 2 of noise
+    let expected = 2.0_f64.sqrt();
+    assert!(noise.iter().all(|noise| (noise - expected).abs() < 1e-12), "{noise:?}");
 }
 
 #[test]

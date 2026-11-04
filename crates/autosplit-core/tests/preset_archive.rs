@@ -189,33 +189,38 @@ fn paths_written_with_backslashes_are_saved_with_slashes() {
     assert!(folder.join("masks/Boss.png").is_file());
 }
 
-#[test_case(&[("../evil.png", b"x")]; "an entry outside the folder")]
-#[test_case(&[("/evil.png", b"x")]; "an absolute entry")]
-#[test_case(&[("C:evil.png", b"x")]; "an entry on a drive")]
-#[test_case(&[("readme.txt", b"x")]; "no preset")]
-#[test_case(&[("a/preset.toml", b"x"), ("b/preset.toml", b"x")]; "several presets")]
-fn archives_that_could_write_elsewhere_or_hold_no_preset_are_refused(files: &[(&str, &[u8])]) {
+/// Why importing `archive` is refused, or `None` when it isn't.
+fn refusal(archive: &Path) -> Option<String> {
+    match read_archive(archive) {
+        Ok(_) => None,
+        Err(PresetError::Invalid { reason, .. }) => Some(reason),
+        Err(error) => panic!("{error:?}"),
+    }
+}
+
+#[test_case(&[("../evil.png", b"x")] => "it has ../evil.png, which would be outside the preset's folder"; "an entry outside the folder")]
+#[test_case(&[("/evil.png", b"x")] => "it has /evil.png, which would be outside the preset's folder"; "an absolute entry")]
+#[test_case(&[("C:evil.png", b"x")] => "it has C:evil.png, which would be outside the preset's folder"; "an entry on a drive")]
+#[test_case(&[("readme.txt", b"x")] => "it has no preset in it"; "no preset")]
+#[test_case(&[("a/preset.toml", b"x"), ("b/preset.toml", b"x")] => "it has several presets, and a file for importing can only have one"; "several presets")]
+fn archives_that_could_write_elsewhere_or_hold_no_preset_are_refused(files: &[(&str, &[u8])]) -> String {
     // Arrange
     let dir = tempfile::tempdir().unwrap();
     let archive = dir.path().join("any.zip");
     zip_with(&archive, files);
 
-    // Act
-    let result = read_archive(&archive);
-
-    // Assert
-    assert!(matches!(result, Err(PresetError::Invalid { .. })), "{result:?}");
+    // Act, with the expected value checked by test_case
+    refusal(&archive).unwrap()
 }
 
-#[test_case("mask = \"../outside.png\"" => true; "a mask outside the folder")]
-#[test_case("mask = \"/etc/outside.png\"" => true; "an absolute mask")]
-#[test_case("mask = \"C:/Users/outside.png\"" => true; "a mask on a drive")]
-#[test_case("mask = \"missing.png\"" => true; "a mask that isn't in it")]
-#[test_case("mask = \"text.png\"" => true; "a mask that isn't a png")]
-#[test_case("treshold = 0.9" => true; "an unknown key")]
-#[test_case("savestate = \"../outside.gzs\"" => true; "a savestate outside the folder")]
-#[test_case("mask = \"Boss.png\"" => false; "a mask in it")]
-fn a_split_with_files_from_elsewhere_or_unknown_keys_is_refused(line: &str) -> bool {
+#[test_case("mask = \"../outside.png\"" => Some("split 1 (Boss) uses ../outside.png, which is outside the preset's folder".to_owned()); "a mask outside the folder")]
+#[test_case("mask = \"/etc/outside.png\"" => Some("split 1 (Boss) uses /etc/outside.png, which is outside the preset's folder".to_owned()); "an absolute mask")]
+#[test_case("mask = \"C:/Users/outside.png\"" => Some("split 1 (Boss) uses C:/Users/outside.png, which is outside the preset's folder".to_owned()); "a mask on a drive")]
+#[test_case("mask = \"missing.png\"" => Some("split 1 (Boss) uses missing.png, which isn't in the file".to_owned()); "a mask that isn't in it")]
+#[test_case("mask = \"text.png\"" => Some("the mask text.png of split 1 (Boss) isn't a PNG image".to_owned()); "a mask that isn't a png")]
+#[test_case("savestate = \"../outside.gzs\"" => Some("split 1 (Boss) uses ../outside.gzs, which is outside the preset's folder".to_owned()); "a savestate outside the folder")]
+#[test_case("mask = \"Boss.png\"" => None; "a mask in it")]
+fn a_split_with_files_from_elsewhere_is_refused(line: &str) -> Option<String> {
     // Arrange
     let dir = tempfile::tempdir().unwrap();
     let archive = dir.path().join("any.zip");
@@ -223,7 +228,7 @@ fn a_split_with_files_from_elsewhere_or_unknown_keys_is_refused(line: &str) -> b
     zip_with(&archive, &[("preset.toml", text.as_bytes()), ("Boss.png", &png()), ("text.png", b"not a png")]);
 
     // Act, with the expected value checked by test_case
-    read_archive(&archive).is_err()
+    refusal(&archive)
 }
 
 #[test]

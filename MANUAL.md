@@ -203,7 +203,7 @@ The right side keeps the frames that would have made the image act in a run:
 - With `{b}`, it keeps the frame that reached the threshold, the frame that dropped back below it, and the frame after the delay if there is one.
 - A dummy image (`{d}`) acts right away, without its delay.
 - A reset image keeps the frame that reached the threshold.
-- A [fade image](#fade-images) keeps the frame where the fade reached the threshold. The line next to Start Over says when the screen reached the threshold without fading there, like after a cut, so you can tell a cut from a missed fade.
+- A [fade image](#fade-images) keeps the frame where the fade reached the threshold. The line next to Start Over says when the screen reached the threshold without fading there, like after a cut, so you can tell a cut from a missed fade. Under Highest and Threshold, it shows the noise it left out of the live frame, see [Fade images](#fade-images).
 
 `<` and `>` above the frames go through them. Start Over clears them and Highest. The tester takes one image at a time, so the images of a [grouped split](#several-images-for-one-split) are tested one by one.
 
@@ -226,7 +226,7 @@ File > Settings has four tabs.
 
 The defaults for split images whose file names don't set their own.
 
-![The Image Settings tab with the default comparison method, threshold, delay and pause, the Fade Color Tolerance, and the checkboxes below them](docs/settings-image.png)
+![The Image Settings tab with the default comparison method, threshold, delay and pause, the Fade Color Tolerance, the fade noise checkbox, and the checkboxes below them](docs/settings-image.png)
 
 | Setting | What it does |
 | --- | --- |
@@ -235,6 +235,7 @@ The defaults for split images whose file names don't set their own.
 | Default Delay Time | How long to wait after a match before splitting, in milliseconds. |
 | Default Pause Time | How long to stop comparing after a split, in seconds. It keeps two similar images in a row from splitting at once. |
 | Fade Color Tolerance | How far off, in levels out of 255, each color channel of the screen can be from a [fade image](#fade-images)'s color and still count as that color. 15 by default. Raise it if a capture shows the color a little off. |
+| Leave capture noise out of fade images | [Fade images](#fade-images) tell the capture's noise apart from the scene and leave it out of their similarity, so a noisy capture still reaches the threshold. On by default. Turn it off if a fade splits a frame early. |
 | Loop Last Split Image to First Split Image | After the last image splits, start over with the first. |
 | Start also Resets | When the start image matches, reset the timer first, then start it. |
 | Enable auto reset image | Use the reset image. The toggle auto reset image hotkey turns it on and off. |
@@ -337,7 +338,7 @@ Make Split Images makes them from a preset's fade splits, with Grab*. By hand, g
 - Fade images always compare by color, so `^N^` and the comparison method are ignored for them.
 - At least 3 comparisons have to fall within the fade, so a short fade with a low Comparison FPS Limit warns when the folder loads.
 
-The similarity is how close the screen is to the color, counting how even it is, so a dark scene with something lit in it stays below the threshold. Use a high threshold, 0.995 is a good start, so it splits on the first frame that's fully the color and not the one before. On a noisy capture, like an analog one, the screen never quite reaches 1: open the image in the [Live Tester](#live-tester), let the fade happen, and set the threshold about 0.002 below the similarity the faded screen settles at.
+The similarity is how close the screen is to the color, counting how even it is, so a dark scene with something lit in it stays below the threshold. Use a high threshold, 0.995 is a good start, so it splits on the first frame that's fully the color and not the one before. Noise from the capture, like an analog one's or a black with gray specks, doesn't count against the similarity, so the faded screen still reaches the threshold without lowering it. Each frame's noise is told apart from what's left of the scene by how it differs between nearby pixels, so there's nothing to set up. A game's film grain or dithering counts as noise too. If a fade splits a frame early, try turning off Leave capture noise out of fade images in [Image Settings](#image-settings): fine detail still showing just before the fade ends can count as noise. The [Live Tester](#live-tester) shows how many levels of noise each frame left out of red, green and blue, under the highest similarity and the threshold. During a scene it shows 2+, the most it leaves out, since a scene has more than noise. On the faded screen it drops to the capture's noise, about 0 to 2. If a channel still shows 2+ on the frame just before the fade ends, fine detail is being left out as noise, and that frame can split early.
 
 If something stays on screen through the fade, like an area name or a lighter part at the top, mask it out.
 
@@ -366,6 +367,7 @@ timer_connection = "livesplit_one"  # optional, see Timers
 group_split_images = true  # optional, see Several images for one split
 split_image_grid = true  # optional, shows those images in a 2x2 grid
 fade_color_tolerance = 20  # optional, see Fade images
+fade_ignore_noise = false  # optional, on when left out, see Fade images
 
 [capture_region]  # in pixels of the device's frames; `autosplit grab` shows their size
 x = 0

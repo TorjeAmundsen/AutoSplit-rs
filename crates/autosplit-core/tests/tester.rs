@@ -7,7 +7,7 @@ use autosplit_core::image::BgraImage;
 use autosplit_core::runner::Captured;
 use autosplit_core::split_image::{LoadError, SplitDefaults};
 use autosplit_core::tester::{Tester, TriggerKind};
-use autosplit_core::text::{tester_info, tester_status, trigger_caption};
+use autosplit_core::text::{tester_info, tester_noise, tester_status, trigger_caption};
 use tempfile::TempDir;
 
 type Bgr = [u8; 3];
@@ -21,6 +21,7 @@ const DEFAULTS: SplitDefaults = SplitDefaults {
     pause_time: 0.0,
     fps_limit: 60,
     fade_tolerance: 10,
+    fade_ignore_noise: true,
 };
 
 fn solid(color: Bgr) -> BgraImage {
@@ -95,22 +96,11 @@ fn keeps_the_frame_that_splits() {
 
     // Act
     harness.feed(Some(BLUE), SECOND);
+    let highest_before = harness.tester.highest().is_some();
     harness.feed(Some(RED), SECOND);
 
-    // Assert
-    assert_eq!(harness.kept(), [(TriggerKind::Acted { delay: 0 }, true)]);
-}
-
-#[test]
-fn keeps_nothing_while_the_image_does_not_match() {
-    // Arrange
-    let mut harness = Harness::new("1_split.png");
-
-    // Act
-    harness.feed(Some(BLUE), SECOND);
-
-    // Assert
-    assert_eq!((harness.kept(), harness.tester.highest().is_some()), (vec![], true));
+    // Assert: what didn't match still shows as the highest
+    assert_eq!((highest_before, harness.kept()), (true, vec![(TriggerKind::Acted { delay: 0 }, true)]));
 }
 
 #[test]
@@ -206,7 +196,7 @@ fn keeps_nothing_more_until_rearmed() {
     let mut harness = Harness::new("1_split.png");
     harness.feed(Some(RED), SECOND);
     harness.feed(Some(BLUE), SECOND);
-    let before = (harness.kept().len(), harness.tester.generation());
+    let before = (harness.kept().len(), harness.tester.highest().is_some(), harness.tester.generation());
 
     // Act
     harness.tester.rearm();
@@ -214,7 +204,7 @@ fn keeps_nothing_more_until_rearmed() {
     harness.feed(Some(RED), SECOND);
 
     // Assert
-    assert_eq!((before, cleared, harness.kept().len(), harness.tester.generation()), ((1, 0), (0, None), 1, 1));
+    assert_eq!((before, cleared, harness.kept().len(), harness.tester.generation()), ((1, true, 0), (0, None), 1, 1));
 }
 
 #[test]
@@ -409,4 +399,70 @@ fn info_shows_the_fade_tolerance_comparisons_use() {
 
     // Assert
     assert_eq!(info[1], "METHOD: fade to #ff0000 (about 600 ms, tolerance 255 levels)");
+}
+
+/// A red frame with blue in 2x2 blocks of 0 and `high`.
+fn red_with_blue_blocks(high: u8) -> BgraImage {
+    let data = (0..320 * 240)
+        .flat_map(|index: usize| {
+            let (x, y) = (index % 320, index / 320);
+            [if (x / 2 + y / 2).is_multiple_of(2) { 0 } else { high }, 0, 255, 255]
+        })
+        .collect();
+    BgraImage::from_raw(320, 240, data)
+}
+
+#[test]
+fn noise_shows_what_a_fade_left_out_of_each_channel() {
+    // Arrange: blue noise around a mean of 2, of which a capture clipping it at black lets 1 level
+    // come off
+    let mut harness = Harness::new("1_split_~600~_{f}.png");
+    let frame = red_with_blue_blocks(4);
+
+    // Act
+    harness.tester.tick(Duration::ZERO, Some(Captured { view: frame.view(), sequence: 1 }));
+
+    // Assert: in red, green and blue order, and a dash once frames stop coming
+    let noise = [tester_noise(&harness.tester, true), tester_noise(&harness.tester, false)];
+    assert_eq!(noise, [vec!["0.00", "0.00", "1.00"], vec!["-"]]);
+}
+
+#[test]
+fn noise_at_the_most_left_out_shows_that_there_was_more() {
+    // Arrange: red with blue in 2x2 blocks of 0 and 40, far more than noise, like a scene's detail
+    let mut harness = Harness::new("1_split_~600~_{f}.png");
+    let frame = red_with_blue_blocks(40);
+
+    // Act
+    harness.tester.tick(Duration::ZERO, Some(Captured { view: frame.view(), sequence: 1 }));
+
+    // Assert
+    assert_eq!(tester_noise(&harness.tester, true), ["0.00", "0.00", "2+"]);
+}
+
+#[test]
+fn noise_says_when_it_is_turned_off() {
+    // Arrange
+    let mut harness =
+        Harness::with_defaults("1_split_~600~_{f}.png", SplitDefaults { fade_ignore_noise: false, ..DEFAULTS });
+    let frame = red_with_blue_blocks(4);
+
+    // Act
+    harness.tester.tick(Duration::ZERO, Some(Captured { view: frame.view(), sequence: 1 }));
+
+    // Assert
+    assert_eq!(tester_noise(&harness.tester, true), ["off in Settings"]);
+}
+
+#[test]
+fn noise_isnt_shown_for_images_that_dont_fade() {
+    // Arrange
+    let mut harness = Harness::new("1_split.png");
+    let frame = red_with_blue_blocks(4);
+
+    // Act
+    harness.tester.tick(Duration::ZERO, Some(Captured { view: frame.view(), sequence: 1 }));
+
+    // Assert
+    assert_eq!(tester_noise(&harness.tester, true), Vec::<String>::new());
 }
