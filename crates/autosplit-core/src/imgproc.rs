@@ -359,7 +359,8 @@ fn resize_area_fractional_spans(
                     acc.copy_from_slice(&bufs[k * row_len + entries[0].di..][..4]);
                 }
                 // As far as the shortest run goes, all rows at once
-                let shared = if count == ROWS { lanes.iter().map(|(_, entries)| entries.len()).min().unwrap() } else { 0 };
+                let shared =
+                    if count == ROWS { lanes.iter().map(|(_, entries)| entries.len()).min().unwrap() } else { 0 };
                 let pixels_of = |k: usize, entries: &[DecimateAlpha]| -> &[[u8; 4]] {
                     let first = entries.first().map_or(0, |entry| entry.si);
                     row_pixels[k][first..][..entries.len() * 4].as_chunks().0
