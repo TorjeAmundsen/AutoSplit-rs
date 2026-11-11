@@ -6,6 +6,7 @@
 use std::ops::Range;
 use std::sync::OnceLock;
 
+use multiversion::multiversion;
 use serde::{Deserialize, Serialize};
 
 use crate::image::BgraImage;
@@ -175,27 +176,41 @@ pub(crate) fn compare_resized(
 fn compare_l2_norm(source: &BgraImage, capture: &BgraImage, mask: Option<&Mask>) -> f64 {
     debug_assert_eq!(source.data().len(), capture.data().len());
     let (source, capture) = (source.data(), capture.data());
-    let (squared_error, max_error) = match mask {
-        None => (squared_error(source, capture), (source.len() as f64).sqrt() * MAXBYTE),
-        Some(mask) => (
-            mask.byte_spans().map(|span| squared_error(&source[span.clone()], &capture[span])).sum(),
-            (mask.count as f64 * 3.0 * MAXBYTE * MAXBYTE).sqrt(),
-        ),
+    let max_error = match mask {
+        None => (source.len() as f64).sqrt() * MAXBYTE,
+        Some(mask) => (mask.count as f64 * 3.0 * MAXBYTE * MAXBYTE).sqrt(),
     };
     if max_error == 0.0 {
         return 0.0;
     }
-    1.0 - (squared_error as f64).sqrt() / max_error
+    1.0 - (visible_squared_error(source, capture, mask) as f64).sqrt() / max_error
+}
+
+/// [`squared_error`] over the bytes `mask` shows. Compiled for AVX2 and SSE4.1 as well, picked at
+/// runtime: AVX2 is about 3 times as fast as SSE2 here.
+#[multiversion(targets("x86_64+avx2", "x86_64+sse4.1"))]
+fn visible_squared_error(source: &[u8], capture: &[u8], mask: Option<&Mask>) -> u64 {
+    match mask {
+        None => squared_error(source, capture),
+        Some(mask) => mask.byte_spans().map(|span| squared_error(&source[span.clone()], &capture[span])).sum(),
+    }
 }
 
 /// Sum of squared byte differences. Exact integer math, so any evaluation order gives the
 /// same result as OpenCV.
+#[inline(always)]
 fn squared_error(a: &[u8], b: &[u8]) -> u64 {
-    // 4096 * 255^2 fits in the i32 lanes
-    a.chunks(4096).zip(b.chunks(4096)).map(|(a, b)| squared_error_block(a, b)).sum()
+    let mut total = 0;
+    // 4096 * 255^2 fits in the i32 lanes. A loop, since a closure here wouldn't be compiled for
+    // the caller's instruction set.
+    for (a, b) in a.chunks(4096).zip(b.chunks(4096)) {
+        total += squared_error_block(a, b);
+    }
+    total
 }
 
 /// Written as 16 independent lanes so LLVM vectorizes it (about twice as fast as a plain loop).
+#[inline(always)]
 fn squared_error_block(a: &[u8], b: &[u8]) -> u64 {
     let (a_blocks, a_rest) = a.as_chunks::<16>();
     let (b_blocks, b_rest) = b.as_chunks::<16>();
@@ -260,8 +275,22 @@ fn bhattacharyya(h1: &[f32; HISTOGRAM_BINS], h2: &[f32; HISTOGRAM_BINS]) -> f64 
 /// `compare_phash`'s per-image part: zero masked-out pixels, shrink to 8x8 with INTER_AREA,
 /// then hash.
 fn phash_of(image: &BgraImage, mask: Option<&Mask>, masked: &mut Vec<u8>, resize: &mut ResizeBuffers) -> u64 {
+    let mut small = [0_u8; PHASH_INPUT_SIZE * PHASH_INPUT_SIZE * 4];
     let pixels = match mask {
         None => image.data(),
+        // Only images under 8 pixels on a side need a zeroed copy
+        Some(mask)
+            if imgproc::resize_area_spans(
+                image,
+                mask.spans(),
+                PHASH_INPUT_SIZE,
+                PHASH_INPUT_SIZE,
+                resize,
+                &mut small,
+            ) =>
+        {
+            return phash(&small, resize);
+        }
         Some(mask) => {
             masked.clear();
             masked.resize(image.data().len(), 0);
@@ -271,7 +300,6 @@ fn phash_of(image: &BgraImage, mask: Option<&Mask>, masked: &mut Vec<u8>, resize
             masked
         }
     };
-    let mut small = [0_u8; PHASH_INPUT_SIZE * PHASH_INPUT_SIZE * 4];
     imgproc::resize_area(
         pixels,
         image.width(),

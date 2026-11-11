@@ -117,7 +117,8 @@ enum CliCommand {
     },
     /// Time comparisons, including resizing the capture, for each method.
     Bench {
-        /// Split images to benchmark. Defaults to a 320x240 opaque image and a masked one.
+        /// Split images to benchmark. Defaults to a 320x240 opaque image and a masked one, and a
+        /// fade image of each.
         split_images: Vec<PathBuf>,
         /// Capture size to resize from.
         #[arg(long, default_value = "1920x1080")]
@@ -564,37 +565,52 @@ fn bench(split_images: &[PathBuf], capture_size: &str, iterations: u32) -> Resul
         images.push((image.display_name(), image));
     }
     if images.is_empty() {
-        images.push(("opaque 320x240".into(), synthetic_split(false)?));
-        images.push(("masked".into(), synthetic_split(true)?));
+        images.push(("opaque 320x240".into(), synthetic_split(false, false)?));
+        images.push(("masked".into(), synthetic_split(true, false)?));
+        images.push(("fade, opaque 320x240".into(), synthetic_split(false, true)?));
+        images.push(("fade, masked".into(), synthetic_split(true, true)?));
     }
 
     println!("capture {width}x{height}, {iterations} iterations each");
     let mut scratch = CompareScratch::default();
+    let mut time = |name: &str, row: &str, compare: &mut dyn FnMut(&mut CompareScratch) -> f64| {
+        compare(&mut scratch);
+        let started = Instant::now();
+        for _ in 0..iterations {
+            std::hint::black_box(compare(&mut scratch));
+        }
+        let per_compare = started.elapsed() / iterations;
+        println!("{name:<32} {row:<12} {:>9.1} us", per_compare.as_secs_f64() * 1e6);
+    };
     for (name, image) in &images {
-        for method in ComparisonMethod::ALL {
-            image.compare(Some(capture.view()), Some(method), &mut scratch);
-            let started = Instant::now();
-            for _ in 0..iterations {
-                let capture = std::hint::black_box(capture.view());
-                std::hint::black_box(image.compare(Some(capture), Some(method), &mut scratch));
+        let capture = || Some(std::hint::black_box(capture.view()));
+        // A run compares a fade image with its color, whatever the method
+        if image.is_fade() {
+            for (row, fade_ignore_noise) in [("Fade", false), ("Fade, noise", true)] {
+                let defaults = SplitDefaults { fade_ignore_noise, ..UserProfile::default().split_defaults() };
+                time(name, row, &mut |scratch| image.similarity(capture(), &defaults, scratch));
             }
-            let per_compare = started.elapsed() / iterations;
-            println!("{name:<32} {:<12} {:>9.1} us", method.name(), per_compare.as_secs_f64() * 1e6);
+            continue;
+        }
+        for method in ComparisonMethod::ALL {
+            time(name, method.name(), &mut |scratch| image.compare(capture(), Some(method), scratch));
         }
     }
     Ok(())
 }
 
-/// A split image built in memory, written to a temporary PNG so it loads like a real one.
-fn synthetic_split(masked: bool) -> Result<SplitImage> {
+/// A split image built in memory, written to a temporary PNG so it loads like a real one. A fade
+/// image is one color.
+fn synthetic_split(masked: bool, fade: bool) -> Result<SplitImage> {
     let (width, height) = (480, 360);
-    let mut data: Vec<u8> = (0..width * height * 4).map(|i| (i * 13 % 241) as u8).collect();
+    let mut data: Vec<u8> = (0..width * height * 4).map(|i| if fade { 0 } else { (i * 13 % 241) as u8 }).collect();
     for (i, pixel) in data.as_chunks_mut::<4>().0.iter_mut().enumerate() {
         let visible = !masked || (i % width < 200 && i / width < 150);
         pixel[3] = if visible { 255 } else { 0 };
     }
     let image = BgraImage::from_raw(width, height, data);
-    let path = platform::temp_folder().join(format!("autosplit-bench-{}-{masked}.png", std::process::id()));
+    let flags = if fade { "_{f}" } else { "" };
+    let path = platform::temp_folder().join(format!("autosplit-bench-{}-{masked}{flags}.png", std::process::id()));
     std::fs::write(&path, image.encode_png()?)?;
     let split = load_split_image(&path);
     std::fs::remove_file(&path).ok();
