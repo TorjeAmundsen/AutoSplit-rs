@@ -156,6 +156,9 @@ export component MakerWindow inherits Window {
     // Grab is the next step for the selected split. Off when its preset has a screenshot for
     // it, where Save All is
     in property <bool> grab-suggested: true;
+    // The selected split has a grab or picked file over its preset's screenshot
+    in property <bool> over-preset-screenshot;
+    callback use-preset-screenshot();
     in property <bool> can-test;
     in property <bool> has-savestates;
     in property <bool> has-instructions;
@@ -848,6 +851,13 @@ export component MakerWindow inherits Window {
                     Label {
                         horizontal-stretch: 1;
                         text: "Output Preview";
+                    }
+
+                    // Only where there's one to go back to, after a grab or pick over it
+                    if root.over-preset-screenshot: Button {
+                        text: "Use Preset's";
+                        clicked => { root.use-preset-screenshot(); }
+                        tip: "Drop this split's grab or picked screenshot, and make its split image from the preset's screenshot again";
                     }
 
                     HorizontalLayout {

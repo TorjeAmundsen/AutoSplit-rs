@@ -274,6 +274,12 @@ fn main() {
     std::thread::sleep(std::time::Duration::from_millis(300));
     slint::platform::update_timers_and_animations();
     save(&window, PhysicalSize::new(828, 672), &folder.join("maker-saved.png"));
+    // A grab over the preset's screenshot, which the button beside Output Preview goes back to
+    maker.set_over_preset_screenshot(true);
+    maker.set_grab_suggested(false);
+    save(&window, PhysicalSize::new(828, 672), &folder.join("maker-over-preset.png"));
+    maker.set_over_preset_screenshot(false);
+    maker.set_grab_suggested(true);
     // A long message drawn in the window scrolls
     let files: Vec<String> = (1..=40).map(|number| format!("{number:02}_Boss_(0.95).png")).collect();
     maker.set_inline_message(InlineMessage {

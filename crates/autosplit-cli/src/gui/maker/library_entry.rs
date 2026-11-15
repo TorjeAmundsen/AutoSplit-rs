@@ -316,7 +316,7 @@ impl Gui {
                 (Some((path, image)), _, _) => (Some(image.clone()), picked_from(path)),
                 (None, Some(source), _) => {
                     let from = match &source {
-                        Source::File(path) => {
+                        Source::File(path) | Source::Preset(path) => {
                             format!("Base image from its screenshot {}", file_name_text(path).unwrap_or_default())
                         }
                         Source::Grabbed(_) => "Base image from its grab".to_owned(),

@@ -40,8 +40,10 @@ mod write;
 /// Where a split image comes from.
 #[derive(Clone)]
 enum Source {
-    /// A screenshot file.
+    /// A screenshot file picked for the split.
     File(PathBuf),
+    /// The screenshot the split's preset has for it, which a grab or picked file comes before.
+    Preset(PathBuf),
     /// The capture region, grabbed for the split.
     Grabbed(Arc<BgraImage>),
     /// A fade split's color (RGB), which it's made of whatever was grabbed or picked for it.
@@ -53,6 +55,7 @@ impl Source {
     fn label(&self) -> String {
         match self {
             Self::File(path) => file_name_text(path).unwrap_or_default(),
+            Self::Preset(_) => "preset's screenshot".into(),
             Self::Grabbed(_) => "grabbed".into(),
             Self::Fade(color) => format!("fade to {}", hex_color(*color)),
         }
@@ -61,7 +64,7 @@ impl Source {
     /// Whether it's the same screenshot file or the same grab.
     fn same(&self, other: &Self) -> bool {
         match (self, other) {
-            (Self::File(a), Self::File(b)) => a == b,
+            (Self::File(a), Self::File(b)) | (Self::Preset(a), Self::Preset(b)) => a == b,
             (Self::Grabbed(a), Self::Grabbed(b)) => Arc::ptr_eq(a, b),
             (Self::Fade(a), Self::Fade(b)) => a == b,
             _ => false,
@@ -73,6 +76,11 @@ impl Source {
             Self::File(path) => BgraImage::open_png(path)
                 .map(Arc::new)
                 .map_err(|error| format!("Couldn't read {}: {error}", path.display())),
+            // Not the runner's file to fix, so it says what to do instead
+            Self::Preset(path) => BgraImage::open_png(path).map(Arc::new).map_err(|error| {
+                let name = file_name_text(path).unwrap_or_default();
+                format!("The preset's screenshot {name} can't be read: {error}. Grab its split instead.")
+            }),
             Self::Grabbed(image) => Ok(image.clone()),
             // At the size grabs are compared at, which a mask is stretched to
             Self::Fade(color) => Ok(Arc::new(BgraImage::solid(*color, 320, 240))),
@@ -191,7 +199,7 @@ impl Maker {
             return split.fade_color().map(Source::Fade);
         }
         let shot = self.splits.get(index).and_then(|split| split.shot.clone());
-        shot.or_else(|| self.preset_screenshot(index).map(Source::File))
+        shot.or_else(|| self.preset_screenshot(index).map(Source::Preset))
     }
 
     /// The screenshot the shown preset has for split `index`, if any.
@@ -201,12 +209,21 @@ impl Maker {
     }
 
     /// How many of the shown preset's splits have a screenshot from it, and how many have to be
-    /// grabbed. Fade splits are in neither, since they're made from their color.
+    /// grabbed, like one whose screenshot's file is missing. Fade splits are in neither, since
+    /// they're made from their color.
     fn preset_screenshot_counts(&self) -> (usize, usize) {
         let grabbed = (0..self.splits.len()).filter(|&index| self.fade_split(index).is_none());
         let (with, without): (Vec<usize>, Vec<usize>) =
-            grabbed.partition(|&index| self.preset_screenshot(index).is_some());
+            grabbed.partition(|&index| self.preset_screenshot(index).is_some_and(|file| file.is_file()));
         (with.len(), without.len())
+    }
+
+    /// Whether the selected split has a grab or picked file over its preset's screenshot, which
+    /// dropping it brings back.
+    fn selected_over_preset(&self) -> bool {
+        let selected = self.selected;
+        let own = self.splits.get(selected).is_some_and(|split| split.shot.is_some());
+        own && self.fade_split(selected).is_none() && self.preset_screenshot(selected).is_some()
     }
 
     /// Whether the selected split's image comes from its preset's screenshot, so there's nothing
@@ -398,6 +415,7 @@ impl Gui {
             }
         });
         on!(weak, maker, on_use_screenshots, () gui => gui.pick_screenshots());
+        on!(weak, maker, on_use_preset_screenshot, () gui => gui.use_preset_screenshot());
         on!(weak, maker, on_save_selected, () gui => {
             let selected = gui.maker.borrow().selected;
             gui.save_split_images(vec![selected]);
@@ -658,6 +676,7 @@ impl Gui {
         window.set_grab_fade(self.selected_fade());
         window.set_can_save_selected(view.can_save_selected);
         window.set_grab_suggested(view.grab_suggested);
+        window.set_over_preset_screenshot(self.maker.borrow().selected_over_preset());
         window.set_can_save_all(view.can_save_all);
         window.set_can_test(view.can_test);
         window.set_needs_grouping(view.needs_grouping);
@@ -828,6 +847,27 @@ impl Gui {
                 made.join("\n")
             )));
         }
+        self.show_maker();
+    }
+
+    /// Drops the selected split's grab or picked file, so its image is made from its preset's
+    /// screenshot again. Like a picked file, it's saved when asked.
+    fn use_preset_screenshot(&self) {
+        let mut maker = self.maker.borrow_mut();
+        if !maker.selected_over_preset() {
+            return;
+        }
+        let selected = maker.selected;
+        maker.splits[selected] = SplitWork::default();
+        let editing = maker.edit.is_some();
+        drop(maker);
+        self.picture_preset_screenshots();
+        let save = if self.state.borrow().document.profile.advanced_maker { "Save Selected" } else { "Save All" };
+        let status = match editing {
+            true => "Back to the preset's screenshot for the selected split.".to_owned(),
+            false => format!("Back to the preset's screenshot for the selected split. {save} writes its split image."),
+        };
+        self.windows.maker.set_status(status.into());
         self.show_maker();
     }
 
