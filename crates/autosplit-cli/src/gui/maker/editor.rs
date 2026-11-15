@@ -531,10 +531,10 @@ impl Gui {
                     SAVESTATE_NAME_CHARS,
                 )
                 .into(),
-                // Choose... and Clear beside it, like the savestate
+                // A PNG's name beside Choose... and Clear, like a fade split's mask
                 screenshot: elide_middle(
                     &file_name_text(Path::new(&split.screenshot)).unwrap_or_default(),
-                    SAVESTATE_NAME_CHARS,
+                    FADE_MASK_NAME_CHARS,
                 )
                 .into(),
                 mask_path: shown_path(&maker, &split.mask).into(),

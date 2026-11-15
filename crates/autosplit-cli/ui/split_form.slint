@@ -229,7 +229,7 @@ export component SplitFormPanel inherits VerticalLayout {
             if root.form.drops-savestate || root.form.drops-screenshot: FieldProblem {
                 label-width: root.label-width;
                 color: Theme.secondary-text;
-                text: (root.form.drops-savestate && root.form.drops-screenshot ? "Its savestate and screenshot aren't" : root.form.drops-savestate ? "Its savestate isn't" : "Its screenshot isn't") + " saved with a fade split. Switch Compare to L2 Norm, Histograms or pHash to keep it.";
+                text: (root.form.drops-savestate && root.form.drops-screenshot ? "Its savestate and screenshot aren't" : root.form.drops-savestate ? "Its savestate isn't" : "Its screenshot isn't") + " saved with a fade split. Switch Compare to L2 Norm, Histograms or pHash to keep " + (root.form.drops-savestate && root.form.drops-screenshot ? "them." : "it.");
             }
         }
 

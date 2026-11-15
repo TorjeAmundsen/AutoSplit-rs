@@ -153,6 +153,9 @@ export component MakerWindow inherits Window {
     in property <string> status;
     in property <bool> can-save-selected;
     in property <bool> can-save-all;
+    // Grab is the next step for the selected split. Off when its preset has a screenshot for
+    // it, where Save All is
+    in property <bool> grab-suggested: true;
     in property <bool> can-test;
     in property <bool> has-savestates;
     in property <bool> has-instructions;
@@ -677,7 +680,7 @@ export component MakerWindow inherits Window {
                     Button {
                         horizontal-stretch: 1;
                         text: root.grab-fade ? "Grab*" : "Grab";
-                        suggested: true;
+                        suggested: root.grab-suggested;
                         enabled: root.can-grab;
                         clicked => { root.grab(); }
                         tip: root.grab-blocker != "" ? root.grab-blocker : root.grab-fade ? "Fade splits are made from their color, not the capture. Grab* saves this one into the split image folder and goes to the next split. The screenshot hotkey does the same while this window is open." : "Make the selected split's image from the capture now, save it into the split image folder, and go to the next split. The screenshot hotkey does the same while this window is open.";
@@ -711,6 +714,7 @@ export component MakerWindow inherits Window {
                     Button {
                         horizontal-stretch: 1;
                         text: "Save All";
+                        suggested: !root.grab-suggested;
                         enabled: root.can-save-all;
                         clicked => { root.save-all(); }
                         tip: "Write the split images of every split with a grab or screenshot, and of every fade split, into the split image folder";

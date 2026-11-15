@@ -12,7 +12,7 @@ use autosplit::gui::document::{Document, folder_text, profile_on_open};
 use autosplit::gui::log::{LOG_LINES, LogLines};
 use autosplit::gui::maker_plan::{
     DeletedPreset, PresetList, WritePlan, looks_made, move_to_base, plan_writes, preset_after_delete, saves_in_place,
-    screenshots_to_move, stale_to_delete, writes_over,
+    screenshots_status, screenshots_to_move, stale_to_delete, writes_over,
 };
 use autosplit::gui::messages::{Answer, Buttons, Message, MessageQueue};
 use autosplit::gui::placement::{Area, beside, centered_over};
@@ -705,6 +705,15 @@ fn moves_screenshots_only_of_written_split_images(done: &[&str], failed: &[&str]
 
     // Act
     screenshots_to_move(&paths(done), &paths(failed), &paths(keep))
+}
+
+#[test_case(0, 3 => None; "a preset without screenshots says nothing")]
+#[test_case(3, 0 => Some("This preset has a screenshot for every split. Save All writes the split images.".to_owned()); "one for every split")]
+#[test_case(2, 1 => Some("2 of this preset's splits have a screenshot. Save All writes their split images. Grab the other one.".to_owned()); "one split left to grab")]
+#[test_case(1, 2 => Some("1 of this preset's splits has a screenshot. Save All writes their split images. Grab the other 2.".to_owned()); "one split with a screenshot")]
+fn a_chosen_preset_says_which_splits_need_no_grab(with: usize, without: usize) -> Option<String> {
+    // Act, with the expected value checked by test_case
+    screenshots_status(with, without)
 }
 
 #[test]

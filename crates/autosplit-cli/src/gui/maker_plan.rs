@@ -101,6 +101,23 @@ pub fn stale_to_delete(stale: &[PathBuf], written: &[PathBuf]) -> Vec<PathBuf> {
         .collect()
 }
 
+/// What a preset just chosen says about its screenshots: `with` of its splits have one, and
+/// `without` have to be grabbed, fade splits counted in neither, since they're made from their
+/// color. None for a preset without screenshots, which is grabbed like always.
+pub fn screenshots_status(with: usize, without: usize) -> Option<String> {
+    match (with, without) {
+        (0, _) => None,
+        (_, 0) => Some("This preset has a screenshot for every split. Save All writes the split images.".to_owned()),
+        (with, without) => {
+            let have = if with == 1 { "has" } else { "have" };
+            let rest = if without == 1 { "the other one".to_owned() } else { format!("the other {without}") };
+            Some(format!(
+                "{with} of this preset's splits {have} a screenshot. Save All writes their split images. Grab {rest}."
+            ))
+        }
+    }
+}
+
 /// The screenshots to move out of the split image folder after a save: those of the split images
 /// `done`, but not one a split image that `failed` is still made from, which saving again needs,
 /// and not one of the preset's split images, in `keep`, picked as a screenshot.

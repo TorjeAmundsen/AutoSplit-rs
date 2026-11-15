@@ -17,8 +17,8 @@ use slint::{ComponentHandle, ModelRc, Rgba8Pixel, SharedPixelBuffer, SharedStrin
 
 use super::document::Document;
 use super::maker_plan::{
-    PresetList, looks_made, move_to_base, plan_writes, saves_in_place, screenshots_to_move, stale_to_delete,
-    writes_over,
+    PresetList, looks_made, move_to_base, plan_writes, saves_in_place, screenshots_status, screenshots_to_move,
+    stale_to_delete, writes_over,
 };
 use super::messages::{Answer, Message};
 use super::paths::{canonical, file_name_text};
@@ -200,6 +200,23 @@ impl Maker {
         (!screenshot.is_empty()).then(|| self.file(screenshot))
     }
 
+    /// How many of the shown preset's splits have a screenshot from it, and how many have to be
+    /// grabbed. Fade splits are in neither, since they're made from their color.
+    fn preset_screenshot_counts(&self) -> (usize, usize) {
+        let grabbed = (0..self.splits.len()).filter(|&index| self.fade_split(index).is_none());
+        let (with, without): (Vec<usize>, Vec<usize>) =
+            grabbed.partition(|&index| self.preset_screenshot(index).is_some());
+        (with.len(), without.len())
+    }
+
+    /// Whether the selected split's image comes from its preset's screenshot, so there's nothing
+    /// to grab for it.
+    fn selected_from_preset(&self) -> bool {
+        let selected = self.selected;
+        let own = self.splits.get(selected).is_some_and(|split| split.shot.is_some());
+        !own && self.fade_split(selected).is_none() && self.preset_screenshot(selected).is_some()
+    }
+
     /// The splits made from their preset's screenshot that have no picture of it yet.
     fn unpictured_screenshots(&self) -> Vec<usize> {
         (self.splits.iter().enumerate())
@@ -241,6 +258,9 @@ struct MakerView {
     /// What has to be fixed before anything's made from the chosen preset, or empty.
     preset_problem: String,
     can_grab: bool,
+    /// Grab is the next thing to do for the selected split. Not when its preset has a screenshot
+    /// for it, where Save All is.
+    grab_suggested: bool,
     can_save_selected: bool,
     can_save_all: bool,
     can_test: bool,
@@ -294,6 +314,7 @@ fn maker_view(
         rows,
         preset_problem: summary.unwrap_or_default(),
         can_grab: !maker.splits.is_empty() && usable,
+        grab_suggested: !maker.selected_from_preset(),
         can_save_selected: maker.source(selected).is_some() && usable,
         can_save_all: (0..maker.splits.len()).any(|index| maker.source(index).is_some()) && usable,
         can_test: in_place.get(selected).copied().unwrap_or_default() && usable,
@@ -511,8 +532,10 @@ impl Gui {
         maker.generation += 1;
         let count = maker.loaded().map_or(0, |loaded| loaded.preset.splits.len());
         maker.start_over(count);
+        // Says when there's nothing to grab, which the pictures alone don't
+        let (with, without) = maker.preset_screenshot_counts();
         drop(maker);
-        self.windows.maker.set_status(SharedString::new());
+        self.windows.maker.set_status(screenshots_status(with, without).unwrap_or_default().into());
         self.show_preset(index);
     }
 
@@ -634,6 +657,7 @@ impl Gui {
         window.set_grab_blocker(grab_blocker.into());
         window.set_grab_fade(self.selected_fade());
         window.set_can_save_selected(view.can_save_selected);
+        window.set_grab_suggested(view.grab_suggested);
         window.set_can_save_all(view.can_save_all);
         window.set_can_test(view.can_test);
         window.set_needs_grouping(view.needs_grouping);
