@@ -11,8 +11,9 @@ use std::rc::Rc;
 use autosplit::gui::document::{Document, folder_text, profile_on_open};
 use autosplit::gui::log::{LOG_LINES, LogLines};
 use autosplit::gui::maker_plan::{
-    DeletedPreset, PresetList, WritePlan, looks_made, move_to_base, plan_writes, preset_after_delete, saves_in_place,
-    screenshots_status, screenshots_to_move, stale_to_delete, writes_over,
+    DeletedPreset, PresetList, WritePlan, looks_made, move_to_base, plan_writes, preset_after_delete,
+    saved_from_after_preset_save, saves_in_place, screenshots_status, screenshots_to_move, stale_to_delete,
+    writes_over,
 };
 use autosplit::gui::messages::{Answer, Buttons, Message, MessageQueue};
 use autosplit::gui::placement::{Area, beside, centered_over};
@@ -714,6 +715,17 @@ fn moves_screenshots_only_of_written_split_images(done: &[&str], failed: &[&str]
 fn a_chosen_preset_says_which_splits_need_no_grab(with: usize, without: usize) -> Option<String> {
     // Act, with the expected value checked by test_case
     screenshots_status(with, without)
+}
+
+#[test_case(Some("picked/boss.png"), Some("preset/screenshots/Boss.png") => Some(PathBuf::from("preset/screenshots/Boss.png")); "the same screenshot, copied into the preset")]
+#[test_case(Some("picked/other.png"), Some("picked/boss.png") => None; "another screenshot that gets the old one's name")]
+#[test_case(Some("picked/boss.png"), None => None; "the screenshot removed")]
+fn a_saved_mark_follows_its_screenshot_through_a_preset_save(old: Option<&str>, new: Option<&str>) -> Option<PathBuf> {
+    // Arrange: a split image saved from picked/boss.png, the preset's screenshot at the time
+    let saved_from = Path::new("picked/boss.png");
+
+    // Act, with the expected value checked by test_case
+    saved_from_after_preset_save(saved_from, old.map(Path::new), new.map(Path::new))
 }
 
 #[test]

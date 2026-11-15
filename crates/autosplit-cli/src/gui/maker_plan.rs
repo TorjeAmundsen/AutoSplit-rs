@@ -118,6 +118,15 @@ pub fn screenshots_status(with: usize, without: usize) -> Option<String> {
     }
 }
 
+/// Where a split image saved from its preset's screenshot at `saved_from` is from once the
+/// preset is saved again: `new`, the screenshot's file now, when it was saved from `old`, the
+/// screenshot just before the save, which saving at most copied. None when it's from another
+/// screenshot than the preset has now, so it isn't the split's image anymore, even when the new
+/// screenshot's file gets the old one's name.
+pub fn saved_from_after_preset_save(saved_from: &Path, old: Option<&Path>, new: Option<&Path>) -> Option<PathBuf> {
+    new.filter(|_| old == Some(saved_from)).map(Path::to_owned)
+}
+
 /// The screenshots to move out of the split image folder after a save: those of the split images
 /// `done`, but not one a split image that `failed` is still made from, which saving again needs,
 /// and not one of the preset's split images, in `keep`, picked as a screenshot.

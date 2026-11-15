@@ -466,6 +466,10 @@ impl Gui {
                 .is_some_and(|(before, now)| before.preset.splits == now.preset.splits);
         // Masks are read again, in case they were edited
         maker.masks.clear();
+        // And the preset's screenshots pictured again
+        for split in maker.splits.iter_mut().filter(|split| split.shot.is_none()) {
+            split.thumb = None;
+        }
         let empty = maker.presets.is_empty();
         drop(maker);
         let maker_window = &self.windows.maker;

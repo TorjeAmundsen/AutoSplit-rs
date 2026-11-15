@@ -300,13 +300,19 @@ impl Gui {
             drop(maker);
             return self.show_maker();
         }
+        let mut outdated = false;
         for (index, source, thumb) in made {
             let current = maker.source(index).is_some_and(|now| now.same(&source));
-            if let Some(split) = maker.splits.get_mut(index).filter(|_| current) {
-                split.thumb = Some(slint::Image::from_rgba8(thumb));
+            match maker.splits.get_mut(index).filter(|_| current) {
+                Some(split) => split.thumb = Some(slint::Image::from_rgba8(thumb)),
+                None => outdated = true,
             }
         }
         drop(maker);
+        // A split that moved or changed meanwhile, whose preset's screenshot nothing else pictures
+        if outdated {
+            self.picture_preset_screenshots();
+        }
         self.show_maker();
     }
 }

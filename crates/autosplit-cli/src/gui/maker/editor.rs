@@ -14,7 +14,7 @@ use autosplit_core::preset::{
 use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
 
 use super::super::Gui;
-use super::super::maker_plan::DeletedPreset;
+use super::super::maker_plan::{DeletedPreset, saved_from_after_preset_save};
 use super::super::messages::{Answer, Message};
 use super::super::paths::{canonical, file_name_text};
 use super::super::preset_form::{
@@ -28,7 +28,7 @@ use super::super::preset_form::{
 use super::super::recorder::PRIMARY;
 use super::super::recorder::key_character;
 use super::super::ui::{SplitField, SplitForm, SplitValues};
-use super::{Kept, game_label, presets_folder};
+use super::{Kept, Source, game_label, presets_folder};
 use autosplit_input::Modifiers;
 use slint::winit_030::winit::event::KeyEvent;
 use slint::winit_030::winit::keyboard::{Key, NamedKey};
@@ -408,6 +408,8 @@ impl Gui {
         edit.reorders += 1;
         change.mirror(&mut maker.splits);
         drop(maker);
+        // A copy of a split has its screenshot too, and no picture of it yet
+        self.picture_preset_screenshots();
         self.choose_split(select);
     }
 
@@ -710,8 +712,26 @@ impl Gui {
     /// Writes `preset`, the draft as it's saved, from its `source` folder into `target`, then shows
     /// it as saved.
     fn write_draft(self: &Rc<Self>, source: Option<PathBuf>, target: PathBuf, preset: Preset) {
-        if let Err(error) = save_preset(source.as_deref(), &target, &preset) {
-            return self.show_message(Message::error(format!("Couldn't save the preset. {error}")));
+        // Each split's screenshot as the draft has it, which saving can copy to another path
+        let before: Vec<Option<PathBuf>> = {
+            let maker = self.maker.borrow();
+            (0..maker.splits.len()).map(|index| maker.preset_screenshot(index)).collect()
+        };
+        let saved = match save_preset(source.as_deref(), &target, &preset) {
+            Ok(saved) => saved,
+            Err(error) => return self.show_message(Message::error(format!("Couldn't save the preset. {error}"))),
+        };
+        // Saved marks are told by their screenshot's path, so they follow it to where it is now,
+        // and go when the split's screenshot is another one
+        for (index, split) in self.maker.borrow_mut().splits.iter_mut().enumerate() {
+            let Some(Source::Preset(from)) = &split.saved_from else { continue };
+            let now = saved.splits.get(index).filter(|split| !split.screenshot.is_empty());
+            let now = now.map(|split| target.join(&split.screenshot));
+            let old = before.get(index).and_then(Option::as_deref);
+            match saved_from_after_preset_save(from, old, now.as_deref()) {
+                Some(path) => split.saved_from = Some(Source::Preset(path)),
+                None => (split.saved, split.saved_from) = (None, None),
+            }
         }
         self.leave_editing();
         self.reload_presets(Some(&target), None);
