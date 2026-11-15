@@ -10,7 +10,7 @@ use autosplit_core::filename::{
     DEFAULT_FADE_TIME, MAX_FADE_TIME, MIN_FADE_TIME, NamePart, PartKind, RESET_KEYWORD, START_KEYWORD, name_parts,
     validate_split_name,
 };
-use autosplit_core::preset::{Preset, PresetSplit, game_key};
+use autosplit_core::preset::{Preset, PresetSplit, SplitFile, game_key};
 use autosplit_core::split_folder::MAX_GROUP_SIZE;
 use autosplit_core::split_image::SplitDefaults;
 
@@ -365,17 +365,15 @@ impl Draft {
     pub fn import(&mut self, at: usize, steps: &[PresetSplit], folder: &Path) -> Vec<ListChange> {
         self.drop_unused_joins();
         let at = at.min(self.preset.splits.len());
-        let in_library =
-            |path: &str| if path.is_empty() { String::new() } else { folder.join(path).display().to_string() };
         let mut changes = Vec::new();
         for (step, split) in steps.iter().enumerate() {
-            let split = PresetSplit {
-                mask: in_library(&split.mask),
-                savestate: in_library(&split.savestate),
-                screenshot: in_library(&split.screenshot),
-                with_previous: step > 0 && split.with_previous,
-                ..split.clone()
-            };
+            let mut split = PresetSplit { with_previous: step > 0 && split.with_previous, ..split.clone() };
+            for kind in SplitFile::ALL {
+                let file = split.file_mut(kind);
+                if !file.is_empty() {
+                    *file = folder.join(&*file).display().to_string();
+                }
+            }
             self.preset.splits.insert(at + step, split);
             changes.push(ListChange::Insert(at + step));
         }
@@ -428,7 +426,7 @@ impl Draft {
         if gap - group.start <= group.end - gap { group.start } else { group.end }
     }
 
-    /// A copy of split `index` with the same mask and savestate, after the splits compared
+    /// A copy of split `index` with the same files, after the splits compared
     /// together with it. A copy of one compared with the split above is compared with them too,
     /// and a copy of the first is a split of its own.
     pub fn duplicate(&mut self, index: usize) -> Option<(usize, ListChange)> {
@@ -699,22 +697,11 @@ pub fn changed_settings(step: &PresetSplit, from: &PresetSplit) -> Vec<String> {
 }
 
 /// What taking the settings of `from` changes about a ready-made split's image `step`, like
-/// From ScrubsDummyLow: threshold default to 0.92. `savestates` are the file names of its
-/// savestate and the new one, or none when it's the same file, and `screenshots` its screenshot's
-/// likewise.
-pub fn settings_changes(
-    step: &PresetSplit,
-    from: &PresetSplit,
-    savestates: Option<(String, String)>,
-    screenshots: Option<(String, String)>,
-) -> String {
+/// From ScrubsDummyLow: threshold default to 0.92. `files` are the files it takes that are other
+/// files than it has, like its savestate, each with the file names of its own and the new one.
+pub fn settings_changes(step: &PresetSplit, from: &PresetSplit, files: &[(SplitFile, String, String)]) -> String {
     let mut changes = changed_settings(step, from);
-    if let Some((old, new)) = savestates {
-        changes.push(format!("savestate {old} to {new}"));
-    }
-    if let Some((old, new)) = screenshots {
-        changes.push(format!("screenshot {old} to {new}"));
-    }
+    changes.extend(files.iter().map(|(kind, old, new)| format!("{} {old} to {new}", kind.word())));
     let heading = library_heading(from);
     if changes.is_empty() {
         return format!("From {heading}: no changes");

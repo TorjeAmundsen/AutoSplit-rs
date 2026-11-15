@@ -26,8 +26,8 @@ fn using(name: &str, mask: PathBuf) -> NewStep {
         split: PresetSplit { name: name.into(), mask: mask.display().to_string(), ..PresetSplit::default() },
         mask: Some(mask),
         savestate: None,
-        screenshot_file: None,
-        screenshot: screenshot(),
+        screenshot: None,
+        base_picture: screenshot(),
     }
 }
 
@@ -252,7 +252,7 @@ fn with_screenshot(contents: &[u8]) -> (tempfile::TempDir, tempfile::TempDir, Pa
     std::fs::write(&shot, contents).unwrap();
     let mut deku = step(preset.path(), "EnterDeku");
     deku.split.screenshot = "screenshots/EnterDeku.png".into();
-    deku.screenshot_file = Some(shot);
+    deku.screenshot = Some(shot);
     let folder = add_ready_made(splits.path(), GAME, "Enter the Deku Tree", vec![deku]).unwrap();
     (splits, preset, folder)
 }
@@ -584,7 +584,7 @@ fn fade_step_without_a_mask_is_added_without_one() {
     // Arrange
     let directory = tempfile::tempdir().unwrap();
     let fade = PresetSplit { name: "EnterDeku".into(), fade: Some("#a0a0a0".into()), ..PresetSplit::default() };
-    let step = NewStep { split: fade, mask: None, savestate: None, screenshot_file: None, screenshot: screenshot() };
+    let step = NewStep { split: fade, mask: None, savestate: None, screenshot: None, base_picture: screenshot() };
 
     // Act
     let folder = add_ready_made(directory.path(), GAME, "Fade into the Deku Tree", vec![step]).unwrap();

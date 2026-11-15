@@ -170,7 +170,7 @@ impl Maker {
         }
     }
 
-    /// A mask or savestate of the shown preset: relative to its folder, or picked while editing.
+    /// A file of the shown preset: relative to its folder, or picked while editing.
     fn file(&self, path: &str) -> PathBuf {
         let folder = match &self.edit {
             Some(edit) => edit.source(),

@@ -1,6 +1,6 @@
 //! Writing the splits library: ready-made splits made from a preset's splits, added to the
 //! library of their game, changed or deleted. The library's file is written again each time, and
-//! masks, savestates and base images no ready-made split uses anymore are deleted.
+//! the files and base images no ready-made split uses anymore are deleted.
 //!
 //! A write happens whole or not at all. Every file is found before anything is written, new
 //! files that take over an old file's name are written under another name first, and the
@@ -24,15 +24,15 @@ pub const BASE_IMAGE_SIZE: (usize, usize) = (64, 48);
 const WRITING_PREFIX: &str = ".writing-";
 
 /// An image of a ready-made split to write: a preset's split, with its mask, savestate and
-/// screenshot file as paths that exist, and a screenshot the mask fits, at any size, for its base
-/// image. Only a fade split can be without a mask.
+/// screenshot as paths that exist, and a picture the mask fits, at any size, for its base image.
+/// Only a fade split can be without a mask.
 pub struct NewStep {
     pub split: PresetSplit,
     pub mask: Option<PathBuf>,
     pub savestate: Option<PathBuf>,
     /// The split's own screenshot, which its split image is made from, kept at its size.
-    pub screenshot_file: Option<PathBuf>,
-    pub screenshot: BgraImage,
+    pub screenshot: Option<PathBuf>,
+    pub base_picture: BgraImage,
 }
 
 /// `screenshot` at [`BASE_IMAGE_SIZE`], opaque.
@@ -199,7 +199,7 @@ impl Pending {
     }
 }
 
-/// Puts the masks, savestates and base images of `steps` in `folder`, and makes their library
+/// Puts the files and base images of `steps` in `folder`, and makes their library
 /// splits. A file in the folder already, like one of a ready-made split that was inserted, is
 /// used where it is. The `replaced` files, which only the ready-made split these replace used,
 /// are written over once the library is, so its new files keep their names instead of getting a
@@ -222,7 +222,7 @@ fn store_steps(
     let mut sources = Vec::new();
     for step in &steps {
         let savestate = step.savestate.as_deref().map(found).transpose()?;
-        let screenshot = step.screenshot_file.as_deref().map(found).transpose()?;
+        let screenshot = step.screenshot.as_deref().map(found).transpose()?;
         sources.push((step.mask.as_deref().map(found).transpose()?, savestate, screenshot));
     }
     let inside = |path: &Path| {
@@ -300,7 +300,7 @@ fn store_steps(
                 None => String::new(),
             };
             let base = free(format!("base_{stem}.png"));
-            let png = base_image(step.screenshot.view())
+            let png = base_image(step.base_picture.view())
                 .encode_png()
                 .map_err(|error| PresetError::Unwritable { path: root.join(&base), reason: error.to_string() })?;
             let to = target(&mut pending, &base);
@@ -380,10 +380,10 @@ fn write_library(
     Ok(())
 }
 
-/// The masks, savestates and base images `splits` use, as they write them.
+/// The files and base images `splits` use, as they write them.
 fn library_files(splits: &[LibrarySplit]) -> HashSet<String> {
     (splits.iter())
-        .flat_map(|split| [&split.split.mask, &split.split.savestate, &split.split.screenshot, &split.base_image])
+        .flat_map(|split| split.split.files().chain([&split.base_image]))
         .filter(|path| !path.is_empty())
         .cloned()
         .collect()

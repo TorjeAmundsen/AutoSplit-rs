@@ -10,7 +10,7 @@ use autosplit_core::filename::DEFAULT_FADE_TIME;
 use autosplit_core::image::BgraImage;
 use autosplit_core::mask::Mask;
 use autosplit_core::preset::{
-    PRESET_FILE, Preset, PresetSplit, delete_preset, duplicate_savestates, new_preset_folder, save_preset,
+    PRESET_FILE, Preset, PresetSplit, SplitFile, delete_preset, duplicate_savestates, new_preset_folder, save_preset,
 };
 use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
 
@@ -74,26 +74,7 @@ impl Editing {
     }
 }
 
-/// A file the form picks for a split.
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum SplitFile {
-    Mask,
-    Savestate,
-    Screenshot,
-}
-
-impl SplitFile {
-    /// What it's called in messages.
-    fn word(self) -> &'static str {
-        match self {
-            Self::Mask => "mask",
-            Self::Savestate => "savestate",
-            Self::Screenshot => "screenshot",
-        }
-    }
-}
-
-/// Whether saving copies a mask or savestate into the preset's folder: it was picked from
+/// Whether saving copies a file of a split into the preset's folder: it was picked from
 /// somewhere else. Paths in the preset are relative, and picked ones absolute. `source` is the
 /// preset's folder, canonical.
 fn copied_in(source: Option<&Path>, path: &str) -> bool {
@@ -101,7 +82,7 @@ fn copied_in(source: Option<&Path>, path: &str) -> bool {
     path.is_absolute() && source.is_none_or(|source| !canonical(path).starts_with(source))
 }
 
-/// A mask or savestate's full path, for its tooltip, or empty without one.
+/// The full path of a file of a split, for its tooltip, or empty without one.
 fn shown_path(maker: &super::Maker, path: &str) -> String {
     if path.is_empty() { String::new() } else { maker.file(path).display().to_string() }
 }
@@ -568,18 +549,13 @@ impl Gui {
     /// Asks for a mask, savestate or screenshot for the selected split. A mask has to read as
     /// one, and a screenshot as a PNG.
     fn choose_split_file(self: &Rc<Self>, kind: SplitFile) {
-        let savestate = kind == SplitFile::Savestate;
         let maker = self.maker.borrow();
         let Some(edit) = &maker.edit else { return };
         // The split the file is for, while this same editing goes on and the splits stay in place
         let (id, reorders, index) = (edit.id, edit.reorders, maker.selected);
         // Without one yet, the preset's own folder
         let current = edit.draft.preset.splits.get(maker.selected).and_then(|split| {
-            let path = match kind {
-                SplitFile::Mask => &split.mask,
-                SplitFile::Savestate => &split.savestate,
-                SplitFile::Screenshot => &split.screenshot,
-            };
+            let path = split.file(kind);
             (!path.is_empty()).then(|| maker.file(path))
         });
         let folder = current
@@ -595,7 +571,7 @@ impl Gui {
             SplitFile::Screenshot => "Select Screenshot",
         };
         let mut picker = self.file_dialog_over(title, self.windows.maker.window()).set_directory(folder);
-        if !savestate {
+        if kind.is_png() {
             picker = picker.add_filter("PNG image", &["png"]);
         } else if !extensions.is_empty() {
             // Any game's practice tool has its own kind, so the ones the preset has come first,

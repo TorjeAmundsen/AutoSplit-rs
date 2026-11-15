@@ -3,15 +3,16 @@
 //! it, so a preset someone sent can't write outside its own folder, use files from elsewhere on
 //! this computer, or fill the disk.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use crate::image::BgraImage;
 use crate::preset::{
-    PRESET_FILE, Preset, PresetError, SAVESTATE_NOTE, SAVESTATE_NOTE_FILE, SAVESTATES_FOLDER, leave_for_deleting,
-    move_aside, new_preset_folder, remove_leftovers, unreadable, unwritable, write_through_temporary,
+    PRESET_FILE, Preset, PresetError, SAVESTATE_NOTE, SAVESTATE_NOTE_FILE, SAVESTATES_FOLDER, SplitFile,
+    leave_for_deleting, move_aside, new_preset_folder, remove_leftovers, unreadable, unwritable,
+    write_through_temporary,
 };
 
 /// The most files an archive can have, far more than any preset uses.
@@ -58,7 +59,7 @@ fn inside(path: &str) -> Option<String> {
 fn used_files(preset: &Preset) -> Result<Vec<(usize, String)>, String> {
     let mut used: Vec<(usize, String)> = Vec::new();
     for (index, split) in preset.splits.iter().enumerate() {
-        for path in [&split.mask, &split.savestate, &split.screenshot].into_iter().filter(|path| !path.is_empty()) {
+        for path in split.files() {
             let outside =
                 || format!("split {} ({}) uses {path}, which is outside the preset's folder", index + 1, split.name);
             let name = inside(path).ok_or_else(outside)?;
@@ -71,7 +72,7 @@ fn used_files(preset: &Preset) -> Result<Vec<(usize, String)>, String> {
 }
 
 /// Writes the preset in `folder` to the archive `archive`, replacing it: `preset.toml` and the
-/// masks and savestates it uses. A file it uses that's missing, or outside its folder, is an
+/// files it uses. A file it uses that's missing, or outside its folder, is an
 /// error, since the archive would be no use without it, and so is a preset too big to import.
 pub fn export_preset(folder: &Path, archive: &Path) -> Result<(), PresetError> {
     let preset_file = folder.join(PRESET_FILE);
@@ -156,25 +157,26 @@ pub fn read_archive(archive: &Path) -> Result<PresetArchive, PresetError> {
     let text = String::from_utf8_lossy(&files[&format!("{root}{PRESET_FILE}")]).into_owned();
     let mut preset = Preset::parse(&text, &shown)?;
     let used = used_files(&preset).map_err(invalid)?;
-    let masks: HashSet<String> = preset.splits.iter().filter_map(|split| inside(&split.mask)).collect();
-    let screenshots: HashSet<String> = preset.splits.iter().filter_map(|split| inside(&split.screenshot)).collect();
+    // The files that have to be images, each as what a split uses it as, a mask first
+    let mut images: HashMap<String, SplitFile> = HashMap::new();
+    for kind in SplitFile::ALL.into_iter().filter(|kind| kind.is_png()) {
+        for name in preset.splits.iter().filter_map(|split| inside(split.file(kind))) {
+            images.entry(name).or_insert(kind);
+        }
+    }
     let mut kept = Vec::new();
     for (index, name) in used {
         let split = &preset.splits[index].name;
         let Some(contents) = files.remove(&format!("{root}{name}")) else {
             return Err(invalid(format!("split {} ({split}) uses {name}, which isn't in the file", index + 1)));
         };
-        let image = match (masks.contains(&name), screenshots.contains(&name)) {
-            (true, _) => Some("mask"),
-            (false, true) => Some("screenshot"),
-            (false, false) => None,
-        };
-        if let Some(image) = image {
+        if let Some(&kind) = images.get(&name) {
             let Ok(decoded) = BgraImage::decode_png(&contents) else {
+                let image = kind.word();
                 return Err(invalid(format!("the {image} {name} of split {} ({split}) isn't a PNG image", index + 1)));
             };
             // A split image made already, which its mask would be applied to a second time
-            if image == "screenshot" && !decoded.is_opaque() {
+            if kind == SplitFile::Screenshot && !decoded.is_opaque() {
                 return Err(invalid(format!(
                     "the screenshot {name} of split {} ({split}) has transparent parts, which a screenshot can't have",
                     index + 1
@@ -185,7 +187,8 @@ pub fn read_archive(archive: &Path) -> Result<PresetArchive, PresetError> {
     }
     // Written like the files are, so the preset finds them on every system
     for split in &mut preset.splits {
-        for field in [&mut split.mask, &mut split.savestate, &mut split.screenshot] {
+        for kind in SplitFile::ALL {
+            let field = split.file_mut(kind);
             if let Some(name) = inside(field) {
                 *field = name;
             }

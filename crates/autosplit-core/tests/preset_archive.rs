@@ -140,7 +140,7 @@ fn bundled_presets_import_as_they_were_exported() {
         let imported = Preset::load(&folder.join(PRESET_FILE)).unwrap();
         assert_eq!(imported, loaded.preset, "{}", loaded.preset.name);
         for split in &imported.splits {
-            for path in [&split.mask, &split.savestate, &split.screenshot].into_iter().filter(|path| !path.is_empty()) {
+            for path in split.files() {
                 let (original, copy) = (std::fs::read(loaded.folder.join(path)), std::fs::read(folder.join(path)));
                 assert_eq!(copy.unwrap(), original.unwrap(), "{} {path}", loaded.preset.name);
             }
@@ -191,12 +191,12 @@ fn paths_written_with_backslashes_are_saved_with_slashes() {
 
 #[test]
 fn screenshots_are_shared_with_the_preset() {
-    // Arrange: a preset written by hand, its screenshot's path with a backslash
+    // Arrange
     let dir = tempfile::tempdir().unwrap();
     let folder = dir.path().join("Any");
     std::fs::create_dir_all(folder.join("screenshots")).unwrap();
     let text =
-        "name = \"Any%\"\n\n[[split]]\nname = \"Boss\"\nmask = \"Boss.png\"\nscreenshot = 'screenshots\\Boss.png'\n";
+        "name = \"Any%\"\n\n[[split]]\nname = \"Boss\"\nmask = \"Boss.png\"\nscreenshot = \"screenshots/Boss.png\"\n";
     std::fs::write(folder.join(PRESET_FILE), text).unwrap();
     std::fs::write(folder.join("Boss.png"), png()).unwrap();
     let screenshot = image::RgbaImage::from_pixel(3, 2, image::Rgba([10, 20, 30, 255]));

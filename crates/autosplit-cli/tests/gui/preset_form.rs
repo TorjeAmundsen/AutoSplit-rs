@@ -8,7 +8,7 @@ use autosplit::gui::preset_form::{
     status_line, too_few_selected, with_settings_of,
 };
 use autosplit_core::compare::ComparisonMethod;
-use autosplit_core::preset::{Preset, PresetSplit};
+use autosplit_core::preset::{Preset, PresetSplit, SplitFile};
 use test_case::test_case;
 
 const L2_NORM: CompareBy = CompareBy::Screenshot(ComparisonMethod::L2Norm);
@@ -901,10 +901,14 @@ fn settings_taken_from_the_preset_say_what_changes(
     // Arrange
     let step = PresetSplit { threshold: None, ..library_split("ScrubsDummyLow") };
     let from = if changed { PresetSplit { threshold: Some(0.92), dummy: true, ..step.clone() } } else { step.clone() };
-    let owned = |files: Option<(&str, &str)>| files.map(|(old, new)| (old.to_owned(), new.to_owned()));
+    let files: Vec<(SplitFile, String, String)> =
+        [(SplitFile::Savestate, savestates), (SplitFile::Screenshot, screenshots)]
+            .into_iter()
+            .filter_map(|(kind, names)| names.map(|(old, new)| (kind, old.to_owned(), new.to_owned())))
+            .collect();
 
     // Act
-    settings_changes(&step, &from, owned(savestates), owned(screenshots))
+    settings_changes(&step, &from, &files)
 }
 
 #[test_case("ScrubsDummyLow", "ScrubsDummyLow.png", None, None => None; "the same split")]
@@ -1165,7 +1169,7 @@ fn fade_splits_taking_each_others_settings_ignore_their_methods() {
     let from = PresetSplit { comparison_method: ComparisonMethod::Histograms, ..fade.clone() };
 
     // Act
-    let changes = settings_changes(&fade, &from, None, None);
+    let changes = settings_changes(&fade, &from, &[]);
 
     // Assert
     assert_eq!(changes, "From Boss: no changes");
@@ -1190,7 +1194,7 @@ fn a_ready_made_split_taking_another_method_says_so() {
     let from = PresetSplit { comparison_method: ComparisonMethod::Histograms, ..split("Boss") };
 
     // Act
-    let changes = settings_changes(&split("Boss"), &from, None, None);
+    let changes = settings_changes(&split("Boss"), &from, &[]);
 
     // Assert
     assert_eq!(changes, "From Boss: comparison method L2 Norm to Histograms");

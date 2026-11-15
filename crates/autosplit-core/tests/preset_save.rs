@@ -416,26 +416,9 @@ fn a_preset_with_every_field_set_reads_back_as_saved() {
         ..second
     };
     assert_eq!(read.splits[1], expected);
-}
-
-#[test]
-fn a_picked_screenshot_is_copied_into_its_own_folder_under_the_splits_name() {
-    // Arrange: a mask and a screenshot, which both get the split's name
-    let picked = tempfile::tempdir().unwrap();
-    let mut boss = split("Boss", &file(&picked.path().join("mask.png"), "mask"));
-    boss.screenshot = file(&picked.path().join("001_SplitImage.png"), "screen");
-    let target = tempfile::tempdir().unwrap();
-
-    // Act
-    let saved = save_preset(None, target.path(), &preset(vec![boss])).unwrap();
-
-    // Assert: the same name in another folder, so neither gets a number, each with its contents
-    let read = |name: &str| std::fs::read_to_string(target.path().join(name)).unwrap();
-    assert_eq!(
-        (saved.splits[0].mask.as_str(), saved.splits[0].screenshot.as_str()),
-        ("Boss.png", "screenshots/Boss.png")
-    );
-    assert_eq!((read("Boss.png"), read("screenshots/Boss.png")), ("mask".to_owned(), "screen".to_owned()));
+    // The mask and the screenshot share a name in their own folders, each with its contents
+    let contents = |name: &str| std::fs::read_to_string(target.path().join(name)).unwrap();
+    assert_eq!((contents("Door.png"), contents("screenshots/Door.png")), ("o".to_owned(), "c".to_owned()));
 }
 
 #[test]
