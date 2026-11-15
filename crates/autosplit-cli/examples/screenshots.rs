@@ -419,7 +419,24 @@ Replace them?",
     // A new split's mask and savestate, both copied in on save
     maker.set_form(SplitForm { mask_copied: true, ..maker.get_form() });
     save(&window, PhysicalSize::new(828, 726), &folder.join("maker-edit-copied.png"));
-    maker.set_form(SplitForm { mask_copied: false, ..maker.get_form() });
+    // And a screenshot too, the most notes there can be, which still fits
+    maker.set_form(SplitForm {
+        screenshot: elide_middle("EnterDeku.png", FADE_MASK_NAME_CHARS).into(),
+        screenshot_copied: true,
+        ..maker.get_form()
+    });
+    save(&window, PhysicalSize::new(828, 726), &folder.join("maker-edit-copied-all.png"));
+    // The usual case for a console without savestates: a mask and a screenshot
+    maker.set_form(SplitForm { savestate: "".into(), savestate_copied: false, ..maker.get_form() });
+    save(&window, PhysicalSize::new(828, 726), &folder.join("maker-edit-copied-screenshot.png"));
+    maker.set_form(SplitForm {
+        savestate: elide_middle("006 enter deku.gzs", SAVESTATE_NAME_CHARS).into(),
+        savestate_copied: true,
+        screenshot: "".into(),
+        screenshot_copied: false,
+        mask_copied: false,
+        ..maker.get_form()
+    });
     // A long problem wraps under the name
     maker.set_form(SplitForm {
         name_problem:

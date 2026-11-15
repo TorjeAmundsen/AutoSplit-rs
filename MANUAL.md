@@ -144,7 +144,7 @@ Each split has:
 | Name | The part of the file name after the number. It can't contain `reset` or `start_auto_splitter`, or the characters `#@{}()[]^~`, which file names use for settings. |
 | Color, Fade ms | For a fade split: the color the screen fades to, as a hex code like `#000000`, and about how long the fade takes in milliseconds. |
 | Mask | A PNG that's opaque where the screen is compared. A fade split doesn't need one, and Clear removes it. |
-| Screenshot | A PNG of the split's screen that its split image is made from, so runners don't have to grab it. Only for consoles whose picture is the same for everyone. Without one, the split is grabbed. A fade split doesn't have one. |
+| Screenshot | A PNG of the split's screen, without transparent parts, that its split image is made from, so runners don't have to grab it. Only for consoles whose picture is the same for everyone. Without one, the split is grabbed. A fade split doesn't have one. |
 | Threshold, Delay, Pause | Unticked, they use the profile's default and stay out of the file name. Changing a value ticks it. |
 | Dummy, Split below threshold | The `{d}` and `{b}` flags. |
 | Same split as the one above | Compares the split for the same split as the one above it, so either one matching splits. Up to 4 splits can be together. See [Several images for one split](#several-images-for-one-split). |
@@ -183,7 +183,7 @@ The buttons next to the preset share presets as `.zip` files.
 - Export (the arrow up), with [Advanced Make Split Images](#other) on, saves the shown preset as a `.zip` file, named like `tlozoot_no_wrong_warp.zip`, with its masks, savestates and screenshots. Send that file to share the preset.
 - Import (the arrow down) adds the preset in a `.zip` file someone sent and shows it. If the game already has a preset with the same name, Import asks whether to replace that preset or keep both. Keeping both names the new one `Name (2)`.
 
-Import checks the file before it adds anything. It refuses a file whose preset uses a mask, savestate or screenshot that isn't in it, a mask or screenshot that isn't a PNG image, or a setting it doesn't know, which a preset from a newer version of AutoSplit-rs can have.
+Import checks the file before it adds anything. It refuses a file whose preset uses a mask, savestate or screenshot that isn't in it, a mask or screenshot that isn't a PNG image, a screenshot with transparent parts, or a setting it doesn't know, which a preset from a newer version of AutoSplit-rs can have.
 
 ## Live Tester
 

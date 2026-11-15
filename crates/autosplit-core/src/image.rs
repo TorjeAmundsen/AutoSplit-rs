@@ -45,6 +45,12 @@ impl BgraImage {
         self.data.is_empty()
     }
 
+    /// Whether no pixel is see-through at all, like a screenshot and unlike a split image made
+    /// with a mask.
+    pub fn is_opaque(&self) -> bool {
+        self.data.as_chunks::<4>().0.iter().all(|pixel| pixel[3] == 255)
+    }
+
     pub fn view(&self) -> BgraView<'_> {
         BgraView { data: &self.data, width: self.width, height: self.height, stride: self.width * 4 }
     }

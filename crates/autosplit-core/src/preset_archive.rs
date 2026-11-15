@@ -110,7 +110,8 @@ fn write_zip(path: &Path, files: &[(String, Vec<u8>)]) -> std::io::Result<()> {
 
 /// Reads and checks the preset in the archive `archive`. Its `preset.toml` is at the top, or in
 /// one folder, as zipping a preset's folder makes it. Every mask, savestate and screenshot it uses
-/// has to be in the archive, and masks and screenshots have to be PNG images. Other files are left out. Errors name the
+/// has to be in the archive, and masks and screenshots have to be PNG images, screenshots without
+/// transparent parts. Other files are left out. Errors name the
 /// archive by its file name, which says which one without the folders it was picked from.
 pub fn read_archive(archive: &Path) -> Result<PresetArchive, PresetError> {
     let shown = archive.file_name().map_or_else(|| archive.to_owned(), PathBuf::from);
@@ -168,10 +169,17 @@ pub fn read_archive(archive: &Path) -> Result<PresetArchive, PresetError> {
             (false, true) => Some("screenshot"),
             (false, false) => None,
         };
-        if let Some(image) = image
-            && BgraImage::decode_png(&contents).is_err()
-        {
-            return Err(invalid(format!("the {image} {name} of split {} ({split}) isn't a PNG image", index + 1)));
+        if let Some(image) = image {
+            let Ok(decoded) = BgraImage::decode_png(&contents) else {
+                return Err(invalid(format!("the {image} {name} of split {} ({split}) isn't a PNG image", index + 1)));
+            };
+            // A split image made already, which its mask would be applied to a second time
+            if image == "screenshot" && !decoded.is_opaque() {
+                return Err(invalid(format!(
+                    "the screenshot {name} of split {} ({split}) has transparent parts, which a screenshot can't have",
+                    index + 1
+                )));
+            }
         }
         kept.push((name, contents));
     }

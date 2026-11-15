@@ -325,38 +325,48 @@ export component SplitFormPanel inherits VerticalLayout {
         }
 
         // A fade split is made from its color, not a screenshot
-        if !SplitValues.fade: HorizontalLayout {
-            height: 24px;
-            spacing: 6px;
+        if !SplitValues.fade: VerticalLayout {
+            spacing: 2px;
 
-            Label {
-                width: root.label-width;
-                text: "Screenshot:";
-            }
+            HorizontalLayout {
+                height: 24px;
+                spacing: 6px;
 
-            Label {
-                horizontal-stretch: 1;
-                color: root.form.screenshot == "" ? Theme.secondary-text : Theme.text;
-                text: root.form.screenshot == "" ? "None" : root.form.screenshot;
+                Label {
+                    width: root.label-width;
+                    text: "Screenshot:";
+                }
 
-                Tooltip {
-                    Tip {
-                        text: "A screenshot of the split's screen that its split image is made from, so nobody has to grab it. For consoles whose picture is the same for everyone, like ones with only a digital output. Without one, the split is grabbed from the capture." + (root.form.screenshot-path == "" ? "" : "\n\n" + root.form.screenshot-path) + (root.form.screenshot-copied ? "\n\nSaving copies it into the preset's screenshots folder." : "");
+                Label {
+                    horizontal-stretch: 1;
+                    color: root.form.screenshot == "" ? Theme.secondary-text : Theme.text;
+                    text: root.form.screenshot == "" ? "None" : root.form.screenshot;
+
+                    Tooltip {
+                        Tip {
+                            text: "A screenshot of the split's screen that its split image is made from, so nobody has to grab it. For consoles whose picture is the same for everyone, like ones with only a digital output. It can't have transparent parts. Without one, the split is grabbed from the capture." + (root.form.screenshot-path == "" ? "" : "\n\n" + root.form.screenshot-path) + (root.form.screenshot-copied ? "\n\nSaving copies it into the preset's screenshots folder." : "");
+                        }
                     }
+                }
+
+                Button {
+                    width: 80px;
+                    text: "Choose...";
+                    clicked => { root.choose-screenshot(); }
+                }
+
+                Button {
+                    width: 50px;
+                    text: "Clear";
+                    enabled: root.form.screenshot != "";
+                    clicked => { root.clear-screenshot(); }
                 }
             }
 
-            Button {
-                width: 80px;
-                text: "Choose...";
-                clicked => { root.choose-screenshot(); }
-            }
-
-            Button {
-                width: 50px;
-                text: "Clear";
-                enabled: root.form.screenshot != "";
-                clicked => { root.clear-screenshot(); }
+            if root.form.screenshot-copied: FieldProblem {
+                label-width: root.label-width;
+                color: Theme.secondary-text;
+                text: "Copied into the preset when saved.";
             }
         }
 

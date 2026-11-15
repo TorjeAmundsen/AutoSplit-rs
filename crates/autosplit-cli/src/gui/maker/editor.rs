@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use autosplit_core::filename::DEFAULT_FADE_TIME;
+use autosplit_core::image::BgraImage;
 use autosplit_core::mask::Mask;
 use autosplit_core::preset::{
     PRESET_FILE, Preset, PresetSplit, delete_preset, duplicate_savestates, new_preset_folder, save_preset,
@@ -618,15 +619,30 @@ impl Gui {
                     format!("The splits changed while the {what} was picked, so it wasn't used. Choose it again.");
                 return gui.show_message(Message::warning(text));
             }
-            if !savestate && let Err(error) = Mask::open(&path) {
-                let text = format!("{} can't be a {}: {error}", path.display(), kind.word());
+            // A screenshot has no transparent parts. One with them is a split image made already,
+            // which its mask would be applied to a second time
+            let refused = match kind {
+                SplitFile::Mask => Mask::open(&path).err().map(|error| error.to_string()),
+                SplitFile::Screenshot => match BgraImage::open_png(&path) {
+                    Ok(image) if image.is_opaque() => None,
+                    Ok(_) => Some(
+                        "it has transparent parts, like a split image made already. Choose the screenshot it was \
+                         made from"
+                            .to_owned(),
+                    ),
+                    Err(error) => Some(error.to_string()),
+                },
+                SplitFile::Savestate => None,
+            };
+            if let Some(reason) = refused {
+                let text = format!("{} can't be a {}: {reason}", path.display(), kind.word());
                 return gui.show_message(Message::error(text));
             }
-            let path = path.display().to_string();
+            let shown = path.display().to_string();
             let edit = match kind {
-                SplitFile::Mask => SplitEdit::Mask(path),
-                SplitFile::Savestate => SplitEdit::Savestate(path),
-                SplitFile::Screenshot => SplitEdit::Screenshot(path),
+                SplitFile::Mask => SplitEdit::Mask(shown),
+                SplitFile::Savestate => SplitEdit::Savestate(shown),
+                SplitFile::Screenshot => SplitEdit::Screenshot(shown),
             };
             gui.edit_split_at(index, edit);
         });
