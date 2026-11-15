@@ -42,6 +42,11 @@ pub struct PresetSplit {
     /// kept, or a fade split's color. A fade split without one is the whole screen.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub mask: String,
+    /// A screenshot of the split's screen, a PNG relative to the preset's folder, which its split
+    /// image is made from without a grab. For consoles whose picture is the same for everyone,
+    /// like ones with only a digital output. A fade split doesn't use one.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub screenshot: String,
     /// `#rrggbb`: the color a fade split splits on a fade to, instead of a screenshot. Kept as
     /// written, which can be wrong while it's being typed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -295,6 +300,7 @@ pub const SPLIT_KEYS: &[&str] = &[
     "name",
     "with_previous",
     "mask",
+    "screenshot",
     "fade",
     "fade_time",
     "comparison_method",
@@ -484,6 +490,9 @@ pub fn load_libraries(directory: &Path) -> (Vec<LoadedLibrary>, Vec<PresetError>
 /// The folder in a preset's folder that its savestates go in.
 pub const SAVESTATES_FOLDER: &str = "savestates";
 
+/// The folder in a preset's folder that its screenshots go in.
+pub const SCREENSHOTS_FOLDER: &str = "screenshots";
+
 /// The note in a preset's savestate folder that says not to copy them from there.
 pub const SAVESTATE_NOTE_FILE: &str = "DO_NOT_COPY.txt";
 
@@ -624,11 +633,12 @@ pub fn duplicates_among<'a>(
     duplicates
 }
 
-/// Saves `preset` into the preset folder `target`, making it when needed. Its masks and
-/// savestates are paths relative to `source`, the folder it was read from, or to `target` when
-/// there's none, or absolute paths of files picked for it. Files outside `target` are copied in:
-/// masks named after their split, savestates into `savestates` under their own names, each file
-/// once, and never over a file that's there. Every file is found before anything is written, and
+/// Saves `preset` into the preset folder `target`, making it when needed. Its masks, savestates
+/// and screenshots are paths relative to `source`, the folder it was read from, or to `target`
+/// when there's none, or absolute paths of files picked for it. Files outside `target` are copied
+/// in: masks named after their split, savestates into `savestates` under their own names,
+/// screenshots into `screenshots` named after their split, each file once, and never over a file
+/// that's there. Every file is found before anything is written, and
 /// when copying or writing `preset.toml` fails, what this save made is removed again, so a failed
 /// save leaves the folder as it was. Afterwards, the masks and savestates the preset used before
 /// and doesn't now are deleted, and the savestate folder gets [`SAVESTATE_NOTE_FILE`]. Returns the preset as written, with relative paths.
@@ -636,7 +646,7 @@ pub fn save_preset(source: Option<&Path>, target: &Path, preset: &Preset) -> Res
     let from = source.unwrap_or(target);
     let mut found = Vec::new();
     for split in &preset.splits {
-        for path in [&split.mask, &split.savestate] {
+        for path in [&split.mask, &split.savestate, &split.screenshot] {
             found.push(if path.is_empty() { None } else { Some(find(from, path)?) });
         }
     }
@@ -761,7 +771,13 @@ fn write_preset(
     let mut found = found.into_iter();
     for split in &mut saved.splits {
         let name = split.name.clone();
-        for (field, savestate) in [(&mut split.mask, false), (&mut split.savestate, true)] {
+        // Each with the folder it's copied into, in the order `found` has them
+        let fields = [
+            (&mut split.mask, None),
+            (&mut split.savestate, Some(SAVESTATES_FOLDER)),
+            (&mut split.screenshot, Some(SCREENSHOTS_FOLDER)),
+        ];
+        for (field, subfolder) in fields {
             let Some(file) = found.next().flatten() else { continue };
             if let Ok(inside) = file.strip_prefix(&root) {
                 *field = relative_text(inside);
@@ -771,17 +787,19 @@ fn write_preset(
                 *field = copy.clone();
                 continue;
             }
-            let (folder, wanted) = if savestate {
-                let original = file.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
-                (target.join(SAVESTATES_FOLDER), sanitize_file_name(&original, "savestate"))
-            } else {
-                (target.to_owned(), format!("{}.png", sanitize_file_name(&name, "mask")))
+            let (folder, wanted) = match subfolder {
+                Some(SAVESTATES_FOLDER) => {
+                    let original = file.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
+                    (target.join(SAVESTATES_FOLDER), sanitize_file_name(&original, "savestate"))
+                }
+                Some(subfolder) => (target.join(subfolder), format!("{}.png", sanitize_file_name(&name, "screenshot"))),
+                None => (target.to_owned(), format!("{}.png", sanitize_file_name(&name, "mask"))),
             };
             if !folder.exists() {
                 std::fs::create_dir_all(&folder).map_err(|error| unwritable(&folder, error))?;
                 made.push(folder.clone());
             }
-            let prefix = if savestate { format!("{SAVESTATES_FOLDER}/") } else { String::new() };
+            let prefix = subfolder.map_or_else(String::new, |subfolder| format!("{subfolder}/"));
             let free = unique_file_name(&wanted, |candidate| {
                 folder.join(candidate).exists() || given.contains(&format!("{prefix}{candidate}").to_lowercase())
             });
@@ -806,7 +824,7 @@ fn remove_unused_files(target: &Path, before: Option<&Preset>, now: &Preset) {
     let Ok(root) = std::fs::canonicalize(target) else { return };
     let paths = |preset: &Preset| -> Vec<PathBuf> {
         (preset.splits.iter())
-            .flat_map(|split| [&split.mask, &split.savestate])
+            .flat_map(|split| [&split.mask, &split.savestate, &split.screenshot])
             .filter(|path| !path.is_empty())
             // Missing files are left out: there's nothing to delete
             .filter_map(|path| std::fs::canonicalize(root.join(path)).ok())

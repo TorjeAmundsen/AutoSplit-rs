@@ -222,6 +222,8 @@ export component MakerWindow inherits Window {
     callback choose-savestate();
     callback clear-savestate();
     callback clear-mask();
+    callback choose-screenshot();
+    callback clear-screenshot();
     callback add-split();
     callback open-library();
     // Developer builds can add the selected splits to the split library
@@ -468,7 +470,7 @@ export component MakerWindow inherits Window {
                         icon: Icons.export;
                         enabled: root.presets.length > 0 && !root.working;
                         clicked => { root.export-preset(); }
-                        tip: "Export this preset as a .zip file to share, with its masks and savestates";
+                        tip: "Export this preset as a .zip file to share, with its masks, savestates and screenshots";
                     }
 
                     if root.editing: TextField {
@@ -806,11 +808,12 @@ export component MakerWindow inherits Window {
                     message: root.grab-fade ? "This split is a fade to a color, so it's made from its color, not the capture. There's no savestate to load for it.\n\n" + (root.grab-blocker != "" ? root.grab-blocker : "Grab* saves it and goes to the next split.") : root.live-message;
                 }
 
-                // The selected split, in the space of the folder and the capture, which the
-                // output preview below shows masked as it's edited. Just as tall, so the window
-                // keeps its size, and it scrolls when problems or notes need more room.
+                // The selected split, in place of the folder and the capture, which the output
+                // preview below shows masked as it's edited. Taller than them, so the window
+                // grows while editing: every field fits with its notes, and it only scrolls
+                // when problems wrap over several lines.
                 if root.editing: form-scroll := ScrollView {
-                    height: 326px;
+                    height: 380px;
                     content-height: max(self.visible-height, form-panel.preferred-height);
                     content-width: self.visible-width;
 
@@ -829,6 +832,8 @@ export component MakerWindow inherits Window {
                         choose-savestate => { root.choose-savestate(); }
                         clear-savestate => { root.clear-savestate(); }
                         clear-mask => { root.clear-mask(); }
+                        choose-screenshot => { root.choose-screenshot(); }
+                        clear-screenshot => { root.clear-screenshot(); }
                     }
                 }
 
@@ -917,7 +922,7 @@ export component MakerWindow inherits Window {
                         text: "Delete Preset...";
                         enabled: root.saved-preset;
                         clicked => { root.delete-preset(); }
-                        tip: root.saved-preset ? "Delete this preset's folder, with its masks and savestates" : "A new preset has nothing to delete yet. Cancel leaves it unsaved.";
+                        tip: root.saved-preset ? "Delete this preset's folder, with the masks, savestates and screenshots in it. Split images you made with it stay." : "A new preset has nothing to delete yet. Cancel leaves it unsaved.";
                     }
                 }
             }

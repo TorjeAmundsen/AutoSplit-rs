@@ -70,12 +70,13 @@ impl Change {
     }
 }
 
-/// The settings and savestate an image of a ready-made split being edited takes from the selected
-/// split at its place.
+/// The settings, savestate and screenshot an image of a ready-made split being edited takes from
+/// the selected split at its place.
 struct Update {
     /// As it's saved.
     split: PresetSplit,
     savestate: Option<PathBuf>,
+    screenshot: Option<PathBuf>,
 }
 
 /// A file of a ready-made split in the library in `folder`, like an image's mask or savestate, as
@@ -90,9 +91,16 @@ fn savestate_moved(step: &PresetSplit, folder: &Path, update: &Update) -> bool {
     library_file(folder, &step.savestate).as_deref().map(canonical) != update.savestate.as_deref().map(canonical)
 }
 
+/// Whether `update` gives `step` another screenshot file, like [`savestate_moved`].
+fn screenshot_moved(step: &PresetSplit, folder: &Path, update: &Update) -> bool {
+    library_file(folder, &step.screenshot).as_deref().map(canonical) != update.screenshot.as_deref().map(canonical)
+}
+
 /// Whether `update` changes anything about `step`, an image of the ready-made split in `folder`.
 fn update_changes(step: &PresetSplit, folder: &Path, update: &Update) -> bool {
-    !changed_settings(step, &update.split).is_empty() || savestate_moved(step, folder, update)
+    !changed_settings(step, &update.split).is_empty()
+        || savestate_moved(step, folder, update)
+        || screenshot_moved(step, folder, update)
 }
 
 /// What `update` changes about `step`, an image of the ready-made split in `folder`, like
@@ -101,7 +109,9 @@ fn update_text(step: &PresetSplit, folder: &Path, update: &Update) -> String {
     let name = |path: Option<&Path>| path.and_then(file_name_text).unwrap_or_else(|| "none".to_owned());
     let savestates = savestate_moved(step, folder, update)
         .then(|| (name(library_file(folder, &step.savestate).as_deref()), name(update.savestate.as_deref())));
-    settings_changes(step, &update.split, savestates)
+    let screenshots = screenshot_moved(step, folder, update)
+        .then(|| (name(library_file(folder, &step.screenshot).as_deref()), name(update.screenshot.as_deref())));
+    settings_changes(step, &update.split, savestates, screenshots)
 }
 
 /// A ready-made split being edited, as it was when the window opened: the library can change
@@ -123,6 +133,8 @@ struct Planned {
     /// None for a fade split of the whole screen.
     mask: Option<PathBuf>,
     savestate: Option<PathBuf>,
+    /// The screenshot the preset has for it, which its split image is made from.
+    screenshot_file: Option<PathBuf>,
     /// None while there's nothing to make its base image from, which a picture can be chosen for.
     screenshot: Option<BgraImage>,
     source: String,
@@ -131,8 +143,8 @@ struct Planned {
 impl Planned {
     /// What's written, once it has something to make its base image from.
     fn step(self) -> Option<NewStep> {
-        let Self { split, mask, savestate, screenshot, .. } = self;
-        Some(NewStep { split, mask, savestate, screenshot: screenshot? })
+        let Self { split, mask, savestate, screenshot_file, screenshot, .. } = self;
+        Some(NewStep { split, mask, savestate, screenshot_file, screenshot: screenshot? })
     }
 }
 
@@ -291,7 +303,8 @@ impl Gui {
             // Missing files are said here, before anything is written
             let file = |path: &str| (!path.is_empty()).then(|| maker.file(path));
             let (mask, savestate) = (file(&split.mask), file(&split.savestate));
-            for path in mask.iter().chain(&savestate) {
+            let screenshot_file = file(&split.screenshot);
+            for path in mask.iter().chain(&savestate).chain(&screenshot_file) {
                 if !path.is_file() {
                     return Err(format!("{} uses {}, which doesn't exist.", library_heading(split), path.display()));
                 }
@@ -316,7 +329,8 @@ impl Gui {
                 (None, None, None) => (None, "No picture for its base image yet".to_owned()),
             };
             let named = maker.entry.as_ref().map_or_else(|| split.clone(), |entry| entry.named(place, split));
-            planned.push(Planned { split: named, own: split.clone(), mask, savestate, screenshot, source: from });
+            let own = split.clone();
+            planned.push(Planned { split: named, own, mask, savestate, screenshot_file, screenshot, source: from });
         }
         Ok(planned)
     }
@@ -345,10 +359,11 @@ impl Gui {
                 return Err(problem);
             }
             let savestate = (!split.savestate.is_empty()).then(|| maker.file(&split.savestate));
-            if let Some(path) = savestate.as_ref().filter(|path| !path.is_file()) {
+            let screenshot = (!split.screenshot.is_empty()).then(|| maker.file(&split.screenshot));
+            if let Some(path) = savestate.iter().chain(&screenshot).find(|path| !path.is_file()) {
                 return Err(format!("{} uses {}, which doesn't exist.", library_heading(&split), path.display()));
             }
-            updates.push(Update { split, savestate });
+            updates.push(Update { split, savestate, screenshot });
         }
         Ok(updates)
     }
@@ -583,11 +598,16 @@ impl Gui {
                     format!("{name}'s base image can't be read, so choose a picture for it: {error}")
                 })?,
             };
-            let (split, savestate) = match updates.and_then(|updates| updates.get(place)) {
-                Some(update) => (with_settings_of(&named, &update.split), update.savestate.clone()),
-                None => (named, library_file(folder, &step.split.savestate)),
+            let (split, savestate, screenshot_file) = match updates.and_then(|updates| updates.get(place)) {
+                Some(update) => {
+                    (with_settings_of(&named, &update.split), update.savestate.clone(), update.screenshot.clone())
+                }
+                None => {
+                    (named, library_file(folder, &step.split.savestate), library_file(folder, &step.split.screenshot))
+                }
             };
-            steps.push(NewStep { split, mask: library_file(folder, &step.split.mask), savestate, screenshot });
+            let mask = library_file(folder, &step.split.mask);
+            steps.push(NewStep { split, mask, savestate, screenshot_file, screenshot });
         }
         Ok(Some(steps))
     }
@@ -598,7 +618,7 @@ impl Gui {
         let maker = self.maker.borrow();
         let Some(preset) = maker.edit.as_ref().map(editor::Editing::preset) else { return Vec::new() };
         (preset.splits.iter())
-            .flat_map(|split| [&split.mask, &split.savestate])
+            .flat_map(|split| [&split.mask, &split.savestate, &split.screenshot])
             .filter(|path| !path.is_empty())
             .map(|path| maker.file(path))
             .collect()

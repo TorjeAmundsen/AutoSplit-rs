@@ -23,13 +23,15 @@ pub const BASE_IMAGE_SIZE: (usize, usize) = (64, 48);
 /// The start of the name a file gets while it's written, before it takes over an old file's.
 const WRITING_PREFIX: &str = ".writing-";
 
-/// An image of a ready-made split to write: a preset's split, with its mask and savestate as
-/// paths that exist, and a screenshot the mask fits, at any size. Only a fade split can be without
-/// a mask.
+/// An image of a ready-made split to write: a preset's split, with its mask, savestate and
+/// screenshot file as paths that exist, and a screenshot the mask fits, at any size, for its base
+/// image. Only a fade split can be without a mask.
 pub struct NewStep {
     pub split: PresetSplit,
     pub mask: Option<PathBuf>,
     pub savestate: Option<PathBuf>,
+    /// The split's own screenshot, which its split image is made from, kept at its size.
+    pub screenshot_file: Option<PathBuf>,
     pub screenshot: BgraImage,
 }
 
@@ -220,7 +222,8 @@ fn store_steps(
     let mut sources = Vec::new();
     for step in &steps {
         let savestate = step.savestate.as_deref().map(found).transpose()?;
-        sources.push((step.mask.as_deref().map(found).transpose()?, savestate));
+        let screenshot = step.screenshot_file.as_deref().map(found).transpose()?;
+        sources.push((step.mask.as_deref().map(found).transpose()?, savestate, screenshot));
     }
     let inside = |path: &Path| {
         let inside = path.strip_prefix(&root).ok().map(relative_text)?;
@@ -228,7 +231,7 @@ fn store_steps(
     };
     // Used where they are, so never written over
     let kept: HashSet<String> = (sources.iter())
-        .flat_map(|(mask, savestate)| mask.iter().chain(savestate))
+        .flat_map(|(mask, savestate, screenshot)| mask.iter().chain(savestate).chain(screenshot))
         .filter_map(|path| inside(path))
         .collect();
     // The folder's files by their names in lowercase. Names that differ only in case are one
@@ -266,7 +269,9 @@ fn store_steps(
     };
     let mut made = Vec::new();
     let written = (|| {
-        for ((index, step), (mask_source, savestate_source)) in steps.into_iter().enumerate().zip(&sources) {
+        for ((index, step), (mask_source, savestate_source, screenshot_source)) in
+            steps.into_iter().enumerate().zip(&sources)
+        {
             let stem = sanitize_file_name(&step.split.name, "split");
             // A file's path in the folder, copied there under `wanted` when it's somewhere else
             let mut place = |source: &Path, wanted: String| -> Result<String, PresetError> {
@@ -290,6 +295,10 @@ fn store_steps(
                 }
                 None => String::new(),
             };
+            let screenshot = match screenshot_source {
+                Some(source) => place(source, format!("screenshot_{stem}.png"))?,
+                None => String::new(),
+            };
             let base = free(format!("base_{stem}.png"));
             let png = base_image(step.screenshot.view())
                 .encode_png()
@@ -300,6 +309,7 @@ fn store_steps(
                 split: PresetSplit {
                     mask,
                     savestate,
+                    screenshot,
                     with_previous: index > 0 && step.split.with_previous,
                     ..step.split
                 },
@@ -373,7 +383,7 @@ fn write_library(
 /// The masks, savestates and base images `splits` use, as they write them.
 fn library_files(splits: &[LibrarySplit]) -> HashSet<String> {
     (splits.iter())
-        .flat_map(|split| [&split.split.mask, &split.split.savestate, &split.base_image])
+        .flat_map(|split| [&split.split.mask, &split.split.savestate, &split.split.screenshot, &split.base_image])
         .filter(|path| !path.is_empty())
         .cloned()
         .collect()

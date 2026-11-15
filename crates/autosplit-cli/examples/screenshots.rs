@@ -351,14 +351,18 @@ Replace them?",
         mask_problem: "".into(),
         color_problem: "".into(),
         drops_savestate: false,
+        drops_screenshot: false,
         group_problem: "".into(),
         fade_color: Default::default(),
         mask: elide_middle("006_a_button_flip_after_the_door.png", MASK_NAME_CHARS).into(),
         savestate: elide_middle("006 enter deku.gzs", SAVESTATE_NAME_CHARS).into(),
+        screenshot: "".into(),
         mask_path: "presets/No_Wrong_Warp/006_a_button_flip.png".into(),
         savestate_path: "C:/Users/Runner/gz/006 enter deku.gzs".into(),
+        screenshot_path: "".into(),
         mask_copied: false,
         savestate_copied: true,
+        screenshot_copied: false,
         grouping_off: false,
         can_join: true,
         why_not_joined: "".into(),
@@ -366,14 +370,14 @@ Replace them?",
     maker.set_problems("Split1: It needs a mask. Choose one.".into());
     maker.set_has_problems(true);
     maker.set_saved_preset(true);
-    save(&window, PhysicalSize::new(828, 672), &folder.join("maker-edit.png"));
+    save(&window, PhysicalSize::new(828, 726), &folder.join("maker-edit.png"));
     // Where a ready-made split from Split Library would go
     maker.set_drop_line(3);
-    save(&window, PhysicalSize::new(828, 672), &folder.join("maker-edit-drop.png"));
+    save(&window, PhysicalSize::new(828, 726), &folder.join("maker-edit-drop.png"));
     maker.set_drop_line(-1);
     // Without the savestate note, all of the form fits
     maker.set_form(SplitForm { savestate_copied: false, ..maker.get_form() });
-    save(&window, PhysicalSize::new(828, 672), &folder.join("maker-edit-plain.png"));
+    save(&window, PhysicalSize::new(828, 726), &folder.join("maker-edit-plain.png"));
     // A fade split of the whole screen
     values.set_compare(3);
     values.set_color("#a0a0a0".into());
@@ -385,13 +389,13 @@ Replace them?",
         drops_savestate: true,
         ..maker.get_form()
     });
-    save(&window, PhysicalSize::new(828, 672), &folder.join("maker-edit-fade.png"));
+    save(&window, PhysicalSize::new(828, 726), &folder.join("maker-edit-fade.png"));
     // A fade split of part of the screen, whose mask can be cleared
     maker.set_form(SplitForm {
         mask: elide_middle("deku_without_the_title.png", FADE_MASK_NAME_CHARS).into(),
         ..maker.get_form()
     });
-    save(&window, PhysicalSize::new(828, 672), &folder.join("maker-edit-fade-mask.png"));
+    save(&window, PhysicalSize::new(828, 726), &folder.join("maker-edit-fade-mask.png"));
     values.set_compare(0);
     values.set_threshold(0.92);
     maker.set_form(SplitForm {
@@ -402,13 +406,13 @@ Replace them?",
     // Compared with the split above while the profile has grouping off
     values.set_with_previous(true);
     maker.set_form(SplitForm { grouping_off: true, ..maker.get_form() });
-    save(&window, PhysicalSize::new(828, 672), &folder.join("maker-edit-grouping.png"));
+    save(&window, PhysicalSize::new(828, 726), &folder.join("maker-edit-grouping.png"));
     values.set_with_previous(false);
     maker.set_form(SplitForm { grouping_off: false, ..maker.get_form() });
     maker.set_form(SplitForm { savestate_copied: true, ..maker.get_form() });
     // A new split's mask and savestate, both copied in on save
     maker.set_form(SplitForm { mask_copied: true, ..maker.get_form() });
-    save(&window, PhysicalSize::new(828, 672), &folder.join("maker-edit-copied.png"));
+    save(&window, PhysicalSize::new(828, 726), &folder.join("maker-edit-copied.png"));
     maker.set_form(SplitForm { mask_copied: false, ..maker.get_form() });
     // A long problem wraps under the name
     maker.set_form(SplitForm {
@@ -418,7 +422,7 @@ Replace them?",
         mask_problem: "It needs a mask. Choose one.".into(),
         ..maker.get_form()
     });
-    save(&window, PhysicalSize::new(828, 672), &folder.join("maker-edit-problem.png"));
+    save(&window, PhysicalSize::new(828, 726), &folder.join("maker-edit-problem.png"));
     maker.hide().unwrap();
 
     let instructions = InstructionsWindow::new().unwrap();

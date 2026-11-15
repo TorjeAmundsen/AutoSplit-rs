@@ -1,5 +1,5 @@
-//! Presets shared as `.zip` files: a preset's `preset.toml` with the masks and savestates it
-//! uses, and nothing else from its folder. Importing reads the whole archive first and checks
+//! Presets shared as `.zip` files: a preset's `preset.toml` with the masks, savestates and
+//! screenshots it uses, and nothing else from its folder. Importing reads the whole archive first and checks
 //! it, so a preset someone sent can't write outside its own folder, use files from elsewhere on
 //! this computer, or fill the disk.
 
@@ -58,7 +58,7 @@ fn inside(path: &str) -> Option<String> {
 fn used_files(preset: &Preset) -> Result<Vec<(usize, String)>, String> {
     let mut used: Vec<(usize, String)> = Vec::new();
     for (index, split) in preset.splits.iter().enumerate() {
-        for path in [&split.mask, &split.savestate].into_iter().filter(|path| !path.is_empty()) {
+        for path in [&split.mask, &split.savestate, &split.screenshot].into_iter().filter(|path| !path.is_empty()) {
             let outside =
                 || format!("split {} ({}) uses {path}, which is outside the preset's folder", index + 1, split.name);
             let name = inside(path).ok_or_else(outside)?;
@@ -109,8 +109,8 @@ fn write_zip(path: &Path, files: &[(String, Vec<u8>)]) -> std::io::Result<()> {
 }
 
 /// Reads and checks the preset in the archive `archive`. Its `preset.toml` is at the top, or in
-/// one folder, as zipping a preset's folder makes it. Every mask and savestate it uses has to be
-/// in the archive, and masks have to be PNG images. Other files are left out. Errors name the
+/// one folder, as zipping a preset's folder makes it. Every mask, savestate and screenshot it uses
+/// has to be in the archive, and masks and screenshots have to be PNG images. Other files are left out. Errors name the
 /// archive by its file name, which says which one without the folders it was picked from.
 pub fn read_archive(archive: &Path) -> Result<PresetArchive, PresetError> {
     let shown = archive.file_name().map_or_else(|| archive.to_owned(), PathBuf::from);
@@ -156,20 +156,28 @@ pub fn read_archive(archive: &Path) -> Result<PresetArchive, PresetError> {
     let mut preset = Preset::parse(&text, &shown)?;
     let used = used_files(&preset).map_err(invalid)?;
     let masks: HashSet<String> = preset.splits.iter().filter_map(|split| inside(&split.mask)).collect();
+    let screenshots: HashSet<String> = preset.splits.iter().filter_map(|split| inside(&split.screenshot)).collect();
     let mut kept = Vec::new();
     for (index, name) in used {
         let split = &preset.splits[index].name;
         let Some(contents) = files.remove(&format!("{root}{name}")) else {
             return Err(invalid(format!("split {} ({split}) uses {name}, which isn't in the file", index + 1)));
         };
-        if masks.contains(&name) && BgraImage::decode_png(&contents).is_err() {
-            return Err(invalid(format!("the mask {name} of split {} ({split}) isn't a PNG image", index + 1)));
+        let image = match (masks.contains(&name), screenshots.contains(&name)) {
+            (true, _) => Some("mask"),
+            (false, true) => Some("screenshot"),
+            (false, false) => None,
+        };
+        if let Some(image) = image
+            && BgraImage::decode_png(&contents).is_err()
+        {
+            return Err(invalid(format!("the {image} {name} of split {} ({split}) isn't a PNG image", index + 1)));
         }
         kept.push((name, contents));
     }
     // Written like the files are, so the preset finds them on every system
     for split in &mut preset.splits {
-        for field in [&mut split.mask, &mut split.savestate] {
+        for field in [&mut split.mask, &mut split.savestate, &mut split.screenshot] {
             if let Some(name) = inside(field) {
                 *field = name;
             }

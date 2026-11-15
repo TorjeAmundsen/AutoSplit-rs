@@ -20,14 +20,19 @@ export struct SplitForm {
     fade-color: color,
     // A fade split with a savestate from before, which isn't saved with it
     drops-savestate: bool,
+    // Likewise its screenshot
+    drops-screenshot: bool,
     mask: string,
     savestate: string,
+    screenshot: string,
     // Full paths, for the tooltips
     mask-path: string,
     savestate-path: string,
+    screenshot-path: string,
     // Picked from outside the preset's folder, so saving copies it in
     mask-copied: bool,
     savestate-copied: bool,
+    screenshot-copied: bool,
     // Compared together with others, or a second reset or start image, which the profile has
     // turned off
     grouping-off: bool,
@@ -98,6 +103,8 @@ export component SplitFormPanel inherits VerticalLayout {
     callback choose-savestate();
     callback clear-savestate();
     callback clear-mask();
+    callback choose-screenshot();
+    callback clear-screenshot();
     spacing: 6px;
 
     if !root.has-split: Label {
@@ -219,10 +226,10 @@ export component SplitFormPanel inherits VerticalLayout {
             }
 
             // Its savestate row is hidden, so this says where it went
-            if root.form.drops-savestate: FieldProblem {
+            if root.form.drops-savestate || root.form.drops-screenshot: FieldProblem {
                 label-width: root.label-width;
                 color: Theme.secondary-text;
-                text: "Its savestate isn't saved with a fade split. Switch Compare to L2 Norm, Histograms or pHash to keep it.";
+                text: (root.form.drops-savestate && root.form.drops-screenshot ? "Its savestate and screenshot aren't" : root.form.drops-savestate ? "Its savestate isn't" : "Its screenshot isn't") + " saved with a fade split. Switch Compare to L2 Norm, Histograms or pHash to keep it.";
             }
         }
 
@@ -314,6 +321,42 @@ export component SplitFormPanel inherits VerticalLayout {
                 color: Theme.secondary-text;
                 // One line, so the form fits without scrolling; the tooltip says where
                 text: "Copied into the preset when saved.";
+            }
+        }
+
+        // A fade split is made from its color, not a screenshot
+        if !SplitValues.fade: HorizontalLayout {
+            height: 24px;
+            spacing: 6px;
+
+            Label {
+                width: root.label-width;
+                text: "Screenshot:";
+            }
+
+            Label {
+                horizontal-stretch: 1;
+                color: root.form.screenshot == "" ? Theme.secondary-text : Theme.text;
+                text: root.form.screenshot == "" ? "None, grabbed" : root.form.screenshot;
+
+                Tooltip {
+                    Tip {
+                        text: "A screenshot of the split's screen that its split image is made from, so nobody has to grab it. For consoles whose picture is the same for everyone, like ones with only a digital output. Without one, the split is grabbed from the capture." + (root.form.screenshot-path == "" ? "" : "\n\n" + root.form.screenshot-path) + (root.form.screenshot-copied ? "\n\nSaving copies it into the preset's screenshots folder." : "");
+                    }
+                }
+            }
+
+            Button {
+                width: 80px;
+                text: "Choose...";
+                clicked => { root.choose-screenshot(); }
+            }
+
+            Button {
+                width: 50px;
+                text: "Clear";
+                enabled: root.form.screenshot != "";
+                clicked => { root.clear-screenshot(); }
             }
         }
 

@@ -185,12 +185,28 @@ impl Maker {
     }
 
     /// What split `index`'s image is made from, if anything: a fade split's color, once it's
-    /// written right, or else its grab or screenshot.
+    /// written right, or else its grab or screenshot, or else the screenshot its preset has for it.
     fn source(&self, index: usize) -> Option<Source> {
         if let Some(split) = self.fade_split(index) {
             return split.fade_color().map(Source::Fade);
         }
-        self.splits.get(index)?.shot.clone()
+        let shot = self.splits.get(index).and_then(|split| split.shot.clone());
+        shot.or_else(|| self.preset_screenshot(index).map(Source::File))
+    }
+
+    /// The screenshot the shown preset has for split `index`, if any.
+    fn preset_screenshot(&self, index: usize) -> Option<PathBuf> {
+        let screenshot = &self.shown()?.splits.get(index)?.screenshot;
+        (!screenshot.is_empty()).then(|| self.file(screenshot))
+    }
+
+    /// The splits made from their preset's screenshot that have no picture of it yet.
+    fn unpictured_screenshots(&self) -> Vec<usize> {
+        (self.splits.iter().enumerate())
+            .filter(|(index, split)| split.shot.is_none() && split.thumb.is_none() && self.fade_split(*index).is_none())
+            .filter(|(index, _)| self.preset_screenshot(*index).is_some())
+            .map(|(index, _)| index)
+            .collect()
     }
 
     /// Split `index` of the shown preset, when it's a fade split.
@@ -518,7 +534,17 @@ impl Gui {
         window.set_preset_index(of_game.iter().position(|&each| each == index).unwrap_or(0) as i32);
         let selected = maker.selected;
         drop(maker);
+        self.picture_preset_screenshots();
         self.choose_split(selected);
+    }
+
+    /// Makes the list's pictures of the splits made from their preset's screenshot, which no
+    /// grab or pick asked for.
+    fn picture_preset_screenshots(&self) {
+        let unpictured = self.maker.borrow().unpictured_screenshots();
+        if !unpictured.is_empty() {
+            self.make_thumbnails(unpictured);
+        }
     }
 
     fn choose_split(&self, index: usize) {

@@ -85,6 +85,7 @@ With [Advanced Make Split Images](#other) on, the window shows more, for checkin
 - On a [fade split](#fade-images), the button reads Grab* and saves the split image from the split's color instead of the capture, then selects the next split. It works without a capture device. The Capture Region is replaced by a note that the split needs no savestate or screen.
 - Use Screenshots... uses screenshot files instead, like the ones Take Screenshot saves. Pick one for the selected split, or several for the splits in order, skipping fade splits. Then press Save All, or with Advanced Make Split Images on, Save Selected for only the selected split. It's off while a fade split is selected.
 - With Advanced Make Split Images on, Test opens the selected split's saved image in the [Live Tester](#live-tester).
+- Some presets come with a screenshot for each split, for consoles whose picture is the same for everyone, like ones with only a digital output. Their splits show a picture as soon as you pick the preset, and Save All writes every split image without a grab. If one doesn't match your capture, select its split and grab it yourself. Your grab is used instead of the preset's screenshot.
 
 Saving asks before replacing split images, and before leaving older images of the same splits under other names, like after a threshold changed. Delete Old Images removes those, Keep Old Images keeps them. Each split saved flashes green, with a check mark on its picture. The Output Preview shows the check mark too when the selected split is one of them. Screenshots that were in the split image folder move into its `base` folder, where they aren't read as split images.
 
@@ -128,7 +129,7 @@ With [Advanced Make Split Images](#other) on, the pencil button next to the pres
   - Some ready-made splits take several images in a row, like a dummy for a boss's intro text and then its death. They're inserted together, a split for each image.
   - If the preset already has a split with the same name, its row shows where: that split's number, colored like in the split list's file names, or `reset` or `start` for a reset or start image.
   - A grayed-out name can't be inserted, like a fifth reset image. When you pick it, a red line above the buttons says why.
-  - The window stays open. Saving the preset copies the masks and savestates of inserted splits into it.
+  - The window stays open. Saving the preset copies the masks, savestates and screenshots of inserted splits into it.
 
   ![Split Library: the search field above the ready-made splits on the left, and EnterDeku picked on the right, its two images, DekuCSDummy and EnterDeku, each with a picture, settings and file name, above Insert Above and Insert Below](docs/split-library.png)
 
@@ -143,6 +144,7 @@ Each split has:
 | Name | The part of the file name after the number. It can't contain `reset` or `start_auto_splitter`, or the characters `#@{}()[]^~`, which file names use for settings. |
 | Color, Fade ms | For a fade split: the color the screen fades to, as a hex code like `#000000`, and about how long the fade takes in milliseconds. |
 | Mask | A PNG that's opaque where the screen is compared. A fade split doesn't need one, and Clear removes it. |
+| Screenshot | A PNG of the split's screen that its split image is made from, so runners don't have to grab it. Only for consoles whose picture is the same for everyone. Without one, the split is grabbed. A fade split doesn't have one. |
 | Threshold, Delay, Pause | Unticked, they use the profile's default and stay out of the file name. Changing a value ticks it. |
 | Dummy, Split below threshold | The `{d}` and `{b}` flags. |
 | Same split as the one above | Compares the split for the same split as the one above it, so either one matching splits. Up to 4 splits can be together. See [Several images for one split](#several-images-for-one-split). |
@@ -169,19 +171,19 @@ A split without a mask yet shows the live capture as it is, so you can see the s
 
 Splits with something to fix have a red name. The bottom line shows the first problem and how many more there are. Click it, or press F8, to go to the next split with a problem. Hover over it, or the red `!` beside it, to see them all.
 
-- Save saves the preset and ends editing. Masks and savestates picked from elsewhere are copied into the preset, and ones it doesn't use anymore are deleted. When a new savestate is the same as one another split already uses, Save asks whether to use that one instead of keeping a copy.
+- Save saves the preset and ends editing. Masks, savestates and screenshots picked from elsewhere are copied into the preset, and ones it doesn't use anymore are deleted. When a new savestate is the same as one another split already uses, Save asks whether to use that one instead of keeping a copy.
 - Save as New saves the changes as another preset and leaves the old one as it was. If the game already has a preset with that name, the new one is called `Name (2)`.
 - Cancel, closing the window or quitting asks before throwing changes away.
-- Delete Preset asks, then deletes the preset with its masks and savestates, and ends editing. A preset that was never saved has nothing to delete yet.
+- Delete Preset asks, then deletes the preset with the masks, savestates and screenshots it came with, and ends editing. The split images you made with it stay in your split image folder. A preset that was never saved has nothing to delete yet.
 
 ## Sharing presets
 
 The buttons next to the preset share presets as `.zip` files.
 
-- Export (the arrow up), with [Advanced Make Split Images](#other) on, saves the shown preset as a `.zip` file, named like `tlozoot_no_wrong_warp.zip`, with its masks and savestates. Send that file to share the preset.
+- Export (the arrow up), with [Advanced Make Split Images](#other) on, saves the shown preset as a `.zip` file, named like `tlozoot_no_wrong_warp.zip`, with its masks, savestates and screenshots. Send that file to share the preset.
 - Import (the arrow down) adds the preset in a `.zip` file someone sent and shows it. If the game already has a preset with the same name, Import asks whether to replace that preset or keep both. Keeping both names the new one `Name (2)`.
 
-Import checks the file before it adds anything. It refuses a file whose preset uses a mask or savestate that isn't in it, a mask that isn't a PNG image, or a setting it doesn't know, which a preset from a newer version of AutoSplit-rs can have.
+Import checks the file before it adds anything. It refuses a file whose preset uses a mask, savestate or screenshot that isn't in it, a mask or screenshot that isn't a PNG image, or a setting it doesn't know, which a preset from a newer version of AutoSplit-rs can have.
 
 ## Live Tester
 

@@ -140,7 +140,7 @@ fn bundled_presets_import_as_they_were_exported() {
         let imported = Preset::load(&folder.join(PRESET_FILE)).unwrap();
         assert_eq!(imported, loaded.preset, "{}", loaded.preset.name);
         for split in &imported.splits {
-            for path in [&split.mask, &split.savestate].into_iter().filter(|path| !path.is_empty()) {
+            for path in [&split.mask, &split.savestate, &split.screenshot].into_iter().filter(|path| !path.is_empty()) {
                 let (original, copy) = (std::fs::read(loaded.folder.join(path)), std::fs::read(folder.join(path)));
                 assert_eq!(copy.unwrap(), original.unwrap(), "{} {path}", loaded.preset.name);
             }
@@ -189,6 +189,35 @@ fn paths_written_with_backslashes_are_saved_with_slashes() {
     assert!(folder.join("masks/Boss.png").is_file());
 }
 
+#[test]
+fn screenshots_are_shared_with_the_preset() {
+    // Arrange: a preset written by hand, its screenshot's path with a backslash
+    let dir = tempfile::tempdir().unwrap();
+    let folder = dir.path().join("Any");
+    std::fs::create_dir_all(folder.join("screenshots")).unwrap();
+    let text =
+        "name = \"Any%\"\n\n[[split]]\nname = \"Boss\"\nmask = \"Boss.png\"\nscreenshot = 'screenshots\\Boss.png'\n";
+    std::fs::write(folder.join(PRESET_FILE), text).unwrap();
+    std::fs::write(folder.join("Boss.png"), png()).unwrap();
+    let screenshot = image::RgbaImage::from_pixel(3, 2, image::Rgba([10, 20, 30, 255]));
+    screenshot.save(folder.join("screenshots/Boss.png")).unwrap();
+    let archive = dir.path().join("any.zip");
+    let presets = dir.path().join("presets");
+
+    // Act
+    export_preset(&folder, &archive).unwrap();
+    let imported = read_archive(&archive).unwrap().install(&presets, None).unwrap();
+
+    // Assert: in the file, and the same picture where the imported preset says it is
+    assert_eq!(entries(&archive), ["Boss.png", "preset.toml", "screenshots/Boss.png"]);
+    let (loaded, _) = load_presets(&presets);
+    assert_eq!(loaded[0].preset.splits[0].screenshot, "screenshots/Boss.png");
+    assert_eq!(
+        std::fs::read(imported.join("screenshots/Boss.png")).unwrap(),
+        std::fs::read(folder.join("screenshots/Boss.png")).unwrap()
+    );
+}
+
 /// Why importing `archive` is refused, or `None` when it isn't.
 fn refusal(archive: &Path) -> Option<String> {
     match read_archive(archive) {
@@ -219,6 +248,7 @@ fn archives_that_could_write_elsewhere_or_hold_no_preset_are_refused(files: &[(&
 #[test_case("mask = \"missing.png\"" => Some("split 1 (Boss) uses missing.png, which isn't in the file".to_owned()); "a mask that isn't in it")]
 #[test_case("mask = \"text.png\"" => Some("the mask text.png of split 1 (Boss) isn't a PNG image".to_owned()); "a mask that isn't a png")]
 #[test_case("savestate = \"../outside.gzs\"" => Some("split 1 (Boss) uses ../outside.gzs, which is outside the preset's folder".to_owned()); "a savestate outside the folder")]
+#[test_case("screenshot = \"text.png\"" => Some("the screenshot text.png of split 1 (Boss) isn't a PNG image".to_owned()); "a screenshot that isn't a png")]
 #[test_case("mask = \"Boss.png\"" => None; "a mask in it")]
 fn a_split_with_files_from_elsewhere_is_refused(line: &str) -> Option<String> {
     // Arrange

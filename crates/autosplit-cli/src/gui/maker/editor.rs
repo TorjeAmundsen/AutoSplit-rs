@@ -73,6 +73,25 @@ impl Editing {
     }
 }
 
+/// A file the form picks for a split.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum SplitFile {
+    Mask,
+    Savestate,
+    Screenshot,
+}
+
+impl SplitFile {
+    /// What it's called in messages.
+    fn word(self) -> &'static str {
+        match self {
+            Self::Mask => "mask",
+            Self::Savestate => "savestate",
+            Self::Screenshot => "screenshot",
+        }
+    }
+}
+
 /// Whether saving copies a mask or savestate into the preset's folder: it was picked from
 /// somewhere else. Paths in the preset are relative, and picked ones absolute. `source` is the
 /// preset's folder, canonical.
@@ -101,10 +120,12 @@ impl Gui {
         let compares: Vec<SharedString> = CompareBy::ALL.iter().map(|by| by.label().into()).collect();
         maker.set_compares(ModelRc::new(VecModel::from(compares)));
         on!(weak, maker, on_split_edited, (field) gui => gui.split_field_edited(field));
-        on!(weak, maker, on_choose_mask, () gui => gui.choose_split_file(false));
+        on!(weak, maker, on_choose_mask, () gui => gui.choose_split_file(SplitFile::Mask));
         on!(weak, maker, on_preview_toggled, () gui => gui.show_maker_preview());
-        on!(weak, maker, on_choose_savestate, () gui => gui.choose_split_file(true));
+        on!(weak, maker, on_choose_savestate, () gui => gui.choose_split_file(SplitFile::Savestate));
         on!(weak, maker, on_clear_savestate, () gui => gui.edit_split(SplitEdit::Savestate(String::new())));
+        on!(weak, maker, on_choose_screenshot, () gui => gui.choose_split_file(SplitFile::Screenshot));
+        on!(weak, maker, on_clear_screenshot, () gui => gui.edit_split(SplitEdit::Screenshot(String::new())));
         // Only fade splits can be without a mask, for the whole screen
         on!(weak, maker, on_clear_mask, () gui => gui.edit_split(SplitEdit::Mask(String::new())));
         on!(weak, maker, on_add_split, () gui => {
@@ -358,11 +379,19 @@ impl Gui {
     /// An edit of split `index`'s field.
     fn edit_split_at(&self, index: usize, edit: SplitEdit) {
         let (refill, mask_changed) = (edit.changes_other_fields(), edit.changes_mask());
+        let screenshot_changed = matches!(edit, SplitEdit::Screenshot(_));
         if let Some(editing) = self.maker.borrow_mut().edit.as_mut() {
             editing.draft.edit_split(index, edit);
         }
         if mask_changed {
             self.maker.borrow_mut().live_mask = None;
+        }
+        if screenshot_changed {
+            // The picture of the one before, unless the split has a grab or pick of its own
+            if let Some(split) = self.maker.borrow_mut().splits.get_mut(index).filter(|split| split.shot.is_none()) {
+                split.thumb = None;
+            }
+            self.picture_preset_screenshots();
         }
         if refill {
             self.show_form();
@@ -396,6 +425,7 @@ impl Gui {
             change.mirror(&mut maker.splits);
         }
         drop(maker);
+        self.picture_preset_screenshots();
         self.choose_split(select);
     }
 
@@ -485,6 +515,7 @@ impl Gui {
                 mask_problem: field_problems(&problems, selected, Field::Mask).into(),
                 color_problem: field_problems(&problems, selected, Field::Color).into(),
                 drops_savestate: split.is_fade() && !split.savestate.is_empty(),
+                drops_screenshot: split.is_fade() && !split.screenshot.is_empty(),
                 fade_color: split.fade_color().map_or(slint::Color::from_argb_u8(0, 0, 0, 0), |[red, green, blue]| {
                     slint::Color::from_rgb_u8(red, green, blue)
                 }),
@@ -500,10 +531,18 @@ impl Gui {
                     SAVESTATE_NAME_CHARS,
                 )
                 .into(),
+                // Choose... and Clear beside it, like the savestate
+                screenshot: elide_middle(
+                    &file_name_text(Path::new(&split.screenshot)).unwrap_or_default(),
+                    SAVESTATE_NAME_CHARS,
+                )
+                .into(),
                 mask_path: shown_path(&maker, &split.mask).into(),
                 savestate_path: shown_path(&maker, &split.savestate).into(),
+                screenshot_path: shown_path(&maker, &split.screenshot).into(),
                 mask_copied: copied_in(source.as_deref(), &split.mask),
                 savestate_copied: copied_in(source.as_deref(), &split.savestate),
+                screenshot_copied: copied_in(source.as_deref(), &split.screenshot),
                 grouping_off: !grouping
                     && (edit.draft.preset.joins_previous(selected)
                         || edit.draft.preset.keyword_place(selected).is_some_and(|place| place > 1)),
@@ -523,15 +562,21 @@ impl Gui {
         problem_flags(&problems, splits.len())
     }
 
-    /// Asks for a mask or savestate for the selected split. A mask has to read as one.
-    fn choose_split_file(self: &Rc<Self>, savestate: bool) {
+    /// Asks for a mask, savestate or screenshot for the selected split. A mask has to read as
+    /// one, and a screenshot as a PNG.
+    fn choose_split_file(self: &Rc<Self>, kind: SplitFile) {
+        let savestate = kind == SplitFile::Savestate;
         let maker = self.maker.borrow();
         let Some(edit) = &maker.edit else { return };
         // The split the file is for, while this same editing goes on and the splits stay in place
         let (id, reorders, index) = (edit.id, edit.reorders, maker.selected);
         // Without one yet, the preset's own folder
         let current = edit.draft.preset.splits.get(maker.selected).and_then(|split| {
-            let path = if savestate { &split.savestate } else { &split.mask };
+            let path = match kind {
+                SplitFile::Mask => &split.mask,
+                SplitFile::Savestate => &split.savestate,
+                SplitFile::Screenshot => &split.screenshot,
+            };
             (!path.is_empty()).then(|| maker.file(path))
         });
         let folder = current
@@ -541,7 +586,11 @@ impl Gui {
             .unwrap_or_else(presets_folder);
         let extensions = edit.draft.savestate_extensions();
         drop(maker);
-        let title = if savestate { "Select Savestate" } else { "Select Mask" };
+        let title = match kind {
+            SplitFile::Mask => "Select Mask",
+            SplitFile::Savestate => "Select Savestate",
+            SplitFile::Screenshot => "Select Screenshot",
+        };
         let mut picker = self.file_dialog_over(title, self.windows.maker.window()).set_directory(folder);
         if !savestate {
             picker = picker.add_filter("PNG image", &["png"]);
@@ -562,17 +611,22 @@ impl Gui {
                 return;
             }
             if !in_place {
-                let what = if savestate { "savestate" } else { "mask" };
+                let what = kind.word();
                 let text =
                     format!("The splits changed while the {what} was picked, so it wasn't used. Choose it again.");
                 return gui.show_message(Message::warning(text));
             }
             if !savestate && let Err(error) = Mask::open(&path) {
-                let text = format!("{} can't be a mask: {error}", path.display());
+                let text = format!("{} can't be a {}: {error}", path.display(), kind.word());
                 return gui.show_message(Message::error(text));
             }
             let path = path.display().to_string();
-            gui.edit_split_at(index, if savestate { SplitEdit::Savestate(path) } else { SplitEdit::Mask(path) });
+            let edit = match kind {
+                SplitFile::Mask => SplitEdit::Mask(path),
+                SplitFile::Savestate => SplitEdit::Savestate(path),
+                SplitFile::Screenshot => SplitEdit::Screenshot(path),
+            };
+            gui.edit_split_at(index, edit);
         });
     }
 
@@ -673,7 +727,8 @@ impl Gui {
         let deleted = maker.presets.place(maker.preset);
         drop(maker);
         let text = format!(
-            "Delete the preset {name}? Its folder is deleted with its masks and savestates, which can't be undone:\n\n{}",
+            "Delete the preset {name}? Its folder is deleted with the masks, savestates and screenshots in it, which can't be undone. \
+             The split images you made with it stay in your split image folder.\n\n{}",
             folder.display()
         );
         let weak = Rc::downgrade(self);

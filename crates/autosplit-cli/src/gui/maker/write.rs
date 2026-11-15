@@ -300,9 +300,8 @@ impl Gui {
             return self.show_maker();
         }
         for (index, source, thumb) in made {
-            if let Some(split) = maker.splits.get_mut(index)
-                && split.shot.as_ref().is_some_and(|now| now.same(&source))
-            {
+            let current = maker.source(index).is_some_and(|now| now.same(&source));
+            if let Some(split) = maker.splits.get_mut(index).filter(|_| current) {
                 split.thumb = Some(slint::Image::from_rgba8(thumb));
             }
         }

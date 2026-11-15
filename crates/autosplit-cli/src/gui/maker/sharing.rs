@@ -125,7 +125,8 @@ impl Gui {
         };
         let text = format!(
             "{clash} Replace it with the imported one, or keep both?\n\n\
-             Replacing deletes the old preset's folder with its masks and savestates, which can't be undone."
+             Replacing deletes the old preset's folder with the masks, savestates and screenshots in it, which can't \
+             be undone. The split images you made with it stay in your split image folder."
         );
         let weak = Rc::downgrade(self);
         self.show_message(Message::choice(text, ["Replace", "Keep Both", "Cancel"], 1, move |answer| {

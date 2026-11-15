@@ -105,12 +105,12 @@ Debug builds (`cargo run`) can write the library, so you don't have to write `sp
 2. Select the first split and click **Add to Library...**. For a ready-made split of several images, raise **Images** to take the splits after it too.
 3. Write a description and save.
 
-This copies the masks and savestates into the game's library folder, which is made if the game has none yet. It writes each base image at 64x48 from the split's grab or screenshot, or else from the live capture. To use another screenshot instead, click **Picture...** beside that image. Each image's name can be changed in the field above its file name, like a generic `FastBlackFade` for a split made from the preset's `ExitKokiriShop`. The preset keeps its own names.
+This copies the masks, savestates and screenshots into the game's library folder, which is made if the game has none yet. It writes each base image at 64x48 from the split's grab or screenshot, or else from the live capture. To use another screenshot instead, click **Picture...** beside that image. Each image's name can be changed in the field above its file name, like a generic `FastBlackFade` for a split made from the preset's `ExitKokiriShop`. The preset keeps its own names.
 
 In the Split Library window, **Edit...** opens an entry, and its **Change** list picks what saving changes:
 
 - **Description, names and pictures only**: a renamed image's mask and base image are renamed with it, unless another entry uses the same mask. **Picture...** replaces just that image's base image, leaving the rest as it is.
-- **Also settings and savestates, from the selected splits**: each image takes its settings and savestate from the split selected in the preset at its place, and keeps its mask and base image. Insert the entry, fix its settings and pick its savestate in the editor, try it in the Live Tester, then select its first split and save it back. Each image's row says what changes. The selected splits have to be the entry's own images, in order, and an image without a mask has to stay a fade split.
+- **Also settings and savestates, from the selected splits**: each image takes its settings, savestate and screenshot from the split selected in the preset at its place, and keeps its mask and base image. Insert the entry, fix its settings and pick its savestate in the editor, try it in the Live Tester, then select its first split and save it back. Each image's row says what changes. The selected splits have to be the entry's own images, in order, and an image without a mask has to stay a fade split.
 - **Everything, made again from the selected splits**: takes the images and settings again, like Add to Library.
 
 **Delete...** removes an entry. Debug builds show each image's savestate in the Split Library as `splits.toml` names it, marked when the file is missing. Release builds only show the line when the file is missing.

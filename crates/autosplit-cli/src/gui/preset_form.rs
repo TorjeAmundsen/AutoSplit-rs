@@ -104,6 +104,8 @@ pub enum SplitEdit {
     Name(String),
     /// A path relative to the preset's folder, or a picked file's absolute path.
     Mask(String),
+    /// Like the mask. Empty for none: the split's image is made from a grab then.
+    Screenshot(String),
     /// Whether it's compared by a screenshot with a method, or by a fade to a color. A fade split
     /// starts at [`FADE_THRESHOLD`], with the color and fade time it had before, or
     /// [`FADE_COLOR`], and its method goes back to L2 Norm.
@@ -260,6 +262,7 @@ impl Draft {
             SplitEdit::Kind(_) => {}
             SplitEdit::Name(name) => split.name = name,
             SplitEdit::Mask(mask) => split.mask = mask,
+            SplitEdit::Screenshot(screenshot) => split.screenshot = screenshot,
             SplitEdit::Compare(CompareBy::Fade) if !split.is_fade() => {
                 let (color, time) = split.remembered.fade.take().unwrap_or((FADE_COLOR.to_owned(), None));
                 split.fade = Some(color);
@@ -356,7 +359,8 @@ impl Draft {
 
     /// A ready-made split from the splits library in `folder`, its `steps` in order, put at
     /// `at`, a place from [`Self::place_after`], [`Self::place_before`] or [`Self::drop_place`].
-    /// Their masks and savestates are the library's files, which saving copies into the preset.
+    /// Their masks, savestates and screenshots are the library's files, which saving copies into
+    /// the preset.
     /// The first isn't compared with the split before it, which isn't the library's.
     pub fn import(&mut self, at: usize, steps: &[PresetSplit], folder: &Path) -> Vec<ListChange> {
         self.drop_unused_joins();
@@ -368,6 +372,7 @@ impl Draft {
             let split = PresetSplit {
                 mask: in_library(&split.mask),
                 savestate: in_library(&split.savestate),
+                screenshot: in_library(&split.screenshot),
                 with_previous: step > 0 && split.with_previous,
                 ..split.clone()
             };
@@ -616,8 +621,8 @@ pub fn library_file_name(split: &PresetSplit, defaults: Option<&SplitDefaults>) 
     library_file_parts(split, defaults).into_iter().map(|part| part.text).collect()
 }
 
-/// A ready-made split's image `step` with the settings and savestate of `from`, a split selected
-/// in the preset, keeping its own name and mask.
+/// A ready-made split's image `step` with the settings, savestate and screenshot of `from`, a
+/// split selected in the preset, keeping its own name and mask.
 pub fn with_settings_of(step: &PresetSplit, from: &PresetSplit) -> PresetSplit {
     PresetSplit { name: step.name.clone(), mask: step.mask.clone(), ..from.clone() }
 }
@@ -695,11 +700,20 @@ pub fn changed_settings(step: &PresetSplit, from: &PresetSplit) -> Vec<String> {
 
 /// What taking the settings of `from` changes about a ready-made split's image `step`, like
 /// From ScrubsDummyLow: threshold default to 0.92. `savestates` are the file names of its
-/// savestate and the new one, or none when it's the same file.
-pub fn settings_changes(step: &PresetSplit, from: &PresetSplit, savestates: Option<(String, String)>) -> String {
+/// savestate and the new one, or none when it's the same file, and `screenshots` its screenshot's
+/// likewise.
+pub fn settings_changes(
+    step: &PresetSplit,
+    from: &PresetSplit,
+    savestates: Option<(String, String)>,
+    screenshots: Option<(String, String)>,
+) -> String {
     let mut changes = changed_settings(step, from);
     if let Some((old, new)) = savestates {
         changes.push(format!("savestate {old} to {new}"));
+    }
+    if let Some((old, new)) = screenshots {
+        changes.push(format!("screenshot {old} to {new}"));
     }
     let heading = library_heading(from);
     if changes.is_empty() {
@@ -745,13 +759,14 @@ pub fn import_blocker(preset: &Preset, steps: &[PresetSplit]) -> Option<String> 
 }
 
 /// `split` as it's saved, into the preset or the split library: instructions only go with a
-/// savestate, and fade splits have neither, since there's no screen to get to for a screenshot.
-/// While editing they're kept, for a split switched to a fade and back. Nor a method, which only
-/// a preset written by hand gives a fade split.
+/// savestate, and fade splits have neither, nor a screenshot, since their image is made from
+/// their color. While editing they're kept, for a split switched to a fade and back. Nor a
+/// method, which only a preset written by hand gives a fade split.
 pub fn saved_split(split: &PresetSplit) -> PresetSplit {
     let mut split = split.clone();
     if split.is_fade() {
         split.savestate.clear();
+        split.screenshot.clear();
         split.comparison_method = ComparisonMethod::default();
     }
     if split.savestate.is_empty() {

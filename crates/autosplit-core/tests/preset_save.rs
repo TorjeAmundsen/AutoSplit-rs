@@ -241,15 +241,18 @@ fn saving_as_new_copies_everything_and_leaves_the_old_preset() {
 
 #[test]
 fn files_the_preset_stopped_using_are_deleted() {
-    // Arrange: a mask and savestate the preset used, and files it never had
+    // Arrange: a mask, savestate and screenshot the preset used, and files it never had
     let folder = tempfile::tempdir().unwrap();
     file(&folder.path().join("boss.png"), "mask");
     file(&folder.path().join("door.png"), "mask");
     file(&folder.path().join("notes.png"), "not the preset's");
     file(&folder.path().join("savestates/boss.gzs"), "state");
     file(&folder.path().join("savestates/stray.gzs"), "state");
+    file(&folder.path().join("screenshots/boss.png"), "screen");
+    file(&folder.path().join("screenshots/stray.png"), "screen");
     let mut boss = split("Boss", "boss.png");
     boss.savestate = "savestates/boss.gzs".into();
+    boss.screenshot = "screenshots/boss.png".into();
     save_preset(Some(folder.path()), folder.path(), &preset(vec![boss, split("Door", "door.png")])).unwrap();
 
     // Act: the boss split is removed
@@ -258,7 +261,14 @@ fn files_the_preset_stopped_using_are_deleted() {
     // Assert
     assert_eq!(
         files(folder.path()),
-        ["door.png", "notes.png", PRESET_FILE, &format!("savestates/{SAVESTATE_NOTE_FILE}"), "savestates/stray.gzs"]
+        [
+            "door.png",
+            "notes.png",
+            PRESET_FILE,
+            &format!("savestates/{SAVESTATE_NOTE_FILE}"),
+            "savestates/stray.gzs",
+            "screenshots/stray.png"
+        ]
     );
 }
 
@@ -378,6 +388,7 @@ fn a_preset_with_every_field_set_reads_back_as_saved() {
         name: "Door".into(),
         with_previous: true,
         mask: file(&picked.path().join("door.png"), "o"),
+        screenshot: file(&picked.path().join("door screen.png"), "c"),
         fade: Some("#a0a0a0".into()),
         fade_time: Some(1000),
         comparison_method: ComparisonMethod::Histograms,
@@ -398,8 +409,33 @@ fn a_preset_with_every_field_set_reads_back_as_saved() {
     // Assert: everything but the paths, which became the copies', is as given
     let read = Preset::load(&target.path().join(PRESET_FILE)).unwrap();
     assert_eq!(read, saved);
-    let expected = PresetSplit { mask: "Door.png".into(), savestate: "savestates/door.gzs".into(), ..second };
+    let expected = PresetSplit {
+        mask: "Door.png".into(),
+        savestate: "savestates/door.gzs".into(),
+        screenshot: "screenshots/Door.png".into(),
+        ..second
+    };
     assert_eq!(read.splits[1], expected);
+}
+
+#[test]
+fn a_picked_screenshot_is_copied_into_its_own_folder_under_the_splits_name() {
+    // Arrange: a mask and a screenshot, which both get the split's name
+    let picked = tempfile::tempdir().unwrap();
+    let mut boss = split("Boss", &file(&picked.path().join("mask.png"), "mask"));
+    boss.screenshot = file(&picked.path().join("001_SplitImage.png"), "screen");
+    let target = tempfile::tempdir().unwrap();
+
+    // Act
+    let saved = save_preset(None, target.path(), &preset(vec![boss])).unwrap();
+
+    // Assert: the same name in another folder, so neither gets a number, each with its contents
+    let read = |name: &str| std::fs::read_to_string(target.path().join(name)).unwrap();
+    assert_eq!(
+        (saved.splits[0].mask.as_str(), saved.splits[0].screenshot.as_str()),
+        ("Boss.png", "screenshots/Boss.png")
+    );
+    assert_eq!((read("Boss.png"), read("screenshots/Boss.png")), ("mask".to_owned(), "screen".to_owned()));
 }
 
 #[test]

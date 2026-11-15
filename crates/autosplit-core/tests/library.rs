@@ -26,6 +26,7 @@ fn using(name: &str, mask: PathBuf) -> NewStep {
         split: PresetSplit { name: name.into(), mask: mask.display().to_string(), ..PresetSplit::default() },
         mask: Some(mask),
         savestate: None,
+        screenshot_file: None,
         screenshot: screenshot(),
     }
 }
@@ -240,6 +241,45 @@ fn savestates_are_copied_into_the_library_too() {
         (library.splits[0].split.savestate.as_str(), folder.join("004-kokiri forest.gzs").is_file()),
         ("004-kokiri forest.gzs", true)
     );
+}
+
+/// A library with one ready-made split, EnterDeku, whose preset has a screenshot for it with
+/// `contents`. Returns the library's folder too.
+fn with_screenshot(contents: &[u8]) -> (tempfile::TempDir, tempfile::TempDir, PathBuf) {
+    let (splits, preset) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+    std::fs::create_dir(preset.path().join("screenshots")).unwrap();
+    let shot = preset.path().join("screenshots").join("EnterDeku.png");
+    std::fs::write(&shot, contents).unwrap();
+    let mut deku = step(preset.path(), "EnterDeku");
+    deku.split.screenshot = "screenshots/EnterDeku.png".into();
+    deku.screenshot_file = Some(shot);
+    let folder = add_ready_made(splits.path(), GAME, "Enter the Deku Tree", vec![deku]).unwrap();
+    (splits, preset, folder)
+}
+
+#[test]
+fn screenshots_are_copied_into_the_library_as_they_are() {
+    // Act
+    let (_splits, _preset, folder) = with_screenshot(b"full size");
+
+    // Assert: under a name of its own beside the mask and the small base image, not shrunk
+    let library = load(&folder);
+    assert_eq!(
+        (library.splits[0].split.screenshot.as_str(), std::fs::read(folder.join("screenshot_EnterDeku.png")).ok()),
+        ("screenshot_EnterDeku.png", Some(b"full size".to_vec()))
+    );
+}
+
+#[test]
+fn deleting_a_ready_made_split_deletes_its_screenshot() {
+    // Arrange
+    let (_splits, _preset, folder) = with_screenshot(b"full size");
+
+    // Act
+    delete_ready_made(&folder, 0, &entry(&folder, 0), &[]).unwrap();
+
+    // Assert
+    assert_eq!(files(&folder), [LIBRARY_FILE]);
 }
 
 #[test]
@@ -544,7 +584,7 @@ fn fade_step_without_a_mask_is_added_without_one() {
     // Arrange
     let directory = tempfile::tempdir().unwrap();
     let fade = PresetSplit { name: "EnterDeku".into(), fade: Some("#a0a0a0".into()), ..PresetSplit::default() };
-    let step = NewStep { split: fade, mask: None, savestate: None, screenshot: screenshot() };
+    let step = NewStep { split: fade, mask: None, savestate: None, screenshot_file: None, screenshot: screenshot() };
 
     // Act
     let folder = add_ready_made(directory.path(), GAME, "Fade into the Deku Tree", vec![step]).unwrap();

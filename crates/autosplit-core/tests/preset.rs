@@ -171,6 +171,7 @@ fn split_keys_are_the_fields_of_a_split() {
         name: "Deku".into(),
         with_previous: true,
         mask: "deku.png".into(),
+        screenshot: "screenshots/deku.png".into(),
         fade: Some("#000000".into()),
         fade_time: Some(1000),
         comparison_method: ComparisonMethod::Histograms,
