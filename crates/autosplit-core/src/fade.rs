@@ -5,6 +5,8 @@ use std::collections::VecDeque;
 use std::ops::Range;
 use std::time::Duration;
 
+use multiversion::multiversion;
+
 use crate::compare::Mask;
 use crate::image::BgraImage;
 use crate::split_image::SplitImage;
@@ -77,23 +79,7 @@ pub(crate) fn similarity(
     tolerance: u8,
     ignore_noise: bool,
 ) -> FadeComparison {
-    let mut count = 0_u64;
-    let mut sums = [0_u64; 3];
-    let mut squares = [0_u64; 3];
-    let mut add = |pixels: &[u8]| {
-        for pixel in pixels.as_chunks::<4>().0 {
-            for channel in 0..3 {
-                let value = u64::from(pixel[channel]);
-                sums[channel] += value;
-                squares[channel] += value * value;
-            }
-        }
-        count += (pixels.len() / 4) as u64;
-    };
-    match mask {
-        Some(mask) => mask.byte_spans().for_each(|span| add(&capture.data()[span])),
-        None => add(capture.data()),
-    }
+    let (count, sums, squares) = sums_and_squares(capture.data(), mask);
     if count == 0 {
         return FadeComparison::default();
     }
@@ -111,6 +97,30 @@ pub(crate) fn similarity(
     }
     left_out.reverse();
     FadeComparison { similarity: 1.0 - squared.sqrt() / MAX_DISTANCE, noise: left_out }
+}
+
+/// How many pixels of `capture` (BGRA bytes) `mask` shows, and each channel's sum (BGR) of their
+/// values and of the values' squares. Compiled for AVX2 and SSE4.1 as well, picked at runtime.
+#[multiversion(targets("x86_64+avx2", "x86_64+sse4.1"))]
+fn sums_and_squares(capture: &[u8], mask: Option<&Mask>) -> (u64, [u64; 3], [u64; 3]) {
+    let mut count = 0_u64;
+    let mut sums = [0_u64; 3];
+    let mut squares = [0_u64; 3];
+    let mut add = |pixels: &[u8]| {
+        for pixel in pixels.as_chunks::<4>().0 {
+            for channel in 0..3 {
+                let value = u64::from(pixel[channel]);
+                sums[channel] += value;
+                squares[channel] += value * value;
+            }
+        }
+        count += (pixels.len() / 4) as u64;
+    };
+    match mask {
+        Some(mask) => mask.byte_spans().for_each(|span| add(&capture[span])),
+        None => add(capture),
+    }
+    (count, sums, squares)
 }
 
 /// The noise of each channel (BGR) of `capture` where `mask` shows it, up to [`MAX_NOISE`]: the
@@ -133,6 +143,9 @@ fn noise(capture: &BgraImage, mask: Option<&Mask>) -> [f64; 3] {
 
 /// How many pairs of visible pixels `distance` apart there are, across and down, on every
 /// `step`th row, and each channel's sum (BGR) of their squared differences.
+///
+/// Compiled for AVX2 and SSE4.1 as well, picked at runtime.
+#[multiversion(targets("x86_64+avx2", "x86_64+sse4.1"))]
 fn pair_squares(capture: &BgraImage, mask: Option<&Mask>, distance: usize, step: usize) -> (u64, [u64; 3]) {
     let (width, height) = (capture.width(), capture.height());
     let data = capture.data();
@@ -140,26 +153,14 @@ fn pair_squares(capture: &BgraImage, mask: Option<&Mask>, distance: usize, step:
     let mut squares = [0_u64; 3];
     // Pixels at the same place in two runs of the same length
     let mut add = |from: Range<usize>, to: usize| {
-        let pixels = |start: usize| data[start * 4..(start + from.len()) * 4].as_chunks::<4>().0;
-        for (a, b) in pixels(from.start).iter().zip(pixels(to)) {
-            for channel in 0..3 {
-                let difference = u64::from(a[channel].abs_diff(b[channel]));
-                squares[channel] += difference * difference;
-            }
+        let pixels = |start: usize| &data[start * 4..(start + from.len()) * 4];
+        let added = channel_squared_error(pixels(from.start), pixels(to));
+        for channel in 0..3 {
+            squares[channel] += added[channel];
         }
         pairs += from.len() as u64;
     };
-    // Each sampled row's visible runs, as pixel indices: masks' spans can go on into the next row
-    let rows = (0..height).step_by(step).map(|y| y * width..(y + 1) * width);
-    let runs: Box<dyn Iterator<Item = Range<usize>>> = match mask {
-        None => Box::new(rows),
-        Some(mask) => Box::new(mask.spans().iter().flat_map(move |span| {
-            (span.start / width..=(span.end - 1) / width)
-                .filter(move |y| y.is_multiple_of(step))
-                .map(move |y| span.start.max(y * width)..span.end.min((y + 1) * width))
-        })),
-    };
-    for run in runs {
+    let mut add_run = |run: Range<usize>| {
         // Across, within the run
         if run.len() > distance {
             add(run.start..run.end - distance, run.start + distance);
@@ -181,8 +182,45 @@ fn pair_squares(capture: &BgraImage, mask: Option<&Mask>, distance: usize, step:
                 }
             }
         }
+    };
+    // Each sampled row's visible runs, as pixel indices: masks' spans can go on into the next row
+    match mask {
+        None => (0..height).step_by(step).for_each(|y| add_run(y * width..(y + 1) * width)),
+        Some(mask) => {
+            for span in mask.spans() {
+                for y in (span.start / width..=(span.end - 1) / width).filter(|y| y.is_multiple_of(step)) {
+                    add_run(span.start.max(y * width)..span.end.min((y + 1) * width));
+                }
+            }
+        }
     }
     (pairs, squares)
+}
+
+/// Each channel's sum of squared differences between two runs of pixels (4 bytes each). Written
+/// as 16 independent lanes so LLVM vectorizes it, like the L2 norm's sum.
+#[inline(always)]
+fn channel_squared_error(a: &[u8], b: &[u8]) -> [u64; 4] {
+    let mut total = [0_u64; 4];
+    // 4096 / 16 * 255^2 fits in the i32 lanes
+    for (a, b) in a.chunks(4096).zip(b.chunks(4096)) {
+        let (a_blocks, a_rest) = a.as_chunks::<16>();
+        let (b_blocks, b_rest) = b.as_chunks::<16>();
+        let mut lanes = [0_i32; 16];
+        for (x, y) in a_blocks.iter().zip(b_blocks) {
+            for k in 0..16 {
+                let difference = (x[k] as i16 - y[k] as i16) as i32;
+                lanes[k] += difference * difference;
+            }
+        }
+        for (k, lane) in lanes.iter().enumerate() {
+            total[k % 4] += *lane as u64;
+        }
+        for (k, (&x, &y)) in a_rest.iter().zip(b_rest).enumerate() {
+            total[k % 4] += u64::from(x.abs_diff(y)).pow(2);
+        }
+    }
+    total
 }
 
 /// Whether `image` reached `threshold` at `now`, for the runner and the Live Tester: a fade image
