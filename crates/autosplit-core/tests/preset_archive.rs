@@ -249,8 +249,8 @@ fn archives_that_could_write_elsewhere_or_hold_no_preset_are_refused(files: &[(&
 #[test_case("mask = \"text.png\"" => Some("the mask text.png of split 1 (Boss) isn't a PNG image".to_owned()); "a mask that isn't a png")]
 #[test_case("savestate = \"../outside.gzs\"" => Some("split 1 (Boss) uses ../outside.gzs, which is outside the preset's folder".to_owned()); "a savestate outside the folder")]
 #[test_case("screenshot = \"text.png\"" => Some("the screenshot text.png of split 1 (Boss) isn't a PNG image".to_owned()); "a screenshot that isn't a png")]
-#[test_case("screenshot = \"Boss.png\"" => Some("the screenshot Boss.png of split 1 (Boss) has transparent parts, which a screenshot can't have".to_owned()); "a screenshot with transparent parts, like a split image")]
-#[test_case("mask = \"Boss.png\"\n\n[[split]]\nname = \"Door\"\nscreenshot = \"Boss.png\"" => Some("the screenshot Boss.png of split 2 (Door) has transparent parts, which a screenshot can't have".to_owned()); "one split's mask as another's screenshot")]
+#[test_case("screenshot = \"Boss.png\"" => Some("the screenshot Boss.png of split 1 (Boss) can't be one: it has transparent parts, like a split image made already".to_owned()); "a screenshot with transparent parts, like a split image")]
+#[test_case("mask = \"Boss.png\"\n\n[[split]]\nname = \"Door\"\nscreenshot = \"Boss.png\"" => Some("the screenshot Boss.png of split 2 (Door) can't be one: it has transparent parts, like a split image made already".to_owned()); "one split's mask as another's screenshot")]
 #[test_case("mask = \"Boss.png\"" => None; "a mask in it")]
 fn a_split_with_files_from_elsewhere_is_refused(line: &str) -> Option<String> {
     // Arrange

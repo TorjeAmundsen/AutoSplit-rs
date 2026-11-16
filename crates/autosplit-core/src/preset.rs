@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::compare::ComparisonMethod;
 use crate::filename::{DEFAULT_FADE_TIME, RESET_KEYWORD, START_KEYWORD, SplitSpec, build_filename};
+use crate::image::BgraImage;
 use crate::split_image::SplitDefaults;
 
 /// The file a preset folder has its preset in.
@@ -139,6 +140,13 @@ impl SplitFile {
     }
 }
 
+/// Why `image` can't be a split's screenshot, or none when it can. A screenshot has no transparent
+/// parts: one with them is a split image made already, which its mask would be applied to a
+/// second time.
+pub fn screenshot_problem(image: &BgraImage) -> Option<&'static str> {
+    (!image.is_opaque()).then_some("it has transparent parts, like a split image made already")
+}
+
 impl PresetSplit {
     /// Its file of `kind`, as the preset writes it, or empty without one.
     pub fn file(&self, kind: SplitFile) -> &String {
@@ -157,7 +165,7 @@ impl PresetSplit {
         }
     }
 
-    /// The files it has, each once for its kind.
+    /// The files it has, in [`SplitFile::ALL`]'s order, without the kinds it has none of.
     pub fn files(&self) -> impl Iterator<Item = &String> {
         SplitFile::ALL.into_iter().map(|kind| self.file(kind)).filter(|path| !path.is_empty())
     }

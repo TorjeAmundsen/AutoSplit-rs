@@ -18,10 +18,9 @@ export struct SplitForm {
     group-problem: string,
     // A fade split's color, transparent while it isn't written right
     fade-color: color,
-    // A fade split with a savestate from before, which isn't saved with it
-    drops-savestate: bool,
-    // Likewise its screenshot
-    drops-screenshot: bool,
+    // What a fade split's files from before, which aren't saved with it, say under its color, or
+    // empty
+    fade-drops: string,
     mask: string,
     savestate: string,
     screenshot: string,
@@ -229,10 +228,10 @@ export component SplitFormPanel inherits VerticalLayout {
             }
 
             // Their rows are hidden, so this says where they went
-            if root.form.drops-savestate || root.form.drops-screenshot: FieldProblem {
+            if root.form.fade-drops != "": FieldProblem {
                 label-width: root.label-width;
                 color: Theme.secondary-text;
-                text: (root.form.drops-savestate && root.form.drops-screenshot ? "Its savestate and screenshot aren't" : root.form.drops-savestate ? "Its savestate isn't" : "Its screenshot isn't") + " saved with a fade split. Switch Compare to L2 Norm, Histograms or pHash to keep " + (root.form.drops-savestate && root.form.drops-screenshot ? "them." : "it.");
+                text: root.form.fade-drops;
             }
         }
 

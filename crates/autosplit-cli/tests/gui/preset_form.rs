@@ -2,10 +2,10 @@
 
 use autosplit::gui::preset_form::{
     CompareBy, Draft, Field, InstructionText, ListChange, Problem, SplitEdit, SplitKind, discard_question,
-    elide_middle, field_problems, field_value, import_blocker, in_preset, instruction_cards, known_game,
-    library_file_name, library_heading, matches_search, next_problem_split, one_copy_question, problem_flags,
-    problem_list, problem_summary, saved_preset_name, saved_split, settings_changes, settings_problem, split_heading,
-    status_line, too_few_selected, with_settings_of,
+    elide_middle, fade_drops_note, field_problems, field_value, import_blocker, in_preset, instruction_cards,
+    known_game, library_file_name, library_heading, matches_search, next_problem_split, one_copy_question,
+    problem_flags, problem_list, problem_summary, saved_preset_name, saved_split, settings_changes, settings_problem,
+    split_heading, status_line, too_few_selected, with_settings_of,
 };
 use autosplit_core::compare::ComparisonMethod;
 use autosplit_core::preset::{Preset, PresetSplit, SplitFile};
@@ -1244,6 +1244,22 @@ fn fade_split_needs_no_mask_but_a_color_written_right() {
         (field_problems(&problems, 0, Field::Mask), field_problems(&problems, 0, Field::Color)),
         (String::new(), "Write the color as # and 6 hex digits, like #a0a0a0.".to_owned())
     );
+}
+
+#[test_case(true, "boss.gzs", "" => "Its savestate isn't saved with a fade split. Switch Compare to L2 Norm, Histograms or pHash to keep it.".to_owned(); "a savestate")]
+#[test_case(true, "boss.gzs", "boss.png" => "Its savestate and screenshot aren't saved with a fade split. Switch Compare to L2 Norm, Histograms or pHash to keep them.".to_owned(); "a savestate and a screenshot")]
+#[test_case(false, "boss.gzs", "boss.png" => String::new(); "not a fade split, which keeps them")]
+fn a_fade_split_says_which_files_it_drops(fade: bool, savestate: &str, screenshot: &str) -> String {
+    // Arrange
+    let split = PresetSplit {
+        fade: fade.then(|| "#000000".to_owned()),
+        savestate: savestate.into(),
+        screenshot: screenshot.into(),
+        ..split("Boss")
+    };
+
+    // Act, with the expected value checked by test_case
+    fade_drops_note(&split)
 }
 
 #[test]

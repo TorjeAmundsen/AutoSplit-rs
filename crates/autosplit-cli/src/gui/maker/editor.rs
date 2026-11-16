@@ -11,6 +11,7 @@ use autosplit_core::image::BgraImage;
 use autosplit_core::mask::Mask;
 use autosplit_core::preset::{
     PRESET_FILE, Preset, PresetSplit, SplitFile, delete_preset, duplicate_savestates, new_preset_folder, save_preset,
+    screenshot_problem,
 };
 use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
 
@@ -20,7 +21,7 @@ use super::super::messages::{Answer, Message};
 use super::super::paths::{canonical, file_name_text};
 use super::super::preset_form::{
     CompareBy, Draft, FADE_MASK_NAME_CHARS, Field, ListChange, MASK_NAME_CHARS, SAVESTATE_NAME_CHARS, SplitEdit,
-    SplitKind, elide_middle, field_problems, field_value,
+    SplitKind, elide_middle, fade_drops_note, field_problems, field_value,
 };
 use super::super::preset_form::{
     ONE_COPY_LABELS, discard_question, known_game, next_problem_split, one_copy_question, problem_flags, problem_list,
@@ -499,8 +500,7 @@ impl Gui {
                 name_problem: field_problems(&problems, selected, Field::Name).into(),
                 mask_problem: field_problems(&problems, selected, Field::Mask).into(),
                 color_problem: field_problems(&problems, selected, Field::Color).into(),
-                drops_savestate: split.is_fade() && !split.savestate.is_empty(),
-                drops_screenshot: split.is_fade() && !split.screenshot.is_empty(),
+                fade_drops: fade_drops_note(split).into(),
                 fade_color: split.fade_color().map_or(slint::Color::from_argb_u8(0, 0, 0, 0), |[red, green, blue]| {
                     slint::Color::from_rgb_u8(red, green, blue)
                 }),
@@ -597,17 +597,11 @@ impl Gui {
                     format!("The splits changed while the {what} was picked, so it wasn't used. Choose it again.");
                 return gui.show_message(Message::warning(text));
             }
-            // A screenshot has no transparent parts. One with them is a split image made already,
-            // which its mask would be applied to a second time
             let refused = match kind {
                 SplitFile::Mask => Mask::open(&path).err().map(|error| error.to_string()),
                 SplitFile::Screenshot => match BgraImage::open_png(&path) {
-                    Ok(image) if image.is_opaque() => None,
-                    Ok(_) => Some(
-                        "it has transparent parts, like a split image made already. Choose the screenshot it was \
-                         made from."
-                            .to_owned(),
-                    ),
+                    Ok(image) => screenshot_problem(&image)
+                        .map(|reason| format!("{reason}. Choose the screenshot it was made from.")),
                     Err(error) => Some(error.to_string()),
                 },
                 SplitFile::Savestate => None,
@@ -616,13 +610,7 @@ impl Gui {
                 let text = format!("{} can't be a {}: {reason}", path.display(), kind.word());
                 return gui.show_message(Message::error(text));
             }
-            let shown = path.display().to_string();
-            let edit = match kind {
-                SplitFile::Mask => SplitEdit::Mask(shown),
-                SplitFile::Savestate => SplitEdit::Savestate(shown),
-                SplitFile::Screenshot => SplitEdit::Screenshot(shown),
-            };
-            gui.edit_split_at(index, edit);
+            gui.edit_split_at(index, SplitEdit::file(kind, path.display().to_string()));
         });
     }
 

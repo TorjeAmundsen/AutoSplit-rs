@@ -11,7 +11,7 @@ use std::time::Duration;
 use crate::image::BgraImage;
 use crate::preset::{
     PRESET_FILE, Preset, PresetError, SAVESTATE_NOTE, SAVESTATE_NOTE_FILE, SAVESTATES_FOLDER, SplitFile,
-    leave_for_deleting, move_aside, new_preset_folder, remove_leftovers, unreadable, unwritable,
+    leave_for_deleting, move_aside, new_preset_folder, remove_leftovers, screenshot_problem, unreadable, unwritable,
     write_through_temporary,
 };
 
@@ -181,13 +181,11 @@ pub fn read_archive(archive: &Path) -> Result<PresetArchive, PresetError> {
                 let (image, number, split) = named(&uses[0]);
                 return Err(invalid(format!("the {image} {name} of split {number} ({split}) isn't a PNG image")));
             };
-            // A split image made already, which its mask would be applied to a second time
             let screenshot = uses.iter().find(|(kind, _)| *kind == SplitFile::Screenshot);
-            if let Some(screenshot) = screenshot.filter(|_| !decoded.is_opaque()) {
+            if let (Some(screenshot), Some(reason)) = (screenshot, screenshot_problem(&decoded)) {
                 let (_, number, split) = named(screenshot);
                 return Err(invalid(format!(
-                    "the screenshot {name} of split {number} ({split}) has transparent parts, which a screenshot \
-                     can't have"
+                    "the screenshot {name} of split {number} ({split}) can't be one: {reason}"
                 )));
             }
         }

@@ -356,8 +356,7 @@ Replace them?",
         name_problem: "".into(),
         mask_problem: "".into(),
         color_problem: "".into(),
-        drops_savestate: false,
-        drops_screenshot: false,
+        fade_drops: "".into(),
         group_problem: "".into(),
         fade_color: Default::default(),
         mask: elide_middle("006_a_button_flip_after_the_door.png", MASK_NAME_CHARS).into(),
@@ -393,7 +392,9 @@ Replace them?",
         mask: "".into(),
         fade_color: slint::Color::from_rgb_u8(0xa0, 0xa0, 0xa0),
         // Its savestate from before, which saving leaves out
-        drops_savestate: true,
+        fade_drops:
+            "Its savestate isn't saved with a fade split. Switch Compare to L2 Norm, Histograms or pHash to keep it."
+                .into(),
         ..maker.get_form()
     });
     save(&window, PhysicalSize::new(828, 726), &folder.join("maker-edit-fade.png"));
@@ -407,7 +408,7 @@ Replace them?",
     values.set_threshold(0.92);
     maker.set_form(SplitForm {
         mask: elide_middle("006_a_button_flip_after_the_door.png", MASK_NAME_CHARS).into(),
-        drops_savestate: false,
+        fade_drops: "".into(),
         ..maker.get_form()
     });
     // Compared with the split above while the profile has grouping off

@@ -35,11 +35,11 @@ pub struct NewStep {
     pub base_picture: BgraImage,
 }
 
-/// `screenshot` at [`BASE_IMAGE_SIZE`], opaque.
-pub fn base_image(screenshot: BgraView) -> BgraImage {
+/// `picture` at [`BASE_IMAGE_SIZE`], opaque.
+pub fn base_image(picture: BgraView) -> BgraImage {
     let (width, height) = BASE_IMAGE_SIZE;
     let mut rgba = vec![[0; 4]; width * height];
-    stretch_to_rgba(screenshot, width, height, &mut rgba);
+    stretch_to_rgba(picture, width, height, &mut rgba);
     let bgra = rgba.iter().flat_map(|&[r, g, b, _]| [b, g, r, 255]).collect();
     BgraImage::from_raw(width, height, bgra)
 }

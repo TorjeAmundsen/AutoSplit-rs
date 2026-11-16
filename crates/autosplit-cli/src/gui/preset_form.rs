@@ -176,6 +176,15 @@ pub enum Field {
 }
 
 impl SplitEdit {
+    /// The edit that sets a split's file of `kind` to `path`.
+    pub fn file(kind: SplitFile, path: String) -> Self {
+        match kind {
+            SplitFile::Mask => Self::Mask(path),
+            SplitFile::Savestate => Self::Savestate(path),
+            SplitFile::Screenshot => Self::Screenshot(path),
+        }
+    }
+
     /// Whether it changes other fields than its own, which the form shows again then: the type
     /// sets the name and Same split as the one above, and comparing by a fade the threshold.
     pub fn changes_other_fields(&self) -> bool {
@@ -743,6 +752,23 @@ pub fn import_blocker(preset: &Preset, steps: &[PresetSplit]) -> Option<String> 
     })?;
     let total = (preset.splits.iter().chain(steps)).filter(|split| split.name == step.name).count();
     Some(format!("A preset can have up to {MAX_GROUP_SIZE} {} images, and this would make {total}.", kind_word(step)))
+}
+
+/// What the form says under a fade split's color about the files it has from before it was one,
+/// which aren't saved with it, or empty for none. Their rows are hidden, so this says where
+/// they went.
+pub fn fade_drops_note(split: &PresetSplit) -> String {
+    let dropped: Vec<&str> = [SplitFile::Savestate, SplitFile::Screenshot]
+        .into_iter()
+        .filter(|&kind| split.is_fade() && !split.file(kind).is_empty())
+        .map(SplitFile::word)
+        .collect();
+    let (files, them) = match dropped.as_slice() {
+        [] => return String::new(),
+        [one] => (format!("Its {one} isn't"), "it"),
+        many => (format!("Its {} aren't", many.join(" and ")), "them"),
+    };
+    format!("{files} saved with a fade split. Switch Compare to L2 Norm, Histograms or pHash to keep {them}.")
 }
 
 /// `split` as it's saved, into the preset or the split library: instructions only go with a

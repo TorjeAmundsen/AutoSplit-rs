@@ -79,7 +79,7 @@ struct Update {
     screenshot: Option<PathBuf>,
 }
 
-/// A file of a ready-made split in the library in `folder`, like an image's mask or savestate, as
+/// A file of a ready-made split in the library in `folder`, like an image's mask, as
 /// a path, or none for an image without one.
 fn library_file(folder: &Path, name: &str) -> Option<PathBuf> {
     (!name.is_empty()).then(|| folder.join(name))
