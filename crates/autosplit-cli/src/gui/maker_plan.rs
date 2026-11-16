@@ -101,21 +101,20 @@ pub fn stale_to_delete(stale: &[PathBuf], written: &[PathBuf]) -> Vec<PathBuf> {
         .collect()
 }
 
-/// What a preset just chosen says about its screenshots: `with` of its splits have one, and
+/// What the window says about a preset's screenshots: `with` of its splits have one, and
 /// `without` have to be grabbed, fade splits counted in neither, since they're made from their
-/// color. None for a preset without screenshots, which is grabbed like always.
+/// color. None for a preset without screenshots, which is grabbed like always. Short, since it
+/// shares its line with the grouping warning.
 pub fn screenshots_status(with: usize, without: usize) -> Option<String> {
-    match (with, without) {
-        (0, _) => None,
-        (_, 0) => Some("This preset has a screenshot for every split. Save All writes the split images.".to_owned()),
-        (with, without) => {
-            let have = if with == 1 { "has" } else { "have" };
-            let rest = if without == 1 { "the other one".to_owned() } else { format!("the other {without}") };
-            Some(format!(
-                "{with} of this preset's splits {have} a screenshot. Save All writes their split images. Grab {rest}."
-            ))
-        }
-    }
+    let splits = match with {
+        0 => return None,
+        1 => "1 split has".to_owned(),
+        with => format!("{with} splits have"),
+    };
+    Some(match without {
+        0 => format!("{splits} a screenshot. Click Save All."),
+        without => format!("{splits} a screenshot for Save All, {without} left to grab."),
+    })
 }
 
 /// Where a split image saved from its preset's screenshot at `saved_from` is from once the

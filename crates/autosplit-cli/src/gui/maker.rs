@@ -554,10 +554,8 @@ impl Gui {
         maker.generation += 1;
         let count = maker.loaded().map_or(0, |loaded| loaded.preset.splits.len());
         maker.start_over(count);
-        // Says when there's nothing to grab, which the pictures alone don't
-        let (with, without) = maker.preset_screenshot_counts();
         drop(maker);
-        self.windows.maker.set_status(screenshots_status(with, without).unwrap_or_default().into());
+        self.show_screenshots_status();
         self.show_preset(index);
     }
 
@@ -877,8 +875,16 @@ impl Gui {
 
     /// Another split image folder was picked: the split images saved before are in the old one.
     fn maker_folder_changed(&self) {
-        self.windows.maker.set_status(SharedString::new());
+        // Picking the folder comes right after the preset, so what it said about screenshots stays
+        self.show_screenshots_status();
         self.show_maker();
+    }
+
+    /// Says how many of the preset's splits have a screenshot and how many are left to grab, or
+    /// nothing for a preset without screenshots.
+    fn show_screenshots_status(&self) {
+        let (with, without) = self.maker.borrow().preset_screenshot_counts();
+        self.windows.maker.set_status(screenshots_status(with, without).unwrap_or_default().into());
     }
 
     /// Saves the profile as a new file named for the preset, which is loaded from then on like

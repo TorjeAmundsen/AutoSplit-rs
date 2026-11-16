@@ -709,9 +709,9 @@ fn moves_screenshots_only_of_written_split_images(done: &[&str], failed: &[&str]
 }
 
 #[test_case(0, 3 => None; "a preset without screenshots says nothing")]
-#[test_case(3, 0 => Some("This preset has a screenshot for every split. Save All writes the split images.".to_owned()); "one for every split")]
-#[test_case(2, 1 => Some("2 of this preset's splits have a screenshot. Save All writes their split images. Grab the other one.".to_owned()); "one split left to grab")]
-#[test_case(1, 2 => Some("1 of this preset's splits has a screenshot. Save All writes their split images. Grab the other 2.".to_owned()); "one split with a screenshot")]
+#[test_case(3, 0 => Some("3 splits have a screenshot. Click Save All.".to_owned()); "none left to grab")]
+#[test_case(12, 13 => Some("12 splits have a screenshot for Save All, 13 left to grab.".to_owned()); "some left to grab")]
+#[test_case(1, 2 => Some("1 split has a screenshot for Save All, 2 left to grab.".to_owned()); "one split with a screenshot")]
 fn a_chosen_preset_says_which_splits_need_no_grab(with: usize, without: usize) -> Option<String> {
     // Act, with the expected value checked by test_case
     screenshots_status(with, without)
