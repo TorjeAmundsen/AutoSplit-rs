@@ -155,8 +155,11 @@ fn defaults_match_a_profile_saved_from_an_untouched_settings_window() {
     // The capture method default depends on the OS, so it's taken from the saved file. Open
     // screenshots on capture is deliberately off, where AutoSplit has it on.
     assert!(saved.open_screenshot && !defaults.open_screenshot);
-    let defaults =
-        UserProfile { capture_method: saved.capture_method.clone(), open_screenshot: saved.open_screenshot, ..defaults };
+    let defaults = UserProfile {
+        capture_method: saved.capture_method.clone(),
+        open_screenshot: saved.open_screenshot,
+        ..defaults
+    };
     assert_eq!(defaults, saved);
 }
 
