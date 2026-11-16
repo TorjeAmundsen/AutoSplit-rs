@@ -120,7 +120,8 @@ fn imported_presets_are_the_exported_ones() {
     assert_eq!(names(&folder), ["Boss.png", "preset.toml", "reset.png", "savestates"]);
     assert_eq!(names(&folder.join("savestates")), [SAVESTATE_NOTE_FILE, "start.gzs"]);
     assert_eq!(std::fs::read(folder.join("savestates/start.gzs")).unwrap(), b"state");
-    assert_eq!(names(&presets), ["Any%"]);
+    // In a folder of its game
+    assert_eq!(folder, presets.join("Game").join("Any%"));
 }
 
 #[test]
@@ -293,9 +294,9 @@ fn a_second_import_gets_its_own_folder() {
     // Act
     let folder = read.install(&presets, None).unwrap();
 
-    // Assert
-    assert_eq!(folder, presets.join("Any%_2"));
-    assert_eq!(names(&presets), ["Any%", "Any%_2"]);
+    // Assert: both in the game's folder
+    assert_eq!(folder, presets.join("Game").join("Any%_2"));
+    assert_eq!(names(&presets.join("Game")), ["Any%", "Any%_2"]);
 }
 
 #[test]
@@ -398,6 +399,6 @@ fn an_import_still_being_written_is_left_alone() {
     let folder = read_archive(&archive).unwrap().install(&presets, None).unwrap();
 
     // Assert
-    assert_eq!(names(&presets), [".importing-1", "Any%"]);
-    assert_eq!(folder, presets.join("Any%"));
+    assert_eq!(names(&presets), [".importing-1", "Game"]);
+    assert_eq!(folder, presets.join("Game").join("Any%"));
 }

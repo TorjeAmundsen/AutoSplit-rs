@@ -77,7 +77,8 @@ def groups(splits):
 
 def main():
     root = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).resolve().parent.parent
-    files = sorted([*root.glob("presets/*/preset.toml"), *root.glob("splits/*/splits.toml")])
+    # Presets are in a folder of their game
+    files = sorted([*root.glob("presets/*/*/preset.toml"), *root.glob("splits/*/splits.toml")])
     out_of_order = 0
     for path in files:
         loaded = tomllib.loads(path.read_text(encoding="utf-8"))

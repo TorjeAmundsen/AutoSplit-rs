@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 use crate::image::{BgraImage, BgraView};
 use crate::imgproc::stretch_to_rgba;
 use crate::preset::{
-    LIBRARY_FILE, LibrarySplit, PresetError, PresetSplit, SplitLibrary, game_key, load_libraries, new_preset_folder,
+    LIBRARY_FILE, LibrarySplit, PresetError, PresetSplit, SplitLibrary, game_key, load_libraries, new_folder,
     relative_text, sanitize_file_name, unique_file_name, unwritable,
 };
 
@@ -68,7 +68,7 @@ pub fn add_ready_made(
             });
         }
         None => {
-            let folder = new_preset_folder(directory, game);
+            let folder = new_folder(directory, game, "Preset");
             std::fs::create_dir_all(&folder).map_err(|error| unwritable(&folder, error))?;
             (folder, SplitLibrary { game: game.to_owned(), splits: Vec::new() }, true)
         }

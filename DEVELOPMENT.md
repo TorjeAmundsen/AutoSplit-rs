@@ -67,7 +67,7 @@ A few design notes:
 
 ## Presets and the split library
 
-`presets/` holds the split image presets, and `splits/` the split library, one folder per game. `tools/convert_presets.py` converted both from AutoMask. Release builds put both folders next to the binary. A preset with a `WIP.txt` in its folder is still being made, and is left out of releases.
+`presets/` holds the split image presets, in a folder per game named after it, like `presets/The_Legend_of_Zelda_Ocarina_of_Time/No_Wrong_Warp`, since games mostly share category names like Any%. Presets kept right in `presets/` from before still load. `splits/` holds the split library, one folder per game. `tools/convert_presets.py` converted both from AutoMask. Release builds put both folders next to the binary. A preset with a `WIP.txt` in its folder is still being made, and is left out of releases.
 
 For Ocarina of Time, whose practice tool is gz: splits compared together share a number, so gz lists their Copy Savestates files by name, ignoring case. Keep them in that order, like `KokiriSwordLeft` before `KokiriSwordRight`, so the savestates come up in gz in the same order as the splits. `python tools/check_savestate_order.py` lists the Ocarina of Time groups in `presets/` and `splits/` that aren't. Other games' practice tools can sort another way, so it leaves them out. CI doesn't run it.
 

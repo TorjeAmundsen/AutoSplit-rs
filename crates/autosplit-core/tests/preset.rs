@@ -35,9 +35,10 @@ fn bundled_presets_load_with_all_their_files() {
         })
         .filter(|path| !path.is_file())
         .collect();
-    // Every folder with a preset file loads
-    let folders = std::fs::read_dir(bundled("presets")).unwrap();
-    let with_file = folders.filter(|entry| entry.as_ref().unwrap().path().join(PRESET_FILE).is_file()).count();
+    // Every folder with a preset file loads, each in a folder of its game
+    let games = std::fs::read_dir(bundled("presets")).unwrap().map(|game| game.unwrap().path());
+    let folders = games.flat_map(|game| std::fs::read_dir(game).unwrap().map(|folder| folder.unwrap().path()));
+    let with_file = folders.filter(|folder| folder.join(PRESET_FILE).is_file()).count();
     assert_eq!((presets.len(), errors, missing), (with_file, vec![], vec![]));
 }
 

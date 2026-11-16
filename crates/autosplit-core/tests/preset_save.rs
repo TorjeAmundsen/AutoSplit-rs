@@ -5,7 +5,8 @@ use std::path::Path;
 use autosplit_core::compare::ComparisonMethod;
 use autosplit_core::preset::{
     PRESET_FILE, Preset, PresetError, PresetSplit, SAVESTATE_NOTE_FILE, delete_preset, duplicate_savestates,
-    duplicates_among, load_presets, new_preset_folder, sanitize_file_name, save_preset, unique_file_name,
+    duplicates_among, load_presets, move_to_game_folder, new_preset_folder, sanitize_file_name, save_preset,
+    unique_file_name,
 };
 use test_case::test_case;
 
@@ -64,16 +65,121 @@ fn taken_names_get_a_number() {
 }
 
 #[test]
-fn new_folders_dont_reuse_existing_ones() {
-    // Arrange
+fn new_folders_go_in_a_folder_named_after_the_game_and_dont_reuse_existing_ones() {
+    // Arrange: a game without presets yet, whose folder has an Any% in it
     let presets = tempfile::tempdir().unwrap();
-    std::fs::create_dir(presets.path().join("Any%")).unwrap();
+    std::fs::create_dir_all(presets.path().join("Mario_64").join("Any%")).unwrap();
 
     // Act
-    let folder = new_preset_folder(presets.path(), "Any%");
+    let folder = new_preset_folder(presets.path(), "Mario 64", "Any%");
 
     // Assert
-    assert_eq!(folder, presets.path().join("Any%_2"));
+    assert_eq!(folder, presets.path().join("Mario_64").join("Any%_2"));
+}
+
+#[test]
+fn a_preset_kept_right_in_the_presets_folder_isnt_a_game_folder() {
+    // Arrange: a preset from before game folders, whose folder is named like the game
+    let presets = tempfile::tempdir().unwrap();
+    let old = presets.path().join("Game");
+    file(&old.join("boss.png"), "mask");
+    save_preset(Some(&old), &old, &preset(vec![split("Boss", "boss.png")])).unwrap();
+
+    // Act
+    let folder = new_preset_folder(presets.path(), "Game", "Any%");
+
+    // Assert
+    assert_eq!(folder, presets.path().join("Game_2").join("Any%"));
+}
+
+/// A preset of `game` saved in `folder`, with one mask.
+fn saved(folder: &Path, game: &str) {
+    file(&folder.join("boss.png"), "mask");
+    save_preset(Some(folder), folder, &Preset { game: game.into(), ..preset(vec![split("Boss", "boss.png")]) })
+        .unwrap();
+}
+
+#[test]
+fn a_preset_whose_game_changed_moves_to_the_new_games_folder() {
+    // Arrange: the only preset in its game's folder
+    let presets = tempfile::tempdir().unwrap();
+    let folder = presets.path().join("Old_Game").join("Any%");
+    saved(&folder, "Old Game");
+
+    // Act
+    let moved = move_to_game_folder(presets.path(), &folder, "New Game").unwrap();
+
+    // Assert: with its files, and the old game's folder it left empty is gone
+    assert_eq!(moved, presets.path().join("New_Game").join("Any%"));
+    assert_eq!(files(&moved), ["boss.png", PRESET_FILE]);
+    assert!(!presets.path().join("Old_Game").exists());
+}
+
+#[test]
+fn the_old_games_folder_stays_while_it_has_other_presets() {
+    // Arrange: two presets of the old game, and the new game's folder with an Any% already
+    let presets = tempfile::tempdir().unwrap();
+    let folder = presets.path().join("Old_Game").join("Any%");
+    saved(&folder, "Old Game");
+    saved(&presets.path().join("Old_Game").join("100%"), "Old Game");
+    saved(&presets.path().join("New_Game").join("Any%"), "New Game");
+
+    // Act
+    let moved = move_to_game_folder(presets.path(), &folder, "New Game").unwrap();
+
+    // Assert: a number for the taken name, and the other preset where it was
+    assert_eq!(moved, presets.path().join("New_Game").join("Any%_2"));
+    assert!(presets.path().join("Old_Game").join("100%").join(PRESET_FILE).is_file());
+}
+
+#[test]
+fn a_preset_already_in_its_games_folder_stays() {
+    // Arrange: a game whose name only differs in what folder names leave out
+    let presets = tempfile::tempdir().unwrap();
+    let folder = presets.path().join("Game").join("Any%");
+    saved(&folder, "Game");
+
+    // Act
+    let moved = move_to_game_folder(presets.path(), &folder, "Game?").unwrap();
+
+    // Assert
+    assert_eq!(moved, folder);
+    assert!(folder.join(PRESET_FILE).is_file());
+}
+
+#[test]
+fn a_preset_from_before_game_folders_moves_into_one_and_leaves_the_presets_folder() {
+    // Arrange: right in the presets folder, which it's the only thing in
+    let presets = tempfile::tempdir().unwrap();
+    let folder = presets.path().join("Any%");
+    saved(&folder, "Old Game");
+
+    // Act
+    let moved = move_to_game_folder(presets.path(), &folder, "New Game").unwrap();
+
+    // Assert: the presets folder isn't removed for being left empty
+    assert_eq!(moved, presets.path().join("New_Game").join("Any%"));
+    assert!(presets.path().is_dir());
+}
+
+#[test]
+fn presets_load_from_game_folders_and_from_before_them() {
+    // Arrange: one right in the presets folder, one in a game's folder, and a game folder's
+    // leftover hidden folder
+    let presets = tempfile::tempdir().unwrap();
+    let old = presets.path().join("Old");
+    let new = presets.path().join("Game").join("New");
+    for folder in [&old, &new, &presets.path().join("Game").join(".deleting-Gone-1")] {
+        file(&folder.join("boss.png"), "mask");
+        save_preset(Some(folder), folder, &preset(vec![split("Boss", "boss.png")])).unwrap();
+    }
+
+    // Act
+    let (loaded, errors) = load_presets(presets.path());
+
+    // Assert
+    let folders: Vec<&Path> = loaded.iter().map(|loaded| loaded.folder.as_path()).collect();
+    assert_eq!((folders, errors.len()), (vec![new.as_path(), old.as_path()], 0));
 }
 
 #[test]
@@ -213,7 +319,7 @@ fn saving_as_new_copies_everything_and_leaves_the_old_preset() {
     let mut boss = split("Boss", "boss.png");
     boss.savestate = "savestates/boss.gzs".into();
     let loaded = save_preset(Some(&old), &old, &preset(vec![boss])).unwrap();
-    let new = new_preset_folder(presets.path(), "Any%");
+    let new = new_preset_folder(presets.path(), "Game", "Any%");
 
     // Act
     let saved = save_preset(Some(&old), &new, &loaded).unwrap();
@@ -315,14 +421,14 @@ fn a_failed_save_as_new_leaves_no_folder() {
     let not_a_file = picked.path().join("folder.png");
     std::fs::create_dir(&not_a_file).unwrap();
     let presets = tempfile::tempdir().unwrap();
-    let new = new_preset_folder(presets.path(), "Any%");
+    let new = new_preset_folder(presets.path(), "Game", "Any%");
 
     // Act
     let splits = vec![split("Boss", &mask), split("Door", &not_a_file.display().to_string())];
     let error = save_preset(None, &new, &preset(splits));
 
-    // Assert
-    assert_eq!((error.is_err(), new.exists()), (true, false));
+    // Assert: the game's folder made for it goes too
+    assert_eq!((error.is_err(), new.exists(), presets.path().join("Game").exists()), (true, false, false));
 }
 
 #[test]

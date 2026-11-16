@@ -229,8 +229,12 @@ impl PresetArchive {
         let (target, moved) = match replace {
             Some(folder) => (folder.to_owned(), swap(folder, &staging)),
             None => {
-                let target = new_preset_folder(presets, &self.preset.name);
-                let moved = std::fs::rename(&staging, &target).map_err(|error| unwritable(&target, error));
+                let target = new_preset_folder(presets, &self.preset.game, &self.preset.name);
+                // Its game's folder, which a new game doesn't have yet
+                let game = target.parent().unwrap_or(presets);
+                let moved = std::fs::create_dir_all(game)
+                    .and_then(|()| std::fs::rename(&staging, &target))
+                    .map_err(|error| unwritable(&target, error));
                 (target, moved)
             }
         };

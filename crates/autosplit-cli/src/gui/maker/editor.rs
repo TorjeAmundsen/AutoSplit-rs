@@ -10,8 +10,8 @@ use autosplit_core::filename::DEFAULT_FADE_TIME;
 use autosplit_core::image::BgraImage;
 use autosplit_core::mask::Mask;
 use autosplit_core::preset::{
-    PRESET_FILE, Preset, PresetSplit, SplitFile, delete_preset, duplicate_savestates, new_preset_folder, save_preset,
-    screenshot_problem,
+    PRESET_FILE, Preset, PresetSplit, SplitFile, delete_preset, duplicate_savestates, game_key, move_to_game_folder,
+    new_preset_folder, save_preset, screenshot_problem,
 };
 use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
 
@@ -182,7 +182,7 @@ impl Gui {
         true
     }
 
-    pub(super) fn editing(&self) -> bool {
+    pub(in crate::gui) fn editing(&self) -> bool {
         self.maker.borrow().edit.is_some()
     }
 
@@ -644,7 +644,7 @@ impl Gui {
         }
         let target = match in_place {
             Some(folder) => folder.clone(),
-            None => new_preset_folder(&presets_folder(), &preset.name),
+            None => new_preset_folder(&presets_folder(), &preset.game, &preset.name),
         };
         let from = source.as_deref().unwrap_or(&target);
         // Only savestates this save adds: the saved preset's were kept on purpose, or before this
@@ -699,9 +699,24 @@ impl Gui {
             let maker = self.maker.borrow();
             (0..maker.splits.len()).map(|index| maker.preset_screenshot(index)).collect()
         };
+        // The game it was saved with, when it's saved in place, whose folder it's in
+        let in_place = source.as_deref() == Some(target.as_path());
+        let old_game = in_place.then(|| Preset::load(&target.join(PRESET_FILE)).ok()).flatten().map(|old| old.game);
         let saved = match save_preset(source.as_deref(), &target, &preset) {
             Ok(saved) => saved,
             Err(error) => return self.show_message(Message::error(format!("Couldn't save the preset. {error}"))),
+        };
+        // Into its new game's folder, once it's saved
+        let mut moved_problem = None;
+        let target = match old_game.filter(|old| game_key(old) != game_key(&preset.game)) {
+            Some(_) => match move_to_game_folder(&presets_folder(), &target, &preset.game) {
+                Ok(moved) => moved,
+                Err(error) => {
+                    moved_problem = Some(error);
+                    target
+                }
+            },
+            None => target,
         };
         // Saved marks are told by their screenshot's path, so they follow it to where it is now,
         // and go when the split's screenshot is another one
@@ -718,6 +733,13 @@ impl Gui {
         self.leave_editing();
         self.reload_presets(Some(&target), None);
         self.windows.maker.set_status(format!("Saved the preset {}.", preset.name).into());
+        if let Some(error) = moved_problem {
+            let text = format!(
+                "Saved the preset, but it stays in its old game's folder, since it couldn't be moved to {}'s. {error}",
+                preset.game
+            );
+            self.show_message(Message::warning(text));
+        }
     }
 
     /// Asks to delete the edited preset's folder, then deletes it.
