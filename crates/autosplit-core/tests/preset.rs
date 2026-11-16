@@ -30,14 +30,15 @@ fn bundled_presets_load_with_all_their_files() {
     let missing: Vec<PathBuf> = presets
         .iter()
         .flat_map(|loaded| {
-            let files = loaded.preset.splits.iter().flat_map(|split| [&split.mask, &split.savestate]);
-            files.filter(|file| !file.is_empty()).map(|file| loaded.file(file)).collect::<Vec<_>>()
+            let files = loaded.preset.splits.iter().flat_map(PresetSplit::files);
+            files.map(|file| loaded.file(file)).collect::<Vec<_>>()
         })
         .filter(|path| !path.is_file())
         .collect();
-    // Every folder with a preset file loads
-    let folders = std::fs::read_dir(bundled("presets")).unwrap();
-    let with_file = folders.filter(|entry| entry.as_ref().unwrap().path().join(PRESET_FILE).is_file()).count();
+    // Every folder with a preset file loads, each in a folder of its game
+    let games = std::fs::read_dir(bundled("presets")).unwrap().map(|game| game.unwrap().path());
+    let folders = games.flat_map(|game| std::fs::read_dir(game).unwrap().map(|folder| folder.unwrap().path()));
+    let with_file = folders.filter(|folder| folder.join(PRESET_FILE).is_file()).count();
     assert_eq!((presets.len(), errors, missing), (with_file, vec![], vec![]));
 }
 
@@ -171,6 +172,7 @@ fn split_keys_are_the_fields_of_a_split() {
         name: "Deku".into(),
         with_previous: true,
         mask: "deku.png".into(),
+        screenshot: "screenshots/deku.png".into(),
         fade: Some("#000000".into()),
         fade_time: Some(1000),
         comparison_method: ComparisonMethod::Histograms,

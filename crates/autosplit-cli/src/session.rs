@@ -30,6 +30,7 @@ use crate::livesplit_one::{self, Link, ServerEvent};
 #[cfg(target_os = "linux")]
 use crate::molok;
 use crate::platform::PreciseTimer;
+use crate::recording::{self, Recording};
 use crate::{livesplit, profile, screenshot};
 
 /// The longest the loop sleeps, so a failed capture device is noticed.
@@ -47,6 +48,12 @@ const MOLOK_GAP: Duration = Duration::from_millis(5);
 /// How often listening for LiveSplit One is tried again after the port was taken.
 const LIVESPLIT_ONE_RETRY: Duration = Duration::from_secs(5);
 
+/// What recording says when the capture region isn't inside the capture's frames.
+const REGION_OUTSIDE: &str =
+    "Record Screenshots: the capture region isn't inside the capture's frames. Set it in the region boxes first.";
+/// How long quitting waits for a recording's frames to be written.
+const WRITING_WAIT: Duration = Duration::from_secs(10);
+
 pub enum Event {
     /// A hotkey, and when it was pressed. The press time tells autosplit's own presses apart even
     /// when the event waited behind something slow, like loading the split image folder.
@@ -59,6 +66,8 @@ pub enum Event {
     Log(Result<String, String>),
     /// A screenshot was saved in the background, or couldn't be.
     Screenshot(screenshot::Saved),
+    /// A recording of screenshots is written, or what of it could be.
+    Recorded(recording::Summary),
     /// Ctrl+C, or the window closing.
     Stop,
     Ui(UiCommand),
@@ -101,6 +110,8 @@ pub enum UiCommand {
     Grab,
     /// The capture region becomes the 4:3 picture in the middle of the capture's frames.
     CropTo4x3,
+    /// Starts recording screenshots, or stops the recording, like the Record Screenshots hotkey.
+    ToggleRecording,
 }
 
 /// What the session tells the window, besides what [`View::update`] shows.
@@ -123,6 +134,10 @@ pub enum Notice {
     FullFrameRegion(Region),
     /// The capture region was cropped to the 4:3 picture in the middle of the frames.
     CroppedRegion(Region),
+    /// Recording screenshots started, or stopped.
+    Recording(bool),
+    /// A recording of screenshots is written into `folder`, with what to say about it.
+    Recorded { folder: PathBuf, message: String },
 }
 
 /// What a [`View`] shows of the session.
@@ -202,6 +217,10 @@ pub struct Session {
     next_tester_file_check: Instant,
     timer: PreciseTimer,
     next_view: Instant,
+    /// Screenshots being recorded.
+    recording: Option<Recording>,
+    /// The threads still writing the frames of recordings that stopped.
+    writing: Vec<std::thread::JoinHandle<()>>,
     quit: bool,
 }
 
@@ -247,6 +266,8 @@ impl Session {
             next_tester_file_check: now,
             timer: PreciseTimer::default(),
             next_view: now,
+            recording: None,
+            writing: Vec::new(),
             quit: false,
         }
     }
@@ -427,6 +448,23 @@ impl Session {
 
     /// Runs until stopped, or until `receiver`'s senders are gone.
     pub fn run(&mut self, receiver: &mpsc::Receiver<Event>) {
+        self.run_loop(receiver);
+        self.finish_writing();
+    }
+
+    /// Ends a recording going on and waits a while for the frames still being written, which
+    /// quitting would otherwise cut off.
+    fn finish_writing(&mut self) {
+        if let Some(recording) = self.recording.take() {
+            self.writing.push(recording.stop());
+        }
+        let deadline = Instant::now() + WRITING_WAIT;
+        while self.writing.iter().any(|writers| !writers.is_finished()) && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+
+    fn run_loop(&mut self, receiver: &mpsc::Receiver<Event>) {
         while !self.quit {
             // Events first, so slow comparisons can't keep hotkeys and LiveSplit waiting
             while let Ok(event) = receiver.try_recv() {
@@ -445,6 +483,7 @@ impl Session {
             self.tick_tester();
             self.check_tester_file(now);
             self.update_view(now);
+            self.record(Instant::now());
 
             let now = Instant::now();
             let mut wake = now + MAX_SLEEP;
@@ -452,13 +491,19 @@ impl Session {
                 wake = wake.min(self.next_view);
             }
             let retry = self.livesplit_one_retry;
-            for next in [self.device.next_open(), self.hotkeys.next_health_check(), retry].into_iter().flatten() {
+            let recording = self.recording.as_ref().map(Recording::next_wakeup);
+            for next in
+                [self.device.next_open(), self.hotkeys.next_health_check(), retry, recording].into_iter().flatten()
+            {
                 wake = wake.min(next);
             }
             // Waits are only precise to Windows' 15.6 ms tick unless asked for, which costs
             // power, so precision is asked for while comparing and just before other wakeups
-            let mut precise =
-                self.runner.needs_frames(self.elapsed()) || (self.tester.is_some() && self.device.receiving());
+            let mut precise = self.runner.needs_frames(self.elapsed())
+                || (self.tester.is_some() && self.device.receiving())
+                || self.recording.is_some()
+                // Also while its frames are written, which macOS would otherwise slow down
+                || !self.writing.is_empty();
             // An endless pause, like `[inf]`, is past any Instant: it never wakes the loop
             if let Some(due) = self.tester.as_ref().and_then(|tester| self.started.checked_add(tester.next_wakeup())) {
                 wake = wake.min(due);
@@ -588,6 +633,7 @@ impl Session {
             Event::Log(Ok(message)) => self.console.log(message),
             Event::Log(Err(message)) => self.console.error(message),
             Event::Screenshot(saved) => self.screenshot_saved(saved),
+            Event::Recorded(summary) => self.recorded(summary),
             Event::Stop => {
                 self.console.log("Stopped");
                 self.quit = true;
@@ -610,6 +656,7 @@ impl Session {
             UiCommand::NextImage => self.runner.skip(now, true),
             UiCommand::PreviousImage => self.runner.undo(now, true),
             UiCommand::Screenshot => self.screenshot(),
+            UiCommand::ToggleRecording => self.toggle_recording(),
             UiCommand::CropTo4x3 => self.crop_to_4x3(),
             UiCommand::ReloadSplitImages => {
                 if !self.runner.is_running() {
@@ -723,6 +770,7 @@ impl Session {
             HotkeyAction::Pause => {}
             HotkeyAction::Screenshot if self.maker_open => self.grab(),
             HotkeyAction::Screenshot => self.screenshot(),
+            HotkeyAction::RecordScreenshots => self.toggle_recording(),
             HotkeyAction::ToggleAutoResetImage => {
                 self.profile.enable_auto_reset = !self.profile.enable_auto_reset;
                 self.runner.set_settings(RunnerSettings::from_profile(&self.profile));
@@ -985,6 +1033,82 @@ impl Session {
         if let Err(error) = saving {
             self.dialog(error);
         }
+    }
+
+    /// Starts recording screenshots into a new folder in the screenshot folder, or the split
+    /// image folder without one, or stops the recording going on.
+    fn toggle_recording(&mut self) {
+        if self.recording.is_some() {
+            return self.stop_recording("Recording stopped");
+        }
+        let Some(frame) = self.device.latest().filter(|_| self.device.receiving()) else {
+            return self.dialog("Record Screenshots: there's no capture to record");
+        };
+        // Or every frame would be left out, for an empty folder
+        if frame.region_view(&self.profile.capture_region).is_none() {
+            return self.dialog(REGION_OUTSIDE);
+        }
+        drop(frame);
+        let directory = match screenshot::directory(&self.profile, "Record Screenshots") {
+            Ok(directory) => directory,
+            Err(error) => return self.dialog(error),
+        };
+        let events = self.events.clone();
+        let done = move |summary| {
+            let _ = events.send(Event::Recorded(summary));
+        };
+        match Recording::start(&directory, self.profile.fps_limit, Instant::now(), done) {
+            Ok(recording) => {
+                self.console.log(format_args!(
+                    "Recording screenshots into {}, for up to {} seconds",
+                    recording.folder().display(),
+                    recording::MAX_LENGTH.as_secs()
+                ));
+                self.recording = Some(recording);
+                self.notify(Notice::Recording(true));
+            }
+            Err(error) => self.dialog(error),
+        }
+    }
+
+    /// Saves the newest frame into the recording when one is due, and stops it once it ran for
+    /// as long as recordings do, or the capture stopped.
+    fn record(&mut self, now: Instant) {
+        let Some(recording) = &mut self.recording else { return };
+        if recording.expired(now) {
+            let why = format!("Recording stopped by itself after {} seconds", recording::MAX_LENGTH.as_secs());
+            return self.stop_recording(&why);
+        }
+        if !self.device.receiving() {
+            return self.stop_recording("Recording stopped, since the capture stopped");
+        }
+        let Some(frame) = self.device.latest() else { return };
+        let Some(view) = frame.region_view(&self.profile.capture_region) else {
+            drop(frame);
+            self.stop_recording("Recording stopped, since the capture region left the capture's frames");
+            return self.dialog(REGION_OUTSIDE);
+        };
+        recording.offer(now, frame.sequence(), || Some(view.to_image()));
+    }
+
+    /// Ends the recording. Its frames are still being written, which [`Event::Recorded`] says
+    /// the end of.
+    fn stop_recording(&mut self, why: &str) {
+        let Some(recording) = self.recording.take() else { return };
+        self.writing.push(recording.stop());
+        self.console.log(format_args!("{why}, writing what's left of it"));
+        self.notify(Notice::Recording(false));
+    }
+
+    fn recorded(&mut self, summary: recording::Summary) {
+        // Its writers are done, or about to be, having just sent this
+        self.writing.retain(|writers| !writers.is_finished());
+        let message = summary.message();
+        match &summary.error {
+            Some(_) => self.dialog(&message),
+            None => self.console.log(&message),
+        }
+        self.notify(Notice::Recorded { folder: summary.folder, message });
     }
 
     /// Failures are shown like the ones found before saving, which AutoSplit shows in a message box.

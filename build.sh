@@ -199,14 +199,28 @@ build() {
             cp "$target_dir/$first/release/$binary" "$output/$binary"
         fi
     fi
-    # The split image presets and the splits library, which are read from next to the binary. A
-    # preset with a WIP.txt is a work in progress and stays out.
+    # The split image presets and the splits library, which are read from next to the binary.
+    # Presets are in a folder of their game. A preset with a WIP.txt is a work in progress and
+    # stays out.
     mkdir -p "$output/presets"
-    local preset
-    for preset in "$root/presets"/*/; do
-        if [ ! -f "$preset/WIP.txt" ]; then
-            cp -R "${preset%/}" "$output/presets/"
+    local game preset
+    for game in "$root/presets"/*/; do
+        [ -d "$game" ] || continue
+        # A preset kept right in presets/ from before game folders
+        if [ -f "$game/preset.toml" ]; then
+            if [ ! -f "$game/WIP.txt" ]; then
+                cp -R "${game%/}" "$output/presets/"
+            fi
+            continue
         fi
+        for preset in "$game"*/; do
+            # An empty game folder leaves the pattern as it is
+            [ -d "$preset" ] || continue
+            if [ ! -f "$preset/WIP.txt" ]; then
+                mkdir -p "$output/presets/$(basename "$game")"
+                cp -R "${preset%/}" "$output/presets/$(basename "$game")/"
+            fi
+        done
     done
     cp -R "$root/splits" "$output/splits"
     executables=("$binary")

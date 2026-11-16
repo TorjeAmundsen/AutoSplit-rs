@@ -36,6 +36,8 @@ The part of the capture device's picture that split images are compared with, us
 
 Take Screenshot saves the capture region as the next free `NNN_SplitImage.png` in the screenshot folder, or in the split image folder when none is set. Its file name shows under the button for a few seconds.
 
+Record saves every frame of the capture region at the FPS limit, as numbered PNG files in a new folder like `recording_001` in the same folder. Use it to pick the exact frame for a split image in a game that can't advance one frame at a time. Press it again, or the Record Screenshots hotkey, to stop. While Make Split Images is open, the main window hides the button, so use the hotkey there. It stops by itself after 10 seconds. While it records, the button reads Stop Recording with a red note under it, and Make Split Images says Recording screenshots in red. When the frames are written, the bottom line of Make Split Images says how many. If saving falls behind, some frames are skipped, and it says how many.
+
 ### Current image
 
 The split image being compared, with its file name above it. `<` and `>` move to the previous and next image without telling the timer.
@@ -81,10 +83,11 @@ With [Advanced Make Split Images](#other) on, the window shows more, for checkin
 
 ### Making the images
 
-- Grab saves the capture region for the selected split, with its mask, and selects the next split. The screenshot hotkey does the same while the window is open, so you can play through the category and press it at each split.
+- Grab saves the capture region for the selected split, with its mask, and selects the next split, skipping splits made from the preset's screenshot. The screenshot hotkey does the same while the window is open, so you can play through the category and press it at each split.
 - On a [fade split](#fade-images), the button reads Grab* and saves the split image from the split's color instead of the capture, then selects the next split. It works without a capture device. The Capture Region is replaced by a note that the split needs no savestate or screen.
 - Use Screenshots... uses screenshot files instead, like the ones Take Screenshot saves. Pick one for the selected split, or several for the splits in order, skipping fade splits. Then press Save All, or with Advanced Make Split Images on, Save Selected for only the selected split. It's off while a fade split is selected.
 - With Advanced Make Split Images on, Test opens the selected split's saved image in the [Live Tester](#live-tester).
+- Some presets come with screenshots for their splits, for consoles whose picture is the same for everyone, like ones with only a digital output. Those screenshots are of the console's own picture, so they only match a capture without color correction or cropping. When you pick one, and again when you pick the split image folder, the bottom line says how many splits have a screenshot and how many are left to grab. Save All writes the split images of the ones that do, and Save All is highlighted instead of Grab while one of them is selected. If a split image doesn't match your capture, select its split and grab it yourself, or use a screenshot of your own with Use Screenshots.... Yours is used instead of the preset's screenshot, and Use Preset's, beside Output Preview, goes back to the preset's. A screenshot that can't be read says so when its split is selected or saved. Grab that split instead.
 
 Saving asks before replacing split images, and before leaving older images of the same splits under other names, like after a threshold changed. Delete Old Images removes those, Keep Old Images keeps them. Each split saved flashes green, with a check mark on its picture. The Output Preview shows the check mark too when the selected split is one of them. Screenshots that were in the split image folder move into its `base` folder, where they aren't read as split images.
 
@@ -128,7 +131,7 @@ With [Advanced Make Split Images](#other) on, the pencil button next to the pres
   - Some ready-made splits take several images in a row, like a dummy for a boss's intro text and then its death. They're inserted together, a split for each image.
   - If the preset already has a split with the same name, its row shows where: that split's number, colored like in the split list's file names, or `reset` or `start` for a reset or start image.
   - A grayed-out name can't be inserted, like a fifth reset image. When you pick it, a red line above the buttons says why.
-  - The window stays open. Saving the preset copies the masks and savestates of inserted splits into it.
+  - The window stays open. Saving the preset copies the masks, savestates and screenshots of inserted splits into it.
 
   ![Split Library: the search field above the ready-made splits on the left, and EnterDeku picked on the right, its two images, DekuCSDummy and EnterDeku, each with a picture, settings and file name, above Insert Above and Insert Below](docs/split-library.png)
 
@@ -143,6 +146,7 @@ Each split has:
 | Name | The part of the file name after the number. It can't contain `reset` or `start_auto_splitter`, or the characters `#@{}()[]^~`, which file names use for settings. |
 | Color, Fade ms | For a fade split: the color the screen fades to, as a hex code like `#000000`, and about how long the fade takes in milliseconds. |
 | Mask | A PNG that's opaque where the screen is compared. A fade split doesn't need one, and Clear removes it. |
+| Screenshot | A PNG of the split's screen, without transparent parts, that its split image is made from, so runners don't have to grab it. Only for consoles whose picture is the same for everyone. Without one, the split is grabbed. A fade split doesn't have one. |
 | Threshold, Delay, Pause | Unticked, they use the profile's default and stay out of the file name. Changing a value ticks it. |
 | Dummy, Split below threshold | The `{d}` and `{b}` flags. |
 | Same split as the one above | Compares the split for the same split as the one above it, so either one matching splits. Up to 4 splits can be together. See [Several images for one split](#several-images-for-one-split). |
@@ -169,19 +173,19 @@ A split without a mask yet shows the live capture as it is, so you can see the s
 
 Splits with something to fix have a red name. The bottom line shows the first problem and how many more there are. Click it, or press F8, to go to the next split with a problem. Hover over it, or the red `!` beside it, to see them all.
 
-- Save saves the preset and ends editing. Masks and savestates picked from elsewhere are copied into the preset, and ones it doesn't use anymore are deleted. When a new savestate is the same as one another split already uses, Save asks whether to use that one instead of keeping a copy.
+- Save saves the preset and ends editing. Masks, savestates and screenshots picked from elsewhere are copied into the preset, and ones it doesn't use anymore are deleted. When a new savestate is the same as one another split already uses, Save asks whether to use that one instead of keeping a copy.
 - Save as New saves the changes as another preset and leaves the old one as it was. If the game already has a preset with that name, the new one is called `Name (2)`.
 - Cancel, closing the window or quitting asks before throwing changes away.
-- Delete Preset asks, then deletes the preset with its masks and savestates, and ends editing. A preset that was never saved has nothing to delete yet.
+- Delete Preset asks, then deletes the preset with the masks, savestates and screenshots it came with, and ends editing. The split images you made with it stay in your split image folder. A preset that was never saved has nothing to delete yet.
 
 ## Sharing presets
 
 The buttons next to the preset share presets as `.zip` files.
 
-- Export (the arrow up), with [Advanced Make Split Images](#other) on, saves the shown preset as a `.zip` file, named like `tlozoot_no_wrong_warp.zip`, with its masks and savestates. Send that file to share the preset.
+- Export (the arrow up), with [Advanced Make Split Images](#other) on, saves the shown preset as a `.zip` file, named like `tlozoot_no_wrong_warp.zip`, with its masks, savestates and screenshots. Send that file to share the preset.
 - Import (the arrow down) adds the preset in a `.zip` file someone sent and shows it. If the game already has a preset with the same name, Import asks whether to replace that preset or keep both. Keeping both names the new one `Name (2)`.
 
-Import checks the file before it adds anything. It refuses a file whose preset uses a mask or savestate that isn't in it, a mask that isn't a PNG image, or a setting it doesn't know, which a preset from a newer version of AutoSplit-rs can have.
+Import checks the file before it adds anything. It refuses a file whose preset uses a mask, savestate or screenshot that isn't in it, a mask or screenshot that isn't a PNG image, a screenshot with transparent parts, or a setting it doesn't know, which a preset from a newer version of AutoSplit-rs can have.
 
 ## Live Tester
 
@@ -244,7 +248,7 @@ The defaults for split images whose file names don't set their own.
 
 ### Hotkeys
 
-The split, reset, undo, skip and pause hotkeys must match your timer's, with global hotkeys turned on in the timer. AutoSplit-rs presses them and also listens for them, so pressing the split hotkey yourself starts a run and reset stops it. The pause hotkey is only pressed for images with the `{p}` flag. The screenshot hotkey takes a screenshot, or grabs the selected split while Make Split Images is open. The toggle auto reset image hotkey turns the reset image on and off.
+The split, reset, undo, skip and pause hotkeys must match your timer's, with global hotkeys turned on in the timer. AutoSplit-rs presses them and also listens for them, so pressing the split hotkey yourself starts a run and reset stops it. The pause hotkey is only pressed for images with the `{p}` flag. The screenshot hotkey takes a screenshot, or grabs the selected split while Make Split Images is open. The toggle auto reset image hotkey turns the reset image on and off. The record screenshots hotkey starts and stops [recording screenshots](#capture-region), also while Make Split Images is open.
 
 ![The Hotkeys tab with the split hotkey set and Reset's Set Hotkey waiting for a key](docs/settings-hotkey.png)
 
@@ -255,7 +259,7 @@ The split, reset, undo, skip and pause hotkeys must match your timer's, with glo
 - On Linux and macOS, names follow a US keyboard, so with another layout a key can show under its US name, like `y` for the key labelled Z on a German keyboard. It still listens for the key you pressed.
 - On macOS, the menu bar is empty while Set Hotkey waits for a key, so keys with Cmd, like Cmd+Q, can be set.
 
-With LiveSplit or LiveSplit One controlling the timer, only the screenshot and toggle auto reset image hotkeys are used.
+With LiveSplit or LiveSplit One controlling the timer, only the screenshot, toggle auto reset image and record screenshots hotkeys are used.
 
 ### Other
 
@@ -467,7 +471,7 @@ On macOS, Help > About is called Licenses and Links, since the app menu has its 
 AutoSplit-rs is a plain program, not an app, so macOS gives permissions to the app that starts it: Terminal when you double-click it, or the terminal app you start it from, like iTerm. AutoSplit-rs itself can't be added to these lists.
 
 - Camera, for capture devices: macOS asks the first time. Click Allow.
-- Input Monitoring, for listening to hotkeys, and Accessibility, for pressing them: in System Settings > Privacy & Security, turn on Terminal under both. If it isn't listed, add it with the + button from Applications > Utilities. With LiveSplit One, only a screenshot or toggle auto reset image hotkey needs a permission, and only Input Monitoring.
+- Input Monitoring, for listening to hotkeys, and Accessibility, for pressing them: in System Settings > Privacy & Security, turn on Terminal under both. If it isn't listed, add it with the + button from Applications > Utilities. With LiveSplit One, only a screenshot, toggle auto reset image or record screenshots hotkey needs a permission, and only Input Monitoring.
 - Then quit Terminal and start AutoSplit-rs again. Permissions only apply after a restart.
 - Every program you start from that terminal app gets the same permissions.
 

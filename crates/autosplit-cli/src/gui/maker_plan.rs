@@ -101,6 +101,38 @@ pub fn stale_to_delete(stale: &[PathBuf], written: &[PathBuf]) -> Vec<PathBuf> {
         .collect()
 }
 
+/// What the window says about a preset's screenshots: `with` of its splits have one, and
+/// `without` have to be grabbed, fade splits counted in neither, since they're made from their
+/// color. None for a preset without screenshots, which is grabbed like always. Short, since it
+/// shares its line with the grouping warning.
+pub fn screenshots_status(with: usize, without: usize) -> Option<String> {
+    let splits = match with {
+        0 => return None,
+        1 => "1 split has".to_owned(),
+        with => format!("{with} splits have"),
+    };
+    Some(match without {
+        0 => format!("{splits} a screenshot. Click Save All."),
+        without => format!("{splits} a screenshot for Save All, {without} left to grab."),
+    })
+}
+
+/// The split to select after grabbing split `after`, where `from_preset` says which splits are
+/// made from their preset's screenshot: the next one that isn't, so playing through and pressing
+/// the screenshot hotkey never replaces one. None when no split after it is left.
+pub fn next_to_grab(from_preset: &[bool], after: usize) -> Option<usize> {
+    (after + 1..from_preset.len()).find(|&index| !from_preset[index])
+}
+
+/// Where a split image saved from its preset's screenshot at `saved_from` is from once the
+/// preset is saved again: `new`, the screenshot's file now, when it was saved from `old`, the
+/// screenshot just before the save, which saving at most copied. None when it's from another
+/// screenshot than the preset has now, so it isn't the split's image anymore, even when the new
+/// screenshot's file gets the old one's name.
+pub fn saved_from_after_preset_save(saved_from: &Path, old: Option<&Path>, new: Option<&Path>) -> Option<PathBuf> {
+    new.filter(|_| old == Some(saved_from)).map(Path::to_owned)
+}
+
 /// The screenshots to move out of the split image folder after a save: those of the split images
 /// `done`, but not one a split image that `failed` is still made from, which saving again needs,
 /// and not one of the preset's split images, in `keep`, picked as a screenshot.

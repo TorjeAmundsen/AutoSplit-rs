@@ -153,6 +153,12 @@ export component MakerWindow inherits Window {
     in property <string> status;
     in property <bool> can-save-selected;
     in property <bool> can-save-all;
+    // Grab is the next step for the selected split. Off when its preset has a screenshot for
+    // it, where Save All is
+    in property <bool> grab-suggested: true;
+    // The selected split has a grab or picked file over its preset's screenshot
+    in property <bool> over-preset-screenshot;
+    callback use-preset-screenshot();
     in property <bool> can-test;
     in property <bool> has-savestates;
     in property <bool> has-instructions;
@@ -162,6 +168,32 @@ export component MakerWindow inherits Window {
     in property <string> preset-problem;
     // A message box is open, which AutoSplit's are modal
     in property <bool> blocked;
+    // Screenshots are being recorded, which the bottom line says in red
+    in property <bool> recording;
+    // What the bottom line says of a recording once it stopped: that its frames are being
+    // written, then how many were, for a few seconds
+    property <string> recording-note;
+
+    public function recording-writing() {
+        root.recording-note = "Writing the recorded screenshots...";
+        recording-note-timer.running = false;
+    }
+
+    public function recording-done(text: string) {
+        root.recording-note = text;
+        // Restarting only resets a running timer, it doesn't start a stopped one
+        recording-note-timer.running = true;
+        recording-note-timer.restart();
+    }
+
+    recording-note-timer := Timer {
+        interval: 8s;
+        running: false;
+        triggered => {
+            self.running = false;
+            root.recording-note = "";
+        }
+    }
     // A message box drawn in the window, under Wayland, instead of the message window
     in property <InlineMessage> inline-message;
     // Its button, or -1 for closing it
@@ -222,6 +254,8 @@ export component MakerWindow inherits Window {
     callback choose-savestate();
     callback clear-savestate();
     callback clear-mask();
+    callback choose-screenshot();
+    callback clear-screenshot();
     callback add-split();
     callback open-library();
     // Developer builds can add the selected splits to the split library
@@ -468,7 +502,7 @@ export component MakerWindow inherits Window {
                         icon: Icons.export;
                         enabled: root.presets.length > 0 && !root.working;
                         clicked => { root.export-preset(); }
-                        tip: "Export this preset as a .zip file to share, with its masks and savestates";
+                        tip: "Export this preset as a .zip file to share, with its masks, savestates and screenshots";
                     }
 
                     if root.editing: TextField {
@@ -675,7 +709,7 @@ export component MakerWindow inherits Window {
                     Button {
                         horizontal-stretch: 1;
                         text: root.grab-fade ? "Grab*" : "Grab";
-                        suggested: true;
+                        suggested: root.grab-suggested;
                         enabled: root.can-grab;
                         clicked => { root.grab(); }
                         tip: root.grab-blocker != "" ? root.grab-blocker : root.grab-fade ? "Fade splits are made from their color, not the capture. Grab* saves this one into the split image folder and goes to the next split. The screenshot hotkey does the same while this window is open." : "Make the selected split's image from the capture now, save it into the split image folder, and go to the next split. The screenshot hotkey does the same while this window is open.";
@@ -709,6 +743,7 @@ export component MakerWindow inherits Window {
                     Button {
                         horizontal-stretch: 1;
                         text: "Save All";
+                        suggested: !root.grab-suggested;
                         enabled: root.can-save-all;
                         clicked => { root.save-all(); }
                         tip: "Write the split images of every split with a grab or screenshot, and of every fade split, into the split image folder";
@@ -806,11 +841,12 @@ export component MakerWindow inherits Window {
                     message: root.grab-fade ? "This split is a fade to a color, so it's made from its color, not the capture. There's no savestate to load for it.\n\n" + (root.grab-blocker != "" ? root.grab-blocker : "Grab* saves it and goes to the next split.") : root.live-message;
                 }
 
-                // The selected split, in the space of the folder and the capture, which the
-                // output preview below shows masked as it's edited. Just as tall, so the window
-                // keeps its size, and it scrolls when problems or notes need more room.
+                // The selected split, in place of the folder and the capture, which the output
+                // preview below shows masked as it's edited. Taller than them, so the window
+                // grows while editing: every field fits with its notes, and it only scrolls
+                // when problems wrap over several lines.
                 if root.editing: form-scroll := ScrollView {
-                    height: 326px;
+                    height: 380px;
                     content-height: max(self.visible-height, form-panel.preferred-height);
                     content-width: self.visible-width;
 
@@ -829,6 +865,8 @@ export component MakerWindow inherits Window {
                         choose-savestate => { root.choose-savestate(); }
                         clear-savestate => { root.clear-savestate(); }
                         clear-mask => { root.clear-mask(); }
+                        choose-screenshot => { root.choose-screenshot(); }
+                        clear-screenshot => { root.clear-screenshot(); }
                     }
                 }
 
@@ -839,6 +877,13 @@ export component MakerWindow inherits Window {
                     Label {
                         horizontal-stretch: 1;
                         text: "Output Preview";
+                    }
+
+                    // Only where there's one to go back to, after a grab or pick over it
+                    if root.over-preset-screenshot: Button {
+                        text: "Use Preset's";
+                        clicked => { root.use-preset-screenshot(); }
+                        tip: "Drop this split's grab or picked screenshot, and make its split image from the preset's screenshot again";
                     }
 
                     HorizontalLayout {
@@ -917,7 +962,7 @@ export component MakerWindow inherits Window {
                         text: "Delete Preset...";
                         enabled: root.saved-preset;
                         clicked => { root.delete-preset(); }
-                        tip: root.saved-preset ? "Delete this preset's folder, with its masks and savestates" : "A new preset has nothing to delete yet. Cancel leaves it unsaved.";
+                        tip: root.saved-preset ? "Delete this preset's folder, with the masks, savestates and screenshots in it. Split images you made with it stay." : "A new preset has nothing to delete yet. Cancel leaves it unsaved.";
                     }
                 }
             }
@@ -926,6 +971,18 @@ export component MakerWindow inherits Window {
         if !root.editing: HorizontalLayout {
             height: 24px;
             spacing: 6px;
+
+            // Hard to miss, so a recording isn't left running by accident
+            if root.recording: Label {
+                color: Theme.error;
+                text: "Recording screenshots";
+            }
+
+            // Also while editing, where the status line is hidden
+            if !root.recording && root.recording-note != "": Label {
+                color: Theme.secondary-text;
+                text: root.recording-note;
+            }
 
             // Also beside the grouping warning, which is short so what was done still shows
             if root.preset-problem == "": Label {
@@ -1011,6 +1068,18 @@ export component MakerWindow inherits Window {
                         }
                     }
                 }
+            }
+
+            // Hard to miss, so a recording isn't left running by accident
+            if root.recording: Label {
+                color: Theme.error;
+                text: "Recording screenshots";
+            }
+
+            // Also while editing, where the status line is hidden
+            if !root.recording && root.recording-note != "": Label {
+                color: Theme.secondary-text;
+                text: root.recording-note;
             }
 
             Label {

@@ -75,7 +75,7 @@ impl Gui {
         let sources: Vec<PathBuf> = (self.maker.borrow().splits.iter())
             .filter_map(|split| match split.shot.as_ref()? {
                 Source::File(path) => Some(canonical(path)),
-                Source::Grabbed(_) | Source::Fade(_) => None,
+                Source::Preset(_) | Source::Grabbed(_) | Source::Fade(_) => None,
             })
             .collect();
         let plan = plan_writes(&written, &names, &existing, &sources, |name, path| writes_over(&folder, name, path));
@@ -164,7 +164,8 @@ impl Gui {
                 .collect();
             let file = |written: &Written| match &written.source {
                 Source::File(path) => Some(path.clone()),
-                Source::Grabbed(_) | Source::Fade(_) => None,
+                // The preset's own file, which stays where it is
+                Source::Preset(_) | Source::Grabbed(_) | Source::Fade(_) => None,
             };
             let done: Vec<PathBuf> = results.iter().filter(|written| written.result.is_ok()).filter_map(file).collect();
             let failed: Vec<PathBuf> =
@@ -299,14 +300,19 @@ impl Gui {
             drop(maker);
             return self.show_maker();
         }
+        let mut outdated = false;
         for (index, source, thumb) in made {
-            if let Some(split) = maker.splits.get_mut(index)
-                && split.shot.as_ref().is_some_and(|now| now.same(&source))
-            {
-                split.thumb = Some(slint::Image::from_rgba8(thumb));
+            let current = maker.source(index).is_some_and(|now| now.same(&source));
+            match maker.splits.get_mut(index).filter(|_| current) {
+                Some(split) => split.thumb = Some(slint::Image::from_rgba8(thumb)),
+                None => outdated = true,
             }
         }
         drop(maker);
+        // A split that moved or changed meanwhile, whose preset's screenshot nothing else pictures
+        if outdated {
+            self.picture_preset_screenshots();
+        }
         self.show_maker();
     }
 }

@@ -1,17 +1,18 @@
-//! Presets shared as `.zip` files: a preset's `preset.toml` with the masks and savestates it
-//! uses, and nothing else from its folder. Importing reads the whole archive first and checks
+//! Presets shared as `.zip` files: a preset's `preset.toml` with the masks, savestates and
+//! screenshots it uses, and nothing else from its folder. Importing reads the whole archive first and checks
 //! it, so a preset someone sent can't write outside its own folder, use files from elsewhere on
 //! this computer, or fill the disk.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use crate::image::BgraImage;
 use crate::preset::{
-    PRESET_FILE, Preset, PresetError, SAVESTATE_NOTE, SAVESTATE_NOTE_FILE, SAVESTATES_FOLDER, leave_for_deleting,
-    move_aside, new_preset_folder, remove_leftovers, unreadable, unwritable, write_through_temporary,
+    PRESET_FILE, Preset, PresetError, SAVESTATE_NOTE, SAVESTATE_NOTE_FILE, SAVESTATES_FOLDER, SplitFile,
+    leave_for_deleting, move_aside, new_preset_folder, remove_empty_folder, remove_leftovers, screenshot_problem,
+    unreadable, unwritable, write_through_temporary,
 };
 
 /// The most files an archive can have, far more than any preset uses.
@@ -58,7 +59,7 @@ fn inside(path: &str) -> Option<String> {
 fn used_files(preset: &Preset) -> Result<Vec<(usize, String)>, String> {
     let mut used: Vec<(usize, String)> = Vec::new();
     for (index, split) in preset.splits.iter().enumerate() {
-        for path in [&split.mask, &split.savestate].into_iter().filter(|path| !path.is_empty()) {
+        for path in split.files() {
             let outside =
                 || format!("split {} ({}) uses {path}, which is outside the preset's folder", index + 1, split.name);
             let name = inside(path).ok_or_else(outside)?;
@@ -71,7 +72,7 @@ fn used_files(preset: &Preset) -> Result<Vec<(usize, String)>, String> {
 }
 
 /// Writes the preset in `folder` to the archive `archive`, replacing it: `preset.toml` and the
-/// masks and savestates it uses. A file it uses that's missing, or outside its folder, is an
+/// files it uses. A file it uses that's missing, or outside its folder, is an
 /// error, since the archive would be no use without it, and so is a preset too big to import.
 pub fn export_preset(folder: &Path, archive: &Path) -> Result<(), PresetError> {
     let preset_file = folder.join(PRESET_FILE);
@@ -109,8 +110,9 @@ fn write_zip(path: &Path, files: &[(String, Vec<u8>)]) -> std::io::Result<()> {
 }
 
 /// Reads and checks the preset in the archive `archive`. Its `preset.toml` is at the top, or in
-/// one folder, as zipping a preset's folder makes it. Every mask and savestate it uses has to be
-/// in the archive, and masks have to be PNG images. Other files are left out. Errors name the
+/// one folder, as zipping a preset's folder makes it. Every mask, savestate and screenshot it uses
+/// has to be in the archive, and masks and screenshots have to be PNG images, screenshots without
+/// transparent parts. Other files are left out. Errors name the
 /// archive by its file name, which says which one without the folders it was picked from.
 pub fn read_archive(archive: &Path) -> Result<PresetArchive, PresetError> {
     let shown = archive.file_name().map_or_else(|| archive.to_owned(), PathBuf::from);
@@ -155,21 +157,44 @@ pub fn read_archive(archive: &Path) -> Result<PresetArchive, PresetError> {
     let text = String::from_utf8_lossy(&files[&format!("{root}{PRESET_FILE}")]).into_owned();
     let mut preset = Preset::parse(&text, &shown)?;
     let used = used_files(&preset).map_err(invalid)?;
-    let masks: HashSet<String> = preset.splits.iter().filter_map(|split| inside(&split.mask)).collect();
+    // The files that have to be images, each with the first split that uses it as each kind, so
+    // one used as a mask and a screenshot is checked as both and named by the right split
+    let mut images: HashMap<String, Vec<(SplitFile, usize)>> = HashMap::new();
+    for kind in SplitFile::ALL.into_iter().filter(|kind| kind.is_png()) {
+        for (index, split) in preset.splits.iter().enumerate() {
+            let Some(name) = inside(split.file(kind)) else { continue };
+            let uses = images.entry(name).or_default();
+            if !uses.iter().any(|(seen, _)| *seen == kind) {
+                uses.push((kind, index));
+            }
+        }
+    }
     let mut kept = Vec::new();
     for (index, name) in used {
         let split = &preset.splits[index].name;
         let Some(contents) = files.remove(&format!("{root}{name}")) else {
             return Err(invalid(format!("split {} ({split}) uses {name}, which isn't in the file", index + 1)));
         };
-        if masks.contains(&name) && BgraImage::decode_png(&contents).is_err() {
-            return Err(invalid(format!("the mask {name} of split {} ({split}) isn't a PNG image", index + 1)));
+        if let Some(uses) = images.get(&name) {
+            let named = |&(kind, index): &(SplitFile, usize)| (kind.word(), index + 1, &preset.splits[index].name);
+            let Ok(decoded) = BgraImage::decode_png(&contents) else {
+                let (image, number, split) = named(&uses[0]);
+                return Err(invalid(format!("the {image} {name} of split {number} ({split}) isn't a PNG image")));
+            };
+            let screenshot = uses.iter().find(|(kind, _)| *kind == SplitFile::Screenshot);
+            if let (Some(screenshot), Some(reason)) = (screenshot, screenshot_problem(&decoded)) {
+                let (_, number, split) = named(screenshot);
+                return Err(invalid(format!(
+                    "the screenshot {name} of split {number} ({split}) can't be one: {reason}"
+                )));
+            }
         }
         kept.push((name, contents));
     }
     // Written like the files are, so the preset finds them on every system
     for split in &mut preset.splits {
-        for field in [&mut split.mask, &mut split.savestate] {
+        for kind in SplitFile::ALL {
+            let field = split.file_mut(kind);
             if let Some(name) = inside(field) {
                 *field = name;
             }
@@ -204,8 +229,16 @@ impl PresetArchive {
         let (target, moved) = match replace {
             Some(folder) => (folder.to_owned(), swap(folder, &staging)),
             None => {
-                let target = new_preset_folder(presets, &self.preset.name);
-                let moved = std::fs::rename(&staging, &target).map_err(|error| unwritable(&target, error));
+                let target = new_preset_folder(presets, &self.preset.game, &self.preset.name);
+                // Its game's folder, which a new game doesn't have yet
+                let game = target.parent().unwrap_or(presets);
+                let made = !game.exists();
+                let moved = std::fs::create_dir_all(game)
+                    .and_then(|()| std::fs::rename(&staging, &target))
+                    .map_err(|error| unwritable(&target, error));
+                if moved.is_err() && made {
+                    remove_empty_folder(game);
+                }
                 (target, moved)
             }
         };

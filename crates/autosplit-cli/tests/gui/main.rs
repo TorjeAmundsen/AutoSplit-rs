@@ -11,8 +11,9 @@ use std::rc::Rc;
 use autosplit::gui::document::{Document, folder_text, profile_on_open};
 use autosplit::gui::log::{LOG_LINES, LogLines};
 use autosplit::gui::maker_plan::{
-    DeletedPreset, PresetList, WritePlan, looks_made, move_to_base, plan_writes, preset_after_delete, saves_in_place,
-    screenshots_to_move, stale_to_delete, writes_over,
+    DeletedPreset, PresetList, WritePlan, looks_made, move_to_base, next_to_grab, plan_writes, preset_after_delete,
+    saved_from_after_preset_save, saves_in_place, screenshots_status, screenshots_to_move, stale_to_delete,
+    writes_over,
 };
 use autosplit::gui::messages::{Answer, Buttons, Message, MessageQueue};
 use autosplit::gui::placement::{Area, beside, centered_over};
@@ -475,7 +476,8 @@ fn hotkeys_note_when_livesplit_controls_the_timer() {
     // Assert
     assert_eq!(
         shown.hotkeys_note,
-        "LiveSplit or LiveSplit One controls the timer, so only the screenshot and auto reset hotkeys are used."
+        "LiveSplit or LiveSplit One controls the timer, so only the screenshot, auto reset and record screenshots \
+         hotkeys are used."
     );
 }
 
@@ -705,6 +707,34 @@ fn moves_screenshots_only_of_written_split_images(done: &[&str], failed: &[&str]
 
     // Act
     screenshots_to_move(&paths(done), &paths(failed), &paths(keep))
+}
+
+#[test_case(&[false, false, false], 0 => Some(1); "the next split when none has a screenshot")]
+#[test_case(&[false, true, true, false], 0 => Some(3); "past the splits made from their screenshot")]
+#[test_case(&[false, true, true], 0 => None; "none left after it")]
+fn a_grab_goes_on_to_the_next_split_left_to_grab(from_preset: &[bool], after: usize) -> Option<usize> {
+    // Act, with the expected value checked by test_case
+    next_to_grab(from_preset, after)
+}
+
+#[test_case(0, 3 => None; "a preset without screenshots says nothing")]
+#[test_case(3, 0 => Some("3 splits have a screenshot. Click Save All.".to_owned()); "none left to grab")]
+#[test_case(12, 13 => Some("12 splits have a screenshot for Save All, 13 left to grab.".to_owned()); "some left to grab")]
+#[test_case(1, 2 => Some("1 split has a screenshot for Save All, 2 left to grab.".to_owned()); "one split with a screenshot")]
+fn a_chosen_preset_says_which_splits_need_no_grab(with: usize, without: usize) -> Option<String> {
+    // Act, with the expected value checked by test_case
+    screenshots_status(with, without)
+}
+
+#[test_case(Some("picked/boss.png"), Some("preset/screenshots/Boss.png") => Some(PathBuf::from("preset/screenshots/Boss.png")); "the same screenshot, copied into the preset")]
+#[test_case(Some("picked/other.png"), Some("picked/boss.png") => None; "another screenshot that gets the old one's name")]
+#[test_case(Some("picked/boss.png"), None => None; "the screenshot removed")]
+fn a_saved_mark_follows_its_screenshot_through_a_preset_save(old: Option<&str>, new: Option<&str>) -> Option<PathBuf> {
+    // Arrange: a split image saved from picked/boss.png, the preset's screenshot at the time
+    let saved_from = Path::new("picked/boss.png");
+
+    // Act, with the expected value checked by test_case
+    saved_from_after_preset_save(saved_from, old.map(Path::new), new.map(Path::new))
 }
 
 #[test]

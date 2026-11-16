@@ -1,6 +1,6 @@
 //! Writing the splits library: ready-made splits made from a preset's splits, added to the
 //! library of their game, changed or deleted. The library's file is written again each time, and
-//! masks, savestates and base images no ready-made split uses anymore are deleted.
+//! the files and base images no ready-made split uses anymore are deleted.
 //!
 //! A write happens whole or not at all. Every file is found before anything is written, new
 //! files that take over an old file's name are written under another name first, and the
@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 use crate::image::{BgraImage, BgraView};
 use crate::imgproc::stretch_to_rgba;
 use crate::preset::{
-    LIBRARY_FILE, LibrarySplit, PresetError, PresetSplit, SplitLibrary, game_key, load_libraries, new_preset_folder,
+    LIBRARY_FILE, LibrarySplit, PresetError, PresetSplit, SplitLibrary, game_key, load_libraries, new_folder,
     relative_text, sanitize_file_name, unique_file_name, unwritable,
 };
 
@@ -23,21 +23,23 @@ pub const BASE_IMAGE_SIZE: (usize, usize) = (64, 48);
 /// The start of the name a file gets while it's written, before it takes over an old file's.
 const WRITING_PREFIX: &str = ".writing-";
 
-/// An image of a ready-made split to write: a preset's split, with its mask and savestate as
-/// paths that exist, and a screenshot the mask fits, at any size. Only a fade split can be without
-/// a mask.
+/// An image of a ready-made split to write: a preset's split, with its mask, savestate and
+/// screenshot as paths that exist, and a picture the mask fits, at any size, for its base image.
+/// Only a fade split can be without a mask.
 pub struct NewStep {
     pub split: PresetSplit,
     pub mask: Option<PathBuf>,
     pub savestate: Option<PathBuf>,
-    pub screenshot: BgraImage,
+    /// The split's own screenshot, which its split image is made from, kept at its size.
+    pub screenshot: Option<PathBuf>,
+    pub base_picture: BgraImage,
 }
 
-/// `screenshot` at [`BASE_IMAGE_SIZE`], opaque.
-pub fn base_image(screenshot: BgraView) -> BgraImage {
+/// `picture` at [`BASE_IMAGE_SIZE`], opaque.
+pub fn base_image(picture: BgraView) -> BgraImage {
     let (width, height) = BASE_IMAGE_SIZE;
     let mut rgba = vec![[0; 4]; width * height];
-    stretch_to_rgba(screenshot, width, height, &mut rgba);
+    stretch_to_rgba(picture, width, height, &mut rgba);
     let bgra = rgba.iter().flat_map(|&[r, g, b, _]| [b, g, r, 255]).collect();
     BgraImage::from_raw(width, height, bgra)
 }
@@ -66,7 +68,7 @@ pub fn add_ready_made(
             });
         }
         None => {
-            let folder = new_preset_folder(directory, game);
+            let folder = new_folder(directory, game, "No_game");
             std::fs::create_dir_all(&folder).map_err(|error| unwritable(&folder, error))?;
             (folder, SplitLibrary { game: game.to_owned(), splits: Vec::new() }, true)
         }
@@ -197,7 +199,7 @@ impl Pending {
     }
 }
 
-/// Puts the masks, savestates and base images of `steps` in `folder`, and makes their library
+/// Puts the files and base images of `steps` in `folder`, and makes their library
 /// splits. A file in the folder already, like one of a ready-made split that was inserted, is
 /// used where it is. The `replaced` files, which only the ready-made split these replace used,
 /// are written over once the library is, so its new files keep their names instead of getting a
@@ -220,7 +222,8 @@ fn store_steps(
     let mut sources = Vec::new();
     for step in &steps {
         let savestate = step.savestate.as_deref().map(found).transpose()?;
-        sources.push((step.mask.as_deref().map(found).transpose()?, savestate));
+        let screenshot = step.screenshot.as_deref().map(found).transpose()?;
+        sources.push((step.mask.as_deref().map(found).transpose()?, savestate, screenshot));
     }
     let inside = |path: &Path| {
         let inside = path.strip_prefix(&root).ok().map(relative_text)?;
@@ -228,7 +231,7 @@ fn store_steps(
     };
     // Used where they are, so never written over
     let kept: HashSet<String> = (sources.iter())
-        .flat_map(|(mask, savestate)| mask.iter().chain(savestate))
+        .flat_map(|(mask, savestate, screenshot)| mask.iter().chain(savestate).chain(screenshot))
         .filter_map(|path| inside(path))
         .collect();
     // The folder's files by their names in lowercase. Names that differ only in case are one
@@ -266,7 +269,9 @@ fn store_steps(
     };
     let mut made = Vec::new();
     let written = (|| {
-        for ((index, step), (mask_source, savestate_source)) in steps.into_iter().enumerate().zip(&sources) {
+        for ((index, step), (mask_source, savestate_source, screenshot_source)) in
+            steps.into_iter().enumerate().zip(&sources)
+        {
             let stem = sanitize_file_name(&step.split.name, "split");
             // A file's path in the folder, copied there under `wanted` when it's somewhere else
             let mut place = |source: &Path, wanted: String| -> Result<String, PresetError> {
@@ -290,8 +295,12 @@ fn store_steps(
                 }
                 None => String::new(),
             };
+            let screenshot = match screenshot_source {
+                Some(source) => place(source, format!("screenshot_{stem}.png"))?,
+                None => String::new(),
+            };
             let base = free(format!("base_{stem}.png"));
-            let png = base_image(step.screenshot.view())
+            let png = base_image(step.base_picture.view())
                 .encode_png()
                 .map_err(|error| PresetError::Unwritable { path: root.join(&base), reason: error.to_string() })?;
             let to = target(&mut pending, &base);
@@ -300,6 +309,7 @@ fn store_steps(
                 split: PresetSplit {
                     mask,
                     savestate,
+                    screenshot,
                     with_previous: index > 0 && step.split.with_previous,
                     ..step.split
                 },
@@ -370,10 +380,10 @@ fn write_library(
     Ok(())
 }
 
-/// The masks, savestates and base images `splits` use, as they write them.
+/// The files and base images `splits` use, as they write them.
 fn library_files(splits: &[LibrarySplit]) -> HashSet<String> {
     (splits.iter())
-        .flat_map(|split| [&split.split.mask, &split.split.savestate, &split.base_image])
+        .flat_map(|split| split.split.files().chain([&split.base_image]))
         .filter(|path| !path.is_empty())
         .cloned()
         .collect()

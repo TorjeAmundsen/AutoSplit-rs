@@ -124,6 +124,9 @@ pub struct UserProfile {
     pub pause_hotkey: String,
     pub screenshot_hotkey: String,
     pub toggle_auto_reset_image_hotkey: String,
+    /// Starts and stops recording screenshots. AutoSplit-rs only.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub record_screenshots_hotkey: String,
     pub fps_limit: i64,
     pub live_capture_region: bool,
     /// Whether pauses and delays show the seconds left. New in AutoSplit 2.3.3.
@@ -192,6 +195,7 @@ impl Default for UserProfile {
             pause_hotkey: String::new(),
             screenshot_hotkey: String::new(),
             toggle_auto_reset_image_hotkey: String::new(),
+            record_screenshots_hotkey: String::new(),
             fps_limit: 60,
             live_capture_region: true,
             display_pause_timer: true,

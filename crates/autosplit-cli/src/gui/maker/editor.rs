@@ -7,19 +7,21 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use autosplit_core::filename::DEFAULT_FADE_TIME;
+use autosplit_core::image::BgraImage;
 use autosplit_core::mask::Mask;
 use autosplit_core::preset::{
-    PRESET_FILE, Preset, PresetSplit, delete_preset, duplicate_savestates, new_preset_folder, save_preset,
+    PRESET_FILE, Preset, PresetSplit, SplitFile, delete_preset, duplicate_savestates, game_key, move_to_game_folder,
+    new_preset_folder, save_preset, screenshot_problem,
 };
 use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
 
 use super::super::Gui;
-use super::super::maker_plan::DeletedPreset;
+use super::super::maker_plan::{DeletedPreset, saved_from_after_preset_save};
 use super::super::messages::{Answer, Message};
 use super::super::paths::{canonical, file_name_text};
 use super::super::preset_form::{
     CompareBy, Draft, FADE_MASK_NAME_CHARS, Field, ListChange, MASK_NAME_CHARS, SAVESTATE_NAME_CHARS, SplitEdit,
-    SplitKind, elide_middle, field_problems, field_value,
+    SplitKind, elide_middle, fade_drops_note, field_problems, field_value,
 };
 use super::super::preset_form::{
     ONE_COPY_LABELS, discard_question, known_game, next_problem_split, one_copy_question, problem_flags, problem_list,
@@ -28,7 +30,7 @@ use super::super::preset_form::{
 use super::super::recorder::PRIMARY;
 use super::super::recorder::key_character;
 use super::super::ui::{SplitField, SplitForm, SplitValues};
-use super::{Kept, game_label, presets_folder};
+use super::{Kept, ScreenshotUse, Source, game_label, presets_folder};
 use autosplit_input::Modifiers;
 use slint::winit_030::winit::event::KeyEvent;
 use slint::winit_030::winit::keyboard::{Key, NamedKey};
@@ -73,7 +75,7 @@ impl Editing {
     }
 }
 
-/// Whether saving copies a mask or savestate into the preset's folder: it was picked from
+/// Whether saving copies a file of a split into the preset's folder: it was picked from
 /// somewhere else. Paths in the preset are relative, and picked ones absolute. `source` is the
 /// preset's folder, canonical.
 fn copied_in(source: Option<&Path>, path: &str) -> bool {
@@ -81,7 +83,7 @@ fn copied_in(source: Option<&Path>, path: &str) -> bool {
     path.is_absolute() && source.is_none_or(|source| !canonical(path).starts_with(source))
 }
 
-/// A mask or savestate's full path, for its tooltip, or empty without one.
+/// The full path of a file of a split, for its tooltip, or empty without one.
 fn shown_path(maker: &super::Maker, path: &str) -> String {
     if path.is_empty() { String::new() } else { maker.file(path).display().to_string() }
 }
@@ -101,10 +103,12 @@ impl Gui {
         let compares: Vec<SharedString> = CompareBy::ALL.iter().map(|by| by.label().into()).collect();
         maker.set_compares(ModelRc::new(VecModel::from(compares)));
         on!(weak, maker, on_split_edited, (field) gui => gui.split_field_edited(field));
-        on!(weak, maker, on_choose_mask, () gui => gui.choose_split_file(false));
+        on!(weak, maker, on_choose_mask, () gui => gui.choose_split_file(SplitFile::Mask));
         on!(weak, maker, on_preview_toggled, () gui => gui.show_maker_preview());
-        on!(weak, maker, on_choose_savestate, () gui => gui.choose_split_file(true));
+        on!(weak, maker, on_choose_savestate, () gui => gui.choose_split_file(SplitFile::Savestate));
         on!(weak, maker, on_clear_savestate, () gui => gui.edit_split(SplitEdit::Savestate(String::new())));
+        on!(weak, maker, on_choose_screenshot, () gui => gui.choose_split_file(SplitFile::Screenshot));
+        on!(weak, maker, on_clear_screenshot, () gui => gui.edit_split(SplitEdit::Screenshot(String::new())));
         // Only fade splits can be without a mask, for the whole screen
         on!(weak, maker, on_clear_mask, () gui => gui.edit_split(SplitEdit::Mask(String::new())));
         on!(weak, maker, on_add_split, () gui => {
@@ -178,7 +182,7 @@ impl Gui {
         true
     }
 
-    pub(super) fn editing(&self) -> bool {
+    pub(in crate::gui) fn editing(&self) -> bool {
         self.maker.borrow().edit.is_some()
     }
 
@@ -358,11 +362,20 @@ impl Gui {
     /// An edit of split `index`'s field.
     fn edit_split_at(&self, index: usize, edit: SplitEdit) {
         let (refill, mask_changed) = (edit.changes_other_fields(), edit.changes_mask());
+        // A screenshot edit, or one that makes it a fade split or not, changes what it's made from
+        let screenshot_changed = matches!(edit, SplitEdit::Screenshot(_)) || edit.changes_other_fields();
         if let Some(editing) = self.maker.borrow_mut().edit.as_mut() {
             editing.draft.edit_split(index, edit);
         }
         if mask_changed {
             self.maker.borrow_mut().live_mask = None;
+        }
+        if screenshot_changed {
+            // The picture of the one before, unless the split has a grab or pick of its own
+            if let Some(split) = self.maker.borrow_mut().splits.get_mut(index).filter(|split| split.shot.is_none()) {
+                split.thumb = None;
+            }
+            self.picture_preset_screenshots();
         }
         if refill {
             self.show_form();
@@ -379,6 +392,8 @@ impl Gui {
         edit.reorders += 1;
         change.mirror(&mut maker.splits);
         drop(maker);
+        // A copy of a split has its screenshot too, and no picture of it yet
+        self.picture_preset_screenshots();
         self.choose_split(select);
     }
 
@@ -396,6 +411,7 @@ impl Gui {
             change.mirror(&mut maker.splits);
         }
         drop(maker);
+        self.picture_preset_screenshots();
         self.choose_split(select);
     }
 
@@ -484,7 +500,7 @@ impl Gui {
                 name_problem: field_problems(&problems, selected, Field::Name).into(),
                 mask_problem: field_problems(&problems, selected, Field::Mask).into(),
                 color_problem: field_problems(&problems, selected, Field::Color).into(),
-                drops_savestate: split.is_fade() && !split.savestate.is_empty(),
+                fade_drops: fade_drops_note(split).into(),
                 fade_color: split.fade_color().map_or(slint::Color::from_argb_u8(0, 0, 0, 0), |[red, green, blue]| {
                     slint::Color::from_rgb_u8(red, green, blue)
                 }),
@@ -500,10 +516,19 @@ impl Gui {
                     SAVESTATE_NAME_CHARS,
                 )
                 .into(),
+                // A PNG's name beside Choose... and Clear, like a fade split's mask
+                screenshot: elide_middle(
+                    &file_name_text(Path::new(&split.screenshot)).unwrap_or_default(),
+                    FADE_MASK_NAME_CHARS,
+                )
+                .into(),
                 mask_path: shown_path(&maker, &split.mask).into(),
                 savestate_path: shown_path(&maker, &split.savestate).into(),
+                screenshot_path: shown_path(&maker, &split.screenshot).into(),
                 mask_copied: copied_in(source.as_deref(), &split.mask),
                 savestate_copied: copied_in(source.as_deref(), &split.savestate),
+                screenshot_copied: copied_in(source.as_deref(), &split.screenshot),
+                screenshot_overridden: maker.screenshot_use(selected) == ScreenshotUse::Overridden,
                 grouping_off: !grouping
                     && (edit.draft.preset.joins_previous(selected)
                         || edit.draft.preset.keyword_place(selected).is_some_and(|place| place > 1)),
@@ -523,15 +548,16 @@ impl Gui {
         problem_flags(&problems, splits.len())
     }
 
-    /// Asks for a mask or savestate for the selected split. A mask has to read as one.
-    fn choose_split_file(self: &Rc<Self>, savestate: bool) {
+    /// Asks for a mask, savestate or screenshot for the selected split. A mask has to read as
+    /// one, and a screenshot as a PNG.
+    fn choose_split_file(self: &Rc<Self>, kind: SplitFile) {
         let maker = self.maker.borrow();
         let Some(edit) = &maker.edit else { return };
         // The split the file is for, while this same editing goes on and the splits stay in place
         let (id, reorders, index) = (edit.id, edit.reorders, maker.selected);
         // Without one yet, the preset's own folder
         let current = edit.draft.preset.splits.get(maker.selected).and_then(|split| {
-            let path = if savestate { &split.savestate } else { &split.mask };
+            let path = split.file(kind);
             (!path.is_empty()).then(|| maker.file(path))
         });
         let folder = current
@@ -541,9 +567,13 @@ impl Gui {
             .unwrap_or_else(presets_folder);
         let extensions = edit.draft.savestate_extensions();
         drop(maker);
-        let title = if savestate { "Select Savestate" } else { "Select Mask" };
+        let title = match kind {
+            SplitFile::Mask => "Select Mask",
+            SplitFile::Savestate => "Select Savestate",
+            SplitFile::Screenshot => "Select Screenshot",
+        };
         let mut picker = self.file_dialog_over(title, self.windows.maker.window()).set_directory(folder);
-        if !savestate {
+        if kind.is_png() {
             picker = picker.add_filter("PNG image", &["png"]);
         } else if !extensions.is_empty() {
             // Any game's practice tool has its own kind, so the ones the preset has come first,
@@ -562,17 +592,25 @@ impl Gui {
                 return;
             }
             if !in_place {
-                let what = if savestate { "savestate" } else { "mask" };
+                let what = kind.word();
                 let text =
                     format!("The splits changed while the {what} was picked, so it wasn't used. Choose it again.");
                 return gui.show_message(Message::warning(text));
             }
-            if !savestate && let Err(error) = Mask::open(&path) {
-                let text = format!("{} can't be a mask: {error}", path.display());
+            let refused = match kind {
+                SplitFile::Mask => Mask::open(&path).err().map(|error| error.to_string()),
+                SplitFile::Screenshot => match BgraImage::open_png(&path) {
+                    Ok(image) => screenshot_problem(&image)
+                        .map(|reason| format!("{reason}. Choose the screenshot it was made from.")),
+                    Err(error) => Some(error.to_string()),
+                },
+                SplitFile::Savestate => None,
+            };
+            if let Some(reason) = refused {
+                let text = format!("{} can't be a {}: {reason}", path.display(), kind.word());
                 return gui.show_message(Message::error(text));
             }
-            let path = path.display().to_string();
-            gui.edit_split_at(index, if savestate { SplitEdit::Savestate(path) } else { SplitEdit::Mask(path) });
+            gui.edit_split_at(index, SplitEdit::file(kind, path.display().to_string()));
         });
     }
 
@@ -606,7 +644,7 @@ impl Gui {
         }
         let target = match in_place {
             Some(folder) => folder.clone(),
-            None => new_preset_folder(&presets_folder(), &preset.name),
+            None => new_preset_folder(&presets_folder(), &preset.game, &preset.name),
         };
         let from = source.as_deref().unwrap_or(&target);
         // Only savestates this save adds: the saved preset's were kept on purpose, or before this
@@ -656,12 +694,59 @@ impl Gui {
     /// Writes `preset`, the draft as it's saved, from its `source` folder into `target`, then shows
     /// it as saved.
     fn write_draft(self: &Rc<Self>, source: Option<PathBuf>, target: PathBuf, preset: Preset) {
-        if let Err(error) = save_preset(source.as_deref(), &target, &preset) {
-            return self.show_message(Message::error(format!("Couldn't save the preset. {error}")));
+        // Each split's screenshot as the draft has it, which saving can copy to another path
+        let before: Vec<Option<PathBuf>> = {
+            let maker = self.maker.borrow();
+            (0..maker.splits.len()).map(|index| maker.preset_screenshot(index)).collect()
+        };
+        // The game it was saved with, when it's saved in place, whose folder it's in
+        let in_place = source.as_deref() == Some(target.as_path());
+        let old_game = in_place.then(|| Preset::load(&target.join(PRESET_FILE)).ok()).flatten().map(|old| old.game);
+        let saved = match save_preset(source.as_deref(), &target, &preset) {
+            Ok(saved) => saved,
+            Err(error) => return self.show_message(Message::error(format!("Couldn't save the preset. {error}"))),
+        };
+        // Into its game's folder, once it's saved: when its game changed, or when it's in another
+        // game's folder still, after moving it failed the last time. A preset kept right in the
+        // presets folder from before game folders stays there until its game changes.
+        let presets = presets_folder();
+        let game_changed = old_game.is_some_and(|old| game_key(&old) != game_key(&preset.game));
+        let in_game_folder = target.parent().is_some_and(|parent| canonical(parent) != canonical(&presets));
+        let mut moved_problem = None;
+        let target = if in_place && (game_changed || in_game_folder) {
+            match move_to_game_folder(&presets, &target, &preset.game) {
+                Ok(moved) => moved,
+                Err(error) => {
+                    moved_problem = Some(error);
+                    target
+                }
+            }
+        } else {
+            target
+        };
+        // Saved marks are told by their screenshot's path, so they follow it to where it is now,
+        // and go when the split's screenshot is another one
+        for (index, split) in self.maker.borrow_mut().splits.iter_mut().enumerate() {
+            let Some(Source::Preset(from)) = &split.saved_from else { continue };
+            let now = saved.splits.get(index).filter(|split| !split.screenshot.is_empty());
+            let now = now.map(|split| target.join(&split.screenshot));
+            let old = before.get(index).and_then(Option::as_deref);
+            match saved_from_after_preset_save(from, old, now.as_deref()) {
+                Some(path) => split.saved_from = Some(Source::Preset(path)),
+                None => (split.saved, split.saved_from) = (None, None),
+            }
         }
         self.leave_editing();
         self.reload_presets(Some(&target), None);
         self.windows.maker.set_status(format!("Saved the preset {}.", preset.name).into());
+        if let Some(error) = moved_problem {
+            let text = format!(
+                "Saved the preset, but it stays in its old game's folder, since it couldn't be moved to {}'s. {error}, \
+                 by saving again.",
+                preset.game
+            );
+            self.show_message(Message::warning(text));
+        }
     }
 
     /// Asks to delete the edited preset's folder, then deletes it.
@@ -673,7 +758,8 @@ impl Gui {
         let deleted = maker.presets.place(maker.preset);
         drop(maker);
         let text = format!(
-            "Delete the preset {name}? Its folder is deleted with its masks and savestates, which can't be undone:\n\n{}",
+            "Delete the preset {name}? Its folder is deleted with the masks, savestates and screenshots in it, which can't be undone. \
+             The split images you made with it stay in your split image folder.\n\n{}",
             folder.display()
         );
         let weak = Rc::downgrade(self);

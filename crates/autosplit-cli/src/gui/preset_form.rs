@@ -10,7 +10,7 @@ use autosplit_core::filename::{
     DEFAULT_FADE_TIME, MAX_FADE_TIME, MIN_FADE_TIME, NamePart, PartKind, RESET_KEYWORD, START_KEYWORD, name_parts,
     validate_split_name,
 };
-use autosplit_core::preset::{Preset, PresetSplit, game_key};
+use autosplit_core::preset::{Preset, PresetSplit, SplitFile, game_key};
 use autosplit_core::split_folder::MAX_GROUP_SIZE;
 use autosplit_core::split_image::SplitDefaults;
 
@@ -104,6 +104,8 @@ pub enum SplitEdit {
     Name(String),
     /// A path relative to the preset's folder, or a picked file's absolute path.
     Mask(String),
+    /// Like the mask. Empty for none: the split's image is made from a grab then.
+    Screenshot(String),
     /// Whether it's compared by a screenshot with a method, or by a fade to a color. A fade split
     /// starts at [`FADE_THRESHOLD`], with the color and fade time it had before, or
     /// [`FADE_COLOR`], and its method goes back to L2 Norm.
@@ -174,6 +176,15 @@ pub enum Field {
 }
 
 impl SplitEdit {
+    /// The edit that sets a split's file of `kind` to `path`.
+    pub fn file(kind: SplitFile, path: String) -> Self {
+        match kind {
+            SplitFile::Mask => Self::Mask(path),
+            SplitFile::Savestate => Self::Savestate(path),
+            SplitFile::Screenshot => Self::Screenshot(path),
+        }
+    }
+
     /// Whether it changes other fields than its own, which the form shows again then: the type
     /// sets the name and Same split as the one above, and comparing by a fade the threshold.
     pub fn changes_other_fields(&self) -> bool {
@@ -260,6 +271,7 @@ impl Draft {
             SplitEdit::Kind(_) => {}
             SplitEdit::Name(name) => split.name = name,
             SplitEdit::Mask(mask) => split.mask = mask,
+            SplitEdit::Screenshot(screenshot) => split.screenshot = screenshot,
             SplitEdit::Compare(CompareBy::Fade) if !split.is_fade() => {
                 let (color, time) = split.remembered.fade.take().unwrap_or((FADE_COLOR.to_owned(), None));
                 split.fade = Some(color);
@@ -356,21 +368,21 @@ impl Draft {
 
     /// A ready-made split from the splits library in `folder`, its `steps` in order, put at
     /// `at`, a place from [`Self::place_after`], [`Self::place_before`] or [`Self::drop_place`].
-    /// Their masks and savestates are the library's files, which saving copies into the preset.
+    /// Their masks, savestates and screenshots are the library's files, which saving copies into
+    /// the preset.
     /// The first isn't compared with the split before it, which isn't the library's.
     pub fn import(&mut self, at: usize, steps: &[PresetSplit], folder: &Path) -> Vec<ListChange> {
         self.drop_unused_joins();
         let at = at.min(self.preset.splits.len());
-        let in_library =
-            |path: &str| if path.is_empty() { String::new() } else { folder.join(path).display().to_string() };
         let mut changes = Vec::new();
         for (step, split) in steps.iter().enumerate() {
-            let split = PresetSplit {
-                mask: in_library(&split.mask),
-                savestate: in_library(&split.savestate),
-                with_previous: step > 0 && split.with_previous,
-                ..split.clone()
-            };
+            let mut split = PresetSplit { with_previous: step > 0 && split.with_previous, ..split.clone() };
+            for kind in SplitFile::ALL {
+                let file = split.file_mut(kind);
+                if !file.is_empty() {
+                    *file = folder.join(&*file).display().to_string();
+                }
+            }
             self.preset.splits.insert(at + step, split);
             changes.push(ListChange::Insert(at + step));
         }
@@ -423,7 +435,7 @@ impl Draft {
         if gap - group.start <= group.end - gap { group.start } else { group.end }
     }
 
-    /// A copy of split `index` with the same mask and savestate, after the splits compared
+    /// A copy of split `index` with the same files, after the splits compared
     /// together with it. A copy of one compared with the split above is compared with them too,
     /// and a copy of the first is a split of its own.
     pub fn duplicate(&mut self, index: usize) -> Option<(usize, ListChange)> {
@@ -616,8 +628,8 @@ pub fn library_file_name(split: &PresetSplit, defaults: Option<&SplitDefaults>) 
     library_file_parts(split, defaults).into_iter().map(|part| part.text).collect()
 }
 
-/// A ready-made split's image `step` with the settings and savestate of `from`, a split selected
-/// in the preset, keeping its own name and mask.
+/// A ready-made split's image `step` with the settings, savestate and screenshot of `from`, a
+/// split selected in the preset, keeping its own name and mask.
 pub fn with_settings_of(step: &PresetSplit, from: &PresetSplit) -> PresetSplit {
     PresetSplit { name: step.name.clone(), mask: step.mask.clone(), ..from.clone() }
 }
@@ -694,13 +706,11 @@ pub fn changed_settings(step: &PresetSplit, from: &PresetSplit) -> Vec<String> {
 }
 
 /// What taking the settings of `from` changes about a ready-made split's image `step`, like
-/// From ScrubsDummyLow: threshold default to 0.92. `savestates` are the file names of its
-/// savestate and the new one, or none when it's the same file.
-pub fn settings_changes(step: &PresetSplit, from: &PresetSplit, savestates: Option<(String, String)>) -> String {
+/// From ScrubsDummyLow: threshold default to 0.92. `files` are the files it takes that are other
+/// files than it has, like its savestate, each with the file names of its own and the new one.
+pub fn settings_changes(step: &PresetSplit, from: &PresetSplit, files: &[(SplitFile, String, String)]) -> String {
     let mut changes = changed_settings(step, from);
-    if let Some((old, new)) = savestates {
-        changes.push(format!("savestate {old} to {new}"));
-    }
+    changes.extend(files.iter().map(|(kind, old, new)| format!("{} {old} to {new}", kind.word())));
     let heading = library_heading(from);
     if changes.is_empty() {
         return format!("From {heading}: no changes");
@@ -744,14 +754,32 @@ pub fn import_blocker(preset: &Preset, steps: &[PresetSplit]) -> Option<String> 
     Some(format!("A preset can have up to {MAX_GROUP_SIZE} {} images, and this would make {total}.", kind_word(step)))
 }
 
+/// What the form says under a fade split's color about the files it has from before it was one,
+/// which aren't saved with it, or empty for none. Their rows are hidden, so this says where
+/// they went.
+pub fn fade_drops_note(split: &PresetSplit) -> String {
+    let dropped: Vec<&str> = [SplitFile::Savestate, SplitFile::Screenshot]
+        .into_iter()
+        .filter(|&kind| split.is_fade() && !split.file(kind).is_empty())
+        .map(SplitFile::word)
+        .collect();
+    let (files, them) = match dropped.as_slice() {
+        [] => return String::new(),
+        [one] => (format!("Its {one} isn't"), "it"),
+        many => (format!("Its {} aren't", many.join(" and ")), "them"),
+    };
+    format!("{files} saved with a fade split. Switch Compare to L2 Norm, Histograms or pHash to keep {them}.")
+}
+
 /// `split` as it's saved, into the preset or the split library: instructions only go with a
-/// savestate, and fade splits have neither, since there's no screen to get to for a screenshot.
-/// While editing they're kept, for a split switched to a fade and back. Nor a method, which only
-/// a preset written by hand gives a fade split.
+/// savestate, and fade splits have neither, nor a screenshot, since their image is made from
+/// their color. While editing they're kept, for a split switched to a fade and back. Nor a
+/// method, which only a preset written by hand gives a fade split.
 pub fn saved_split(split: &PresetSplit) -> PresetSplit {
     let mut split = split.clone();
     if split.is_fade() {
         split.savestate.clear();
+        split.screenshot.clear();
         split.comparison_method = ComparisonMethod::default();
     }
     if split.savestate.is_empty() {

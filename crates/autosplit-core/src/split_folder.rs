@@ -273,22 +273,28 @@ fn is_user_file(path: &Path) -> bool {
     let Ok(metadata) = std::fs::metadata(path) else {
         return false;
     };
-    if metadata.is_dir() || hidden_name {
-        return false;
-    }
-    #[cfg(windows)]
-    {
-        use std::os::windows::fs::MetadataExt;
-        const FILE_ATTRIBUTE_HIDDEN: u32 = 0x2;
-        const FILE_ATTRIBUTE_SYSTEM: u32 = 0x4;
-        return metadata.file_attributes() & (FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM) == 0;
-    }
-    #[cfg(target_os = "macos")]
-    {
-        use std::os::macos::fs::MetadataExt;
-        const UF_HIDDEN: u32 = 0x8000;
-        return metadata.st_flags() & UF_HIDDEN == 0;
-    }
-    #[allow(unreachable_code)]
-    true
+    !(metadata.is_dir() || hidden_name || hidden_by_system(&metadata))
+}
+
+/// Whether the system marks the file hidden: Windows' hidden and system attributes.
+#[cfg(windows)]
+fn hidden_by_system(metadata: &std::fs::Metadata) -> bool {
+    use std::os::windows::fs::MetadataExt;
+    const FILE_ATTRIBUTE_HIDDEN: u32 = 0x2;
+    const FILE_ATTRIBUTE_SYSTEM: u32 = 0x4;
+    metadata.file_attributes() & (FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM) != 0
+}
+
+/// Whether the system marks the file hidden: macOS's hidden flag, like `chflags hidden` sets.
+#[cfg(target_os = "macos")]
+fn hidden_by_system(metadata: &std::fs::Metadata) -> bool {
+    use std::os::macos::fs::MetadataExt;
+    const UF_HIDDEN: u32 = 0x8000;
+    metadata.st_flags() & UF_HIDDEN != 0
+}
+
+/// Linux has no hidden mark besides the leading dot, which is checked by name.
+#[cfg(not(any(windows, target_os = "macos")))]
+fn hidden_by_system(_: &std::fs::Metadata) -> bool {
+    false
 }

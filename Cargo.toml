@@ -14,6 +14,16 @@ lto = "fat"
 strip = true
 codegen-units = 1
 
+# Making presets and the split library: as fast as release, so the Live Tester and recording keep
+# up, but a developer build like `cargo run`'s, which edits the source tree's presets and library.
+# Those go by debug assertions. `cargo dev` runs it.
+[profile.dev-release]
+inherits = "release"
+debug-assertions = true
+lto = false
+codegen-units = 16
+strip = false
+
 # The tests in CI: as fast as release where the golden tests need it, without the link-time
 # optimization that only the shipped binary needs, which makes every test binary slow to build
 [profile.ci]

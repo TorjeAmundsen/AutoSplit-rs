@@ -18,16 +18,23 @@ export struct SplitForm {
     group-problem: string,
     // A fade split's color, transparent while it isn't written right
     fade-color: color,
-    // A fade split with a savestate from before, which isn't saved with it
-    drops-savestate: bool,
+    // What a fade split's files from before, which aren't saved with it, say under its color, or
+    // empty
+    fade-drops: string,
     mask: string,
     savestate: string,
+    screenshot: string,
     // Full paths, for the tooltips
     mask-path: string,
     savestate-path: string,
+    screenshot-path: string,
     // Picked from outside the preset's folder, so saving copies it in
     mask-copied: bool,
     savestate-copied: bool,
+    screenshot-copied: bool,
+    // The split has a grab or picked file of its own, which comes before its screenshot, so the
+    // previews don't show the screenshot
+    screenshot-overridden: bool,
     // Compared together with others, or a second reset or start image, which the profile has
     // turned off
     grouping-off: bool,
@@ -98,6 +105,8 @@ export component SplitFormPanel inherits VerticalLayout {
     callback choose-savestate();
     callback clear-savestate();
     callback clear-mask();
+    callback choose-screenshot();
+    callback clear-screenshot();
     spacing: 6px;
 
     if !root.has-split: Label {
@@ -218,11 +227,11 @@ export component SplitFormPanel inherits VerticalLayout {
                 text: root.form.color-problem;
             }
 
-            // Its savestate row is hidden, so this says where it went
-            if root.form.drops-savestate: FieldProblem {
+            // Their rows are hidden, so this says where they went
+            if root.form.fade-drops != "": FieldProblem {
                 label-width: root.label-width;
                 color: Theme.secondary-text;
-                text: "Its savestate isn't saved with a fade split. Switch Compare to L2 Norm, Histograms or pHash to keep it.";
+                text: root.form.fade-drops;
             }
         }
 
@@ -314,6 +323,59 @@ export component SplitFormPanel inherits VerticalLayout {
                 color: Theme.secondary-text;
                 // One line, so the form fits without scrolling; the tooltip says where
                 text: "Copied into the preset when saved.";
+            }
+        }
+
+        // A fade split is made from its color, not a screenshot
+        if !SplitValues.fade: VerticalLayout {
+            spacing: 2px;
+
+            HorizontalLayout {
+                height: 24px;
+                spacing: 6px;
+
+                Label {
+                    width: root.label-width;
+                    text: "Screenshot:";
+                }
+
+                Label {
+                    horizontal-stretch: 1;
+                    color: root.form.screenshot == "" ? Theme.secondary-text : Theme.text;
+                    text: root.form.screenshot == "" ? "None" : root.form.screenshot;
+
+                    Tooltip {
+                        Tip {
+                            text: "A screenshot of the split's screen that its split image is made from, so nobody has to grab it. For consoles whose picture is the same for everyone, like ones with only a digital output. It can't have transparent parts. Without one, the split is grabbed from the capture." + (root.form.screenshot-path == "" ? "" : "\n\n" + root.form.screenshot-path) + (root.form.screenshot-copied ? "\n\nSaving copies it into the preset's screenshots folder." : "");
+                        }
+                    }
+                }
+
+                Button {
+                    width: 80px;
+                    text: "Choose...";
+                    clicked => { root.choose-screenshot(); }
+                }
+
+                Button {
+                    width: 50px;
+                    text: "Clear";
+                    enabled: root.form.screenshot != "";
+                    clicked => { root.clear-screenshot(); }
+                }
+            }
+
+            if root.form.screenshot-copied: FieldProblem {
+                label-width: root.label-width;
+                color: Theme.secondary-text;
+                text: "Copied into the preset when saved.";
+            }
+
+            if root.form.screenshot-overridden: FieldProblem {
+                label-width: root.label-width;
+                color: Theme.secondary-text;
+                // One line, like the other notes; the tooltip of Use Preset's says the rest
+                text: "Its grab comes first, until Use Preset's.";
             }
         }
 

@@ -176,12 +176,24 @@ function Build($name) {
             Copy-Item "$($folders[0])/$binaryName" "$output/$binaryName"
         }
     }
-    # The split image presets and the splits library, which are read from next to the binary. A
-    # preset with a WIP.txt is a work in progress and stays out.
+    # The split image presets and the splits library, which are read from next to the binary.
+    # Presets are in a folder of their game. A preset with a WIP.txt is a work in progress and
+    # stays out.
     New-Item -ItemType Directory -Path "$output/presets" | Out-Null
-    foreach ($preset in Get-ChildItem "$PSScriptRoot/presets" -Directory) {
-        if (Test-Path (Join-Path $preset.FullName "WIP.txt")) { continue }
-        Copy-Item $preset.FullName "$output/presets" -Recurse
+    foreach ($game in Get-ChildItem "$PSScriptRoot/presets" -Directory) {
+        # A preset kept right in presets/ from before game folders
+        if (Test-Path (Join-Path $game.FullName "preset.toml")) {
+            if (-not (Test-Path (Join-Path $game.FullName "WIP.txt"))) {
+                Copy-Item $game.FullName "$output/presets" -Recurse
+            }
+            continue
+        }
+        foreach ($preset in Get-ChildItem $game.FullName -Directory) {
+            if (Test-Path (Join-Path $preset.FullName "WIP.txt")) { continue }
+            $into = Join-Path "$output/presets" $game.Name
+            New-Item -ItemType Directory -Path $into -Force | Out-Null
+            Copy-Item $preset.FullName $into -Recurse
+        }
     }
     Copy-Item "$PSScriptRoot/splits" "$output/splits" -Recurse
     # Adds it to the app menu on Linux, with the icon

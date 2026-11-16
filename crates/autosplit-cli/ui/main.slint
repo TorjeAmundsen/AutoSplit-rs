@@ -159,6 +159,12 @@ export component MainWindow inherits Window {
     in property <bool> can-previous;
     // A message box is open, which AutoSplit's are modal
     in property <bool> blocked;
+    // Screenshots are being recorded
+    in property <bool> recording;
+    // A recording stopped, and its frames are still being written
+    in property <bool> recording-writing;
+    // How long a recording runs before it stops by itself
+    in property <int> recording-seconds: 10;
     // A message box drawn in the window, under Wayland, instead of the message window
     in property <InlineMessage> inline-message;
     // Its button, or -1 for closing it
@@ -169,6 +175,7 @@ export component MainWindow inherits Window {
     callback browse-folder();
     callback region-edited(float, float, float, float);
     callback take-screenshot();
+    callback record-screenshots();
     callback start-auto-splitter();
     callback reset();
     callback skip-split();
@@ -480,6 +487,28 @@ export component MainWindow inherits Window {
                 font-size: 11px;
                 color: Theme.secondary-text;
                 text: root.saved-screenshot == "" ? "" : "Saved " + root.saved-screenshot;
+            }
+
+            Button {
+                x: 10px;
+                y: 254px;
+                width: 107px;
+                height: 24px;
+                text: root.recording ? "Stop Recording" : "Record";
+                clicked => { root.record-screenshots(); }
+                tip: "Save every frame of the capture region at the FPS limit, for up to " + root.recording-seconds + " seconds, into a new folder in the screenshots folder, to pick the frame for a split image from. The Record Screenshots hotkey in Settings does the same.";
+            }
+
+            // Hard to miss, so a recording isn't left running by accident, and then until its frames
+            // are written
+            if root.recording || root.recording-writing: Text {
+                x: 10px;
+                y: 282px;
+                width: 107px;
+                wrap: word-wrap;
+                font-size: 11px;
+                color: root.recording ? Theme.error : Theme.secondary-text;
+                text: root.recording ? "Recording, stops after " + root.recording-seconds + " seconds" : "Writing the frames...";
             }
 
             Preview {

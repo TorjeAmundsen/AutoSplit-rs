@@ -65,6 +65,14 @@ fn main() {
     main.set_window_title("AutoSplit v0.4.0".into());
     main.show().unwrap();
     save(&window, PhysicalSize::new(786, 450), &folder.join("main.png"));
+    // Recording screenshots, with its red note under the button
+    main.set_recording(true);
+    save(&window, PhysicalSize::new(786, 450), &folder.join("main-recording.png"));
+    main.set_recording(false);
+    // Stopped, with its frames still being written
+    main.set_recording_writing(true);
+    save(&window, PhysicalSize::new(786, 450), &folder.join("main-recording-writing.png"));
+    main.set_recording_writing(false);
     // A message box drawn in the window, like under Wayland
     let question = InlineMessage {
         shown: true,
@@ -274,6 +282,12 @@ fn main() {
     std::thread::sleep(std::time::Duration::from_millis(300));
     slint::platform::update_timers_and_animations();
     save(&window, PhysicalSize::new(828, 672), &folder.join("maker-saved.png"));
+    // A grab over the preset's screenshot, which the button beside Output Preview goes back to
+    maker.set_over_preset_screenshot(true);
+    maker.set_grab_suggested(false);
+    save(&window, PhysicalSize::new(828, 672), &folder.join("maker-over-preset.png"));
+    maker.set_over_preset_screenshot(false);
+    maker.set_grab_suggested(true);
     // A long message drawn in the window scrolls
     let files: Vec<String> = (1..=40).map(|number| format!("{number:02}_Boss_(0.95).png")).collect();
     maker.set_inline_message(InlineMessage {
@@ -350,15 +364,19 @@ Replace them?",
         name_problem: "".into(),
         mask_problem: "".into(),
         color_problem: "".into(),
-        drops_savestate: false,
+        fade_drops: "".into(),
         group_problem: "".into(),
         fade_color: Default::default(),
         mask: elide_middle("006_a_button_flip_after_the_door.png", MASK_NAME_CHARS).into(),
         savestate: elide_middle("006 enter deku.gzs", SAVESTATE_NAME_CHARS).into(),
-        mask_path: "presets/No_Wrong_Warp/006_a_button_flip.png".into(),
+        screenshot: "".into(),
+        mask_path: "presets/The_Legend_of_Zelda_Ocarina_of_Time/No_Wrong_Warp/006_a_button_flip.png".into(),
         savestate_path: "C:/Users/Runner/gz/006 enter deku.gzs".into(),
+        screenshot_path: "".into(),
         mask_copied: false,
         savestate_copied: true,
+        screenshot_copied: false,
+        screenshot_overridden: false,
         grouping_off: false,
         can_join: true,
         why_not_joined: "".into(),
@@ -366,14 +384,14 @@ Replace them?",
     maker.set_problems("Split1: It needs a mask. Choose one.".into());
     maker.set_has_problems(true);
     maker.set_saved_preset(true);
-    save(&window, PhysicalSize::new(828, 672), &folder.join("maker-edit.png"));
+    save(&window, PhysicalSize::new(828, 726), &folder.join("maker-edit.png"));
     // Where a ready-made split from Split Library would go
     maker.set_drop_line(3);
-    save(&window, PhysicalSize::new(828, 672), &folder.join("maker-edit-drop.png"));
+    save(&window, PhysicalSize::new(828, 726), &folder.join("maker-edit-drop.png"));
     maker.set_drop_line(-1);
     // Without the savestate note, all of the form fits
     maker.set_form(SplitForm { savestate_copied: false, ..maker.get_form() });
-    save(&window, PhysicalSize::new(828, 672), &folder.join("maker-edit-plain.png"));
+    save(&window, PhysicalSize::new(828, 726), &folder.join("maker-edit-plain.png"));
     // A fade split of the whole screen
     values.set_compare(3);
     values.set_color("#a0a0a0".into());
@@ -382,34 +400,56 @@ Replace them?",
         mask: "".into(),
         fade_color: slint::Color::from_rgb_u8(0xa0, 0xa0, 0xa0),
         // Its savestate from before, which saving leaves out
-        drops_savestate: true,
+        fade_drops:
+            "Its savestate isn't saved with a fade split. Switch Compare to L2 Norm, Histograms or pHash to keep it."
+                .into(),
         ..maker.get_form()
     });
-    save(&window, PhysicalSize::new(828, 672), &folder.join("maker-edit-fade.png"));
+    save(&window, PhysicalSize::new(828, 726), &folder.join("maker-edit-fade.png"));
     // A fade split of part of the screen, whose mask can be cleared
     maker.set_form(SplitForm {
         mask: elide_middle("deku_without_the_title.png", FADE_MASK_NAME_CHARS).into(),
         ..maker.get_form()
     });
-    save(&window, PhysicalSize::new(828, 672), &folder.join("maker-edit-fade-mask.png"));
+    save(&window, PhysicalSize::new(828, 726), &folder.join("maker-edit-fade-mask.png"));
     values.set_compare(0);
     values.set_threshold(0.92);
     maker.set_form(SplitForm {
         mask: elide_middle("006_a_button_flip_after_the_door.png", MASK_NAME_CHARS).into(),
-        drops_savestate: false,
+        fade_drops: "".into(),
         ..maker.get_form()
     });
     // Compared with the split above while the profile has grouping off
     values.set_with_previous(true);
     maker.set_form(SplitForm { grouping_off: true, ..maker.get_form() });
-    save(&window, PhysicalSize::new(828, 672), &folder.join("maker-edit-grouping.png"));
+    save(&window, PhysicalSize::new(828, 726), &folder.join("maker-edit-grouping.png"));
     values.set_with_previous(false);
     maker.set_form(SplitForm { grouping_off: false, ..maker.get_form() });
     maker.set_form(SplitForm { savestate_copied: true, ..maker.get_form() });
     // A new split's mask and savestate, both copied in on save
     maker.set_form(SplitForm { mask_copied: true, ..maker.get_form() });
-    save(&window, PhysicalSize::new(828, 672), &folder.join("maker-edit-copied.png"));
-    maker.set_form(SplitForm { mask_copied: false, ..maker.get_form() });
+    save(&window, PhysicalSize::new(828, 726), &folder.join("maker-edit-copied.png"));
+    // A recording written while editing, which the bottom line says
+    maker.invoke_recording_done("Recorded 600 screenshots into recording_001.".into());
+    save(&window, PhysicalSize::new(828, 726), &folder.join("maker-edit-recorded.png"));
+    // And a screenshot too, the most notes there can be, which still fits
+    maker.set_form(SplitForm {
+        screenshot: elide_middle("EnterDeku.png", FADE_MASK_NAME_CHARS).into(),
+        screenshot_copied: true,
+        ..maker.get_form()
+    });
+    save(&window, PhysicalSize::new(828, 726), &folder.join("maker-edit-copied-all.png"));
+    // The usual case for a console without savestates: a mask and a screenshot
+    maker.set_form(SplitForm { savestate: "".into(), savestate_copied: false, ..maker.get_form() });
+    save(&window, PhysicalSize::new(828, 726), &folder.join("maker-edit-copied-screenshot.png"));
+    maker.set_form(SplitForm {
+        savestate: elide_middle("006 enter deku.gzs", SAVESTATE_NAME_CHARS).into(),
+        savestate_copied: true,
+        screenshot: "".into(),
+        screenshot_copied: false,
+        mask_copied: false,
+        ..maker.get_form()
+    });
     // A long problem wraps under the name
     maker.set_form(SplitForm {
         name_problem:
@@ -418,7 +458,7 @@ Replace them?",
         mask_problem: "It needs a mask. Choose one.".into(),
         ..maker.get_form()
     });
-    save(&window, PhysicalSize::new(828, 672), &folder.join("maker-edit-problem.png"));
+    save(&window, PhysicalSize::new(828, 726), &folder.join("maker-edit-problem.png"));
     maker.hide().unwrap();
 
     let instructions = InstructionsWindow::new().unwrap();

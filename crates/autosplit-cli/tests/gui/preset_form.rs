@@ -2,13 +2,13 @@
 
 use autosplit::gui::preset_form::{
     CompareBy, Draft, Field, InstructionText, ListChange, Problem, SplitEdit, SplitKind, discard_question,
-    elide_middle, field_problems, field_value, import_blocker, in_preset, instruction_cards, known_game,
-    library_file_name, library_heading, matches_search, next_problem_split, one_copy_question, problem_flags,
-    problem_list, problem_summary, saved_preset_name, saved_split, settings_changes, settings_problem, split_heading,
-    status_line, too_few_selected, with_settings_of,
+    elide_middle, fade_drops_note, field_problems, field_value, import_blocker, in_preset, instruction_cards,
+    known_game, library_file_name, library_heading, matches_search, next_problem_split, one_copy_question,
+    problem_flags, problem_list, problem_summary, saved_preset_name, saved_split, settings_changes, settings_problem,
+    split_heading, status_line, too_few_selected, with_settings_of,
 };
 use autosplit_core::compare::ComparisonMethod;
-use autosplit_core::preset::{Preset, PresetSplit};
+use autosplit_core::preset::{Preset, PresetSplit, SplitFile};
 use test_case::test_case;
 
 const L2_NORM: CompareBy = CompareBy::Screenshot(ComparisonMethod::L2Norm);
@@ -744,7 +744,11 @@ fn imported_splits_go_after_the_selected_one_with_their_files_in_the_library() {
     let mut draft = draft(&["Boss", "Door"]);
     let library = std::env::temp_dir().join("splits").join("Game");
 
-    let split = PresetSplit { savestate: "escape.gzs".into(), ..library_split("Escape") };
+    let split = PresetSplit {
+        savestate: "escape.gzs".into(),
+        screenshot: "screenshot_Escape.png".into(),
+        ..library_split("Escape")
+    };
 
     // Act
     let imported = draft.import(draft.place_after(Some(0)), &[split], &library);
@@ -753,6 +757,7 @@ fn imported_splits_go_after_the_selected_one_with_their_files_in_the_library() {
     let expected = PresetSplit {
         mask: library.join("escape.png").display().to_string(),
         savestate: library.join("escape.gzs").display().to_string(),
+        screenshot: library.join("screenshot_Escape.png").display().to_string(),
         with_previous: false,
         ..library_split("Escape")
     };
@@ -884,16 +889,26 @@ fn ready_made_splits_take_settings_but_keep_their_name_and_mask() {
     assert_eq!(updated, expected);
 }
 
-#[test_case(false, None => "From ScrubsDummyLow: no changes"; "the same settings")]
-#[test_case(true, None => "From ScrubsDummyLow: threshold default to 0.92, dummy false to true"; "settings")]
-#[test_case(true, Some(("none", "013-deku tree.gzs")) => "From ScrubsDummyLow: threshold default to 0.92, dummy false to true, savestate none to 013-deku tree.gzs"; "and another savestate")]
-fn settings_taken_from_the_preset_say_what_changes(changed: bool, savestates: Option<(&str, &str)>) -> String {
+#[test_case(false, None, None => "From ScrubsDummyLow: no changes"; "the same settings")]
+#[test_case(true, None, None => "From ScrubsDummyLow: threshold default to 0.92, dummy false to true"; "settings")]
+#[test_case(true, Some(("none", "013-deku tree.gzs")), None => "From ScrubsDummyLow: threshold default to 0.92, dummy false to true, savestate none to 013-deku tree.gzs"; "and another savestate")]
+#[test_case(false, None, Some(("none", "ScrubsDummyLow.png")) => "From ScrubsDummyLow: screenshot none to ScrubsDummyLow.png"; "only another screenshot")]
+fn settings_taken_from_the_preset_say_what_changes(
+    changed: bool,
+    savestates: Option<(&str, &str)>,
+    screenshots: Option<(&str, &str)>,
+) -> String {
     // Arrange
     let step = PresetSplit { threshold: None, ..library_split("ScrubsDummyLow") };
     let from = if changed { PresetSplit { threshold: Some(0.92), dummy: true, ..step.clone() } } else { step.clone() };
+    let files: Vec<(SplitFile, String, String)> =
+        [(SplitFile::Savestate, savestates), (SplitFile::Screenshot, screenshots)]
+            .into_iter()
+            .filter_map(|(kind, names)| names.map(|(old, new)| (kind, old.to_owned(), new.to_owned())))
+            .collect();
 
     // Act
-    settings_changes(&step, &from, savestates.map(|(old, new)| (old.to_owned(), new.to_owned())))
+    settings_changes(&step, &from, &files)
 }
 
 #[test_case("ScrubsDummyLow", "ScrubsDummyLow.png", None, None => None; "the same split")]
@@ -1154,7 +1169,7 @@ fn fade_splits_taking_each_others_settings_ignore_their_methods() {
     let from = PresetSplit { comparison_method: ComparisonMethod::Histograms, ..fade.clone() };
 
     // Act
-    let changes = settings_changes(&fade, &from, None);
+    let changes = settings_changes(&fade, &from, &[]);
 
     // Assert
     assert_eq!(changes, "From Boss: no changes");
@@ -1179,7 +1194,7 @@ fn a_ready_made_split_taking_another_method_says_so() {
     let from = PresetSplit { comparison_method: ComparisonMethod::Histograms, ..split("Boss") };
 
     // Act
-    let changes = settings_changes(&split("Boss"), &from, None);
+    let changes = settings_changes(&split("Boss"), &from, &[]);
 
     // Assert
     assert_eq!(changes, "From Boss: comparison method L2 Norm to Histograms");
@@ -1231,6 +1246,22 @@ fn fade_split_needs_no_mask_but_a_color_written_right() {
     );
 }
 
+#[test_case(true, "boss.gzs", "" => "Its savestate isn't saved with a fade split. Switch Compare to L2 Norm, Histograms or pHash to keep it.".to_owned(); "a savestate")]
+#[test_case(true, "boss.gzs", "boss.png" => "Its savestate and screenshot aren't saved with a fade split. Switch Compare to L2 Norm, Histograms or pHash to keep them.".to_owned(); "a savestate and a screenshot")]
+#[test_case(false, "boss.gzs", "boss.png" => String::new(); "not a fade split, which keeps them")]
+fn a_fade_split_says_which_files_it_drops(fade: bool, savestate: &str, screenshot: &str) -> String {
+    // Arrange
+    let split = PresetSplit {
+        fade: fade.then(|| "#000000".to_owned()),
+        savestate: savestate.into(),
+        screenshot: screenshot.into(),
+        ..split("Boss")
+    };
+
+    // Act, with the expected value checked by test_case
+    fade_drops_note(&split)
+}
+
 #[test]
 fn fade_splits_are_saved_without_a_savestate() {
     // Arrange
@@ -1245,4 +1276,20 @@ fn fade_splits_are_saved_without_a_savestate() {
     let saved = &draft.to_save().splits[0];
     let kept = &draft.preset.splits[0];
     assert_eq!((saved.savestate.as_str(), saved.instructions.as_str(), kept.savestate.as_str()), ("", "", "boss.gzs"));
+}
+
+#[test]
+fn a_screenshot_is_saved_with_its_split_unless_its_a_fade_split() {
+    // Arrange: two splits with a screenshot each
+    let mut draft = draft(&["Boss", "Door"]);
+    draft.edit_split(0, SplitEdit::Screenshot("boss screen.png".into()));
+    draft.edit_split(1, SplitEdit::Screenshot("door screen.png".into()));
+
+    // Act: the second is made from its color instead
+    draft.edit_split(1, SplitEdit::Compare(CompareBy::Fade));
+
+    // Assert: the fade split's is kept for switching back, but not saved
+    let saved = draft.to_save();
+    let saved: Vec<&str> = saved.splits.iter().map(|split| split.screenshot.as_str()).collect();
+    assert_eq!((saved, draft.preset.splits[1].screenshot.as_str()), (vec!["boss screen.png", ""], "door screen.png"));
 }

@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::compare::ComparisonMethod;
 use crate::filename::{DEFAULT_FADE_TIME, RESET_KEYWORD, START_KEYWORD, SplitSpec, build_filename};
+use crate::image::BgraImage;
 use crate::split_image::SplitDefaults;
 
 /// The file a preset folder has its preset in.
@@ -42,6 +43,11 @@ pub struct PresetSplit {
     /// kept, or a fade split's color. A fade split without one is the whole screen.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub mask: String,
+    /// A screenshot of the split's screen, a PNG relative to the preset's folder, which its split
+    /// image is made from without a grab. For consoles whose picture is the same for everyone,
+    /// like ones with only a digital output. A fade split doesn't use one.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub screenshot: String,
     /// `#rrggbb`: the color a fade split splits on a fade to, instead of a screenshot. Kept as
     /// written, which can be wrong while it's being typed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -97,7 +103,73 @@ impl PartialEq for Remembered {
     }
 }
 
+/// A file a split has in its preset's folder.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum SplitFile {
+    Mask,
+    Savestate,
+    Screenshot,
+}
+
+impl SplitFile {
+    /// Every kind, in the order everything that goes through a split's files takes them.
+    pub const ALL: [Self; 3] = [Self::Mask, Self::Savestate, Self::Screenshot];
+
+    /// What it's called in messages.
+    pub fn word(self) -> &'static str {
+        match self {
+            Self::Mask => "mask",
+            Self::Savestate => "savestate",
+            Self::Screenshot => "screenshot",
+        }
+    }
+
+    /// The folder in a preset's folder that saving copies it into, or none for the preset's
+    /// folder itself.
+    pub fn folder(self) -> Option<&'static str> {
+        match self {
+            Self::Mask => None,
+            Self::Savestate => Some(SAVESTATES_FOLDER),
+            Self::Screenshot => Some(SCREENSHOTS_FOLDER),
+        }
+    }
+
+    /// Whether it has to be a PNG image.
+    pub fn is_png(self) -> bool {
+        self != Self::Savestate
+    }
+}
+
+/// Why `image` can't be a split's screenshot, or none when it can. A screenshot has no transparent
+/// parts: one with them is a split image made already, which its mask would be applied to a
+/// second time.
+pub fn screenshot_problem(image: &BgraImage) -> Option<&'static str> {
+    (!image.is_opaque()).then_some("it has transparent parts, like a split image made already")
+}
+
 impl PresetSplit {
+    /// Its file of `kind`, as the preset writes it, or empty without one.
+    pub fn file(&self, kind: SplitFile) -> &String {
+        match kind {
+            SplitFile::Mask => &self.mask,
+            SplitFile::Savestate => &self.savestate,
+            SplitFile::Screenshot => &self.screenshot,
+        }
+    }
+
+    pub fn file_mut(&mut self, kind: SplitFile) -> &mut String {
+        match kind {
+            SplitFile::Mask => &mut self.mask,
+            SplitFile::Savestate => &mut self.savestate,
+            SplitFile::Screenshot => &mut self.screenshot,
+        }
+    }
+
+    /// The files it has, in [`SplitFile::ALL`]'s order, without the kinds it has none of.
+    pub fn files(&self) -> impl Iterator<Item = &String> {
+        SplitFile::ALL.into_iter().map(|kind| self.file(kind)).filter(|path| !path.is_empty())
+    }
+
     /// Whether it makes the reset or start image.
     pub fn is_keyword(&self) -> bool {
         self.name == RESET_KEYWORD || self.name == START_KEYWORD
@@ -295,6 +367,7 @@ pub const SPLIT_KEYS: &[&str] = &[
     "name",
     "with_previous",
     "mask",
+    "screenshot",
     "fade",
     "fade_time",
     "comparison_method",
@@ -340,7 +413,7 @@ fn kind_of(path: &Path) -> &'static str {
     if path.file_name().is_some_and(|name| name == LIBRARY_FILE) { "split library" } else { "split image preset" }
 }
 
-/// A preset and the folder its masks and savestates are in.
+/// A preset and the folder its splits' files are in.
 #[derive(Clone, Debug, PartialEq)]
 pub struct LoadedPreset {
     pub folder: PathBuf,
@@ -426,17 +499,34 @@ impl SplitLibrary {
     }
 }
 
-/// The folders in `directory` that have `file`, by name, or none when it can't be read. Hidden
-/// folders are left out, like what's left of a deleted preset.
-fn folders_with(directory: &Path, file: &str) -> Vec<PathBuf> {
+/// The folders in `directory`, by name, or none when it can't be read. Hidden folders are left
+/// out, like what's left of a deleted preset.
+fn subfolders(directory: &Path) -> Vec<PathBuf> {
     let Ok(entries) = std::fs::read_dir(directory) else { return Vec::new() };
     let mut folders: Vec<PathBuf> = entries
         .filter_map(|entry| Some(entry.ok()?.path()))
         .filter(|path| !path.file_name().is_some_and(|name| name.to_string_lossy().starts_with('.')))
-        .filter(|path| path.join(file).is_file())
+        .filter(|path| path.is_dir())
         .collect();
     folders.sort();
     folders
+}
+
+/// The folders in `directory` that have `file`.
+fn folders_with(directory: &Path, file: &str) -> Vec<PathBuf> {
+    subfolders(directory).into_iter().filter(|path| path.join(file).is_file()).collect()
+}
+
+/// The preset folders in `presets`: in a folder of their game, or right in `presets`, as
+/// presets were kept before they went in their game's folder.
+fn preset_folders(presets: &Path) -> Vec<PathBuf> {
+    (subfolders(presets).into_iter())
+        .flat_map(
+            |folder| {
+                if folder.join(PRESET_FILE).is_file() { vec![folder] } else { folders_with(&folder, PRESET_FILE) }
+            },
+        )
+        .collect()
 }
 
 /// Sorted by game, then name, ignoring case, like they're listed.
@@ -456,7 +546,7 @@ pub fn game_key(game: &str) -> String {
 pub fn load_presets(directory: &Path) -> (Vec<LoadedPreset>, Vec<PresetError>) {
     let mut presets = Vec::new();
     let mut errors = Vec::new();
-    for folder in folders_with(directory, PRESET_FILE) {
+    for folder in preset_folders(directory) {
         match Preset::load(&folder.join(PRESET_FILE)) {
             Ok(preset) => presets.push(LoadedPreset { folder, preset }),
             Err(error) => errors.push(error),
@@ -483,6 +573,9 @@ pub fn load_libraries(directory: &Path) -> (Vec<LoadedLibrary>, Vec<PresetError>
 
 /// The folder in a preset's folder that its savestates go in.
 pub const SAVESTATES_FOLDER: &str = "savestates";
+
+/// The folder in a preset's folder that its screenshots go in.
+pub const SCREENSHOTS_FOLDER: &str = "screenshots";
 
 /// The note in a preset's savestate folder that says not to copy them from there.
 pub const SAVESTATE_NOTE_FILE: &str = "DO_NOT_COPY.txt";
@@ -529,15 +622,98 @@ pub fn unique_file_name(file: &str, taken: impl Fn(&str) -> bool) -> String {
     (1..).map(|n| format!("{stem} ({n}){extension}")).find(|name| !taken(name)).expect("some number is free")
 }
 
-/// A new folder in `presets` for a preset named `name`, which doesn't exist yet.
-pub fn new_preset_folder(presets: &Path, name: &str) -> PathBuf {
-    let base = sanitize_file_name(name, "Preset");
-    let free = |folder: &str| !presets.join(folder).exists();
-    (1..)
-        .map(|n| if n == 1 { base.clone() } else { format!("{base}_{n}") })
-        .find(|folder| free(folder))
-        .map(|folder| presets.join(folder))
+/// `base`, then `base_2`, `base_3` and so on.
+fn numbered(base: &str) -> impl Iterator<Item = String> + '_ {
+    (1..).map(move |n| if n == 1 { base.to_owned() } else { format!("{base}_{n}") })
+}
+
+/// The names in `directory`, in lowercase, or none when it can't be read.
+fn names_in(directory: &Path) -> Vec<(String, String)> {
+    let Ok(entries) = std::fs::read_dir(directory) else { return Vec::new() };
+    (entries.flatten())
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
+        .map(|name| (name.to_lowercase(), name))
+        .collect()
+}
+
+/// A new folder in `directory` named like `name`, which doesn't exist yet, with a number when
+/// the name is taken. Taken ignoring case, like on Windows and macOS, so a folder made on Linux
+/// can be copied there.
+pub(crate) fn new_folder(directory: &Path, name: &str, fallback: &str) -> PathBuf {
+    let base = sanitize_file_name(name, fallback);
+    let taken = names_in(directory);
+    (numbered(&base))
+        .find(|folder| !taken.iter().any(|(lower, _)| *lower == folder.to_lowercase()))
+        .map(|folder| directory.join(folder))
         .expect("some number is free")
+}
+
+/// A new folder for a preset of `game` named `name`, which doesn't exist yet, in its game's
+/// folder in `presets`, since games mostly have the same categories, like Any%.
+pub fn new_preset_folder(presets: &Path, game: &str, name: &str) -> PathBuf {
+    new_folder(&game_folder(presets, game), name, "Preset")
+}
+
+/// Moves the preset folder `folder` into the folder of `game` in `presets`, and returns where it
+/// is now: the same folder when it's in that one already. Its old game's folder goes when that
+/// leaves it empty. Fails without changing anything when a file in it is open, as on Windows.
+pub fn move_to_game_folder(presets: &Path, folder: &Path, game: &str) -> Result<PathBuf, PresetError> {
+    let game_folder = game_folder(presets, game);
+    let old_parent = folder.parent().unwrap_or(presets);
+    if canonical(&game_folder) == canonical(old_parent) {
+        return Ok(folder.to_owned());
+    }
+    let name = folder.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
+    let target = new_folder(&game_folder, &name, "Preset");
+    let made = !game_folder.exists();
+    std::fs::create_dir_all(&game_folder).map_err(|error| unwritable(&game_folder, error))?;
+    if let Err(error) = std::fs::rename(folder, &target) {
+        if made {
+            remove_empty_folder(&game_folder);
+        }
+        return Err(PresetError::Unwritable {
+            path: folder.to_owned(),
+            reason: format!("{error}. Close any program that has a file in it open, then try again"),
+        });
+    }
+    // The presets folder still has the preset in it, so it's never the one that's empty
+    remove_empty_folder(old_parent);
+    Ok(target)
+}
+
+/// The folder in `presets` that `game`'s presets go in, named after the game, as it's spelled on
+/// disk when it's there in another case. Not a preset's own folder, kept right in `presets` from
+/// before game folders, which gets a number instead.
+fn game_folder(presets: &Path, game: &str) -> PathBuf {
+    let base = sanitize_file_name(game, "No_game");
+    let names = names_in(presets);
+    for folder in numbered(&base) {
+        let existing = names.iter().find(|(lower, _)| *lower == folder.to_lowercase());
+        match existing {
+            Some((_, name)) if presets.join(name).join(PRESET_FILE).exists() => continue,
+            Some((_, name)) => return presets.join(name),
+            None => return presets.join(folder),
+        }
+    }
+    unreachable!("some number is free")
+}
+
+/// Files a system puts in folders by itself, which don't keep a folder from being empty:
+/// macOS Finder's and Windows Explorer's.
+const SYSTEM_FILES: [&str; 3] = [".ds_store", "thumbs.db", "desktop.ini"];
+
+/// Removes `folder` when nothing's in it but files a system puts there by itself, like the
+/// `.DS_Store` macOS writes into any folder opened in Finder.
+pub(crate) fn remove_empty_folder(folder: &Path) {
+    let names = names_in(folder);
+    let system = |lower: &str| SYSTEM_FILES.contains(&lower) || lower.starts_with("._");
+    if !names.iter().all(|(lower, _)| system(lower)) {
+        return;
+    }
+    for (_, name) in names {
+        let _ = std::fs::remove_file(folder.join(name));
+    }
+    let _ = std::fs::remove_dir(folder);
 }
 
 /// A path inside a preset's folder, as presets write it: relative, with `/`.
@@ -551,7 +727,7 @@ pub fn canonical(path: &Path) -> PathBuf {
     std::fs::canonicalize(path).unwrap_or_else(|_| path.to_owned())
 }
 
-/// Finds a mask or savestate: relative to `from`, or a picked file's absolute path.
+/// Finds a split's file: relative to `from`, or a picked file's absolute path.
 fn find(from: &Path, path: &str) -> Result<PathBuf, PresetError> {
     let picked = Path::new(path);
     let file = if picked.is_absolute() { picked.to_owned() } else { from.join(picked) };
@@ -624,23 +800,27 @@ pub fn duplicates_among<'a>(
     duplicates
 }
 
-/// Saves `preset` into the preset folder `target`, making it when needed. Its masks and
-/// savestates are paths relative to `source`, the folder it was read from, or to `target` when
-/// there's none, or absolute paths of files picked for it. Files outside `target` are copied in:
-/// masks named after their split, savestates into `savestates` under their own names, each file
-/// once, and never over a file that's there. Every file is found before anything is written, and
+/// Saves `preset` into the preset folder `target`, making it when needed. Its masks, savestates
+/// and screenshots are paths relative to `source`, the folder it was read from, or to `target`
+/// when there's none, or absolute paths of files picked for it. Files outside `target` are copied
+/// in: masks named after their split, savestates into `savestates` under their own names,
+/// screenshots into `screenshots` named after their split, each file once, and never over a file
+/// that's there. Every file is found before anything is written, and
 /// when copying or writing `preset.toml` fails, what this save made is removed again, so a failed
-/// save leaves the folder as it was. Afterwards, the masks and savestates the preset used before
+/// save leaves the folder as it was. Afterwards, the files the preset used before
 /// and doesn't now are deleted, and the savestate folder gets [`SAVESTATE_NOTE_FILE`]. Returns the preset as written, with relative paths.
 pub fn save_preset(source: Option<&Path>, target: &Path, preset: &Preset) -> Result<Preset, PresetError> {
     let from = source.unwrap_or(target);
     let mut found = Vec::new();
     for split in &preset.splits {
-        for path in [&split.mask, &split.savestate] {
+        for kind in SplitFile::ALL {
+            let path = split.file(kind);
             found.push(if path.is_empty() { None } else { Some(find(from, path)?) });
         }
     }
     let new_folder = !target.exists();
+    // Its game's folder too, for a new game, which goes with it when the save fails
+    let new_parent = target.parent().filter(|parent| !parent.exists()).map(Path::to_owned);
     std::fs::create_dir_all(target).map_err(|error| unwritable(target, error))?;
     let before = Preset::load(&target.join(PRESET_FILE)).ok();
     let mut made = Vec::new();
@@ -657,6 +837,9 @@ pub fn save_preset(source: Option<&Path>, target: &Path, preset: &Preset) -> Res
         Err(error) => {
             if new_folder {
                 let _ = std::fs::remove_dir_all(target);
+                if let Some(parent) = new_parent {
+                    remove_empty_folder(&parent);
+                }
             } else {
                 // Files first, then the folders they were in
                 for path in made.iter().rev() {
@@ -745,7 +928,7 @@ pub(crate) fn unwritable(path: &Path, error: std::io::Error) -> PresetError {
     PresetError::Unwritable { path: path.to_owned(), reason: error.to_string() }
 }
 
-/// Copies `found`, each split's mask and savestate in turn, into `target` when they're outside
+/// Copies `found`, each split's files in turn, into `target` when they're outside
 /// it, and writes `preset.toml`. Records the files and folders it makes in `made`.
 fn write_preset(
     target: &Path,
@@ -761,7 +944,9 @@ fn write_preset(
     let mut found = found.into_iter();
     for split in &mut saved.splits {
         let name = split.name.clone();
-        for (field, savestate) in [(&mut split.mask, false), (&mut split.savestate, true)] {
+        // In the order `found` has them, which is `save_preset`'s
+        for kind in SplitFile::ALL {
+            let field = split.file_mut(kind);
             let Some(file) = found.next().flatten() else { continue };
             if let Ok(inside) = file.strip_prefix(&root) {
                 *field = relative_text(inside);
@@ -771,17 +956,20 @@ fn write_preset(
                 *field = copy.clone();
                 continue;
             }
-            let (folder, wanted) = if savestate {
-                let original = file.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
-                (target.join(SAVESTATES_FOLDER), sanitize_file_name(&original, "savestate"))
-            } else {
-                (target.to_owned(), format!("{}.png", sanitize_file_name(&name, "mask")))
+            let wanted = match kind {
+                // Under its own name, which says where it is in the game
+                SplitFile::Savestate => {
+                    let original = file.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
+                    sanitize_file_name(&original, kind.word())
+                }
+                SplitFile::Mask | SplitFile::Screenshot => format!("{}.png", sanitize_file_name(&name, kind.word())),
             };
+            let folder = kind.folder().map_or_else(|| target.to_owned(), |folder| target.join(folder));
             if !folder.exists() {
                 std::fs::create_dir_all(&folder).map_err(|error| unwritable(&folder, error))?;
                 made.push(folder.clone());
             }
-            let prefix = if savestate { format!("{SAVESTATES_FOLDER}/") } else { String::new() };
+            let prefix = kind.folder().map_or_else(String::new, |folder| format!("{folder}/"));
             let free = unique_file_name(&wanted, |candidate| {
                 folder.join(candidate).exists() || given.contains(&format!("{prefix}{candidate}").to_lowercase())
             });
@@ -800,14 +988,13 @@ fn write_preset(
     Ok(saved)
 }
 
-/// Deletes the masks and savestates `before` used that `now` doesn't, compared as the files they
+/// Deletes the files `before` used that `now` doesn't, compared as the files they
 /// are, however their paths are written. Files the preset never used aren't its to delete.
 fn remove_unused_files(target: &Path, before: Option<&Preset>, now: &Preset) {
     let Ok(root) = std::fs::canonicalize(target) else { return };
     let paths = |preset: &Preset| -> Vec<PathBuf> {
         (preset.splits.iter())
-            .flat_map(|split| [&split.mask, &split.savestate])
-            .filter(|path| !path.is_empty())
+            .flat_map(PresetSplit::files)
             // Missing files are left out: there's nothing to delete
             .filter_map(|path| std::fs::canonicalize(root.join(path)).ok())
             .collect()
