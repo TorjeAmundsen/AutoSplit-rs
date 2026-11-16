@@ -45,7 +45,7 @@ slint-build = "1.19.0"
 # Slint finds fonts with fontconfig on Linux. Loaded when the program runs instead of linked, so
 # builds and cross builds don't need its development files.
 [target.'cfg(target_os = "linux")'.dependencies]
-fontique = { version = "0.11.1", default-features = false, features = ["fontconfig-dlopen"] }
+fontique = { version = "0.12.0", default-features = false, features = ["fontconfig-dlopen"] }
 # Signals Molok
 libc = "0.2.190"
 # The clipboard on Wayland too, for savestate files
