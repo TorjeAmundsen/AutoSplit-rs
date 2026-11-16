@@ -96,6 +96,7 @@ Capture and hotkeys:
 Settings and display:
 
 - Keys missing from a profile get the settings window's defaults (threshold 0.90). Toufool's AutoSplit uses a second set of defaults for those (threshold 0.95).
+- Open screenshots on capture is off by default, also for profiles without the key. In Toufool's AutoSplit it's on.
 - Profile values of the wrong type, like `fps_limit = 60.0`, make the profile invalid. Toufool's AutoSplit uses them as they are.
 - Error messages are reworded and name the file or value involved.
 - Similarities and thresholds are shown with 3 decimals, truncated. Toufool's AutoSplit shows 2, and its truncation sometimes comes out one step low (0.29 shows as 0.28).

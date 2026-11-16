@@ -759,20 +759,36 @@ impl Gui {
     /// A tool window opened, which the main window can't be used beside.
     fn tool_opened(&self, tool: Tool) {
         let mut state = self.state.borrow_mut();
+        let first = state.tools.is_empty();
         state.tools.retain(|open| *open != tool);
         state.tools.push(tool);
         drop(state);
+        if first {
+            self.send(UiCommand::SetToolOpen(true));
+        }
         self.show_tool();
     }
 
     /// A tool window closes. Called before it's hidden.
     fn tool_closed(&self, tool: Tool) {
-        self.state.borrow_mut().tools.retain(|open| *open != tool);
+        let mut state = self.state.borrow_mut();
+        let was_open = state.tools.contains(&tool);
+        state.tools.retain(|open| *open != tool);
+        let last = was_open && state.tools.is_empty();
+        drop(state);
         match tool {
             Tool::Tester => self.tester_closed(),
             Tool::Maker => self.maker_closed(),
         }
+        if last {
+            self.send(UiCommand::SetToolOpen(false));
+        }
         self.show_tool();
+    }
+
+    /// A tool window can't open during a run, where it would show the run's frames to compare.
+    fn tool_blocked_by_run(&self) -> bool {
+        self.state.borrow().running
     }
 
     /// The main window says which tool window is open, if one is.

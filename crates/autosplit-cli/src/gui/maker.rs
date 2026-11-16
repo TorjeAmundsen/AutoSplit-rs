@@ -478,6 +478,9 @@ impl Gui {
         if window.is_visible() {
             return self.show_window(window);
         }
+        if self.tool_blocked_by_run() {
+            return;
+        }
         let folder = presets_folder();
         let before = self.maker.borrow().loaded().cloned();
         let errors = self.read_presets();

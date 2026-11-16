@@ -228,13 +228,17 @@ export component MainWindow inherits Window {
                 shortcut: @keys(Control + ",");
                 activated => { root.open-settings(); }
             }
+            // The tools show the capture as what's tested, which a run would compare, so they
+            // can't open during one
             MenuItem {
                 title: "Live Tester";
                 shortcut: @keys(Control + T);
+                enabled: !root.running;
                 activated => { root.open-tester(); }
             }
             MenuItem {
                 title: "Make Split Images";
+                enabled: !root.running;
                 // Cmd+M minimizes on macOS
                 shortcut: Platform.os == OperatingSystemType.macos ? @keys(Control + Shift + M) : @keys(Control + M);
                 activated => { root.open-maker(); }
@@ -699,36 +703,6 @@ export component MainWindow inherits Window {
                                 enabled: !root.blocked;
                                 clicked => { root.open-settings(); }
                                 tip: "Open Settings beside the tool window, like File > Settings and " + Keys.primary + "+, do";
-                            }
-                        }
-
-                        // The run goes on beside the tool window
-                        if root.running: HorizontalLayout {
-                            alignment: center;
-                            spacing: 6px;
-
-                            Button {
-                                width: 59px;
-                                height: 27px;
-                                text: "Undo";
-                                enabled: root.can-undo && !root.blocked;
-                                clicked => { root.undo-split(); }
-                            }
-
-                            Button {
-                                width: 59px;
-                                height: 27px;
-                                text: "Skip";
-                                enabled: root.can-skip && !root.blocked;
-                                clicked => { root.skip-split(); }
-                            }
-
-                            Button {
-                                width: 59px;
-                                height: 27px;
-                                text: "Reset";
-                                enabled: root.can-reset && !root.blocked;
-                                clicked => { root.reset(); }
                             }
                         }
                     }

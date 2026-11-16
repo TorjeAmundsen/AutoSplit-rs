@@ -456,35 +456,45 @@ fn written_recordings_are_shown_and_failures_are_errors() {
 }
 
 #[test]
-fn folder_isnt_read_while_making_split_images() {
-    // Arrange
+fn start_image_isnt_compared_while_a_tool_window_is_open() {
+    // Arrange: without the tool, the start image shows, see folder_isnt_read_again_without_reload
     let folder = start_folder("start_auto_splitter_first.png");
-    let changed = rename_start(&folder, "start_auto_splitter_second.png");
-    let events = vec![Event::Ui(UiCommand::SetMakerOpen(true)), Event::Ui(UiCommand::ReloadSplitImages)];
+    let events = vec![Event::Ui(UiCommand::SetToolOpen(true)), Event::Ui(UiCommand::ReloadSplitImages)];
 
     // Act
-    let seen = run_after(folder_profile(&folder), changed, events);
+    let seen = run(folder_profile(&folder), events);
 
     // Assert
-    assert_eq!(seen.last_current_file(), "start_auto_splitter_first.png");
+    assert_eq!(seen.last_current_file(), "-");
 }
 
 #[test]
-fn folder_is_read_once_making_split_images_ends() {
+fn closing_the_tool_windows_looks_for_the_start_image_again() {
     // Arrange
     let folder = start_folder("start_auto_splitter_first.png");
     let changed = rename_start(&folder, "start_auto_splitter_second.png");
-    let events = vec![
-        Event::Ui(UiCommand::SetMakerOpen(true)),
-        Event::Ui(UiCommand::ReloadSplitImages),
-        Event::Ui(UiCommand::SetMakerOpen(false)),
-    ];
+    let events = vec![Event::Ui(UiCommand::SetToolOpen(true)), Event::Ui(UiCommand::SetToolOpen(false))];
 
     // Act
     let seen = run_after(folder_profile(&folder), changed, events);
 
-    // Assert
+    // Assert: the folder was read again, with the start image it has now
     assert_eq!(seen.last_current_file(), "start_auto_splitter_second.png");
+}
+
+#[test]
+fn timer_start_is_ignored_while_a_tool_window_is_open() {
+    // Arrange: the split hotkey would start the run, which pauses for the start image's [inf],
+    // see endless_start_pause_keeps_the_session_running
+    let folder = start_folder("start_auto_splitter_[inf].png");
+    let events = vec![Event::Ui(UiCommand::SetToolOpen(true)), Event::Hotkey(HotkeyAction::Split, Instant::now())];
+
+    // Act
+    let seen = run(folder_profile(&folder), events);
+
+    // Assert
+    let messages = seen.current_messages.lock().unwrap().clone();
+    assert!(messages.iter().all(|message| !message.starts_with("None (Paused).")), "{messages:?}");
 }
 
 #[test]
@@ -494,7 +504,7 @@ fn half_made_folder_shows_no_error_while_making_split_images() {
     let image = BgraImage::from_raw(8, 8, [40, 50, 60, 255].repeat(64)).encode_png().unwrap();
     std::fs::write(folder.path().join("start_auto_splitter_(0.95).png"), &image).unwrap();
     std::fs::write(folder.path().join("reset_(0.95).png"), &image).unwrap();
-    let events = vec![Event::Ui(UiCommand::SetMakerOpen(true)), Event::Ui(UiCommand::ReloadSplitImages)];
+    let events = vec![Event::Ui(UiCommand::SetToolOpen(true)), Event::Ui(UiCommand::ReloadSplitImages)];
 
     // Act
     let seen = run(folder_profile(&folder), events);

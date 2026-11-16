@@ -30,6 +30,7 @@ fn configured() -> UserProfile {
         default_pause_time: 2.5,
         start_also_resets: true,
         split_image_directory: "C:/Users/Runner/Splits/OoT Any%/".into(),
+        open_screenshot: true,
         screenshot_on: vec![Command::Split, Command::Reset],
         captured_window_title: "Windowed Projector (Source) - Game Capture".into(),
         capture_region: Region { x: 12, y: 34, width: 640, height: 480 },
@@ -151,8 +152,15 @@ fn defaults_match_a_profile_saved_from_an_untouched_settings_window() {
     let defaults = UserProfile::default();
 
     // Assert
-    // The capture method default depends on the OS, so it's taken from the saved file
-    assert_eq!(UserProfile { capture_method: saved.capture_method.clone(), ..defaults }, saved);
+    // The capture method default depends on the OS, so it's taken from the saved file. Open
+    // screenshots on capture is deliberately off, where AutoSplit has it on.
+    assert!(saved.open_screenshot && !defaults.open_screenshot);
+    let defaults = UserProfile {
+        capture_method: saved.capture_method.clone(),
+        open_screenshot: saved.open_screenshot,
+        ..defaults
+    };
+    assert_eq!(defaults, saved);
 }
 
 #[test]
