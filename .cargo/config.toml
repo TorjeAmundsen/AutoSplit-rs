@@ -3,3 +3,7 @@
 # time. Apple Silicon starts at 11.0 anyway, so both halves of the universal binary match. Also
 # read by the C dependencies' builds. Matches LSMinimumSystemVersion in crates/autosplit-cli/build.rs.
 MACOSX_DEPLOYMENT_TARGET = "11.0"
+
+[alias]
+# Runs AutoSplit-rs optimized, but able to edit the source tree's presets and split library
+dev = "run --profile dev-release"

@@ -99,7 +99,7 @@ then = true
 
 ### Editing the library
 
-Debug builds (`cargo run`) can write the library, so you don't have to write `splits.toml` by hand. Release builds don't have these buttons.
+Debug builds (`cargo run`) can write the library, so you don't have to write `splits.toml` by hand. Release builds don't have these buttons. Debug builds also edit the source tree's `presets/` and `splits/` instead of copies next to the program. `cargo dev` runs an optimized build that does the same, for when the Live Tester or recording screenshots needs release speed.
 
 1. Edit a preset of the game in Make Split Images, and make the splits there.
 2. Select the first split and click **Add to Library...**. For a ready-made split of several images, raise **Images** to take the splits after it too.
