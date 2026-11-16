@@ -887,15 +887,16 @@ impl Gui {
         }
         let selected = maker.selected;
         maker.splits[selected] = SplitWork::default();
+        // The status line is hidden while editing, where the previews show the change instead
         let editing = maker.edit.is_some();
         drop(maker);
         self.picture_preset_screenshots();
-        let save = if self.state.borrow().document.profile.advanced_maker { "Save Selected" } else { "Save All" };
-        let status = match editing {
-            true => "Back to the preset's screenshot for the selected split.".to_owned(),
-            false => format!("Back to the preset's screenshot for the selected split. {save} writes its split image."),
-        };
-        self.windows.maker.set_status(status.into());
+        if !editing {
+            let save = if self.state.borrow().document.profile.advanced_maker { "Save Selected" } else { "Save All" };
+            let status =
+                format!("Back to the preset's screenshot for the selected split. {save} writes its split image.");
+            self.windows.maker.set_status(status.into());
+        }
         self.show_maker();
     }
 

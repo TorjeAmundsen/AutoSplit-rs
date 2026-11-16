@@ -33,6 +33,9 @@ export struct SplitForm {
     mask-copied: bool,
     savestate-copied: bool,
     screenshot-copied: bool,
+    // The split has a grab or picked file of its own, which comes before its screenshot, so the
+    // previews don't show the screenshot
+    screenshot-overridden: bool,
     // Compared together with others, or a second reset or start image, which the profile has
     // turned off
     grouping-off: bool,
@@ -367,6 +370,13 @@ export component SplitFormPanel inherits VerticalLayout {
                 label-width: root.label-width;
                 color: Theme.secondary-text;
                 text: "Copied into the preset when saved.";
+            }
+
+            if root.form.screenshot-overridden: FieldProblem {
+                label-width: root.label-width;
+                color: Theme.secondary-text;
+                // One line, like the other notes; the tooltip of Use Preset's says the rest
+                text: "Its grab comes first, until Use Preset's.";
             }
         }
 

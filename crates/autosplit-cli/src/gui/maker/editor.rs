@@ -29,7 +29,7 @@ use super::super::preset_form::{
 use super::super::recorder::PRIMARY;
 use super::super::recorder::key_character;
 use super::super::ui::{SplitField, SplitForm, SplitValues};
-use super::{Kept, Source, game_label, presets_folder};
+use super::{Kept, ScreenshotUse, Source, game_label, presets_folder};
 use autosplit_input::Modifiers;
 use slint::winit_030::winit::event::KeyEvent;
 use slint::winit_030::winit::keyboard::{Key, NamedKey};
@@ -528,6 +528,7 @@ impl Gui {
                 mask_copied: copied_in(source.as_deref(), &split.mask),
                 savestate_copied: copied_in(source.as_deref(), &split.savestate),
                 screenshot_copied: copied_in(source.as_deref(), &split.screenshot),
+                screenshot_overridden: maker.screenshot_use(selected) == ScreenshotUse::Overridden,
                 grouping_off: !grouping
                     && (edit.draft.preset.joins_previous(selected)
                         || edit.draft.preset.keyword_place(selected).is_some_and(|place| place > 1)),
@@ -604,7 +605,7 @@ impl Gui {
                     Ok(image) if image.is_opaque() => None,
                     Ok(_) => Some(
                         "it has transparent parts, like a split image made already. Choose the screenshot it was \
-                         made from"
+                         made from."
                             .to_owned(),
                     ),
                     Err(error) => Some(error.to_string()),
