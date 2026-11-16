@@ -205,7 +205,17 @@ build() {
     mkdir -p "$output/presets"
     local game preset
     for game in "$root/presets"/*/; do
+        [ -d "$game" ] || continue
+        # A preset kept right in presets/ from before game folders
+        if [ -f "$game/preset.toml" ]; then
+            if [ ! -f "$game/WIP.txt" ]; then
+                cp -R "${game%/}" "$output/presets/"
+            fi
+            continue
+        fi
         for preset in "$game"*/; do
+            # An empty game folder leaves the pattern as it is
+            [ -d "$preset" ] || continue
             if [ ! -f "$preset/WIP.txt" ]; then
                 mkdir -p "$output/presets/$(basename "$game")"
                 cp -R "${preset%/}" "$output/presets/$(basename "$game")/"

@@ -814,6 +814,7 @@ impl Gui {
         });
         on!(main weak, main, on_take_screenshot, () gui => gui.send(UiCommand::Screenshot));
         on!(main weak, main, on_record_screenshots, () gui => gui.send(UiCommand::ToggleRecording));
+        main.set_recording_seconds(crate::recording::MAX_LENGTH.as_secs() as i32);
         on!(main weak, main, on_crop_to_4x3, () gui => gui.send(UiCommand::CropTo4x3));
         on!(main weak, main, on_start_auto_splitter, () gui => gui.send(UiCommand::StartAutoSplitter));
         // A run goes on while a tool window is open, so these stay usable from its overlay
@@ -1435,14 +1436,17 @@ impl Gui {
             Notice::Recording(on) => {
                 self.windows.main.set_recording(on);
                 self.windows.maker.set_recording(on);
+                // Stopped, while its frames are still being written
+                if !on {
+                    self.windows.main.set_recording_writing(true);
+                    self.windows.maker.invoke_recording_writing();
+                }
             }
             Notice::Recorded { folder, message } => {
                 let name = paths::file_name_text(&folder).unwrap_or_default();
+                self.windows.main.set_recording_writing(false);
                 self.windows.main.invoke_screenshot_saved(name.into());
-                // Its line is hidden while editing
-                if !self.editing() {
-                    self.windows.maker.set_status(message.into());
-                }
+                self.windows.maker.invoke_recording_done(message.into());
             }
             Notice::Grabbed(image) => {
                 if let Some(gui) = self.me.upgrade() {

@@ -69,6 +69,10 @@ fn main() {
     main.set_recording(true);
     save(&window, PhysicalSize::new(786, 450), &folder.join("main-recording.png"));
     main.set_recording(false);
+    // Stopped, with its frames still being written
+    main.set_recording_writing(true);
+    save(&window, PhysicalSize::new(786, 450), &folder.join("main-recording-writing.png"));
+    main.set_recording_writing(false);
     // A message box drawn in the window, like under Wayland
     let question = InlineMessage {
         shown: true,
@@ -425,6 +429,9 @@ Replace them?",
     // A new split's mask and savestate, both copied in on save
     maker.set_form(SplitForm { mask_copied: true, ..maker.get_form() });
     save(&window, PhysicalSize::new(828, 726), &folder.join("maker-edit-copied.png"));
+    // A recording written while editing, which the bottom line says
+    maker.invoke_recording_done("Recorded 600 screenshots into recording_001.".into());
+    save(&window, PhysicalSize::new(828, 726), &folder.join("maker-edit-recorded.png"));
     // And a screenshot too, the most notes there can be, which still fits
     maker.set_form(SplitForm {
         screenshot: elide_middle("EnterDeku.png", FADE_MASK_NAME_CHARS).into(),

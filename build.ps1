@@ -181,6 +181,13 @@ function Build($name) {
     # stays out.
     New-Item -ItemType Directory -Path "$output/presets" | Out-Null
     foreach ($game in Get-ChildItem "$PSScriptRoot/presets" -Directory) {
+        # A preset kept right in presets/ from before game folders
+        if (Test-Path (Join-Path $game.FullName "preset.toml")) {
+            if (-not (Test-Path (Join-Path $game.FullName "WIP.txt"))) {
+                Copy-Item $game.FullName "$output/presets" -Recurse
+            }
+            continue
+        }
         foreach ($preset in Get-ChildItem $game.FullName -Directory) {
             if (Test-Path (Join-Path $preset.FullName "WIP.txt")) { continue }
             $into = Join-Path "$output/presets" $game.Name

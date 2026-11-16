@@ -45,18 +45,7 @@ pub fn save(
     image: Option<BgraImage>,
     done: impl FnOnce(Saved) + Send + 'static,
 ) -> Result<(), String> {
-    let directory = if profile.screenshot_directory.is_empty() {
-        &profile.split_image_directory
-    } else {
-        &profile.screenshot_directory
-    };
-    if directory.is_empty() {
-        return Err("Screenshot: no screenshot or split image folder is set".into());
-    }
-    let directory = PathBuf::from(directory);
-    if !directory.is_dir() {
-        return Err(format!("Screenshot: the folder {} doesn't exist", directory.display()));
-    }
+    let directory = directory(profile, "Screenshot")?;
     let image = image.ok_or("Screenshot: there's no capture to take a screenshot of")?;
     if image.is_empty() {
         return Err("Screenshot: the capture region is empty".into());
@@ -78,6 +67,24 @@ pub fn save(
         });
     });
     Ok(())
+}
+
+/// The folder screenshots and recordings go in: the screenshot folder, or the split image folder
+/// without one. Or why there's none, its errors starting with `what`, like Screenshot.
+pub fn directory(profile: &UserProfile, what: &str) -> Result<PathBuf, String> {
+    let directory = if profile.screenshot_directory.is_empty() {
+        &profile.split_image_directory
+    } else {
+        &profile.screenshot_directory
+    };
+    if directory.is_empty() {
+        return Err(format!("{what}: no screenshot or split image folder is set"));
+    }
+    let directory = PathBuf::from(directory);
+    if !directory.is_dir() {
+        return Err(format!("{what}: the folder {} doesn't exist", directory.display()));
+    }
+    Ok(directory)
 }
 
 /// Whether `name` is a screenshot's, `NNN_SplitImage.png`.

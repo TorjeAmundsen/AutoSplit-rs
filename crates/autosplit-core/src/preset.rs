@@ -622,14 +622,28 @@ pub fn unique_file_name(file: &str, taken: impl Fn(&str) -> bool) -> String {
     (1..).map(|n| format!("{stem} ({n}){extension}")).find(|name| !taken(name)).expect("some number is free")
 }
 
+/// `base`, then `base_2`, `base_3` and so on.
+fn numbered(base: &str) -> impl Iterator<Item = String> + '_ {
+    (1..).map(move |n| if n == 1 { base.to_owned() } else { format!("{base}_{n}") })
+}
+
+/// The names in `directory`, in lowercase, or none when it can't be read.
+fn names_in(directory: &Path) -> Vec<(String, String)> {
+    let Ok(entries) = std::fs::read_dir(directory) else { return Vec::new() };
+    (entries.flatten())
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
+        .map(|name| (name.to_lowercase(), name))
+        .collect()
+}
+
 /// A new folder in `directory` named like `name`, which doesn't exist yet, with a number when
-/// the name is taken.
-pub fn new_folder(directory: &Path, name: &str, fallback: &str) -> PathBuf {
+/// the name is taken. Taken ignoring case, like on Windows and macOS, so a folder made on Linux
+/// can be copied there.
+pub(crate) fn new_folder(directory: &Path, name: &str, fallback: &str) -> PathBuf {
     let base = sanitize_file_name(name, fallback);
-    let free = |folder: &str| !directory.join(folder).exists();
-    (1..)
-        .map(|n| if n == 1 { base.clone() } else { format!("{base}_{n}") })
-        .find(|folder| free(folder))
+    let taken = names_in(directory);
+    (numbered(&base))
+        .find(|folder| !taken.iter().any(|(lower, _)| *lower == folder.to_lowercase()))
         .map(|folder| directory.join(folder))
         .expect("some number is free")
 }
@@ -640,10 +654,9 @@ pub fn new_preset_folder(presets: &Path, game: &str, name: &str) -> PathBuf {
     new_folder(&game_folder(presets, game), name, "Preset")
 }
 
-/// Moves the preset folder `folder` into the folder of `game` in `presets`, after its game
-/// changed, and returns where it is now: the same folder when it's in that one already. Its old
-/// game's folder goes when that leaves it empty. Fails without changing anything when a file in
-/// it is open, as on Windows.
+/// Moves the preset folder `folder` into the folder of `game` in `presets`, and returns where it
+/// is now: the same folder when it's in that one already. Its old game's folder goes when that
+/// leaves it empty. Fails without changing anything when a file in it is open, as on Windows.
 pub fn move_to_game_folder(presets: &Path, folder: &Path, game: &str) -> Result<PathBuf, PresetError> {
     let game_folder = game_folder(presets, game);
     let old_parent = folder.parent().unwrap_or(presets);
@@ -652,27 +665,55 @@ pub fn move_to_game_folder(presets: &Path, folder: &Path, game: &str) -> Result<
     }
     let name = folder.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
     let target = new_folder(&game_folder, &name, "Preset");
+    let made = !game_folder.exists();
     std::fs::create_dir_all(&game_folder).map_err(|error| unwritable(&game_folder, error))?;
-    std::fs::rename(folder, &target).map_err(|error| PresetError::Unwritable {
-        path: folder.to_owned(),
-        reason: format!("{error}. Close any program that has a file in it open, then try again"),
-    })?;
-    // Only when empty, which removing an empty folder checks; never the presets folder itself
-    if canonical(old_parent) != canonical(presets) {
-        let _ = std::fs::remove_dir(old_parent);
+    if let Err(error) = std::fs::rename(folder, &target) {
+        if made {
+            remove_empty_folder(&game_folder);
+        }
+        return Err(PresetError::Unwritable {
+            path: folder.to_owned(),
+            reason: format!("{error}. Close any program that has a file in it open, then try again"),
+        });
     }
+    // The presets folder still has the preset in it, so it's never the one that's empty
+    remove_empty_folder(old_parent);
     Ok(target)
 }
 
-/// The folder in `presets` that `game`'s presets go in, named after the game. Not a preset's own
-/// folder, kept right in `presets` from before game folders, which gets a number instead.
-pub fn game_folder(presets: &Path, game: &str) -> PathBuf {
+/// The folder in `presets` that `game`'s presets go in, named after the game, as it's spelled on
+/// disk when it's there in another case. Not a preset's own folder, kept right in `presets` from
+/// before game folders, which gets a number instead.
+fn game_folder(presets: &Path, game: &str) -> PathBuf {
     let base = sanitize_file_name(game, "No_game");
-    (1..)
-        .map(|n| if n == 1 { base.clone() } else { format!("{base}_{n}") })
-        .map(|folder| presets.join(folder))
-        .find(|folder| !folder.join(PRESET_FILE).exists())
-        .expect("some number is free")
+    let names = names_in(presets);
+    for folder in numbered(&base) {
+        let existing = names.iter().find(|(lower, _)| *lower == folder.to_lowercase());
+        match existing {
+            Some((_, name)) if presets.join(name).join(PRESET_FILE).exists() => continue,
+            Some((_, name)) => return presets.join(name),
+            None => return presets.join(folder),
+        }
+    }
+    unreachable!("some number is free")
+}
+
+/// Files a system puts in folders by itself, which don't keep a folder from being empty:
+/// macOS Finder's and Windows Explorer's.
+const SYSTEM_FILES: [&str; 3] = [".ds_store", "thumbs.db", "desktop.ini"];
+
+/// Removes `folder` when nothing's in it but files a system puts there by itself, like the
+/// `.DS_Store` macOS writes into any folder opened in Finder.
+pub(crate) fn remove_empty_folder(folder: &Path) {
+    let names = names_in(folder);
+    let system = |lower: &str| SYSTEM_FILES.contains(&lower) || lower.starts_with("._");
+    if !names.iter().all(|(lower, _)| system(lower)) {
+        return;
+    }
+    for (_, name) in names {
+        let _ = std::fs::remove_file(folder.join(name));
+    }
+    let _ = std::fs::remove_dir(folder);
 }
 
 /// A path inside a preset's folder, as presets write it: relative, with `/`.
@@ -797,7 +838,7 @@ pub fn save_preset(source: Option<&Path>, target: &Path, preset: &Preset) -> Res
             if new_folder {
                 let _ = std::fs::remove_dir_all(target);
                 if let Some(parent) = new_parent {
-                    let _ = std::fs::remove_dir(parent);
+                    remove_empty_folder(&parent);
                 }
             } else {
                 // Files first, then the folders they were in

@@ -48,6 +48,12 @@ const MOLOK_GAP: Duration = Duration::from_millis(5);
 /// How often listening for LiveSplit One is tried again after the port was taken.
 const LIVESPLIT_ONE_RETRY: Duration = Duration::from_secs(5);
 
+/// What recording says when the capture region isn't inside the capture's frames.
+const REGION_OUTSIDE: &str =
+    "Record Screenshots: the capture region isn't inside the capture's frames. Set it in the region boxes first.";
+/// How long quitting waits for a recording's frames to be written.
+const WRITING_WAIT: Duration = Duration::from_secs(10);
+
 pub enum Event {
     /// A hotkey, and when it was pressed. The press time tells autosplit's own presses apart even
     /// when the event waited behind something slow, like loading the split image folder.
@@ -213,6 +219,8 @@ pub struct Session {
     next_view: Instant,
     /// Screenshots being recorded.
     recording: Option<Recording>,
+    /// The threads still writing the frames of recordings that stopped.
+    writing: Vec<std::thread::JoinHandle<()>>,
     quit: bool,
 }
 
@@ -259,6 +267,7 @@ impl Session {
             timer: PreciseTimer::default(),
             next_view: now,
             recording: None,
+            writing: Vec::new(),
             quit: false,
         }
     }
@@ -439,6 +448,23 @@ impl Session {
 
     /// Runs until stopped, or until `receiver`'s senders are gone.
     pub fn run(&mut self, receiver: &mpsc::Receiver<Event>) {
+        self.run_loop(receiver);
+        self.finish_writing();
+    }
+
+    /// Ends a recording going on and waits a while for the frames still being written, which
+    /// quitting would otherwise cut off.
+    fn finish_writing(&mut self) {
+        if let Some(recording) = self.recording.take() {
+            self.writing.push(recording.stop());
+        }
+        let deadline = Instant::now() + WRITING_WAIT;
+        while self.writing.iter().any(|writers| !writers.is_finished()) && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+
+    fn run_loop(&mut self, receiver: &mpsc::Receiver<Event>) {
         while !self.quit {
             // Events first, so slow comparisons can't keep hotkeys and LiveSplit waiting
             while let Ok(event) = receiver.try_recv() {
@@ -475,7 +501,9 @@ impl Session {
             // power, so precision is asked for while comparing and just before other wakeups
             let mut precise = self.runner.needs_frames(self.elapsed())
                 || (self.tester.is_some() && self.device.receiving())
-                || self.recording.is_some();
+                || self.recording.is_some()
+                // Also while its frames are written, which macOS would otherwise slow down
+                || !self.writing.is_empty();
             // An endless pause, like `[inf]`, is past any Instant: it never wakes the loop
             if let Some(due) = self.tester.as_ref().and_then(|tester| self.started.checked_add(tester.next_wakeup())) {
                 wake = wake.min(due);
@@ -1013,18 +1041,18 @@ impl Session {
         if self.recording.is_some() {
             return self.stop_recording("Recording stopped");
         }
-        if self.device.latest().filter(|_| self.device.receiving()).is_none() {
+        let Some(frame) = self.device.latest().filter(|_| self.device.receiving()) else {
             return self.dialog("Record Screenshots: there's no capture to record");
-        }
-        let directory = if self.profile.screenshot_directory.is_empty() {
-            &self.profile.split_image_directory
-        } else {
-            &self.profile.screenshot_directory
         };
-        let directory = PathBuf::from(directory);
-        if directory.as_os_str().is_empty() || !directory.is_dir() {
-            return self.dialog("Record Screenshots: set a screenshot or split image folder that exists first");
+        // Or every frame would be left out, for an empty folder
+        if frame.region_view(&self.profile.capture_region).is_none() {
+            return self.dialog(REGION_OUTSIDE);
         }
+        drop(frame);
+        let directory = match screenshot::directory(&self.profile, "Record Screenshots") {
+            Ok(directory) => directory,
+            Err(error) => return self.dialog(error),
+        };
         let events = self.events.clone();
         let done = move |summary| {
             let _ = events.send(Event::Recorded(summary));
@@ -1048,26 +1076,33 @@ impl Session {
     fn record(&mut self, now: Instant) {
         let Some(recording) = &mut self.recording else { return };
         if recording.expired(now) {
-            return self.stop_recording("Recording stopped by itself after its longest");
+            let why = format!("Recording stopped by itself after {} seconds", recording::MAX_LENGTH.as_secs());
+            return self.stop_recording(&why);
         }
         if !self.device.receiving() {
             return self.stop_recording("Recording stopped, since the capture stopped");
         }
         let Some(frame) = self.device.latest() else { return };
-        let region = &self.profile.capture_region;
-        recording.offer(now, frame.sequence(), || frame.region_view(region).map(|view| view.to_image()));
+        let Some(view) = frame.region_view(&self.profile.capture_region) else {
+            drop(frame);
+            self.stop_recording("Recording stopped, since the capture region left the capture's frames");
+            return self.dialog(REGION_OUTSIDE);
+        };
+        recording.offer(now, frame.sequence(), || Some(view.to_image()));
     }
 
     /// Ends the recording. Its frames are still being written, which [`Event::Recorded`] says
     /// the end of.
     fn stop_recording(&mut self, why: &str) {
         let Some(recording) = self.recording.take() else { return };
-        recording.stop();
+        self.writing.push(recording.stop());
         self.console.log(format_args!("{why}, writing what's left of it"));
         self.notify(Notice::Recording(false));
     }
 
     fn recorded(&mut self, summary: recording::Summary) {
+        // Its writers are done, or about to be, having just sent this
+        self.writing.retain(|writers| !writers.is_finished());
         let message = summary.message();
         match &summary.error {
             Some(_) => self.dialog(&message),

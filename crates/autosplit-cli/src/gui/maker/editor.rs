@@ -706,17 +706,23 @@ impl Gui {
             Ok(saved) => saved,
             Err(error) => return self.show_message(Message::error(format!("Couldn't save the preset. {error}"))),
         };
-        // Into its new game's folder, once it's saved
+        // Into its game's folder, once it's saved: when its game changed, or when it's in another
+        // game's folder still, after moving it failed the last time. A preset kept right in the
+        // presets folder from before game folders stays there until its game changes.
+        let presets = presets_folder();
+        let game_changed = old_game.is_some_and(|old| game_key(&old) != game_key(&preset.game));
+        let in_game_folder = target.parent().is_some_and(|parent| canonical(parent) != canonical(&presets));
         let mut moved_problem = None;
-        let target = match old_game.filter(|old| game_key(old) != game_key(&preset.game)) {
-            Some(_) => match move_to_game_folder(&presets_folder(), &target, &preset.game) {
+        let target = if in_place && (game_changed || in_game_folder) {
+            match move_to_game_folder(&presets, &target, &preset.game) {
                 Ok(moved) => moved,
                 Err(error) => {
                     moved_problem = Some(error);
                     target
                 }
-            },
-            None => target,
+            }
+        } else {
+            target
         };
         // Saved marks are told by their screenshot's path, so they follow it to where it is now,
         // and go when the split's screenshot is another one
@@ -735,7 +741,8 @@ impl Gui {
         self.windows.maker.set_status(format!("Saved the preset {}.", preset.name).into());
         if let Some(error) = moved_problem {
             let text = format!(
-                "Saved the preset, but it stays in its old game's folder, since it couldn't be moved to {}'s. {error}",
+                "Saved the preset, but it stays in its old game's folder, since it couldn't be moved to {}'s. {error}, \
+                 by saving again.",
                 preset.game
             );
             self.show_message(Message::warning(text));

@@ -68,7 +68,7 @@ pub fn add_ready_made(
             });
         }
         None => {
-            let folder = new_folder(directory, game, "Preset");
+            let folder = new_folder(directory, game, "No_game");
             std::fs::create_dir_all(&folder).map_err(|error| unwritable(&folder, error))?;
             (folder, SplitLibrary { game: game.to_owned(), splits: Vec::new() }, true)
         }

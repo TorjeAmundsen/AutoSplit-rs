@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
-use autosplit::recording::{MAX_LENGTH, Recording, Summary, claim_folder};
+use autosplit::recording::{MAX_LENGTH, Recording, Summary};
 use autosplit_core::image::BgraImage;
 use test_case::test_case;
 
@@ -28,11 +28,41 @@ fn each_recording_gets_a_folder_of_its_own() {
     std::fs::create_dir(directory.path().join("recording_001")).unwrap();
 
     // Act
-    let folder = claim_folder(directory.path()).unwrap();
+    let recording = Recording::start(directory.path(), 60, Instant::now(), |_| {}).unwrap();
 
     // Assert
-    assert_eq!(folder, directory.path().join("recording_002"));
-    assert!(folder.is_dir());
+    assert_eq!(recording.folder(), directory.path().join("recording_002"));
+    assert!(recording.folder().is_dir());
+}
+
+#[test]
+fn a_frame_due_before_the_capture_sends_one_is_looked_for_again_shortly() {
+    // Arrange: 10 fps, the first frame saved, and the next one due at 100 ms
+    let directory = tempfile::tempdir().unwrap();
+    let start = Instant::now();
+    let mut recording = Recording::start(directory.path(), 10, start, |_| {}).unwrap();
+    recording.offer(start, 1, frame);
+    let due = start + Duration::from_millis(100);
+
+    // Act: due, but still the same frame
+    recording.offer(due, 1, frame);
+
+    // Assert: later than now, so the session doesn't keep waking up to look
+    assert!(recording.next_wakeup() > due);
+}
+
+#[test]
+fn a_frame_rate_a_profile_file_sets_too_high_is_the_highest_settings_allows() {
+    // Arrange: far past 240, where a frame would last no time at all
+    let directory = tempfile::tempdir().unwrap();
+    let start = Instant::now();
+    let mut recording = Recording::start(directory.path(), i64::MAX, start, |_| {}).unwrap();
+
+    // Act
+    recording.offer(start, 1, frame);
+
+    // Assert: the next frame is due a 240th of a second later
+    assert_eq!(recording.next_wakeup(), start + Duration::from_secs(1) / 240);
 }
 
 #[test]
@@ -81,7 +111,9 @@ fn a_recording_stops_by_itself_after_the_longest_it_runs() {
 #[test_case(600, 0, None => "Recorded 600 screenshots into recording_001."; "every frame")]
 #[test_case(1, 0, None => "Recorded 1 screenshot into recording_001."; "one frame")]
 #[test_case(590, 10, None => "Recorded 590 screenshots into recording_001. 10 frames were skipped, since saving fell behind."; "saving fell behind")]
-#[test_case(0, 0, Some("disk full") => "Recorded 0 screenshots into recording_001. Some couldn't be written: disk full"; "frames that couldn't be written")]
+#[test_case(599, 1, None => "Recorded 599 screenshots into recording_001. 1 frame was skipped, since saving fell behind."; "one frame skipped")]
+#[test_case(598, 0, Some("disk full") => "Recorded 598 screenshots into recording_001. Some couldn't be written: disk full"; "frames that couldn't be written")]
+#[test_case(0, 0, Some("disk full") => "Couldn't write the screenshots into recording_001: disk full"; "none could be written")]
 fn the_summary_says_what_was_recorded(written: usize, dropped: usize, error: Option<&str>) -> String {
     // Arrange
     let summary = Summary {

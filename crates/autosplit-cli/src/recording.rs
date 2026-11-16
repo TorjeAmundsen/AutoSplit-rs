@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{Receiver, SyncSender, TrySendError};
 use std::sync::{Arc, Mutex};
+use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 use autosplit_core::image::BgraImage;
@@ -18,6 +19,10 @@ use autosplit_core::image::BgraImage;
 pub const MAX_LENGTH: Duration = Duration::from_secs(10);
 /// The most encoding threads, which a 1080p frame at 60 fps needs a few of.
 const MAX_WORKERS: usize = 8;
+/// The frame rates a recording takes, like the FPS limit in Settings, whatever a profile file says.
+const FPS: std::ops::RangeInclusive<i64> = 1..=240;
+/// How soon to look again when a frame is due but the capture hasn't sent a new one yet.
+const NEW_FRAME_POLL: Duration = Duration::from_millis(1);
 
 /// How a recording went, once every frame is written.
 #[derive(Debug, PartialEq, Eq)]
@@ -34,11 +39,16 @@ impl Summary {
     /// The line for the log and the window.
     pub fn message(&self) -> String {
         let name = self.folder.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
+        if let (0, Some(error)) = (self.written, &self.error) {
+            return format!("Couldn't write the screenshots into {name}: {error}");
+        }
         let frames =
             if self.written == 1 { "1 screenshot".to_owned() } else { format!("{} screenshots", self.written) };
         let mut text = format!("Recorded {frames} into {name}.");
-        if self.dropped > 0 {
-            text += &format!(" {} frames were skipped, since saving fell behind.", self.dropped);
+        match self.dropped {
+            0 => {}
+            1 => text += " 1 frame was skipped, since saving fell behind.",
+            dropped => text += &format!(" {dropped} frames were skipped, since saving fell behind."),
         }
         if let Some(error) = &self.error {
             text += &format!(" Some couldn't be written: {error}");
@@ -47,17 +57,20 @@ impl Summary {
     }
 }
 
-/// A recording going on. Dropping it, or [`Recording::stop`], ends it: the frames queued are
-/// still written, and then `done` gets the [`Summary`].
+/// A recording going on. [`Recording::stop`] ends it: the frames queued are still written, and
+/// then `done` gets the [`Summary`].
 pub struct Recording {
     folder: PathBuf,
     started: Instant,
     interval: Duration,
     next_due: Instant,
+    /// When to look for a new frame again, while one is due and the capture hasn't sent it.
+    poll_at: Instant,
     last_sequence: Option<u64>,
     next_number: usize,
     dropped: Arc<AtomicUsize>,
-    queue: Option<SyncSender<(usize, BgraImage)>>,
+    queue: SyncSender<(usize, BgraImage)>,
+    writers: JoinHandle<()>,
 }
 
 impl Recording {
@@ -72,24 +85,30 @@ impl Recording {
         let folder = claim_folder(directory).map_err(|error| {
             format!("Record Screenshots: couldn't create a folder in {}: {error}", directory.display())
         })?;
-        let fps = fps.max(1) as usize;
-        let interval = Duration::from_secs_f64(1.0 / fps as f64);
+        let fps = fps.clamp(*FPS.start(), *FPS.end()) as u32;
+        let interval = Duration::from_secs(1) / fps;
         // About a second of frames, so a slow moment doesn't drop any, but no more
-        let (queue, frames) = std::sync::mpsc::sync_channel(fps.clamp(1, 240));
+        let (queue, frames) = std::sync::mpsc::sync_channel(fps as usize);
         let dropped = Arc::new(AtomicUsize::new(0));
-        let workers =
-            std::thread::available_parallelism().map_or(2, |count| count.get().saturating_sub(1)).clamp(1, MAX_WORKERS);
-        spawn_writers(folder.clone(), frames, workers, dropped.clone(), done)
-            .map_err(|error| format!("Record Screenshots: couldn't start writing frames: {error}"))?;
+        let writers = match spawn_writers(folder.clone(), frames, dropped.clone(), done) {
+            Ok(writers) => writers,
+            Err(error) => {
+                // Nothing's in it, and nothing will be
+                let _ = std::fs::remove_dir(&folder);
+                return Err(format!("Record Screenshots: couldn't start writing frames: {error}"));
+            }
+        };
         Ok(Self {
             folder,
             started: now,
             interval,
             next_due: now,
+            poll_at: now,
             last_sequence: None,
             next_number: 1,
             dropped,
-            queue: Some(queue),
+            queue,
+            writers,
         })
     }
 
@@ -104,22 +123,27 @@ impl Recording {
 
     /// When it next wants a frame, or stops.
     pub fn next_wakeup(&self) -> Instant {
-        self.next_due.min(self.started + MAX_LENGTH)
+        self.next_due.max(self.poll_at).min(self.started + MAX_LENGTH)
     }
 
     /// Saves the frame `sequence` when one is due and it's a new frame. `image` makes the capture
     /// region's picture of it, only then.
     pub fn offer(&mut self, now: Instant, sequence: u64, image: impl FnOnce() -> Option<BgraImage>) {
-        if now < self.next_due || self.last_sequence == Some(sequence) {
+        if now < self.next_due {
+            return;
+        }
+        // Due, but the capture hasn't sent another frame yet: looked for again shortly, not
+        // right away, which would keep the session busy until it comes
+        if self.last_sequence == Some(sequence) {
+            self.poll_at = now + NEW_FRAME_POLL;
             return;
         }
         // On a grid from the start, so frames stay evenly spaced when the loop wakes late
-        while self.next_due <= now {
-            self.next_due += self.interval;
-        }
+        let behind = (now - self.next_due).as_nanos() / self.interval.as_nanos().max(1);
+        self.next_due += self.interval * (behind as u32 + 1);
         self.last_sequence = Some(sequence);
-        let (Some(queue), Some(image)) = (&self.queue, image()) else { return };
-        match queue.try_send((self.next_number, image)) {
+        let Some(image) = image() else { return };
+        match self.queue.try_send((self.next_number, image)) {
             Ok(()) => self.next_number += 1,
             Err(TrySendError::Full(_) | TrySendError::Disconnected(_)) => {
                 self.dropped.fetch_add(1, Ordering::Relaxed);
@@ -127,15 +151,17 @@ impl Recording {
         }
     }
 
-    /// Ends the recording. The frames queued are still written.
-    pub fn stop(mut self) {
-        self.queue = None;
+    /// Ends the recording. The frames queued are still written by the thread this returns, which
+    /// gives the summary once they are.
+    pub fn stop(self) -> JoinHandle<()> {
+        drop(self.queue);
+        self.writers
     }
 }
 
 /// A new `recording_NNN` folder in `directory`, the first number free, made here so two
 /// recordings can't take the same one.
-pub fn claim_folder(directory: &Path) -> std::io::Result<PathBuf> {
+fn claim_folder(directory: &Path) -> std::io::Result<PathBuf> {
     for number in 1.. {
         let folder = directory.join(format!("recording_{number:03}"));
         match std::fs::create_dir(&folder) {
@@ -147,51 +173,62 @@ pub fn claim_folder(directory: &Path) -> std::io::Result<PathBuf> {
     unreachable!("some number is free")
 }
 
-/// Starts `workers` threads that encode and write the frames of `frames` into `folder`, and a
-/// thread that waits for them and then gives `done` the summary.
+/// Starts a thread that encodes and writes the frames of `frames` into `folder` on several
+/// threads of its own, then gives `done` the summary.
 fn spawn_writers(
     folder: PathBuf,
     frames: Receiver<(usize, BgraImage)>,
-    workers: usize,
     dropped: Arc<AtomicUsize>,
     done: impl FnOnce(Summary) + Send + 'static,
-) -> std::io::Result<()> {
-    let frames = Arc::new(Mutex::new(frames));
-    let written = Arc::new(AtomicUsize::new(0));
-    let error: Arc<Mutex<Option<String>>> = Arc::default();
-    let mut threads = Vec::new();
-    for index in 0..workers {
-        let (frames, written, error, folder) = (frames.clone(), written.clone(), error.clone(), folder.clone());
-        threads.push(std::thread::Builder::new().name(format!("recording {index}")).spawn(move || {
-            loop {
-                // Only while taking the next frame, so the others encode meanwhile
-                let next = frames.lock().map(|frames| frames.recv());
-                let Ok(Ok((number, image))) = next else { return };
-                let path = folder.join(format!("{number:04}.png"));
-                let saved = image
-                    .encode_png()
-                    .map_err(|error| error.to_string())
-                    .and_then(|png| std::fs::write(&path, png).map_err(|error| format!("{}: {error}", path.display())));
-                match saved {
-                    Ok(()) => {
-                        written.fetch_add(1, Ordering::Relaxed);
-                    }
-                    Err(reason) => {
-                        if let Ok(mut error) = error.lock() {
-                            error.get_or_insert(reason);
-                        }
-                    }
-                }
-            }
-        })?);
-    }
+) -> std::io::Result<JoinHandle<()>> {
+    let workers =
+        std::thread::available_parallelism().map_or(2, |count| count.get().saturating_sub(1)).clamp(1, MAX_WORKERS);
     std::thread::Builder::new().name("recording".into()).spawn(move || {
-        for thread in threads {
-            let _ = thread.join();
-        }
-        let error = error.lock().ok().and_then(|mut error| error.take());
-        let (written, dropped) = (written.load(Ordering::Relaxed), dropped.load(Ordering::Relaxed));
-        done(Summary { folder, written, dropped, error });
-    })?;
-    Ok(())
+        let frames = Mutex::new(frames);
+        let written = AtomicUsize::new(0);
+        let error: Mutex<Option<String>> = Mutex::default();
+        let note = |reason: String| {
+            if let Ok(mut error) = error.lock() {
+                error.get_or_insert(reason);
+            }
+        };
+        std::thread::scope(|scope| {
+            let mut started = 0;
+            for index in 0..workers {
+                let spawned =
+                    std::thread::Builder::new().name(format!("recording {index}")).spawn_scoped(scope, || {
+                        loop {
+                            // Only while taking the next frame, so the others encode meanwhile
+                            let next = frames.lock().map(|frames| frames.recv());
+                            let Ok(Ok((number, image))) = next else { return };
+                            match write_frame(&folder, number, &image) {
+                                Ok(()) => {
+                                    written.fetch_add(1, Ordering::Relaxed);
+                                }
+                                Err(reason) => note(reason),
+                            }
+                        }
+                    });
+                started += usize::from(spawned.is_ok());
+            }
+            if started == 0 {
+                note("no thread could be started to write them".to_owned());
+            }
+        });
+        let error = error.into_inner().ok().flatten();
+        done(Summary { folder, written: written.into_inner(), dropped: dropped.load(Ordering::Relaxed), error });
+    })
+}
+
+/// Writes `image` as frame `number` in `folder`, through a temporary file, so a frame cut off
+/// halfway, like when the program closes, is never left looking like a whole one.
+fn write_frame(folder: &Path, number: usize, image: &BgraImage) -> Result<(), String> {
+    let path = folder.join(format!("{number:04}.png"));
+    let temporary = folder.join(format!("{number:04}.png.tmp"));
+    let png = image.encode_png().map_err(|error| error.to_string())?;
+    let written = std::fs::write(&temporary, png).and_then(|()| std::fs::rename(&temporary, &path));
+    written.map_err(|error| {
+        let _ = std::fs::remove_file(&temporary);
+        format!("{}: {error}", path.display())
+    })
 }

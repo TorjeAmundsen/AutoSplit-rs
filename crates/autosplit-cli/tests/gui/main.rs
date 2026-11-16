@@ -476,7 +476,8 @@ fn hotkeys_note_when_livesplit_controls_the_timer() {
     // Assert
     assert_eq!(
         shown.hotkeys_note,
-        "LiveSplit or LiveSplit One controls the timer, so only the screenshot and auto reset hotkeys are used."
+        "LiveSplit or LiveSplit One controls the timer, so only the screenshot, auto reset and record screenshots \
+         hotkeys are used."
     );
 }
 

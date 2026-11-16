@@ -197,7 +197,7 @@ impl Shown {
                     "Molok gets signals, so these hotkeys only tell autosplit what you did to the timer."
                 }
                 TimerLink::AutoControlled | TimerLink::LiveSplitOne => {
-                    "LiveSplit or LiveSplit One controls the timer, so only the screenshot and auto reset hotkeys are used."
+                    "LiveSplit or LiveSplit One controls the timer, so only the screenshot, auto reset and record screenshots hotkeys are used."
                 }
             },
             timer_connection: match profile.timer_connection {

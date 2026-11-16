@@ -36,7 +36,7 @@ The part of the capture device's picture that split images are compared with, us
 
 Take Screenshot saves the capture region as the next free `NNN_SplitImage.png` in the screenshot folder, or in the split image folder when none is set. Its file name shows under the button for a few seconds.
 
-Record saves every frame of the capture region at the FPS limit, as numbered PNG files in a new folder like `recording_001` in the same folder. Use it to pick the exact frame for a split image in a game that can't advance one frame at a time. Press it again, or the Record Screenshots hotkey, to stop. It stops by itself after 10 seconds. While it records, the button reads Stop Recording with a red note under it, and Make Split Images says Recording screenshots in red. When the frames are written, the bottom line of Make Split Images says how many. If saving falls behind, some frames are skipped, and it says how many.
+Record saves every frame of the capture region at the FPS limit, as numbered PNG files in a new folder like `recording_001` in the same folder. Use it to pick the exact frame for a split image in a game that can't advance one frame at a time. Press it again, or the Record Screenshots hotkey, to stop. While Make Split Images is open, the main window hides the button, so use the hotkey there. It stops by itself after 10 seconds. While it records, the button reads Stop Recording with a red note under it, and Make Split Images says Recording screenshots in red. When the frames are written, the bottom line of Make Split Images says how many. If saving falls behind, some frames are skipped, and it says how many.
 
 ### Current image
 

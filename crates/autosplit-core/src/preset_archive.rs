@@ -11,8 +11,8 @@ use std::time::Duration;
 use crate::image::BgraImage;
 use crate::preset::{
     PRESET_FILE, Preset, PresetError, SAVESTATE_NOTE, SAVESTATE_NOTE_FILE, SAVESTATES_FOLDER, SplitFile,
-    leave_for_deleting, move_aside, new_preset_folder, remove_leftovers, screenshot_problem, unreadable, unwritable,
-    write_through_temporary,
+    leave_for_deleting, move_aside, new_preset_folder, remove_empty_folder, remove_leftovers, screenshot_problem,
+    unreadable, unwritable, write_through_temporary,
 };
 
 /// The most files an archive can have, far more than any preset uses.
@@ -232,9 +232,13 @@ impl PresetArchive {
                 let target = new_preset_folder(presets, &self.preset.game, &self.preset.name);
                 // Its game's folder, which a new game doesn't have yet
                 let game = target.parent().unwrap_or(presets);
+                let made = !game.exists();
                 let moved = std::fs::create_dir_all(game)
                     .and_then(|()| std::fs::rename(&staging, &target))
                     .map_err(|error| unwritable(&target, error));
+                if moved.is_err() && made {
+                    remove_empty_folder(game);
+                }
                 (target, moved)
             }
         };

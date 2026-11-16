@@ -170,6 +170,30 @@ export component MakerWindow inherits Window {
     in property <bool> blocked;
     // Screenshots are being recorded, which the bottom line says in red
     in property <bool> recording;
+    // What the bottom line says of a recording once it stopped: that its frames are being
+    // written, then how many were, for a few seconds
+    property <string> recording-note;
+
+    public function recording-writing() {
+        root.recording-note = "Writing the recorded screenshots...";
+        recording-note-timer.running = false;
+    }
+
+    public function recording-done(text: string) {
+        root.recording-note = text;
+        // Restarting only resets a running timer, it doesn't start a stopped one
+        recording-note-timer.running = true;
+        recording-note-timer.restart();
+    }
+
+    recording-note-timer := Timer {
+        interval: 8s;
+        running: false;
+        triggered => {
+            self.running = false;
+            root.recording-note = "";
+        }
+    }
     // A message box drawn in the window, under Wayland, instead of the message window
     in property <InlineMessage> inline-message;
     // Its button, or -1 for closing it
@@ -954,6 +978,12 @@ export component MakerWindow inherits Window {
                 text: "Recording screenshots";
             }
 
+            // Also while editing, where the status line is hidden
+            if !root.recording && root.recording-note != "": Label {
+                color: Theme.secondary-text;
+                text: root.recording-note;
+            }
+
             // Also beside the grouping warning, which is short so what was done still shows
             if root.preset-problem == "": Label {
                 horizontal-stretch: 1;
@@ -1044,6 +1074,12 @@ export component MakerWindow inherits Window {
             if root.recording: Label {
                 color: Theme.error;
                 text: "Recording screenshots";
+            }
+
+            // Also while editing, where the status line is hidden
+            if !root.recording && root.recording-note != "": Label {
+                color: Theme.secondary-text;
+                text: root.recording-note;
             }
 
             Label {
