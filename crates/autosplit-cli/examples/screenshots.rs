@@ -65,6 +65,10 @@ fn main() {
     main.set_window_title("AutoSplit v0.4.0".into());
     main.show().unwrap();
     save(&window, PhysicalSize::new(786, 450), &folder.join("main.png"));
+    // Recording screenshots, with its red note under the button
+    main.set_recording(true);
+    save(&window, PhysicalSize::new(786, 450), &folder.join("main-recording.png"));
+    main.set_recording(false);
     // A message box drawn in the window, like under Wayland
     let question = InlineMessage {
         shown: true,
@@ -362,7 +366,7 @@ Replace them?",
         mask: elide_middle("006_a_button_flip_after_the_door.png", MASK_NAME_CHARS).into(),
         savestate: elide_middle("006 enter deku.gzs", SAVESTATE_NAME_CHARS).into(),
         screenshot: "".into(),
-        mask_path: "presets/No_Wrong_Warp/006_a_button_flip.png".into(),
+        mask_path: "presets/The_Legend_of_Zelda_Ocarina_of_Time/No_Wrong_Warp/006_a_button_flip.png".into(),
         savestate_path: "C:/Users/Runner/gz/006 enter deku.gzs".into(),
         screenshot_path: "".into(),
         mask_copied: false,

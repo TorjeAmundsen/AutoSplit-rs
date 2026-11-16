@@ -168,6 +168,8 @@ export component MakerWindow inherits Window {
     in property <string> preset-problem;
     // A message box is open, which AutoSplit's are modal
     in property <bool> blocked;
+    // Screenshots are being recorded, which the bottom line says in red
+    in property <bool> recording;
     // A message box drawn in the window, under Wayland, instead of the message window
     in property <InlineMessage> inline-message;
     // Its button, or -1 for closing it
@@ -946,6 +948,12 @@ export component MakerWindow inherits Window {
             height: 24px;
             spacing: 6px;
 
+            // Hard to miss, so a recording isn't left running by accident
+            if root.recording: Label {
+                color: Theme.error;
+                text: "Recording screenshots";
+            }
+
             // Also beside the grouping warning, which is short so what was done still shows
             if root.preset-problem == "": Label {
                 horizontal-stretch: 1;
@@ -1030,6 +1038,12 @@ export component MakerWindow inherits Window {
                         }
                     }
                 }
+            }
+
+            // Hard to miss, so a recording isn't left running by accident
+            if root.recording: Label {
+                color: Theme.error;
+                text: "Recording screenshots";
             }
 
             Label {

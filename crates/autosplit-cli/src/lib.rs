@@ -29,6 +29,7 @@ pub mod livesplit_one;
 pub mod molok;
 pub mod platform;
 pub mod profile;
+pub mod recording;
 pub mod run;
 pub mod screenshot;
 pub mod session;

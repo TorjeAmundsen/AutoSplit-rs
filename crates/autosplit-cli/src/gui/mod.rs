@@ -75,7 +75,7 @@ impl Error {
 }
 
 /// The hotkeys in the settings window, in AutoSplit's order and with its labels.
-pub const HOTKEY_ROWS: [(HotkeyAction, &str); 7] = [
+pub const HOTKEY_ROWS: [(HotkeyAction, &str); 8] = [
     (HotkeyAction::Split, "Start / Split:"),
     (HotkeyAction::Reset, "Reset:"),
     (HotkeyAction::UndoSplit, "Undo Split:"),
@@ -83,6 +83,7 @@ pub const HOTKEY_ROWS: [(HotkeyAction, &str); 7] = [
     (HotkeyAction::Pause, "Pause:"),
     (HotkeyAction::Screenshot, "Screenshot:"),
     (HotkeyAction::ToggleAutoResetImage, "Toggle auto\nreset image"),
+    (HotkeyAction::RecordScreenshots, "Record\nscreenshots"),
 ];
 
 /// Help > View Help and the settings' Tutorial button, at this version's release tag so it
@@ -812,6 +813,7 @@ impl Gui {
             gui.send_profile(false);
         });
         on!(main weak, main, on_take_screenshot, () gui => gui.send(UiCommand::Screenshot));
+        on!(main weak, main, on_record_screenshots, () gui => gui.send(UiCommand::ToggleRecording));
         on!(main weak, main, on_crop_to_4x3, () gui => gui.send(UiCommand::CropTo4x3));
         on!(main weak, main, on_start_auto_splitter, () gui => gui.send(UiCommand::StartAutoSplitter));
         // A run goes on while a tool window is open, so these stay usable from its overlay
@@ -1429,6 +1431,18 @@ impl Gui {
             Notice::ScreenshotSaved(path) => {
                 let name = paths::file_name_text(&path).unwrap_or_default();
                 self.windows.main.invoke_screenshot_saved(name.into());
+            }
+            Notice::Recording(on) => {
+                self.windows.main.set_recording(on);
+                self.windows.maker.set_recording(on);
+            }
+            Notice::Recorded { folder, message } => {
+                let name = paths::file_name_text(&folder).unwrap_or_default();
+                self.windows.main.invoke_screenshot_saved(name.into());
+                // Its line is hidden while editing
+                if !self.editing() {
+                    self.windows.maker.set_status(message.into());
+                }
             }
             Notice::Grabbed(image) => {
                 if let Some(gui) = self.me.upgrade() {

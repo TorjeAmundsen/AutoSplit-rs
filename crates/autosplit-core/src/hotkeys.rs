@@ -18,10 +18,12 @@ pub enum HotkeyAction {
     Pause,
     Screenshot,
     ToggleAutoResetImage,
+    /// Starts or stops recording screenshots. AutoSplit-rs only.
+    RecordScreenshots,
 }
 
 impl HotkeyAction {
-    pub const ALL: [HotkeyAction; 7] = [
+    pub const ALL: [HotkeyAction; 8] = [
         Self::Split,
         Self::Reset,
         Self::SkipSplit,
@@ -29,6 +31,7 @@ impl HotkeyAction {
         Self::Pause,
         Self::Screenshot,
         Self::ToggleAutoResetImage,
+        Self::RecordScreenshots,
     ];
 
     /// The hotkeys AutoSplit presses for the timer.
@@ -43,6 +46,7 @@ impl HotkeyAction {
             Self::Pause => &profile.pause_hotkey,
             Self::Screenshot => &profile.screenshot_hotkey,
             Self::ToggleAutoResetImage => &profile.toggle_auto_reset_image_hotkey,
+            Self::RecordScreenshots => &profile.record_screenshots_hotkey,
         }
     }
 
@@ -55,6 +59,7 @@ impl HotkeyAction {
             Self::Pause => &mut profile.pause_hotkey,
             Self::Screenshot => &mut profile.screenshot_hotkey,
             Self::ToggleAutoResetImage => &mut profile.toggle_auto_reset_image_hotkey,
+            Self::RecordScreenshots => &mut profile.record_screenshots_hotkey,
         }
     }
 
@@ -81,13 +86,15 @@ impl HotkeyAction {
             Self::Pause => "pause",
             Self::Screenshot => "screenshot",
             Self::ToggleAutoResetImage => "toggle auto reset image",
+            Self::RecordScreenshots => "record screenshots",
         }
     }
 
-    /// When the timer is synced, only the screenshot and auto reset hotkeys are listened for,
-    /// like AutoSplit's settings window allows when auto-controlled.
+    /// When the timer is synced, only the screenshot, auto reset and recording hotkeys are
+    /// listened for, like AutoSplit's settings window allows when auto-controlled. Recording
+    /// is AutoSplit-rs's own and never tells the timer anything.
     pub fn listened(self, link: TimerLink) -> bool {
-        !link.timer_synced() || matches!(self, Self::Screenshot | Self::ToggleAutoResetImage)
+        !link.timer_synced() || matches!(self, Self::Screenshot | Self::ToggleAutoResetImage | Self::RecordScreenshots)
     }
 }
 

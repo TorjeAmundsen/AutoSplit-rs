@@ -36,6 +36,8 @@ The part of the capture device's picture that split images are compared with, us
 
 Take Screenshot saves the capture region as the next free `NNN_SplitImage.png` in the screenshot folder, or in the split image folder when none is set. Its file name shows under the button for a few seconds.
 
+Record saves every frame of the capture region at the FPS limit, as numbered PNG files in a new folder like `recording_001` in the same folder. Use it to pick the exact frame for a split image in a game that can't advance one frame at a time. Press it again, or the Record Screenshots hotkey, to stop. It stops by itself after 10 seconds. While it records, the button reads Stop Recording with a red note under it, and Make Split Images says Recording screenshots in red. When the frames are written, the bottom line of Make Split Images says how many. If saving falls behind, some frames are skipped, and it says how many.
+
 ### Current image
 
 The split image being compared, with its file name above it. `<` and `>` move to the previous and next image without telling the timer.
@@ -246,7 +248,7 @@ The defaults for split images whose file names don't set their own.
 
 ### Hotkeys
 
-The split, reset, undo, skip and pause hotkeys must match your timer's, with global hotkeys turned on in the timer. AutoSplit-rs presses them and also listens for them, so pressing the split hotkey yourself starts a run and reset stops it. The pause hotkey is only pressed for images with the `{p}` flag. The screenshot hotkey takes a screenshot, or grabs the selected split while Make Split Images is open. The toggle auto reset image hotkey turns the reset image on and off.
+The split, reset, undo, skip and pause hotkeys must match your timer's, with global hotkeys turned on in the timer. AutoSplit-rs presses them and also listens for them, so pressing the split hotkey yourself starts a run and reset stops it. The pause hotkey is only pressed for images with the `{p}` flag. The screenshot hotkey takes a screenshot, or grabs the selected split while Make Split Images is open. The toggle auto reset image hotkey turns the reset image on and off. The record screenshots hotkey starts and stops [recording screenshots](#capture-region), also while Make Split Images is open.
 
 ![The Hotkeys tab with the split hotkey set and Reset's Set Hotkey waiting for a key](docs/settings-hotkey.png)
 
@@ -257,7 +259,7 @@ The split, reset, undo, skip and pause hotkeys must match your timer's, with glo
 - On Linux and macOS, names follow a US keyboard, so with another layout a key can show under its US name, like `y` for the key labelled Z on a German keyboard. It still listens for the key you pressed.
 - On macOS, the menu bar is empty while Set Hotkey waits for a key, so keys with Cmd, like Cmd+Q, can be set.
 
-With LiveSplit or LiveSplit One controlling the timer, only the screenshot and toggle auto reset image hotkeys are used.
+With LiveSplit or LiveSplit One controlling the timer, only the screenshot, toggle auto reset image and record screenshots hotkeys are used.
 
 ### Other
 
@@ -469,7 +471,7 @@ On macOS, Help > About is called Licenses and Links, since the app menu has its 
 AutoSplit-rs is a plain program, not an app, so macOS gives permissions to the app that starts it: Terminal when you double-click it, or the terminal app you start it from, like iTerm. AutoSplit-rs itself can't be added to these lists.
 
 - Camera, for capture devices: macOS asks the first time. Click Allow.
-- Input Monitoring, for listening to hotkeys, and Accessibility, for pressing them: in System Settings > Privacy & Security, turn on Terminal under both. If it isn't listed, add it with the + button from Applications > Utilities. With LiveSplit One, only a screenshot or toggle auto reset image hotkey needs a permission, and only Input Monitoring.
+- Input Monitoring, for listening to hotkeys, and Accessibility, for pressing them: in System Settings > Privacy & Security, turn on Terminal under both. If it isn't listed, add it with the + button from Applications > Utilities. With LiveSplit One, only a screenshot, toggle auto reset image or record screenshots hotkey needs a permission, and only Input Monitoring.
 - Then quit Terminal and start AutoSplit-rs again. Permissions only apply after a restart.
 - Every program you start from that terminal app gets the same permissions.
 

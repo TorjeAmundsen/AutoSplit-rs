@@ -4,6 +4,7 @@ use std::sync::{Arc, Mutex, mpsc};
 use std::time::{Duration, Instant};
 
 use autosplit::console::Console;
+use autosplit::recording;
 use autosplit::screenshot::Saved;
 use autosplit::session::{Event, Notice, Session, Snapshot, UiCommand, View};
 use autosplit_core::commands::TimerLink;
@@ -73,6 +74,8 @@ impl View for FakeView {
             Notice::ScreenshotSaved(path) => format!("screenshot {}", path.display()),
             Notice::FullFrameRegion(region) => format!("full frame {}x{}", region.width, region.height),
             Notice::CroppedRegion(region) => format!("cropped {}x{}", region.width, region.height),
+            Notice::Recording(on) => format!("recording {on}"),
+            Notice::Recorded { message, .. } => format!("recorded: {message}"),
         };
         self.0.notices.lock().unwrap().push(text);
     }
@@ -414,6 +417,40 @@ fn saved_screenshots_are_shown_and_failures_are_errors() {
             "screenshot 001_SplitImage.png",
             "dialog: Saved screenshot 001_SplitImage.png, but couldn't open it: no app",
             "dialog: Screenshot: couldn't write it",
+        ]
+    );
+}
+
+#[test]
+fn recording_without_a_capture_says_so() {
+    // Act
+    let seen = run(UserProfile::default(), vec![Event::Hotkey(HotkeyAction::RecordScreenshots, Instant::now())]);
+
+    // Assert: nothing started, so no red indicator either
+    assert_eq!(seen.notices(), ["dialog: Record Screenshots: there's no capture to record"]);
+}
+
+#[test]
+fn written_recordings_are_shown_and_failures_are_errors() {
+    // Arrange
+    let summary = |written, error: Option<&str>| recording::Summary {
+        folder: std::path::PathBuf::from("recording_001"),
+        written,
+        dropped: 0,
+        error: error.map(Into::into),
+    };
+    let events = vec![Event::Recorded(summary(600, None)), Event::Recorded(summary(599, Some("0042.png: disk full")))];
+
+    // Act
+    let seen = run(UserProfile::default(), events);
+
+    // Assert
+    assert_eq!(
+        seen.notices(),
+        [
+            "recorded: Recorded 600 screenshots into recording_001.",
+            "dialog: Recorded 599 screenshots into recording_001. Some couldn't be written: 0042.png: disk full",
+            "recorded: Recorded 599 screenshots into recording_001. Some couldn't be written: 0042.png: disk full",
         ]
     );
 }
