@@ -19,7 +19,7 @@ log = "0.4.34"
 rfd = "0.17.2"
 # Whether two names in the split image folder are one file, which depends on its file system
 same-file = "1.0.6"
-slint = { version = "1.18.1", default-features = false, features = ["std", "backend-winit", "backend-winit-x11", "backend-winit-wayland", "renderer-software", "compat-1-2", "raw-window-handle-06", "unstable-winit-030"] }
+slint = { version = "1.19.0", default-features = false, features = ["std", "backend-winit", "backend-winit-x11", "backend-winit-wayland", "renderer-software", "compat-1-2", "raw-window-handle-06", "unstable-winit-030"] }
 tungstenite = { version = "0.30.0", default-features = false, features = ["handshake"] }
 unicode-width = "0.2.2"
 
@@ -40,7 +40,7 @@ test-case = "3.3.1"
 
 [build-dependencies]
 embed-resource = "3.0.12"
-slint-build = "1.18.1"
+slint-build = "1.19.0"
 
 # Slint finds fonts with fontconfig on Linux. Loaded when the program runs instead of linked, so
 # builds and cross builds don't need its development files.

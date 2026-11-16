@@ -4,7 +4,7 @@ How to build AutoSplit-rs, where things are in the code, and how releases are ma
 
 ## Getting started
 
-You need Rust 1.92 or newer. On Linux you also need CMake, and on x64 Linux NASM too, because libjpeg-turbo is built from source.
+You need Rust 1.95 or newer. On Linux you also need CMake, and on x64 Linux NASM too, because libjpeg-turbo is built from source.
 
 ```sh
 cargo build --release
