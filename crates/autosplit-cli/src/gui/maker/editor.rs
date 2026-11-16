@@ -361,7 +361,8 @@ impl Gui {
     /// An edit of split `index`'s field.
     fn edit_split_at(&self, index: usize, edit: SplitEdit) {
         let (refill, mask_changed) = (edit.changes_other_fields(), edit.changes_mask());
-        let screenshot_changed = matches!(edit, SplitEdit::Screenshot(_));
+        // A screenshot edit, or one that makes it a fade split or not, changes what it's made from
+        let screenshot_changed = matches!(edit, SplitEdit::Screenshot(_)) || edit.changes_other_fields();
         if let Some(editing) = self.maker.borrow_mut().edit.as_mut() {
             editing.draft.edit_split(index, edit);
         }

@@ -157,11 +157,16 @@ pub fn read_archive(archive: &Path) -> Result<PresetArchive, PresetError> {
     let text = String::from_utf8_lossy(&files[&format!("{root}{PRESET_FILE}")]).into_owned();
     let mut preset = Preset::parse(&text, &shown)?;
     let used = used_files(&preset).map_err(invalid)?;
-    // The files that have to be images, each as what a split uses it as, a mask first
-    let mut images: HashMap<String, SplitFile> = HashMap::new();
+    // The files that have to be images, each with the first split that uses it as each kind, so
+    // one used as a mask and a screenshot is checked as both and named by the right split
+    let mut images: HashMap<String, Vec<(SplitFile, usize)>> = HashMap::new();
     for kind in SplitFile::ALL.into_iter().filter(|kind| kind.is_png()) {
-        for name in preset.splits.iter().filter_map(|split| inside(split.file(kind))) {
-            images.entry(name).or_insert(kind);
+        for (index, split) in preset.splits.iter().enumerate() {
+            let Some(name) = inside(split.file(kind)) else { continue };
+            let uses = images.entry(name).or_default();
+            if !uses.iter().any(|(seen, _)| *seen == kind) {
+                uses.push((kind, index));
+            }
         }
     }
     let mut kept = Vec::new();
@@ -170,16 +175,19 @@ pub fn read_archive(archive: &Path) -> Result<PresetArchive, PresetError> {
         let Some(contents) = files.remove(&format!("{root}{name}")) else {
             return Err(invalid(format!("split {} ({split}) uses {name}, which isn't in the file", index + 1)));
         };
-        if let Some(&kind) = images.get(&name) {
+        if let Some(uses) = images.get(&name) {
+            let named = |&(kind, index): &(SplitFile, usize)| (kind.word(), index + 1, &preset.splits[index].name);
             let Ok(decoded) = BgraImage::decode_png(&contents) else {
-                let image = kind.word();
-                return Err(invalid(format!("the {image} {name} of split {} ({split}) isn't a PNG image", index + 1)));
+                let (image, number, split) = named(&uses[0]);
+                return Err(invalid(format!("the {image} {name} of split {number} ({split}) isn't a PNG image")));
             };
             // A split image made already, which its mask would be applied to a second time
-            if kind == SplitFile::Screenshot && !decoded.is_opaque() {
+            let screenshot = uses.iter().find(|(kind, _)| *kind == SplitFile::Screenshot);
+            if let Some(screenshot) = screenshot.filter(|_| !decoded.is_opaque()) {
+                let (_, number, split) = named(screenshot);
                 return Err(invalid(format!(
-                    "the screenshot {name} of split {} ({split}) has transparent parts, which a screenshot can't have",
-                    index + 1
+                    "the screenshot {name} of split {number} ({split}) has transparent parts, which a screenshot \
+                     can't have"
                 )));
             }
         }

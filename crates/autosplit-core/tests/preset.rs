@@ -30,8 +30,8 @@ fn bundled_presets_load_with_all_their_files() {
     let missing: Vec<PathBuf> = presets
         .iter()
         .flat_map(|loaded| {
-            let files = loaded.preset.splits.iter().flat_map(|split| [&split.mask, &split.savestate]);
-            files.filter(|file| !file.is_empty()).map(|file| loaded.file(file)).collect::<Vec<_>>()
+            let files = loaded.preset.splits.iter().flat_map(PresetSplit::files);
+            files.map(|file| loaded.file(file)).collect::<Vec<_>>()
         })
         .filter(|path| !path.is_file())
         .collect();
