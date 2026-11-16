@@ -81,7 +81,7 @@ With [Advanced Make Split Images](#other) on, the window shows more, for checkin
 
 ### Making the images
 
-- Grab saves the capture region for the selected split, with its mask, and selects the next split. The screenshot hotkey does the same while the window is open, so you can play through the category and press it at each split.
+- Grab saves the capture region for the selected split, with its mask, and selects the next split, skipping splits made from the preset's screenshot. The screenshot hotkey does the same while the window is open, so you can play through the category and press it at each split.
 - On a [fade split](#fade-images), the button reads Grab* and saves the split image from the split's color instead of the capture, then selects the next split. It works without a capture device. The Capture Region is replaced by a note that the split needs no savestate or screen.
 - Use Screenshots... uses screenshot files instead, like the ones Take Screenshot saves. Pick one for the selected split, or several for the splits in order, skipping fade splits. Then press Save All, or with Advanced Make Split Images on, Save Selected for only the selected split. It's off while a fade split is selected.
 - With Advanced Make Split Images on, Test opens the selected split's saved image in the [Live Tester](#live-tester).

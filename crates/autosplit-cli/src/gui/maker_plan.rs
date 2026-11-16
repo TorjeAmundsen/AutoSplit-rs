@@ -117,6 +117,13 @@ pub fn screenshots_status(with: usize, without: usize) -> Option<String> {
     })
 }
 
+/// The split to select after grabbing split `after`, where `from_preset` says which splits are
+/// made from their preset's screenshot: the next one that isn't, so playing through and pressing
+/// the screenshot hotkey never replaces one. None when no split after it is left.
+pub fn next_to_grab(from_preset: &[bool], after: usize) -> Option<usize> {
+    (after + 1..from_preset.len()).find(|&index| !from_preset[index])
+}
+
 /// Where a split image saved from its preset's screenshot at `saved_from` is from once the
 /// preset is saved again: `new`, the screenshot's file now, when it was saved from `old`, the
 /// screenshot just before the save, which saving at most copied. None when it's from another

@@ -17,8 +17,8 @@ use slint::{ComponentHandle, ModelRc, Rgba8Pixel, SharedPixelBuffer, SharedStrin
 
 use super::document::Document;
 use super::maker_plan::{
-    PresetList, looks_made, move_to_base, plan_writes, saves_in_place, screenshots_status, screenshots_to_move,
-    stale_to_delete, writes_over,
+    PresetList, looks_made, move_to_base, next_to_grab, plan_writes, saves_in_place, screenshots_status,
+    screenshots_to_move, stale_to_delete, writes_over,
 };
 use super::messages::{Answer, Message};
 use super::paths::{canonical, file_name_text};
@@ -127,6 +127,17 @@ pub(super) struct Maker {
     queued: Option<(u64, Vec<usize>)>,
 }
 
+/// Where a split's image comes from, as far as its preset's screenshot goes.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ScreenshotUse {
+    /// The preset has no screenshot it can be made from.
+    None,
+    /// It's made from the preset's screenshot.
+    FromPreset,
+    /// It has a grab or picked file of its own over the preset's screenshot.
+    Overridden,
+}
+
 /// What's been done for a split.
 #[derive(Clone, Default)]
 struct SplitWork {
@@ -199,48 +210,59 @@ impl Maker {
             return split.fade_color().map(Source::Fade);
         }
         let shot = self.splits.get(index).and_then(|split| split.shot.clone());
-        shot.or_else(|| self.preset_screenshot(index).map(Source::Preset))
+        shot.or_else(|| self.usable_preset_screenshot(index).map(Source::Preset))
     }
 
-    /// The screenshot the shown preset has for split `index`, if any.
+    /// The screenshot the shown preset names for split `index`, if any, whether or not its file
+    /// is there.
     fn preset_screenshot(&self, index: usize) -> Option<PathBuf> {
         let screenshot = &self.shown()?.splits.get(index)?.screenshot;
         (!screenshot.is_empty()).then(|| self.file(screenshot))
     }
 
+    /// The preset's screenshot that split `index` can be made from: not a fade split's, which is
+    /// made from its color, and not one whose file is missing, which the split is grabbed for
+    /// instead, like a split without one.
+    fn usable_preset_screenshot(&self, index: usize) -> Option<PathBuf> {
+        if self.fade_split(index).is_some() {
+            return None;
+        }
+        self.preset_screenshot(index).filter(|file| file.is_file())
+    }
+
+    /// Where split `index`'s image comes from, as far as its preset's screenshot goes.
+    fn screenshot_use(&self, index: usize) -> ScreenshotUse {
+        let own = self.splits.get(index).is_some_and(|split| split.shot.is_some());
+        match (self.usable_preset_screenshot(index).is_some(), own) {
+            (false, _) => ScreenshotUse::None,
+            (true, false) => ScreenshotUse::FromPreset,
+            (true, true) => ScreenshotUse::Overridden,
+        }
+    }
+
     /// How many of the shown preset's splits have a screenshot from it, and how many have to be
-    /// grabbed, like one whose screenshot's file is missing. Fade splits are in neither, since
-    /// they're made from their color.
+    /// grabbed. Fade splits are in neither, since they're made from their color.
     fn preset_screenshot_counts(&self) -> (usize, usize) {
         let grabbed = (0..self.splits.len()).filter(|&index| self.fade_split(index).is_none());
-        let (with, without): (Vec<usize>, Vec<usize>) =
-            grabbed.partition(|&index| self.preset_screenshot(index).is_some_and(|file| file.is_file()));
-        (with.len(), without.len())
-    }
-
-    /// Whether the selected split has a grab or picked file over its preset's screenshot, which
-    /// dropping it brings back.
-    fn selected_over_preset(&self) -> bool {
-        let selected = self.selected;
-        let own = self.splits.get(selected).is_some_and(|split| split.shot.is_some());
-        own && self.fade_split(selected).is_none() && self.preset_screenshot(selected).is_some()
-    }
-
-    /// Whether the selected split's image comes from its preset's screenshot, so there's nothing
-    /// to grab for it.
-    fn selected_from_preset(&self) -> bool {
-        let selected = self.selected;
-        let own = self.splits.get(selected).is_some_and(|split| split.shot.is_some());
-        !own && self.fade_split(selected).is_none() && self.preset_screenshot(selected).is_some()
+        let with = grabbed.clone().filter(|&index| self.usable_preset_screenshot(index).is_some()).count();
+        (with, grabbed.count() - with)
     }
 
     /// The splits made from their preset's screenshot that have no picture of it yet.
     fn unpictured_screenshots(&self) -> Vec<usize> {
-        (self.splits.iter().enumerate())
-            .filter(|(index, split)| split.shot.is_none() && split.thumb.is_none() && self.fade_split(*index).is_none())
-            .filter(|(index, _)| self.preset_screenshot(*index).is_some())
-            .map(|(index, _)| index)
+        (0..self.splits.len())
+            .filter(|&index| self.splits[index].thumb.is_none())
+            .filter(|&index| self.screenshot_use(index) == ScreenshotUse::FromPreset)
             .collect()
+    }
+
+    /// The split a grab or Grab* goes on to after split `after`: the next one, past those whose
+    /// image comes from their preset's screenshot, which grabbing would replace. None when
+    /// there's none.
+    fn next_to_grab(&self, after: usize) -> Option<usize> {
+        let from_preset: Vec<bool> =
+            (0..self.splits.len()).map(|index| self.screenshot_use(index) == ScreenshotUse::FromPreset).collect();
+        next_to_grab(&from_preset, after)
     }
 
     /// Split `index` of the shown preset, when it's a fade split.
@@ -278,6 +300,9 @@ struct MakerView {
     /// Grab is the next thing to do for the selected split. Not when its preset has a screenshot
     /// for it, where Save All is.
     grab_suggested: bool,
+    /// The selected split has a grab or picked file over its preset's screenshot, which Use
+    /// Preset's drops.
+    over_preset_screenshot: bool,
     can_save_selected: bool,
     can_save_all: bool,
     can_test: bool,
@@ -331,7 +356,8 @@ fn maker_view(
         rows,
         preset_problem: summary.unwrap_or_default(),
         can_grab: !maker.splits.is_empty() && usable,
-        grab_suggested: !maker.selected_from_preset(),
+        grab_suggested: maker.screenshot_use(selected) != ScreenshotUse::FromPreset,
+        over_preset_screenshot: maker.screenshot_use(selected) == ScreenshotUse::Overridden,
         can_save_selected: maker.source(selected).is_some() && usable,
         can_save_all: (0..maker.splits.len()).any(|index| maker.source(index).is_some()) && usable,
         can_test: in_place.get(selected).copied().unwrap_or_default() && usable,
@@ -678,7 +704,7 @@ impl Gui {
         window.set_grab_fade(self.selected_fade());
         window.set_can_save_selected(view.can_save_selected);
         window.set_grab_suggested(view.grab_suggested);
-        window.set_over_preset_screenshot(self.maker.borrow().selected_over_preset());
+        window.set_over_preset_screenshot(view.over_preset_screenshot);
         window.set_can_save_all(view.can_save_all);
         window.set_can_test(view.can_test);
         window.set_needs_grouping(view.needs_grouping);
@@ -733,17 +759,12 @@ impl Gui {
         };
         let mut maker = self.maker.borrow_mut();
         let selected = maker.selected;
-        let count = maker.splits.len();
         let Some(split) = maker.splits.get_mut(selected) else { return };
         split.set_shot(Source::Grabbed(image));
         drop(maker);
         self.make_thumbnails(vec![selected]);
         // Stays on the split when its image can't be saved, to grab it again once that's fixed
-        if self.save_split_images(vec![selected]) && selected + 1 < count {
-            self.choose_split(selected + 1);
-        } else {
-            self.show_maker();
-        }
+        self.after_grab(selected, self.save_split_images(vec![selected]));
     }
 
     /// Grab on a fade split: its split image is written from its color, and the next split is
@@ -755,13 +776,18 @@ impl Gui {
         if self.refused_for_problems() {
             return;
         }
-        let maker = self.maker.borrow();
-        let (selected, count) = (maker.selected, maker.splits.len());
-        drop(maker);
-        if self.save_split_images(vec![selected]) && selected + 1 < count {
-            self.choose_split(selected + 1);
-        } else {
-            self.show_maker();
+        let selected = self.maker.borrow().selected;
+        self.after_grab(selected, self.save_split_images(vec![selected]));
+    }
+
+    /// After a grab or Grab* of split `grabbed`, selects the next split to grab, when its image
+    /// is being `saved`. It skips splits made from their preset's screenshot, which the next press
+    /// of the screenshot hotkey would replace while playing through. Without one, it stays.
+    fn after_grab(&self, grabbed: usize, saved: bool) {
+        let next = self.maker.borrow().next_to_grab(grabbed).filter(|_| saved);
+        match next {
+            Some(next) => self.choose_split(next),
+            None => self.show_maker(),
         }
     }
 
@@ -856,7 +882,7 @@ impl Gui {
     /// screenshot again. Like a picked file, it's saved when asked.
     fn use_preset_screenshot(&self) {
         let mut maker = self.maker.borrow_mut();
-        if !maker.selected_over_preset() {
+        if maker.screenshot_use(maker.selected) != ScreenshotUse::Overridden {
             return;
         }
         let selected = maker.selected;

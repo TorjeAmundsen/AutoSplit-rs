@@ -11,7 +11,7 @@ use std::rc::Rc;
 use autosplit::gui::document::{Document, folder_text, profile_on_open};
 use autosplit::gui::log::{LOG_LINES, LogLines};
 use autosplit::gui::maker_plan::{
-    DeletedPreset, PresetList, WritePlan, looks_made, move_to_base, plan_writes, preset_after_delete,
+    DeletedPreset, PresetList, WritePlan, looks_made, move_to_base, next_to_grab, plan_writes, preset_after_delete,
     saved_from_after_preset_save, saves_in_place, screenshots_status, screenshots_to_move, stale_to_delete,
     writes_over,
 };
@@ -706,6 +706,14 @@ fn moves_screenshots_only_of_written_split_images(done: &[&str], failed: &[&str]
 
     // Act
     screenshots_to_move(&paths(done), &paths(failed), &paths(keep))
+}
+
+#[test_case(&[false, false, false], 0 => Some(1); "the next split when none has a screenshot")]
+#[test_case(&[false, true, true, false], 0 => Some(3); "past the splits made from their screenshot")]
+#[test_case(&[false, true, true], 0 => None; "none left after it")]
+fn a_grab_goes_on_to_the_next_split_left_to_grab(from_preset: &[bool], after: usize) -> Option<usize> {
+    // Act, with the expected value checked by test_case
+    next_to_grab(from_preset, after)
 }
 
 #[test_case(0, 3 => None; "a preset without screenshots says nothing")]
