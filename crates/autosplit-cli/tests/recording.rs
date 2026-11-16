@@ -93,6 +93,48 @@ fn a_new_frame_is_saved_each_time_one_is_due() {
     assert_eq!(BgraImage::open_png(&folder.join("0002.png")).unwrap().width(), 4);
 }
 
+#[test_case(1000, 11 => 9; "late with the frames sent meanwhile")]
+#[test_case(1000, 2 => 0; "late with a capture slower than the recording")]
+#[test_case(100, 3 => 0; "on time with a capture faster than the recording")]
+fn frames_due_while_the_loop_was_late_are_counted_as_skipped(next_at_ms: u64, next_sequence: u64) -> usize {
+    // Arrange: 10 fps, and the first frame saved
+    let directory = tempfile::tempdir().unwrap();
+    let start = Instant::now();
+    let (done, summary) = mpsc::channel();
+    let mut recording =
+        Recording::start(directory.path(), 10, start, move |result| done.send(result).unwrap()).unwrap();
+    recording.offer(start, 1, frame);
+
+    // Act
+    recording.offer(start + Duration::from_millis(next_at_ms), next_sequence, frame);
+    recording.stop();
+
+    // Assert: both frames written, and the skipped ones checked by test_case
+    let summary = summary.recv_timeout(Duration::from_secs(10)).unwrap();
+    assert_eq!(summary.written, 2);
+    summary.dropped
+}
+
+#[test]
+fn frames_are_saved_without_an_alpha_channel() {
+    // Arrange
+    let directory = tempfile::tempdir().unwrap();
+    let start = Instant::now();
+    let (done, summary) = mpsc::channel();
+    let mut recording =
+        Recording::start(directory.path(), 10, start, move |result| done.send(result).unwrap()).unwrap();
+    let path = recording.folder().join("0001.png");
+
+    // Act
+    recording.offer(start, 1, frame);
+    recording.stop();
+
+    // Assert: the colors kept, with no alpha channel in the file
+    summary.recv_timeout(Duration::from_secs(10)).unwrap();
+    assert_eq!(image::open(&path).unwrap().color(), image::ColorType::Rgb8);
+    assert_eq!(BgraImage::open_png(&path).unwrap(), BgraImage::solid([10, 20, 30], 4, 3));
+}
+
 #[test]
 fn a_recording_stops_by_itself_after_the_longest_it_runs() {
     // Arrange
@@ -110,8 +152,8 @@ fn a_recording_stops_by_itself_after_the_longest_it_runs() {
 
 #[test_case(600, 0, None => "Recorded 600 screenshots into recording_001."; "every frame")]
 #[test_case(1, 0, None => "Recorded 1 screenshot into recording_001."; "one frame")]
-#[test_case(590, 10, None => "Recorded 590 screenshots into recording_001. 10 frames were skipped, since saving fell behind."; "saving fell behind")]
-#[test_case(599, 1, None => "Recorded 599 screenshots into recording_001. 1 frame was skipped, since saving fell behind."; "one frame skipped")]
+#[test_case(590, 10, None => "Recorded 590 screenshots into recording_001. 10 frames were skipped, since AutoSplit fell behind."; "fell behind")]
+#[test_case(599, 1, None => "Recorded 599 screenshots into recording_001. 1 frame was skipped, since AutoSplit fell behind."; "one frame skipped")]
 #[test_case(598, 0, Some("disk full") => "Recorded 598 screenshots into recording_001. Some couldn't be written: disk full"; "frames that couldn't be written")]
 #[test_case(0, 0, Some("disk full") => "Couldn't write the screenshots into recording_001: disk full"; "none could be written")]
 fn the_summary_says_what_was_recorded(written: usize, dropped: usize, error: Option<&str>) -> String {
