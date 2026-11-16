@@ -40,15 +40,19 @@ AutoSplit-rs needs macOS 11 or newer. macOS blocks the first start, because the 
 ## 2. Set up OBS Virtual Camera
 
 > [!IMPORTANT]
-> Crop/Pad has to be above Scaling/Aspect Ratio in the source's filters. OBS runs filters from the top down. With Scaling/Aspect Ratio first, OBS scales the black bars along with the game, then Crop/Pad cuts the bars off the scaled picture. The game ends up smaller than the size you set, and can come out squashed or stretched. Split images made from that feed stop matching once you fix the order. Color correction filters can go anywhere.
+> If you crop the feed, Crop/Pad has to be above Scaling/Aspect Ratio in the source's filters. OBS runs filters from the top down. With Scaling/Aspect Ratio first, OBS scales the black bars along with the game, then Crop/Pad cuts the bars off the scaled picture. The game ends up smaller than the size you set, and can come out squashed or stretched. Split images made from that feed stop matching once you fix the order. Color correction filters can go anywhere.
 
-OBS's Virtual Camera passes your capture source on to AutoSplit-rs. OBS's [Virtual Camera guide](https://obsproject.com/kb/virtual-camera-guide) explains it, and the notes below cover what macOS and Linux need first. Before starting it, crop and scale the source, so the source is only the game, with no black bars.
+OBS's Virtual Camera passes your capture source on to AutoSplit-rs. OBS's [Virtual Camera guide](https://obsproject.com/kb/virtual-camera-guide) explains it, and the notes below cover what macOS and Linux need first.
+
+A console's HDMI output, captured over HDMI, is already only the game, so it needs no cropping or scaling, here or later in AutoSplit-rs. Skip steps 1 and 2, and leave it unscaled in its filters, so AutoSplit-rs gets the game at its full resolution. To make it smaller in your layout, like to fit your splits beside it on a 16:9 canvas, resize and move it in the scene instead, by dragging its corners or with Edit Transform. The Virtual Camera, set to the source in step 4, sends the source as its filters leave it, whatever its size in the scene.
+
+An analog capture usually has black bars around the game: crop and scale it first, so the source is only the game.
 
 ![The same game feed twice: uncropped with black bars around it, and cropped and scaled to fill the frame](docs/obs-black-bars.png)
 
-1. On your capture source, add a Crop/Pad filter and crop away the black bars. Use the filter, not Alt-dragging in the preview, which the Virtual Camera ignores.
-2. Below Crop/Pad, add a Scaling/Aspect Ratio filter that scales the game to fill your canvas's height at its own aspect ratio, with Area filtering. For a 4:3 game, that's 1440x1080 on a 1920x1080 canvas, or 960x720 on 1280x720. A 16:9 game fills the whole canvas.
-3. Add any color correction, like a LUT from [AutoLUT](https://torjeamundsen.github.io/AutoLUT/), to the same source. Where it goes in the list doesn't matter. Do it now, since changing colors later means making the split images again.
+1. For an analog capture, add a Crop/Pad filter on your capture source and crop away the black bars. Use the filter, not Alt-dragging in the preview, which the Virtual Camera ignores.
+2. For an analog capture, add a Scaling/Aspect Ratio filter below Crop/Pad that scales the game to fill your canvas's height at its own aspect ratio, with Area filtering. For a 4:3 game, that's 1440x1080 on a 1920x1080 canvas, or 960x720 on 1280x720. A 16:9 game fills the whole canvas.
+3. If your category's preset comes with screenshots, add no color correction at all. Its screenshots are of the console's own HDMI picture, so a feed with its colors changed won't match them. When you pick the preset in [step 4](#4-make-your-split-images), Make Split Images says whether it has them. Otherwise, add any color correction, like a LUT from [AutoLUT](https://torjeamundsen.github.io/AutoLUT/), to the same source. Where it goes in the list doesn't matter. Do it now, since changing colors later means making the split images again.
 4. Click the gear next to Start Virtual Camera, set Output Type to Source and pick your capture source. Then start the Virtual Camera.
 
 ![OBS's filter window for the capture source, with Apply LUT, then Crop/Pad, then Scaling/Aspect Ratio set to 1440x1080 and Area](docs/obs-filters.png)
@@ -75,10 +79,10 @@ OBS loads it when you start the Virtual Camera, and may ask for your password. A
 
    ![The settings window on Capture Settings, with OBS Virtual Camera picked](docs/settings-capture-device.png)
 
-2. The Capture Region picture now shows the Virtual Camera live: the whole OBS canvas, with the game in the middle.
+2. The Capture Region picture now shows the Virtual Camera live: the whole OBS canvas, with the game in it.
 3. Set the region boxes on the left, so the Capture Region shows only the game:
+   - A game that fills the whole canvas, like any HDMI capture: the region already covers it, so there's nothing to do.
    - A 4:3 game on a 16:9 canvas: click Crop to 4:3.
-   - A game that fills the whole canvas: the region already covers it, so there's nothing to do.
    - Anything else: [MANUAL.md](MANUAL.md#capture-region) shows how to work out the region boxes.
 
 ![The capture region before and after Crop to 4:3: 1920x1080 with black bars on both sides of the game, then 240, 0, 1440x1080 with only the game](docs/capture-region.png)
@@ -185,7 +189,7 @@ Help > View Log says what AutoSplit-rs did and why, like why it didn't split. St
 **OBS Virtual Camera isn't in the device list.** Start the Virtual Camera, then press Refresh in Settings. On Linux, install v4l2loopback, see [Virtual Camera on Linux](#virtual-camera-on-linux). On macOS, allow the camera for Terminal.
 
 **It never splits.** Watch the similarity viewer during the split: Live has to reach Threshold.
-- Far below: the capture changed since the image was made. Check the capture region, OBS's crop and color filters, and the capture card's settings, then grab the image again.
+- Far below: the capture changed since the image was made. Check the capture region, OBS's crop and color filters, and the capture card's settings, then grab the image again. For a split made from a preset's screenshot, the capture has to have no color correction and no cropping at all, or grab that split yourself.
 - Just below: lower that split's threshold a little. For a preset's split, turn on Advanced Make Split Images in File > Settings > Other, change it with the pencil button next to the preset in Make Split Images, save the preset and save the image again. Otherwise, change it in the image's file name, like `(0.88)`.
 
 **It splits too early.** Another screen looks similar enough. Raise that split's threshold, the same way, or give the split before it a longer pause, so it isn't compared during the similar screen. [MANUAL.md](MANUAL.md#split-image-file-names) lists every file name option.
