@@ -112,9 +112,6 @@ fn main() {
     save(&window, PhysicalSize::new(786, 516), &folder.join("main-grid.png"));
     main.invoke_screenshot_saved("003_SplitImage.png".into());
     main.set_tool("Live Tester".into());
-    main.set_running(true);
-    main.set_can_reset(true);
-    main.set_can_skip(true);
     save(&window, PhysicalSize::new(786, 516), &folder.join("main-tester-open.png"));
     main.set_tool("".into());
     main.hide().unwrap();

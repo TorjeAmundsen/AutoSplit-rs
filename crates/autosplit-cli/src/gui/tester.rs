@@ -41,6 +41,9 @@ impl Gui {
         if window.is_visible() {
             return self.show_window(window);
         }
+        if self.tool_blocked_by_run() {
+            return;
+        }
         self.place_by_main(window, beside);
         self.show_window(window);
         self.tool_opened(Tool::Tester);

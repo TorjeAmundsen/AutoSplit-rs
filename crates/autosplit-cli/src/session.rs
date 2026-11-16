@@ -106,6 +106,9 @@ pub enum UiCommand {
     /// Make Split Images opened or closed. While it's open, the capture runs for its preview, and
     /// the screenshot hotkey grabs a split image instead of saving a screenshot.
     SetMakerOpen(bool),
+    /// The first tool window opened, or the last one closed. While one is open, nothing is
+    /// compared and runs don't start, and once they're all closed the folder is read again.
+    SetToolOpen(bool),
     /// Make Split Images wants the capture region for a split image.
     Grab,
     /// The capture region becomes the 4:3 picture in the middle of the capture's frames.
@@ -210,8 +213,8 @@ pub struct Session {
     tester_loaded: u64,
     tester_request: u64,
     maker_open: bool,
-    /// The split image folder is read once Make Split Images closes, since it writes into it.
-    read_after_maker: bool,
+    /// The Live Tester or Make Split Images is open.
+    tool_open: bool,
     /// The Live Tester's file and when it was changed, to load it again when it changes.
     tester_file: Option<(PathBuf, Option<SystemTime>)>,
     next_tester_file_check: Instant,
@@ -261,7 +264,7 @@ impl Session {
             tester_loaded: 0,
             tester_request: 0,
             maker_open: false,
-            read_after_maker: false,
+            tool_open: false,
             tester_file: None,
             next_tester_file_check: now,
             timer: PreciseTimer::default(),
@@ -687,9 +690,11 @@ impl Session {
                 }
             }
             UiCommand::CloseTester => (self.tester, self.tester_file) = (None, None),
-            UiCommand::SetMakerOpen(open) => {
-                self.maker_open = open;
-                if !open && std::mem::take(&mut self.read_after_maker) && !self.runner.is_running() {
+            UiCommand::SetMakerOpen(open) => self.maker_open = open,
+            UiCommand::SetToolOpen(open) => {
+                self.tool_open = open;
+                // Looks for the start image afresh once the tools close
+                if !self.runner.is_running() {
                     self.arm(false);
                 }
             }
@@ -875,10 +880,11 @@ impl Session {
     /// Loads the split image folder and looks for its start image. `asked` when a button asked,
     /// which shows errors in message boxes.
     fn arm(&mut self, asked: bool) {
-        // Make Split Images saves into the folder one split at a time, so it's read once it closes,
-        // not while it's half done
-        if self.maker_open {
-            self.read_after_maker = true;
+        // Nothing is compared beside a tool window, where the capture shows what's being tested.
+        // Make Split Images also saves into the folder one split at a time, so the folder is read
+        // once the tools close, not while it's half done.
+        if self.tool_open {
+            self.runner.disarm();
             return;
         }
         let load = load_profile_folder(&self.profile, self.link.needs_hotkeys());
@@ -900,6 +906,10 @@ impl Session {
     }
 
     fn start_run(&mut self) {
+        if self.tool_open {
+            self.console.warn("The run didn't start, since the Live Tester or Make Split Images is open");
+            return;
+        }
         let run_start = self.elapsed();
         let load = load_profile_folder_to_start(&self.profile, self.link.needs_hotkeys());
         // Not a problem with the folder, whose state stays as it was

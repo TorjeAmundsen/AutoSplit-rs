@@ -69,7 +69,7 @@ File > Make Split Images makes split images from a preset: a category's splits, 
 
 ![Make Split Images: the game, preset and folder at the top left, the splits below them, and the capture region and the selected split's Output Preview on the right](docs/make-split-images.png)
 
-It opens beside the main window. While it's open, the main window only has the Help menu and Settings, so set the capture region first. The split images are saved into the profile's split image folder, which the folder button beside Folder changes.
+It opens beside the main window, but not during a run. While it's open, the main window only has the Help menu and Settings, so set the capture region first. Like with the [Live Tester](#live-tester), nothing is compared and a start from the timer is ignored until it closes. The split images are saved into the profile's split image folder, which the folder button beside Folder changes.
 
 The list shows each split's name and picture, with saved once its split image is in the folder.
 
@@ -196,7 +196,7 @@ File > Live Tester compares one split image with the capture region, without sta
 - It opens the split image folder's first image. Open Image... picks another one from any folder, and `<` and `>` beside it open the previous and next image in that folder.
 - The image reloads by itself when its file changes, like when Make Split Images saves it again. Reload does it by hand.
 - The file name is colored by what each part does. Hover over a part to see what it does. Ignored values are orange and listed below.
-- The main window can't be used while the tester is open, apart from Settings and Help. During a run, Undo, Skip and Reset stay usable beside the Settings button.
+- The main window can't be used while the tester is open, apart from Settings and Help. The tester can't open during a run, and while it's open the main window compares nothing and a start from the timer is ignored. When it closes, the main window looks for the start image again.
 
 Live, Highest and Threshold work like in the similarity viewer. The bar under Live fills up to the similarity, and its green end is the threshold. A match is often a single frame, so an orange mark shows the highest similarity, and Highest keeps a green dot once it reached the threshold, until you press Start Over.
 
@@ -223,7 +223,7 @@ File > Settings has four tabs.
 | Live Capture Region | Shows the Capture Region live. Turn it off once the region is right to save a little CPU. |
 | Show Pause Timer | Shows the seconds left of a pause or a split delay next to Current Image. |
 | Capture device | The device to capture from, found by name, so it keeps working when other devices come and go. Refresh lists the devices again. A profile without one gets OBS Virtual Camera when it's there. |
-| Screenshots folder | Where Take Screenshot and the Screenshot on options save. Open screenshots on capture opens each one. |
+| Screenshots folder | Where Take Screenshot and the Screenshot on options save. Open screenshots on capture, off by default, opens each one. |
 | Screenshot on Start, Split, Reset, Skip, Undo, Pause | Takes a screenshot when that happens, to check later what split. |
 
 ### Image Settings

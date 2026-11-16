@@ -183,8 +183,8 @@ pub struct UserProfile {
     pub unknown: toml::Table,
 }
 
-/// The values AutoSplit's settings window starts with. They're also used for keys missing
-/// from a loaded file.
+/// The values AutoSplit's settings window starts with, apart from Open screenshots on capture,
+/// which is off here. They're also used for keys missing from a loaded file.
 impl Default for UserProfile {
     fn default() -> Self {
         Self {
@@ -211,7 +211,8 @@ impl Default for UserProfile {
             enable_auto_reset: true,
             split_image_directory: String::new(),
             screenshot_directory: String::new(),
-            open_screenshot: true,
+            // On in AutoSplit. Off here, so screenshots don't each open in an image viewer.
+            open_screenshot: false,
             screenshot_on: Vec::new(),
             captured_window_title: String::new(),
             capture_region: Region { x: 0, y: 0, width: 0, height: 0 },
