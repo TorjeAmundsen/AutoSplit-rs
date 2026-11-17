@@ -1,0 +1,80 @@
+name: Dev build
+
+# Publishes the zips from each push to main as the latest-dev pre-release. Runs after Validate
+# instead of building again, and only when every Validate job passed.
+on:
+  workflow_run:
+    workflows: [Validate]
+    types: [completed]
+    branches: [main]
+
+# A newer push waiting here replaces an older one that hasn't started
+concurrency:
+  group: dev-build
+
+jobs:
+  publish:
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RUN_ID: ${{ github.event.workflow_run.id }}
+      HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+    steps:
+      - name: Publish latest-dev
+        run: |
+          tag_exists=false
+          if gh api "repos/$GH_REPO/git/ref/tags/latest-dev" > /dev/null 2>&1; then
+            tag_exists=true
+          fi
+
+          # Validate runs can finish out of order, so an older push must not replace a newer one.
+          # Compared with what latest-dev has, not with main, so a code push still gets published
+          # when a push that built nothing came after it.
+          if [ "$tag_exists" = true ]; then
+            status=$(gh api "repos/$GH_REPO/compare/latest-dev...$HEAD_SHA" --jq .status)
+            if [ "$status" = behind ] || [ "$status" = identical ]; then
+              echo "latest-dev already has $HEAD_SHA or a newer commit."
+              exit 0
+            fi
+          fi
+
+          # A push that only changed docs, presets or splits skips the build job
+          builds=$(gh api "repos/$GH_REPO/actions/runs/$RUN_ID/artifacts" \
+            --jq '[.artifacts[] | select(.name | startswith("build-"))] | length')
+          if [ "$builds" -eq 0 ]; then
+            echo "Validate built nothing for $HEAD_SHA. Leaving latest-dev as it is."
+            exit 0
+          fi
+
+          gh run download "$RUN_ID" --pattern 'build-*' --dir artifacts
+          notes="Built from $HEAD_SHA on main. Not a release: it has whatever was merged last and may be broken."
+
+          if gh release view latest-dev > /dev/null 2>&1; then
+            # Updated in place, so the release never goes missing, and if a step fails it still
+            # has a full set of zips. The new zips go up first, since each version has its own
+            # names, then the tag moves, then the old zips go.
+            old=$(gh release view latest-dev --json assets --jq '.assets[].name')
+            gh release upload latest-dev artifacts/*/*.zip --clobber
+            gh api -X PATCH "repos/$GH_REPO/git/refs/tags/latest-dev" -f sha="$HEAD_SHA" -F force=true > /dev/null
+            gh release edit latest-dev --notes "$notes"
+            for name in $old; do
+              if ! compgen -G "artifacts/*/$name" > /dev/null; then
+                gh release delete-asset latest-dev "$name" --yes
+              fi
+            done
+          else
+            # A tag left without its release would make the release reuse it and ignore --target
+            if [ "$tag_exists" = true ]; then
+              gh api -X DELETE "repos/$GH_REPO/git/refs/tags/latest-dev"
+            fi
+            gh release create latest-dev artifacts/*/*.zip \
+              --prerelease \
+              --target "$HEAD_SHA" \
+              --title "Latest dev build" \
+              --notes "$notes"
+          fi
