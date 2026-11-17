@@ -34,3 +34,11 @@ pub mod run;
 pub mod screenshot;
 pub mod session;
 mod stdin;
+
+/// The version the window title, the log, `--version` and LiveSplit see. Dev builds from main set
+/// `AUTOSPLIT_VERSION` when they're built, like `0.4.0-dev.12+abc1234`, so they don't pass for
+/// the release Cargo.toml names.
+pub const VERSION: &str = match option_env!("AUTOSPLIT_VERSION") {
+    Some(version) => version,
+    None => env!("CARGO_PKG_VERSION"),
+};

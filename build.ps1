@@ -31,6 +31,11 @@ if ($cargoToml -notmatch '(?ms)^\[workspace\.package\].*?^version\s*=\s*"([^"]+)
     Write-Error "Couldn't find [workspace.package] version in Cargo.toml"
 }
 $version = $Matches[1]
+# A dev build's version, like 0.4.0-dev.12+abc1234, without the commit, since GitHub renames
+# release files with a + in their name
+if ($env:AUTOSPLIT_VERSION) {
+    $version = $env:AUTOSPLIT_VERSION -replace '\+.*$', ''
+}
 
 $hostOs = if ($IsWindows) { "windows" } elseif ($IsMacOS) { "macos" } else { "linux" }
 $hostArch = if ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture -eq "Arm64") { "aarch64" } else { "x86_64" }

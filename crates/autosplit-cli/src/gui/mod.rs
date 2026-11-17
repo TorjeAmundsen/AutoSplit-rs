@@ -86,15 +86,21 @@ pub const HOTKEY_ROWS: [(HotkeyAction, &str); 8] = [
     (HotkeyAction::RecordScreenshots, "Record\nscreenshots"),
 ];
 
-/// Help > View Help and the settings' Tutorial button, at this version's release tag so it
-/// describes the program that's running.
-const TUTORIAL_URL: &str =
-    concat!("https://github.com/TorjeAmundsen/AutoSplit-rs/blob/v", env!("CARGO_PKG_VERSION"), "/TUTORIAL.md");
-const IMAGE_SETTINGS_URL: &str = concat!(
-    "https://github.com/TorjeAmundsen/AutoSplit-rs/blob/v",
-    env!("CARGO_PKG_VERSION"),
-    "/MANUAL.md#split-image-file-names"
-);
+/// A page of the docs at this version's release tag, so it describes the program that's running.
+/// A dev build's version has no tag yet, so it links to main, which it was built from.
+macro_rules! docs_url {
+    ($page:literal) => {
+        if option_env!("AUTOSPLIT_VERSION").is_some() {
+            concat!("https://github.com/TorjeAmundsen/AutoSplit-rs/blob/main/", $page)
+        } else {
+            concat!("https://github.com/TorjeAmundsen/AutoSplit-rs/blob/v", env!("CARGO_PKG_VERSION"), "/", $page)
+        }
+    };
+}
+
+/// Help > View Help and the settings' Tutorial button
+const TUTORIAL_URL: &str = docs_url!("TUTORIAL.md");
+const IMAGE_SETTINGS_URL: &str = docs_url!("MANUAL.md#split-image-file-names");
 /// What to do once the profile is saved.
 type AfterSave = Box<dyn FnOnce(&Rc<Gui>)>;
 
@@ -469,7 +475,7 @@ fn open_document(options: &Options, console: &mut Console, log_path: Option<&Pat
         livesplit::log_started(console, log_path);
         return (Document::untitled(), Vec::new());
     }
-    console.log(format_args!("AutoSplit {}", env!("CARGO_PKG_VERSION")));
+    console.log(format_args!("AutoSplit {}", crate::VERSION));
     match profile_on_open(&exe_folder()) {
         Ok((path, profile, warnings)) => {
             console.log(format_args!("Loaded {}", path.display()));
@@ -591,7 +597,7 @@ pub fn run(options: Options) -> Result<(), Error> {
     windows.main.set_window_title(
         format!(
             "AutoSplit v{}{}",
-            env!("CARGO_PKG_VERSION"),
+            crate::VERSION,
             if options.auto_controlled { " (externally controlled)" } else { "" }
         )
         .into(),
@@ -602,7 +608,7 @@ pub fn run(options: Options) -> Result<(), Error> {
     windows.tester.set_info(ModelRc::from(gui.tester_info.clone()));
     windows.settings.set_auto_controlled(options.auto_controlled);
     windows.settings.set_molok_listed(cfg!(target_os = "linux"));
-    windows.about.set_version(env!("CARGO_PKG_VERSION").into());
+    windows.about.set_version(crate::VERSION.into());
     windows.log.set_log_path(log_path.as_ref().map(|path| path.display().to_string()).unwrap_or_default().into());
     gui.show_profile();
     windows.main.show().map_err(|error| Error::NoWindow(anyhow::anyhow!("Couldn't show the window: {error}")))?;

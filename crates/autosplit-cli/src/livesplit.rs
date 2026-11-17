@@ -35,7 +35,7 @@ pub fn log_started(console: &mut Console, log_path: Option<&Path>) {
     console.log(format_args!(
         "AutoSplit {} started by LiveSplit on {}. Waiting for it to send the profile set in the AutoSplit \
          Integration component's settings.",
-        env!("CARGO_PKG_VERSION"),
+        crate::VERSION,
         utc_now()
     ));
     if let Some(log_path) = log_path {

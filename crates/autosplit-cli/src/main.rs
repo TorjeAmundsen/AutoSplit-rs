@@ -30,7 +30,7 @@ const MAX_TICKS_WITHOUT_TIME_PASSING: u32 = 10_000;
 /// the window.
 #[derive(Parser)]
 #[command(
-    version,
+    version = autosplit::VERSION,
     about,
     args_conflicts_with_subcommands = true,
     after_help = "Start with `autosplit devices`, then `autosplit check <profile.toml>`, then `autosplit run \

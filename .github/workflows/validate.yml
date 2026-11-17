@@ -171,6 +171,21 @@ jobs:
         if: matrix.extra-test-target
         run: cargo test --workspace --profile ci --target ${{ matrix.extra-test-target }}
 
+      # Pushes to main are published as latest-dev, so they get a version that can't pass for the
+      # release in Cargo.toml: the commits on main since the last release tag, then this commit.
+      # Set after the tests, which don't need it, so they don't rebuild.
+      - name: Name the dev version
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        shell: bash
+        run: |
+          git fetch --quiet --unshallow --tags origin
+          base=$(sed -n '/^\[workspace\.package\]/,/^\[/s/^version *= *"\(.*\)"/\1/p' Cargo.toml)
+          tag=$(git describe --tags --abbrev=0 --match 'v*')
+          count=$(git rev-list --count --first-parent "$tag..HEAD")
+          version="$base-dev.$count+$(git rev-parse --short HEAD)"
+          echo "$version"
+          echo "AUTOSPLIT_VERSION=$version" >> "$GITHUB_ENV"
+
       - name: Build release zip
         shell: pwsh
         run: ./build.ps1 ${{ matrix.name }}
