@@ -1,0 +1,55 @@
+name = "Any%"
+game = "The Legend of Zelda: Ocarina of Time (2026)"
+
+[[split]]
+name = "start_auto_splitter"
+mask = "start_auto_splitter.png"
+screenshot = "screenshots/start_auto_splitter (1).png"
+threshold = 0.995
+pause = 10.0
+
+[[split]]
+name = "reset"
+mask = "reset.png"
+screenshot = "screenshots/reset.png"
+threshold = 0.99
+pause = 0.0
+
+[[split]]
+name = "EnterDeku"
+fade = "#000000"
+fade_time = 500
+threshold = 0.999
+
+[[split]]
+name = "KokiriEmerald"
+mask = "KokiriEmerald.png"
+fade = "#e5e5e5"
+fade_time = 850
+threshold = 0.999
+pause = 10.0
+
+[[split]]
+name = "PotionBottle"
+mask = "PotionBottle.png"
+screenshot = "screenshots/PotionBottle.png"
+threshold = 0.95
+
+[[split]]
+name = "ZeldasLetter"
+mask = "ZeldasLetter.png"
+screenshot = "screenshots/ZeldasLetter.png"
+threshold = 0.95
+
+[[split]]
+name = "SariasSong"
+mask = "SariasSong.png"
+screenshot = "screenshots/SariasSong.png"
+threshold = 0.95
+
+[[split]]
+name = "Ganon"
+mask = "Ganon.png"
+screenshot = "screenshots/Ganon.png"
+threshold = 0.95
+delay = 316

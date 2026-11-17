@@ -1,0 +1,78 @@
+game = "The Legend of Zelda: Ocarina of Time (2026)"
+
+[[split]]
+name = "start_auto_splitter"
+mask = "start_auto_splitter.png"
+screenshot = "screenshot_start_auto_splitter.png"
+threshold = 0.995
+pause = 10.0
+description = "Starts when pressing A to start a fresh file."
+base_image = "base_start_auto_splitter.png"
+
+[[split]]
+name = "reset"
+mask = "reset.png"
+screenshot = "screenshot_reset.png"
+threshold = 0.995
+pause = 0.0
+description = "Resets when you're about to start a new file."
+base_image = "base_reset.png"
+
+[[split]]
+name = "Slingshot"
+mask = "Slingshot.png"
+screenshot = "screenshot_Slingshot.png"
+threshold = 0.95
+description = "Splits on the first frame of the item model appearing."
+base_image = "base_Slingshot.png"
+
+[[split]]
+name = "FadeToWhite"
+mask = "FadeToWhite.png"
+fade = "#e5e5e5"
+fade_time = 850
+threshold = 0.999
+pause = 10.0
+description = "Splits on full fade to white after entering an end-of-dungeon blue warp."
+base_image = "base_FadeToWhite.png"
+
+[[split]]
+name = "Ganon"
+mask = "Ganon.png"
+screenshot = "screenshot_Ganon.png"
+threshold = 0.95
+delay = 316
+description = "Splits on 2nd blur frame as sword connects with the head (subject to change)."
+base_image = "base_Ganon.png"
+
+[[split]]
+name = "SariasSong"
+mask = "SariasSong.png"
+screenshot = "screenshot_SariasSong.png"
+threshold = 0.95
+description = """Splits on camera snap back to Link, right before the "You learned Saria's Song!" textbox."""
+base_image = "base_SariasSong.png"
+
+[[split]]
+name = "ZeldasLetter"
+mask = "ZeldasLetter.png"
+screenshot = "screenshot_ZeldasLetter.png"
+threshold = 0.95
+description = "Splits on the first frame of the item model appearing."
+base_image = "base_ZeldasLetter.png"
+
+[[split]]
+name = "PotionBottle"
+mask = "PotionBottle.png"
+screenshot = "screenshot_PotionBottle.png"
+threshold = 0.95
+description = "Splits on the first frame of the item model appearing."
+base_image = "base_PotionBottle.png"
+
+[[split]]
+name = "LoadingZoneFade"
+fade = "#000000"
+fade_time = 500
+threshold = 0.999
+description = "Splits on full black frame at the end of a loading zone's fade to black."
+base_image = "base_LoadingZoneFade.png"
