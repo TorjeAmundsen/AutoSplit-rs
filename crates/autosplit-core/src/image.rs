@@ -100,6 +100,21 @@ impl BgraImage {
         )?;
         Ok(out)
     }
+
+    /// Encodes as an RGB PNG, leaving out the alpha channel, for an opaque image like a capture.
+    /// Smaller and quicker to encode than [`BgraImage::encode_png`].
+    pub fn encode_opaque_png(&self) -> Result<Vec<u8>, image::ImageError> {
+        let rgb: Vec<u8> =
+            self.data.as_chunks::<4>().0.iter().flat_map(|&[blue, green, red, _]| [red, green, blue]).collect();
+        let mut out = Vec::new();
+        image::codecs::png::PngEncoder::new(&mut out).write_image(
+            &rgb,
+            self.width as u32,
+            self.height as u32,
+            image::ExtendedColorType::Rgb8,
+        )?;
+        Ok(out)
+    }
 }
 
 /// A borrowed BGRA frame whose rows may be padded, the way capture APIs hand frames out.

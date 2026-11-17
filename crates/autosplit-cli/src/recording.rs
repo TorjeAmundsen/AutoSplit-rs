@@ -29,7 +29,7 @@ const NEW_FRAME_POLL: Duration = Duration::from_millis(1);
 pub struct Summary {
     pub folder: PathBuf,
     pub written: usize,
-    /// Frames that found the queue full.
+    /// Frames that found the queue full, or came while the session was too busy to take them.
     pub dropped: usize,
     /// The first frame that couldn't be written, and why.
     pub error: Option<String>,
@@ -47,8 +47,8 @@ impl Summary {
         let mut text = format!("Recorded {frames} into {name}.");
         match self.dropped {
             0 => {}
-            1 => text += " 1 frame was skipped, since saving fell behind.",
-            dropped => text += &format!(" {dropped} frames were skipped, since saving fell behind."),
+            1 => text += " 1 frame was skipped, since AutoSplit fell behind.",
+            dropped => text += &format!(" {dropped} frames were skipped, since AutoSplit fell behind."),
         }
         if let Some(error) = &self.error {
             text += &format!(" Some couldn't be written: {error}");
@@ -141,6 +141,12 @@ impl Recording {
         // On a grid from the start, so frames stay evenly spaced when the loop wakes late
         let behind = (now - self.next_due).as_nanos() / self.interval.as_nanos().max(1);
         self.next_due += self.interval * (behind as u32 + 1);
+        // Frames due while the loop was late are skipped too, but only as many as the capture
+        // sent meanwhile: a capture slower than the recording leaves slots with no frame for them
+        if let Some(last) = self.last_sequence {
+            let sent_between = sequence.saturating_sub(last).saturating_sub(1);
+            self.dropped.fetch_add(sent_between.min(behind as u64) as usize, Ordering::Relaxed);
+        }
         self.last_sequence = Some(sequence);
         let Some(image) = image() else { return };
         match self.queue.try_send((self.next_number, image)) {
@@ -225,7 +231,7 @@ fn spawn_writers(
 fn write_frame(folder: &Path, number: usize, image: &BgraImage) -> Result<(), String> {
     let path = folder.join(format!("{number:04}.png"));
     let temporary = folder.join(format!("{number:04}.png.tmp"));
-    let png = image.encode_png().map_err(|error| error.to_string())?;
+    let png = image.encode_opaque_png().map_err(|error| error.to_string())?;
     let written = std::fs::write(&temporary, png).and_then(|()| std::fs::rename(&temporary, &path));
     written.map_err(|error| {
         let _ = std::fs::remove_file(&temporary);
