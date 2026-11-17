@@ -180,7 +180,17 @@ jobs:
         run: |
           git fetch --quiet --unshallow --tags origin
           base=$(sed -n '/^\[workspace\.package\]/,/^\[/s/^version *= *"\(.*\)"/\1/p' Cargo.toml)
+          if [ -z "$base" ]; then
+            echo "::error::Couldn't find the [workspace.package] version in Cargo.toml"
+            exit 1
+          fi
           tag=$(git describe --tags --abbrev=0 --match 'v*')
+          # Cargo.toml is bumped by hand after a release. Until then a dev build would be named
+          # as a prerelease of the version already out.
+          if [ "$tag" = "v$base" ]; then
+            echo "::error::Cargo.toml still says $base, which was released as $tag. Bump the version."
+            exit 1
+          fi
           count=$(git rev-list --count --first-parent "$tag..HEAD")
           version="$base-dev.$count+$(git rev-parse --short HEAD)"
           echo "$version"
