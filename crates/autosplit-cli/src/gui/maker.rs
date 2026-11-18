@@ -651,15 +651,13 @@ impl Gui {
         let count = maker.loaded().map_or(0, |loaded| loaded.preset.splits.len());
         maker.start_over(count);
         drop(maker);
-        // The first split that's on, which the screenshot hotkey's first press grabs
-        let first_on = self.maker_enabled().iter().position(|&on| on).unwrap_or(0);
-        self.maker.borrow_mut().selected = first_on;
         self.show_screenshots_status();
         self.show_preset(index);
     }
 
     /// Shows the `index`th preset, its game and the game's presets in the lists, and what's
-    /// been done with its splits.
+    /// been done with its splits, with the selected split, or the next one shown when it's hidden,
+    /// like after the preset was saved with the selected split turned off.
     fn show_preset(&self, index: usize) {
         let mut maker = self.maker.borrow_mut();
         maker.preset = index;
@@ -674,10 +672,23 @@ impl Gui {
         window.set_game_index(game_index as i32);
         window.set_presets(ModelRc::new(VecModel::from(names)));
         window.set_preset_index(of_game.iter().position(|&each| each == index).unwrap_or(0) as i32);
-        let selected = maker.selected;
         drop(maker);
         self.picture_preset_screenshots();
-        self.choose_split(selected);
+        self.choose_split(self.shown_selection());
+    }
+
+    /// The selected split, or when it's hidden, since it's off and not being chosen, the next split
+    /// that's on, or the last one before it. The first split that's on for a preset just chosen,
+    /// which the screenshot hotkey's first press grabs.
+    fn shown_selection(&self) -> usize {
+        let enabled = self.maker_enabled();
+        let maker = self.maker.borrow();
+        let selected = maker.selected;
+        if maker.choosing || !maker.is_off(&enabled, selected) {
+            return selected;
+        }
+        let on: Vec<usize> = maker.on_splits(&enabled).collect();
+        on.iter().find(|&&index| index > selected).or(on.last()).copied().unwrap_or(selected)
     }
 
     /// Makes the list's pictures of the splits made from their preset's screenshot, which no
@@ -750,20 +761,8 @@ impl Gui {
     fn choose_splits(&self) {
         let choosing = !self.maker.borrow().choosing;
         self.maker.borrow_mut().choosing = choosing;
-        let enabled = self.maker_enabled();
-        let maker = self.maker.borrow();
-        let selected = maker.selected;
-        let shown = (!choosing && maker.is_off(&enabled, selected))
-            .then(|| {
-                let on: Vec<usize> = maker.on_splits(&enabled).collect();
-                on.iter().find(|&&index| index > selected).or(on.last()).copied()
-            })
-            .flatten();
-        drop(maker);
-        match shown {
-            Some(index) => self.choose_split(index),
-            None => self.show_maker(),
-        }
+        // Scrolled into view, since the rows above it show or hide
+        self.choose_split(self.shown_selection());
     }
 
     /// Turns split `index`, with the splits that follow it, on or off in the profile's choice for

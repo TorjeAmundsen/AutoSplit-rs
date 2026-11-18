@@ -286,10 +286,10 @@ impl Gui {
         let Some(edit) = self.leave_editing() else { return };
         let mut maker = self.maker.borrow_mut();
         maker.restore(edit.before);
-        let (preset, selected) = (maker.preset, maker.selected);
+        let preset = maker.preset;
         drop(maker);
+        // With the split selected before editing, or the next one shown
         self.show_preset(preset);
-        self.choose_split(selected);
     }
 
     /// Does `then` once there are no changes to lose, asking first when there are.
