@@ -834,7 +834,16 @@ impl Gui {
         if maker.saving {
             let generation = maker.generation;
             let waiting = maker.turned_off.get_or_insert_with(|| (generation, Vec::new()));
-            waiting.1.extend(turned_off);
+            // Ones turned off in a preset chosen before don't count, like for queued saves
+            if waiting.0 != generation {
+                *waiting = (generation, Vec::new());
+            }
+            // Each once, so turning one off, on and off again doesn't list its images twice
+            for index in turned_off {
+                if !waiting.1.contains(&index) {
+                    waiting.1.push(index);
+                }
+            }
             return;
         }
         drop(maker);
