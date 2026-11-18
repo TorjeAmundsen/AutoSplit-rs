@@ -9,8 +9,8 @@ use autosplit_core::filename::{
 };
 use autosplit_core::image::BgraImage;
 use autosplit_core::preset::{
-    LIBRARY_FILE, PRESET_FILE, Preset, PresetError, PresetSplit, SPLIT_KEYS, SplitLibrary, game_key, load_libraries,
-    load_presets,
+    LIBRARY_FILE, PRESET_FILE, Preset, PresetError, PresetSplit, SPLIT_KEYS, SplitChoice, SplitLibrary, game_key,
+    load_libraries, load_presets,
 };
 use autosplit_core::profile::{ProfileError, UserProfile};
 use autosplit_core::split_folder::{ValidationContext, load_split_folder};
@@ -171,6 +171,7 @@ fn split_keys_are_the_fields_of_a_split() {
     let split = PresetSplit {
         name: "Deku".into(),
         with_previous: true,
+        off: true,
         mask: "deku.png".into(),
         screenshot: "screenshots/deku.png".into(),
         fade: Some("#000000".into()),
@@ -276,14 +277,14 @@ fn savestates_are_copied_numbered_like_the_split_images() {
     let preset = Preset { name: "Any%".into(), splits: splits.collect(), ..Preset::default() };
 
     // Act
-    let copies = preset.savestate_copies();
+    let copies = preset.savestate_copies(&[true; 10]);
 
     // Assert
     assert_eq!(
         copies,
         [
-            ("savestates/000 start.gzs", "08_reset.gzs".to_owned()),
-            ("savestates/boss.gzs", "09_Boss_SEE_INSTRUCTIONS.gzs".to_owned())
+            (8, "savestates/000 start.gzs", "08_reset.gzs".to_owned()),
+            (9, "savestates/boss.gzs", "09_Boss_SEE_INSTRUCTIONS.gzs".to_owned())
         ]
     );
 }
@@ -335,6 +336,16 @@ fn compared_with_the_split_before_needs_a_split_before(names: &[&str]) -> Vec<St
     grouped_preset(names).file_names(None)
 }
 
+#[test_case(&[true, true, true, true] => true; "with the group on")]
+#[test_case(&[true, false, false, true] => false; "with the group off")]
+fn only_splits_that_are_on_need_grouping(enabled: &[bool]) -> bool {
+    // Arrange
+    let preset = grouped_preset(&["A", "B", "+B2", "C"]);
+
+    // Act, with the expected value checked by test_case
+    preset.needs_grouping(enabled)
+}
+
 #[test]
 fn grouped_presets_make_a_folder_that_loads_grouped() {
     // Arrange
@@ -368,7 +379,7 @@ fn savestates_of_several_reset_images_get_their_place() {
     }
 
     // Act
-    let names: Vec<String> = preset.savestate_copies().into_iter().map(|(_, name)| name).collect();
+    let names: Vec<String> = preset.savestate_copies(&[true; 3]).into_iter().map(|(_, _, name)| name).collect();
 
     // Assert
     assert_eq!(names, ["0_reset.gzs", "0_reset_2.gzs", "1_Boss.gzs"]);
@@ -397,6 +408,81 @@ fn splits_compared_together_with_the_same_name_are_found() {
 
     // Assert: only the joined one, not the next split with the name
     assert_eq!(same, [None, None, None, Some(1), None]);
+}
+
+/// Like [`grouped_preset`], where `~` before a name, after any `+`, makes a dummy and `-` a split
+/// that's off by default.
+fn marked_preset(names: &[&str]) -> Preset {
+    let mut preset = grouped_preset(names);
+    for split in &mut preset.splits {
+        let name = split.name.trim_start_matches(['~', '-']);
+        let marks = &split.name[..split.name.len() - name.len()];
+        (split.dummy, split.off) = (marks.contains('~'), marks.contains('-'));
+        split.name = name.into();
+    }
+    preset
+}
+
+#[test]
+fn splits_follow_the_split_that_decides_whether_they_are_on() {
+    // Arrange
+    let preset =
+        marked_preset(&["reset", "start_auto_splitter", "~Guard", "A", "+A2", "B", "~Last Guard", "End", "~After End"]);
+
+    // Act
+    let leaders: Vec<Option<usize>> = (0..preset.splits.len()).map(|index| preset.leader(index)).collect();
+
+    // Assert: the dummy follows the split after it, the joined split its group, and the final
+    // split with the dummies around it is always on, like reset and start images
+    assert_eq!(leaders, [None, None, Some(3), Some(3), Some(3), Some(5), None, None, None]);
+}
+
+#[test_case(&["A", "B", "+B2"] => vec![Some(0), None, None]; "a final group")]
+#[test_case(&["A", "~Guard", "reset", "B", "C"] => vec![Some(0), None, None, Some(3), None]; "a dummy before a reset image")]
+#[test_case(&["A", "reset", "+B"] => vec![Some(0), None, None]; "a final split that cant join a reset image")]
+#[test_case(&["A", "~D", "+B", "C", "End"] => vec![Some(0), Some(2), Some(2), Some(3), None]; "a group led by a dummy")]
+#[test_case(&["A", "~D", "+B"] => vec![Some(0), None, None]; "a final group led by a dummy")]
+fn the_split_a_split_follows(names: &[&str]) -> Vec<Option<usize>> {
+    // Arrange
+    let preset = marked_preset(names);
+
+    // Act, with the expected value checked by test_case
+    (0..names.len()).map(|index| preset.leader(index)).collect()
+}
+
+#[test]
+fn the_runners_choice_goes_over_the_presets() {
+    // Arrange: the final split can't be off, by the preset or the runner
+    let preset = marked_preset(&["On", "Turned Off", "-Off", "~Guard", "-Turned On", "-End"]);
+    let choice =
+        SplitChoice { on: vec!["Turned On".into(), "Gone".into()], off: vec!["Turned Off".into(), "End".into()] };
+
+    // Act
+    let enabled = preset.enabled(&choice);
+
+    // Assert
+    assert_eq!(enabled, [true, false, false, true, true, true]);
+}
+
+#[test_case(0, false, &[] => (vec![], vec!["A".to_owned()]); "a split turned off")]
+#[test_case(1, true, &[] => (vec!["B".to_owned()], vec![]); "a split off by default turned on")]
+#[test_case(1, false, &["B"] => (vec![], vec![]); "back to the presets")]
+#[test_case(2, false, &[] => (vec![], vec!["C".to_owned()]); "a dummy turns off its split")]
+#[test_case(4, false, &[] => (vec![], vec![]); "the final split")]
+fn choosing_keeps_only_what_differs_from_the_preset(
+    index: usize,
+    on: bool,
+    chosen_on: &[&str],
+) -> (Vec<String>, Vec<String>) {
+    // Arrange
+    let preset = marked_preset(&["A", "-B", "~Guard", "C", "End"]);
+    let mut choice = SplitChoice { on: chosen_on.iter().map(|name| (*name).to_owned()).collect(), off: vec![] };
+
+    // Act
+    preset.choose(&mut choice, index, on);
+
+    // Assert, with the expected value checked by test_case
+    (choice.on, choice.off)
 }
 
 #[test_case("Boss." => Some(0); "a dot at the end")]

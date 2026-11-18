@@ -13,10 +13,12 @@ impl Gui {
         if self.refused_for_problems() {
             return;
         }
+        let enabled = self.maker_enabled();
         let maker = self.maker.borrow();
         let Some(loaded) = maker.loaded() else { return };
-        let copies: Vec<(PathBuf, String)> =
-            loaded.preset.savestate_copies().into_iter().map(|(path, name)| (loaded.file(path), name)).collect();
+        let copies: Vec<(PathBuf, String)> = (loaded.preset.savestate_copies(&enabled).into_iter())
+            .map(|(_, path, name)| (loaded.file(path), name))
+            .collect();
         drop(maker);
         let folder = crate::platform::temp_folder().join(SAVESTATES_FOLDER);
         let mut copied = Vec::new();
@@ -90,9 +92,10 @@ impl Gui {
     /// Puts the chosen preset's savestate instructions in their window. Returns whether it has
     /// any.
     fn fill_instructions(&self) -> bool {
+        let enabled = self.maker_enabled();
         let maker = self.maker.borrow();
         let Some(loaded) = maker.loaded() else { return false };
-        let cards: Vec<InstructionCard> = (instruction_cards(&loaded.preset).into_iter())
+        let cards: Vec<InstructionCard> = (instruction_cards(&loaded.preset, &enabled).into_iter())
             .map(|card| InstructionCard {
                 split: card.split as i32,
                 heading: card.heading.into(),

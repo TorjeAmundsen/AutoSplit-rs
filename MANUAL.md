@@ -81,11 +81,26 @@ With [Advanced Make Split Images](#other) on, the window shows more, for checkin
 
 ![Make Split Images with Advanced Make Split Images on: the splits with their file names on the left, and the split image folder above the capture region on the right](docs/make-split-images-advanced.png)
 
+### Choosing splits
+
+Runners don't all split in the same places, so you can turn a preset's splits on or off for yourself. A preset can also have splits that start off, for things only some runners split on. A split that's off gets no split image, so AutoSplit-rs doesn't split there.
+
+For a preset with splits to choose, a strip at the bottom of the split list says how many are off, and the list only shows the splits that are on.
+
+- Choose Splits shows every split, with the ones that are off dimmed. Each split you can turn on or off has a checkbox on the right, and Space turns the selected split on or off. Done shows only the splits that are on again.
+- Splits compared together, like two images for one split, share one checkbox between them. A dummy goes with the split after it. Hovering a checkbox tints every split it turns on or off, so you see which dummies go with it before you click.
+- The start and reset images and the final split are always on, and say so.
+- What you choose goes into the profile, for each preset, so save the profile to keep it. A split you didn't change follows the preset if the preset changes later.
+- Split images keep their number when other splits are turned on or off, so the numbers in the folder can have gaps, like `03_` and then `05_`. Nothing is renamed, so a split turned back on only needs to be grabbed again.
+- Turning off a split whose image is in the split image folder asks whether to delete that image, since AutoSplit-rs would still compare it. Keep Images is the default. A split that's off but still has its image says still compared while choosing, and the strip counts it in amber, like 1 split is off, 1 still compared. To delete its image later, turn it on and off again.
+
+Your timer needs a segment for each split that's on, apart from dummies. After turning a split on or off, add or remove its segment in LiveSplit too, or the run splits on the wrong segments. The bottom line reminds you after each change.
+
 ### Making the images
 
-- Grab saves the capture region for the selected split, with its mask, and selects the next split, skipping splits made from the preset's screenshot. The screenshot hotkey does the same while the window is open, so you can play through the category and press it at each split.
+- Grab saves the capture region for the selected split, with its mask, and selects the next split, skipping splits made from the preset's screenshot and splits that are off. The screenshot hotkey does the same while the window is open, so you can play through the category and press it at each split.
 - On a [fade split](#fade-images), the button reads Grab* and saves the split image from the split's color instead of the capture, then selects the next split. It works without a capture device. The Capture Region is replaced by a note that the split needs no savestate or screen.
-- Use Screenshots... uses screenshot files instead, like the ones Take Screenshot saves. Pick one for the selected split, or several for the splits in order, skipping fade splits. Then press Save All, or with Advanced Make Split Images on, Save Selected for only the selected split. It's off while a fade split is selected.
+- Use Screenshots... uses screenshot files instead, like the ones Take Screenshot saves. Pick one for the selected split, or several for the splits in order, skipping fade splits and splits that are off. Then press Save All, or with Advanced Make Split Images on, Save Selected for only the selected split. It's off while a fade split is selected.
 - With Advanced Make Split Images on, Test opens the selected split's saved image in the [Live Tester](#live-tester).
 - Some presets come with screenshots for their splits, for consoles whose picture is the same for everyone, like ones with only a digital output. Those screenshots are of the console's own picture, so they only match a capture without color correction or cropping. When you pick one, and again when you pick the split image folder, the bottom line says how many splits have a screenshot and how many are left to grab. Save All writes the split images of the ones that do, and Save All is highlighted instead of Grab while one of them is selected. If a split image doesn't match your capture, select its split and grab it yourself, or use a screenshot of your own with Use Screenshots.... Yours is used instead of the preset's screenshot, and Use Preset's, beside Output Preview, goes back to the preset's. A screenshot that can't be read says so when its split is selected or saved. Grab that split instead.
 
@@ -150,6 +165,7 @@ Each split has:
 | Threshold, Delay, Pause | Unticked, they use the profile's default and stay out of the file name. Changing a value ticks it. |
 | Dummy, Split below threshold | The `{d}` and `{b}` flags. |
 | Same split as the one above | Compares the split for the same split as the one above it, so either one matching splits. Up to 4 splits can be together. See [Several images for one split](#several-images-for-one-split). |
+| Starts off | Off until a runner turns it on with Choose Splits, for a split only some runners split on, see [Choosing splits](#choosing-splits). Start and reset images and the final split are always on, and dummies and splits compared with the one above go with their split, so it's grayed out for them. |
 | Savestate and instructions | For Copy Savestates and Savestate Instructions. A fade split doesn't have them, since its image comes from its color. |
 
 Switching Compare to Fade ticks Threshold and sets it to 0.995, and switching back to a method gives the split its old threshold, color and fade time again.
@@ -449,6 +465,7 @@ On macOS, use Cmd where this says Ctrl, and Option for Alt.
 | F1 (Cmd+? on macOS) | Main window, Settings, Live Tester, Make Split Images | View Help |
 | Escape | Settings, tool windows, small windows | Close the window, or cancel editing a preset |
 | Arrow keys | Region boxes | Change the number by 1 |
+| Space | Choose Splits | Turn the selected split on or off |
 | Ctrl+S | Editing a preset | Save, or list what to fix first |
 | F8 | Editing a preset | Go to the next split with a problem |
 | Alt+Up, Alt+Down | Editing a preset | Move the selected split |

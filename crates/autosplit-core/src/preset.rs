@@ -39,6 +39,10 @@ pub struct PresetSplit {
     /// reset or start images, after one that isn't either.
     #[serde(default, skip_serializing_if = "is_default")]
     pub with_previous: bool,
+    /// Off unless the runner turns it on, for a split some runners split on and most don't.
+    /// Only for a split the runner can turn on or off, see [`Preset::toggleable`].
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub off: bool,
     /// The mask's PNG, relative to the preset's folder. Where its alpha is 255, the screenshot is
     /// kept, or a fade split's color. A fade split without one is the whole screen.
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -101,6 +105,17 @@ impl PartialEq for Remembered {
     fn eq(&self, _: &Self) -> bool {
         true
     }
+}
+
+/// The splits a runner turned on or off in a preset, by name, where that differs from the
+/// preset's [`PresetSplit::off`]. Names the preset doesn't have, or has only on splits that can't
+/// be turned on or off, are ignored.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SplitChoice {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub on: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub off: Vec<String>,
 }
 
 /// A file a split has in its preset's folder.
@@ -202,9 +217,12 @@ impl PresetSplit {
 
 impl Preset {
     /// Whether the folder its split images go in has to be read with split images grouped by
-    /// number: it has splits compared together, or several reset or start images.
-    pub fn needs_grouping(&self) -> bool {
-        (0..self.splits.len()).any(|index| self.joins_previous(index) || self.keyword_place(index) > Some(1))
+    /// number: it has splits compared together, or several reset or start images. Only the splits
+    /// that are `enabled`, one for each split, count.
+    pub fn needs_grouping(&self, enabled: &[bool]) -> bool {
+        (0..self.splits.len())
+            .filter(|&index| enabled[index])
+            .any(|index| self.joins_previous(index) || self.keyword_place(index) > Some(1))
     }
 
     /// Whether split `index` is compared for the same split as the one before it: it asks to
@@ -268,12 +286,13 @@ impl Preset {
             .collect()
     }
 
-    /// The savestates to copy for the practice tool, each with the name it's copied as: the split's
-    /// number and name like its split image, `_SEE_INSTRUCTIONS` when it has instructions, and
-    /// the savestate's extension, and the place of a reset or start image past the first. Splits
-    /// compared together share a number, so they need their own names: the editor doesn't save
-    /// a preset without, and Make Split Images does nothing with one until it's fixed.
-    pub fn savestate_copies(&self) -> Vec<(&str, String)> {
+    /// The savestates to copy for the practice tool, each with its split and the name it's copied
+    /// as: the split's number and name like its split image, `_SEE_INSTRUCTIONS` when it has
+    /// instructions, and the savestate's extension, and the place of a reset or start image past
+    /// the first. Splits compared together share a number, so they need their own names: the
+    /// editor doesn't save a preset without, and Make Split Images does nothing with one until
+    /// it's fixed. Only the splits that are `enabled`, one for each split, have theirs copied.
+    pub fn savestate_copies(&self, enabled: &[bool]) -> Vec<(usize, &str, String)> {
         let (numbers, count) = self.numbers();
         let width = count.to_string().len();
         let name = |index: usize, split: &PresetSplit| {
@@ -290,8 +309,8 @@ impl Preset {
         self.splits
             .iter()
             .enumerate()
-            .filter(|(_, split)| !split.savestate.is_empty())
-            .map(|(index, split)| (split.savestate.as_str(), name(index, split)))
+            .filter(|&(index, split)| enabled[index] && !split.savestate.is_empty())
+            .map(|(index, split)| (index, split.savestate.as_str(), name(index, split)))
             .collect()
     }
 
@@ -315,6 +334,80 @@ impl Preset {
         let start = (0..=index).rev().find(|&first| !self.joins_previous(first)).unwrap_or(0);
         let end = (index + 1..count).find(|&next| !self.joins_previous(next)).unwrap_or(count);
         start..end
+    }
+
+    /// The split that stands for the splits compared together with split `index`: the first of
+    /// them that isn't a dummy, or `None` when all of them are.
+    fn group_lead(&self, index: usize) -> Option<usize> {
+        self.group(index).find(|&each| !self.splits[each].dummy)
+    }
+
+    /// The split that split `index` is on or off with, whether the runner can turn that one on or
+    /// off or not: the one that stands for its group, see [`Preset::group_lead`], and for a group
+    /// of dummies the next group's. `None` for a reset or start image, and for dummies with no
+    /// split after them before a reset or start image or the end.
+    pub fn decider(&self, index: usize) -> Option<usize> {
+        let mut first = self.group(index).start;
+        loop {
+            if self.splits.get(first)?.is_keyword() {
+                return None;
+            }
+            if let Some(lead) = self.group_lead(first) {
+                return Some(lead);
+            }
+            first = self.group(first).end;
+        }
+    }
+
+    /// The split whose being on or off split `index` follows, see [`Preset::decider`], or `None`
+    /// for a split that's always on: a reset or start image, the final split, and the splits that
+    /// go with it. The final split is the last that isn't a reset or start image or a dummy.
+    pub fn leader(&self, index: usize) -> Option<usize> {
+        let lead = self.decider(index)?;
+        // Each group that isn't only dummies, by its first split
+        let leads = |first: usize| {
+            !self.splits[first].is_keyword() && !self.joins_previous(first) && self.group_lead(first).is_some()
+        };
+        let is_final = !(self.group(lead).end..self.splits.len()).any(leads);
+        (!is_final).then_some(lead)
+    }
+
+    /// Whether the runner can turn split `index` on or off: it's no other split's follower and
+    /// isn't always on, see [`Preset::leader`].
+    pub fn toggleable(&self, index: usize) -> bool {
+        self.leader(index) == Some(index)
+    }
+
+    /// Puts in `choice` that split `index`, with the splits that follow it, is `on`. Only what
+    /// differs from the preset is kept. Nothing changes for a split that's always on.
+    pub fn choose(&self, choice: &mut SplitChoice, index: usize, on: bool) {
+        let Some(leader) = self.leader(index) else { return };
+        let split = &self.splits[leader];
+        choice.on.retain(|name| *name != split.name);
+        choice.off.retain(|name| *name != split.name);
+        // The preset has it on unless it's off by default
+        if on == split.off {
+            let names = if on { &mut choice.on } else { &mut choice.off };
+            names.push(split.name.clone());
+        }
+    }
+
+    /// Whether each split is on, with `choice` over the preset's own [`PresetSplit::off`].
+    pub fn enabled(&self, choice: &SplitChoice) -> Vec<bool> {
+        (0..self.splits.len())
+            .map(|index| {
+                let Some(leader) = self.leader(index) else { return true };
+                let split = &self.splits[leader];
+                let chosen = |names: &[String]| names.contains(&split.name);
+                chosen(&choice.on) || (!chosen(&choice.off) && !split.off)
+            })
+            .collect()
+    }
+
+    /// What a profile keeps the runner's [`SplitChoice`] for this preset under: its game and name,
+    /// like `The Legend of Zelda: Ocarina of Time/Any%`.
+    pub fn choice_key(&self) -> String {
+        format!("{}/{}", self.game, self.name)
     }
 
     /// The file name of a profile made for this preset: the game's initials, then the preset's
@@ -366,6 +459,7 @@ pub struct LibrarySplit {
 pub const SPLIT_KEYS: &[&str] = &[
     "name",
     "with_previous",
+    "off",
     "mask",
     "screenshot",
     "fade",

@@ -1,11 +1,13 @@
 //! AutoSplit settings profiles (`.toml`), compatible both ways with AutoSplit's files.
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::commands::Command;
 use crate::image::Rect;
+use crate::preset::SplitChoice;
 use crate::split_image::SplitDefaults;
 
 /// The capture region of a new profile: AutoSplit's window starts with a 640x480 region at the
@@ -178,6 +180,10 @@ pub struct UserProfile {
     /// instead of only what making split images needs. Only written when changed.
     #[serde(skip_serializing_if = "is_default")]
     pub advanced_maker: bool,
+    /// Not in AutoSplit. The splits turned on or off in each preset, by
+    /// [`Preset::choice_key`](crate::preset::Preset::choice_key). Only written when there are any.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub split_choices: BTreeMap<String, SplitChoice>,
     /// Keys this version doesn't know, kept so saving doesn't drop them.
     #[serde(flatten)]
     pub unknown: toml::Table,
@@ -223,6 +229,7 @@ impl Default for UserProfile {
             fade_color_tolerance: DEFAULT_FADE_COLOR_TOLERANCE,
             fade_ignore_noise: true,
             advanced_maker: false,
+            split_choices: BTreeMap::new(),
             unknown: toml::Table::new(),
         }
     }

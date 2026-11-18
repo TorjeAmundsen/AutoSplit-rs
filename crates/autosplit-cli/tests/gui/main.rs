@@ -11,9 +11,9 @@ use std::rc::Rc;
 use autosplit::gui::document::{Document, folder_text, profile_on_open};
 use autosplit::gui::log::{LOG_LINES, LogLines};
 use autosplit::gui::maker_plan::{
-    DeletedPreset, PresetList, WritePlan, looks_made, move_to_base, next_to_grab, plan_writes, preset_after_delete,
-    saved_from_after_preset_save, saves_in_place, screenshots_status, screenshots_to_move, stale_to_delete,
-    writes_over,
+    DeletedPreset, PresetList, RowPlace, WritePlan, choice_summary, images_of_splits, looks_made, move_to_base,
+    next_to_grab, plan_writes, preset_after_delete, row_places, saved_from_after_preset_save, saves_in_place,
+    screenshots_set_status, screenshots_status, screenshots_to_move, stale_to_delete, writes_over,
 };
 use autosplit::gui::messages::{Answer, Buttons, Message, MessageQueue};
 use autosplit::gui::placement::{Area, beside, centered_over};
@@ -625,6 +625,78 @@ fn other_split_images_compared_for_the_same_split_arent_stale() {
 
     // Assert
     assert_eq!(plan.stale, Vec::<PathBuf>::new());
+}
+
+#[test_case(8, 8, 0, 0 => "8 screenshots set, one for each split. Save All writes their split images."; "one each")]
+#[test_case(8, 8, 1, 0 => "8 screenshots set, one for each split that isn't a fade split. Save All writes their split images."; "one each past fades")]
+#[test_case(8, 8, 0, 2 => "8 screenshots set, one for each split that's on. Save All writes their split images."; "one each past splits that are off")]
+#[test_case(8, 8, 1, 2 => "8 screenshots set, one for each split that's on and isn't a fade split. Save All writes their split images."; "one each past both")]
+#[test_case(5, 8, 0, 0 => "5 screenshots for 8 splits, set in order from the first. Save All writes their split images."; "fewer")]
+#[test_case(5, 8, 0, 2 => "5 screenshots for the 8 splits that are on, set in order from the first. Save All writes their split images."; "fewer past splits that are off")]
+fn picked_screenshots_say_which_splits_they_went_to(picked: usize, count: usize, fades: usize, off: usize) -> String {
+    // Act, with the expected value checked by test_case
+    screenshots_set_status(picked, count, fades, off)
+}
+
+#[test]
+fn hidden_rows_take_no_place_and_are_skipped_by_up_and_down() {
+    // Arrange: hidden first and between shown ones
+    let shown = [false, true, false, true, true];
+
+    // Act
+    let places = row_places(&shown);
+
+    // Assert
+    let row = |hidden, place, above, below| RowPlace { hidden, place, above, below };
+    assert_eq!(
+        places,
+        [
+            row(true, 0, None, Some(1)),
+            row(false, 0, None, Some(3)),
+            row(true, 1, Some(1), Some(3)),
+            row(false, 1, Some(1), Some(4)),
+            row(false, 2, Some(3), None),
+        ]
+    );
+}
+
+#[test_case(0, 0 => "Every split is on."; "none off")]
+#[test_case(1, 0 => "1 split is off."; "one off")]
+#[test_case(3, 0 => "3 splits are off."; "several off")]
+#[test_case(3, 1 => "3 splits are off, 1 still compared."; "one off still compared")]
+fn the_strip_says_how_many_splits_are_off_and_still_compared(off: usize, kept: usize) -> String {
+    // Act, with the expected value checked by test_case
+    choice_summary(off, kept)
+}
+
+#[test]
+fn images_of_splits_turned_off_are_found_by_number_and_name() {
+    // Arrange: split 3 compares Boss and Boss Alt, under names from other settings too, among
+    // others, like 03_Other from before a split was added above, and 03_Boss_2 of a split named
+    // Boss_2
+    let existing: Vec<PathBuf> = [
+        "03_Boss_(0.9).png",
+        "3_Boss.png",
+        "03_Boss Alt_[1].png",
+        "03_Bosses.png",
+        "03_Boss_2.png",
+        "03_Other.png",
+        "04_Boss.png",
+        "13_Boss.png",
+        "003_SplitImage.png",
+        "03_Boss.txt",
+        "03_reset.png",
+        "notes.png",
+    ]
+    .map(PathBuf::from)
+    .into();
+
+    // Act
+    let images = images_of_splits(&existing, &[(3, "Boss"), (3, "Boss Alt")]);
+
+    // Assert
+    let expected = ["03_Boss_(0.9).png", "3_Boss.png", "03_Boss Alt_[1].png"].map(PathBuf::from);
+    assert_eq!(images, expected);
 }
 
 #[test]

@@ -101,6 +101,35 @@ pub fn stale_to_delete(stale: &[PathBuf], written: &[PathBuf]) -> Vec<PathBuf> {
         .collect()
 }
 
+/// The split images among a folder's `existing` files of `splits`, each its number and name,
+/// like the splits just turned off: PNGs named for one of them, its number, by value, so
+/// `5_Boss` and `05_Boss` are both 5, then `_` and its name, followed by the extension or by
+/// `_` and a setting, like `_(0.9)`. The name is checked too, since an image from an older version of the
+/// preset can have the number of another split. Not reset or start images, and not screenshots
+/// (`NNN_SplitImage`), whose numbers count from 1.
+pub fn images_of_splits(existing: &[PathBuf], splits: &[(usize, &str)]) -> Vec<PathBuf> {
+    let of_split = |file: &str, number: usize, name: &str| {
+        let Some(SplitKey::Number(found)) = split_key(file) else { return false };
+        let digits = number_prefix(file).map_or(0, str::len);
+        let rest = file[digits..].strip_prefix('_').and_then(|rest| rest.strip_prefix(name));
+        // The extension, or a setting, not more of a longer name like Boss_2's
+        let ends = |rest: &str| {
+            rest.starts_with('.')
+                || rest.strip_prefix('_').is_some_and(|setting| setting.starts_with(['(', '[', '#', '@', '{', '^']))
+        };
+        found == number as u64 && rest.is_some_and(ends)
+    };
+    (existing.iter())
+        .filter(|path| is_png(path))
+        .filter(|path| {
+            file_name_text(path).is_some_and(|file| {
+                !is_screenshot_name(&file) && splits.iter().any(|&(number, name)| of_split(&file, number, name))
+            })
+        })
+        .cloned()
+        .collect()
+}
+
 /// What the window says about a preset's screenshots: `with` of its splits have one, and
 /// `without` have to be grabbed, fade splits counted in neither, since they're made from their
 /// color. None for a preset without screenshots, which is grabbed like always. Short, since it
@@ -117,11 +146,77 @@ pub fn screenshots_status(with: usize, without: usize) -> Option<String> {
     })
 }
 
-/// The split to select after grabbing split `after`, where `from_preset` says which splits are
-/// made from their preset's screenshot: the next one that isn't, so playing through and pressing
-/// the screenshot hotkey never replaces one. None when no split after it is left.
-pub fn next_to_grab(from_preset: &[bool], after: usize) -> Option<usize> {
-    (after + 1..from_preset.len()).find(|&index| !from_preset[index])
+/// Where a split's row is in the split list, which hides some rows, like splits that are off.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RowPlace {
+    pub hidden: bool,
+    /// Its place among the shown rows, from 0. For a hidden row, the place the next shown one has.
+    pub place: usize,
+    /// The shown rows above and below it, which Up and Down go to.
+    pub above: Option<usize>,
+    pub below: Option<usize>,
+}
+
+/// Each row's place in the split list, where `shown` says which rows are shown.
+pub fn row_places(shown: &[bool]) -> Vec<RowPlace> {
+    let mut places = Vec::with_capacity(shown.len());
+    let (mut place, mut above) = (0, None);
+    for (index, &is_shown) in shown.iter().enumerate() {
+        places.push(RowPlace { hidden: !is_shown, place, above, below: None });
+        if is_shown {
+            (place, above) = (place + 1, Some(index));
+        }
+    }
+    let mut below = None;
+    for (index, &is_shown) in shown.iter().enumerate().rev() {
+        places[index].below = below;
+        if is_shown {
+            below = Some(index);
+        }
+    }
+    places
+}
+
+/// What the strip under the split list says when not choosing: how many of the splits the runner
+/// can turn on or off are `off`, and how many splits that are off still have their image in the
+/// split image folder, `kept`, which AutoSplit compares anyway.
+pub fn choice_summary(off: usize, kept: usize) -> String {
+    let off = match off {
+        0 => return "Every split is on.".to_owned(),
+        1 => "1 split is off".to_owned(),
+        off => format!("{off} splits are off"),
+    };
+    match kept {
+        0 => format!("{off}."),
+        kept => format!("{off}, {kept} still compared."),
+    }
+}
+
+/// What the window says after `picked` screenshots were set in order, from the first, for the
+/// `count` splits that take one: past `fades` fade splits, made from their color, and `off`
+/// splits that are off, which get no split image.
+pub fn screenshots_set_status(picked: usize, count: usize, fades: usize, off: usize) -> String {
+    // For each split, and for the splits
+    let (each, all) = match (fades > 0, off > 0) {
+        (false, false) => ("", ""),
+        (true, false) => (" that isn't a fade split", " that aren't fade splits"),
+        (false, true) => (" that's on", " that are on"),
+        (true, true) => (" that's on and isn't a fade split", " that are on and aren't fade splits"),
+    };
+    let save = "Save All writes their split images.";
+    match picked {
+        _ if picked == count => format!("{picked} screenshots set, one for each split{each}. {save}"),
+        _ if all.is_empty() => format!("{picked} screenshots for {count} splits, set in order from the first. {save}"),
+        _ => format!("{picked} screenshots for the {count} splits{all}, set in order from the first. {save}"),
+    }
+}
+
+/// The split to select after grabbing split `after`, where `skipped` says which splits aren't
+/// grabbed, like ones made from their preset's screenshot: the next one that is, so playing
+/// through and pressing the screenshot hotkey never replaces one. None when no split after it is
+/// left.
+pub fn next_to_grab(skipped: &[bool], after: usize) -> Option<usize> {
+    (after + 1..skipped.len()).find(|&index| !skipped[index])
 }
 
 /// Where a split image saved from its preset's screenshot at `saved_from` is from once the

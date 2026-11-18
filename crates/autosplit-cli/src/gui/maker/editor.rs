@@ -286,10 +286,10 @@ impl Gui {
         let Some(edit) = self.leave_editing() else { return };
         let mut maker = self.maker.borrow_mut();
         maker.restore(edit.before);
-        let (preset, selected) = (maker.preset, maker.selected);
+        let preset = maker.preset;
         drop(maker);
+        // With the split selected before editing, or the next one shown
         self.show_preset(preset);
-        self.choose_split(selected);
     }
 
     /// Does `then` once there are no changes to lose, asking first when there are.
@@ -354,6 +354,7 @@ impl Gui {
             SplitField::Dummy => SplitEdit::Dummy(values.get_dummy()),
             SplitField::Below => SplitEdit::Below(values.get_below()),
             SplitField::WithPrevious => SplitEdit::WithPrevious(values.get_with_previous()),
+            SplitField::Off => SplitEdit::Off(values.get_off()),
             SplitField::Instructions => SplitEdit::Instructions(values.get_instructions().into()),
         };
         self.edit_split(edit);
@@ -478,6 +479,7 @@ impl Gui {
         values.set_dummy(split.dummy);
         values.set_below(split.below);
         values.set_with_previous(split.with_previous);
+        values.set_off(split.off);
         values.set_instructions(split.instructions.as_str().into());
     }
 
@@ -494,6 +496,7 @@ impl Gui {
         window.set_has_split(selected < splits.len());
         if let Some(split) = splits.get(selected) {
             let why_not_joined = edit.draft.why_not_joined(selected);
+            let why_not_off = edit.draft.why_not_off(selected);
             let source = edit.source.as_deref().map(canonical);
             window.set_form(SplitForm {
                 named: SplitKind::of(split) == SplitKind::Split,
@@ -505,6 +508,7 @@ impl Gui {
                     slint::Color::from_rgb_u8(red, green, blue)
                 }),
                 group_problem: field_problems(&problems, selected, Field::Group).into(),
+                off_problem: field_problems(&problems, selected, Field::Off).into(),
                 // A fade split's mask has Clear beside it too, like the savestate
                 mask: elide_middle(
                     &file_name_text(Path::new(&split.mask)).unwrap_or_default(),
@@ -534,6 +538,8 @@ impl Gui {
                         || edit.draft.preset.keyword_place(selected).is_some_and(|place| place > 1)),
                 can_join: why_not_joined.is_none(),
                 why_not_joined: why_not_joined.unwrap_or_default().into(),
+                can_off: why_not_off.is_none(),
+                why_not_off: why_not_off.unwrap_or_default().into(),
             });
             // Also when typing the name made it a start or reset image
             window.global::<SplitValues>().set_kind(SplitKind::of(split).index() as i32);

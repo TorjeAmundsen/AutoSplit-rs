@@ -42,16 +42,17 @@ fn presets_are_saved_under_names_their_game_tells_apart(name: &str, taken: &[&st
 
 #[test]
 fn instruction_cards_are_named_like_the_copied_savestates() {
-    // Arrange: two reset images and splits compared together share numbers, and Door has no
-    // instructions, so list places would be off
-    let mut draft = grouped(&["reset", "reset", "A", "+B", "Door", "C"]);
-    for (index, instructions) in [(1, "Wait"), (3, "Jump"), (4, ""), (5, "Run")] {
+    // Arrange: two reset images and splits compared together share numbers, Door has no
+    // instructions and Wall is off, so list places would be off
+    let mut draft = grouped(&["reset", "reset", "A", "+B", "Door", "Wall", "C"]);
+    for (index, instructions) in [(1, "Wait"), (3, "Jump"), (4, ""), (5, "Climb"), (6, "Run")] {
         draft.edit_split(index, SplitEdit::Savestate("savestates/state.gzs".into()));
         draft.edit_split(index, SplitEdit::Instructions(instructions.into()));
     }
+    let enabled = [true, true, true, true, true, false, true];
 
     // Act
-    let cards = instruction_cards(&draft.preset);
+    let cards = instruction_cards(&draft.preset, &enabled);
 
     // Assert
     let card = |split: usize, heading: &str, file: &str, instructions: &str| InstructionText {
@@ -65,7 +66,7 @@ fn instruction_cards_are_named_like_the_copied_savestates() {
         [
             card(1, "Reset Image 2", "0_reset_2_SEE_INSTRUCTIONS.gzs", "Wait"),
             card(3, "B", "1_B_SEE_INSTRUCTIONS.gzs", "Jump"),
-            card(5, "C", "3_C_SEE_INSTRUCTIONS.gzs", "Run"),
+            card(6, "C", "4_C_SEE_INSTRUCTIONS.gzs", "Run"),
         ]
     );
 }
@@ -571,6 +572,65 @@ fn savestate_extensions_are_the_presets_own() {
 fn the_checkbox_says_why_it_cant_join(names: &[&str], index: usize) -> Option<&'static str> {
     // Act, with the expected value checked by test_case
     grouped(names).why_not_joined(index)
+}
+
+/// Like [`grouped`], where `~` makes a dummy and `-` a split off by default.
+fn marked(names: &[&str]) -> Draft {
+    let plain: Vec<String> = names.iter().map(|name| name.replace(['~', '-'], "")).collect();
+    let mut draft = grouped(&plain.iter().map(String::as_str).collect::<Vec<_>>());
+    for (index, name) in names.iter().enumerate() {
+        draft.edit_split(index, SplitEdit::Dummy(name.contains('~')));
+        draft.edit_split(index, SplitEdit::Off(name.contains('-')));
+    }
+    draft
+}
+
+#[test_case(0 => Some("Start and reset images are always on.".to_owned()); "reset image")]
+#[test_case(1 => Some("It's on or off with A.".to_owned()); "dummy")]
+#[test_case(2 => None; "a split")]
+#[test_case(3 => Some("It's on or off with A.".to_owned()); "compared together")]
+#[test_case(5 => Some("It goes with End, the final split, which is always on.".to_owned()); "dummy before the final split")]
+#[test_case(6 => Some("The final split is always on, since it ends the run.".to_owned()); "final split")]
+#[test_case(7 => Some("A dummy with no split after it to go with is always on.".to_owned()); "dummy at the end")]
+fn the_checkbox_says_why_it_cant_be_off(index: usize) -> Option<String> {
+    // Arrange
+    let draft = marked(&["reset", "~Guard", "A", "+A2", "B", "~Last", "End", "~After"]);
+
+    // Act, with the expected value checked by test_case
+    draft.why_not_off(index)
+}
+
+#[test]
+fn off_by_default_where_it_cant_be_is_a_problem() {
+    // Arrange: End was a split before the one after it was removed
+    let draft = marked(&["-A", "-End"]);
+
+    // Act
+    let problems = draft.problems();
+
+    // Assert
+    let off = |index| field_problems(&problems, index, Field::Off);
+    assert_eq!(
+        (off(0), off(1)),
+        (String::new(), "It can't start off. The final split is always on, since it ends the run.".to_owned())
+    );
+}
+
+#[test_case(&["Boss", "Door", "Boss", "End"] => vec![2]; "two splits")]
+#[test_case(&["~Guard", "A", "~Guard", "B", "End"] => Vec::<usize>::new(); "two dummies")]
+#[test_case(&["~Boss", "Boss", "End"] => Vec::<usize>::new(); "a dummy above")]
+#[test_case(&["Boss", "Boss"] => Vec::<usize>::new(); "the final split")]
+fn splits_turned_on_or_off_need_names_of_their_own(names: &[&str]) -> Vec<usize> {
+    // Arrange
+    let draft = marked(names);
+
+    // Act
+    let problems = draft.problems();
+
+    // Assert, with the expected value checked by test_case
+    let message = "A split above that can be turned on or off has the same name, so turning one on or off would \
+                   turn both. Give it another name.";
+    (problems.iter()).filter(|problem| problem.message == message).filter_map(|problem| problem.split).collect()
 }
 
 #[test_case(0 => "Reset Image"; "a reset image")]

@@ -2,7 +2,7 @@
 // AutoSplit reads them, into the split image folder. Edit switches it to editing the preset, with
 // the selected split's mask shown on the capture as it's changed.
 
-import { ScrollView } from "std-widgets.slint";
+import { CheckBox, ScrollView } from "std-widgets.slint";
 import { Button, ClickAway, ComboBox, FileName, GridIcon, IconButton, Icons, IconToggle, Keys, Label, LiveIcon, MaskIcon, NamePart, OpenList, Preview, SavedCheck, SavedGlow, TextField, Theme, Tip } from "widgets.slint";
 import { InlineMessage, MessageOverlay } from "message.slint";
 import { SplitField, SplitForm, SplitFormPanel, SplitValues } from "split_form.slint";
@@ -28,6 +28,29 @@ export struct MakerRow {
     joined: bool,
     // Every other split, or group of splits compared together, is shaded
     shaded: bool,
+    // The runner can turn it on or off, with a checkbox
+    toggleable: bool,
+    // Turned off, by the preset or the runner, so it gets no split image
+    off: bool,
+    // Why the runner can't turn it on or off, for the tooltip where its checkbox would be
+    fixed: string,
+    // Off, with an image in the split image folder, which AutoSplit still compares
+    kept: bool,
+    // Off and not being chosen, so it isn't shown
+    hidden: bool,
+    // Its place among the shown rows, from 0
+    place: int,
+    // The shown rows above and below it, for Up and Down, or -1 for none
+    above: int,
+    below: int,
+    // The runner can't turn it off, which choosing says where a checkbox would be
+    always-on: bool,
+    // The split whose checkbox turns it on or off, or -1 when it's always on
+    leader: int,
+    // For a split with a checkbox: the place of the first of the splits compared together with
+    // it, and how many they are, which the checkbox is centered on
+    box-top: int,
+    box-rows: int,
 }
 
 // The split image folder, like a read-only field without a cursor, with the whole path in its
@@ -125,6 +148,23 @@ export component MakerWindow inherits Window {
     in property <[string]> presets;
     in-out property <int> preset-index;
     in property <[MakerRow]> rows;
+    // The preset has splits the runner can turn on or off, which get checkboxes when not editing
+    in property <bool> has-choices;
+    // The strip under the list says how many are off, with Choose Splits, which shows every split
+    // with checkboxes until Done
+    property <bool> show-strip: root.has-choices && !root.editing;
+    in property <bool> choosing-splits;
+    property <bool> choosing: root.show-strip && root.choosing-splits;
+    // Like 2 splits off
+    in property <string> choice-summary;
+    // A split that's off still has its image in the split image folder, which AutoSplit compares
+    in property <bool> choice-kept;
+    property <length> strip-height: 30px;
+    // How many rows are shown, the ones that aren't hidden
+    in property <int> shown-rows;
+    // The split whose checkbox the pointer is over while choosing, or -1
+    property <int> hovered-leader: -1;
+    property <length> box-size: 20px;
     in-out property <int> selected: 0;
     // Shown from its end when it's too long, since the end tells folders apart. Empty for none
     in property <string> output-folder;
@@ -241,6 +281,10 @@ export component MakerWindow inherits Window {
     // The index among the game's presets
     callback preset-chosen(int);
     callback split-chosen(int);
+    // The checkbox of split `index` was clicked, to turn it and the splits that follow it on or off
+    callback split-toggled(int);
+    // Choose Splits or Done in the strip under the list
+    callback choose-splits();
     callback edit-preset();
     callback new-preset();
     callback import-preset();
@@ -273,6 +317,8 @@ export component MakerWindow inherits Window {
 
     // The split list's rows: the split's name over its file name, beside a picture
     property <length> row-height: 44px;
+    // The rows' right padding, clear of the scroll bar, 14px wide over the rows when it shows
+    property <length> list-padding: root.shown-rows * root.row-height > list.visible-height ? 20px : 6px;
     // The form's labels, so the fields line up
     property <length> label-width: 88px;
 
@@ -358,11 +404,13 @@ export component MakerWindow inherits Window {
 
     // Scrolls split `index` into view, like after it's added or moved
     public function scroll-to(index: int) {
-        if (index * root.row-height < -list.content-y) {
-            list.content-y = -index * root.row-height;
+        // Where it's shown, past hidden splits that are off
+        let place = index < root.rows.length ? root.rows[index].place : index;
+        if (place * root.row-height < -list.content-y) {
+            list.content-y = -place * root.row-height;
         }
-        if ((index + 1) * root.row-height > -list.content-y + list.visible-height) {
-            list.content-y = -((index + 1) * root.row-height - list.visible-height);
+        if ((place + 1) * root.row-height > -list.content-y + list.visible-height) {
+            list.content-y = -((place + 1) * root.row-height - list.visible-height);
         }
     }
     callback grab();
@@ -550,31 +598,49 @@ export component MakerWindow inherits Window {
                         border-color: Theme.outline;
                     }
 
-                    // Up and Down pick the split above or below, scrolled into view
+                    // Up and Down pick the split shown above or below, scrolled into view
                     list-keys := FocusScope {
+                        height: parent.height - (root.show-strip ? root.strip-height : 0px);
+                        y: 0px;
+
                         key-pressed(event) => {
-                            if (event.text == Key.UpArrow && root.selected > 0) {
-                                root.pick(root.selected - 1);
+                            // Not without rows, where the selected one is a default row
+                            if (event.text == Key.UpArrow && root.selected < root.rows.length && root.rows[root.selected].above >= 0) {
+                                root.pick(root.rows[root.selected].above);
                                 return accept;
                             }
-                            if (event.text == Key.DownArrow && root.selected < root.rows.length - 1) {
-                                root.pick(root.selected + 1);
+                            if (event.text == Key.DownArrow && root.selected < root.rows.length && root.rows[root.selected].below >= 0) {
+                                root.pick(root.rows[root.selected].below);
+                                return accept;
+                            }
+                            // Space turns the selected split on or off while choosing
+                            if (event.text == " " && root.choosing && root.selected < root.rows.length && root.rows[root.selected].leader >= 0) {
+                                root.split-toggled(root.selected);
                                 return accept;
                             }
                             reject
                         }
 
                         list := ScrollView {
-                            content-height: root.rows.length * root.row-height;
+                            content-height: root.shown-rows * root.row-height;
 
+                            // Splits that are off stay in the rows, hidden unless choosing, so a
+                            // row's index is its split's, and shown ones take the places in turn
                             for row[index] in root.rows: row-box := Rectangle {
-                                y: index * root.row-height;
+                                visible: !row.hidden;
+                                y: row.place * root.row-height;
                                 height: root.row-height;
                                 width: parent.width;
                                 background: index == root.selected ? Theme.selection.with-alpha(list-keys.has-focus ? 0.35 : 0.2) : row.shaded ? Theme.stripe : transparent;
 
                                 SavedGlow {
                                     shown: root.saved-rows[index];
+                                }
+
+                                // A highlight on every split the hovered checkbox turns on or off,
+                                // like the dummies before it, before it's clicked
+                                if root.choosing && root.hovered-leader >= 0 && row.leader == root.hovered-leader: Rectangle {
+                                    background: Theme.warning.with-alpha(0.16);
                                 }
 
                                 TouchArea {
@@ -588,7 +654,7 @@ export component MakerWindow inherits Window {
                                 // first, and a bar down the margin beside all of them
                                 property <bool> joins-next: index + 1 < root.rows.length && root.rows[index + 1].joined;
 
-                                if index > 0 && !row.joined: Rectangle {
+                                if row.place > 0 && !row.joined: Rectangle {
                                     y: 0px;
                                     height: 1px;
                                     background: Theme.separator;
@@ -605,7 +671,7 @@ export component MakerWindow inherits Window {
                                 HorizontalLayout {
                                     padding-left: 12px;
                                     // Clear of the scroll bar, 14px wide over the rows when it shows
-                                    padding-right: root.rows.length * root.row-height > list.visible-height ? 20px : 6px;
+                                    padding-right: root.list-padding;
                                     spacing: 8px;
 
                                     // The split image at a glance, or an empty box until there's
@@ -614,6 +680,7 @@ export component MakerWindow inherits Window {
                                         alignment: center;
 
                                         Rectangle {
+                                            opacity: row.off ? 0.4 : 1;
                                             width: 48px;
                                             height: 36px;
                                             border-width: 1px;
@@ -643,11 +710,14 @@ export component MakerWindow inherits Window {
                                             height: 18px;
                                             font-size: 13px;
                                             font-weight: 600;
-                                            color: row.problem ? Theme.error : Theme.text;
+                                            color: row.problem ? Theme.error : row.off ? Theme.secondary-text : Theme.text;
                                             text: row.heading;
                                         }
 
+                                        // Clipped, so the labels and checkbox beside it keep their room
                                         if root.details: Rectangle {
+                                            opacity: row.off ? 0.4 : 1;
+                                            min-width: 0px;
                                             height: 16px;
                                             clip: true;
 
@@ -662,19 +732,104 @@ export component MakerWindow inherits Window {
                                         alignment: center;
                                         horizontal-stretch: 0;
 
-                                        if root.details: Label {
+                                        // Not while choosing, which needs the room for the checkboxes and always on
+                                        if root.details && !root.choosing: Label {
                                             height: 16px;
                                             horizontal-alignment: right;
                                             color: Theme.secondary-text;
                                             text: row.source;
                                         }
 
+                                        // An image of a split that's off is still compared, since
+                                        // it's in the folder
+                                        // Whole, with the file name beside it clipped instead
                                         Label {
                                             height: 16px;
+                                            min-width: self.preferred-width;
                                             horizontal-alignment: right;
-                                            color: Theme.reached;
-                                            text: row.saved ? "saved" : "";
+                                            color: row.kept ? Theme.warning : Theme.reached;
+                                            text: row.kept ? "still compared" : row.saved ? "saved" : "";
                                         }
+                                    }
+
+                                    // While choosing, that a split is always on. The checkboxes are
+                                    // drawn over the rows, below, centered on the splits compared
+                                    // together, and a split that goes with one is highlighted when
+                                    // it's hovered
+                                    if root.choosing: VerticalLayout {
+                                        alignment: center;
+                                        width: 64px;
+
+                                        if row.always-on: Label {
+                                            height: 16px;
+                                            horizontal-alignment: right;
+                                            color: Theme.secondary-text;
+                                            text: "always on";
+
+                                            Tooltip {
+                                                Tip {
+                                                    text: row.fixed;
+                                                }
+                                            }
+                                        }
+
+                                        // Why a dummy has no checkbox: the split it goes with,
+                                        // which hovering that split's checkbox highlights too
+                                        if !row.always-on && !row.toggleable && row.fixed != "": Rectangle {
+                                            height: 20px;
+
+                                            Tooltip {
+                                                Tip {
+                                                    text: row.fixed;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // While choosing, a checkbox for each split the runner turns on or off,
+                            // over the rows so it's centered on the splits compared together with
+                            // it. Clicks go to Rust through the area over it, which also says what
+                            // hovering it would turn on or off. The box ticks itself from Space
+                            // while it has focus, which drops its binding, so it's put back to what
+                            // Rust has each time the row changes
+                            for row[index] in root.rows: Rectangle {
+                                visible: root.choosing && row.toggleable;
+                                x: parent.width - root.list-padding - root.box-size;
+                                y: row.box-top * root.row-height + (row.box-rows * root.row-height - root.box-size) / 2;
+                                width: root.box-size;
+                                height: root.box-size;
+                                property <bool> on: !row.off;
+                                changed on => {
+                                    box.checked = self.on;
+                                }
+
+                                box := CheckBox {
+                                    checked: !row.off;
+                                    toggled => {
+                                        list-keys.focus();
+                                        root.split-toggled(index);
+                                    }
+                                }
+
+                                box-area := TouchArea {
+                                    clicked => {
+                                        list-keys.focus();
+                                        root.split-toggled(index);
+                                    }
+                                    changed has-hover => {
+                                        if (self.has-hover) {
+                                            root.hovered-leader = index;
+                                        } else if (root.hovered-leader == index) {
+                                            root.hovered-leader = -1;
+                                        }
+                                    }
+                                }
+
+                                Tooltip {
+                                    Tip {
+                                        text: "Split here. Off, the split gets no split image, and Grab and Save All skip it, with the splits that go with it, which are highlighted while the pointer is here. Your LiveSplit splits need a segment for each split that's on, apart from dummies.";
                                     }
                                 }
                             }
@@ -682,7 +837,7 @@ export component MakerWindow inherits Window {
                             // Where a split from Split Library goes: a line between the rows, with
                             // a dot at its start, over the separator
                             if root.drop-line >= 0: Rectangle {
-                                y: clamp(root.drop-line * root.row-height - 1px, 0px, max(0px, root.rows.length * root.row-height - 2px));
+                                y: clamp(root.drop-line * root.row-height - 1px, 0px, max(0px, root.shown-rows * root.row-height - 2px));
                                 height: 2px;
                                 width: parent.width;
                                 background: Theme.focus;
@@ -695,6 +850,46 @@ export component MakerWindow inherits Window {
                                     border-radius: 4px;
                                     background: Theme.focus;
                                 }
+                            }
+                        }
+                    }
+
+                    // How many splits are off, and the way to choose them, inside the list's
+                    // outline so both layouts keep their size
+                    if root.show-strip: Rectangle {
+                        y: parent.height - root.strip-height;
+                        height: root.strip-height;
+                        background: Theme.stripe;
+
+                        Rectangle {
+                            y: 0px;
+                            height: 1px;
+                            background: Theme.separator;
+                        }
+
+                        HorizontalLayout {
+                            padding-left: 10px;
+                            padding-right: 3px;
+                            padding-top: 3px;
+                            padding-bottom: 2px;
+                            spacing: 6px;
+
+                            Label {
+                                horizontal-stretch: 1;
+                                color: !root.choosing && root.choice-kept ? Theme.warning : Theme.secondary-text;
+                                text: root.choosing ? "Turn on the splits you split on." : root.choice-summary;
+
+                                if !root.choosing && root.choice-kept: Tooltip {
+                                    Tip {
+                                        text: "A split that's off still has its image in the split image folder, so AutoSplit-rs still splits there. Choose Splits shows it as still compared. Turn it on and off again to be asked whether to delete its image.";
+                                    }
+                                }
+                            }
+
+                            Button {
+                                text: root.choosing ? "Done" : "Choose Splits";
+                                clicked => { root.choose-splits(); }
+                                tip: root.choosing ? "Show only the splits that are on" : "Show every split, with a checkbox for each one you can turn on or off, like splits some runners don't split on";
                             }
                         }
                     }

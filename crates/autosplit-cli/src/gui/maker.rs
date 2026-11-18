@@ -9,7 +9,7 @@ use std::sync::Arc;
 use autosplit_core::image::{BgraImage, BgraView};
 use autosplit_core::imgproc::{ResizeBuffers, stretch_to_rgba};
 use autosplit_core::mask::{Mask, apply_mask, fade_image};
-use autosplit_core::preset::{LoadedPreset, Preset, PresetError, PresetSplit, load_presets};
+use autosplit_core::preset::{LoadedPreset, Preset, PresetError, PresetSplit, SplitChoice, load_presets};
 use autosplit_core::profile::UserProfile;
 use autosplit_core::split_folder::user_files;
 use autosplit_core::text::hex_color;
@@ -17,13 +17,15 @@ use slint::{ComponentHandle, ModelRc, Rgba8Pixel, SharedPixelBuffer, SharedStrin
 
 use super::document::Document;
 use super::maker_plan::{
-    PresetList, looks_made, move_to_base, next_to_grab, plan_writes, saves_in_place, screenshots_status,
-    screenshots_to_move, stale_to_delete, writes_over,
+    PresetList, choice_summary, images_of_splits, looks_made, move_to_base, next_to_grab, plan_writes, row_places,
+    saves_in_place, screenshots_set_status, screenshots_status, screenshots_to_move, stale_to_delete, writes_over,
 };
 use super::messages::{Answer, Message};
 use super::paths::{canonical, file_name_text};
 use super::placement::beside;
-use super::preset_form::{Problem, instruction_cards, problem_flags, problem_summary, problems_of, split_heading};
+use super::preset_form::{
+    Problem, instruction_cards, problem_flags, problem_summary, problems_of, split_heading, why_not_toggleable,
+};
 use super::ui::{InstructionCard, MakerRow};
 use super::view::{Pixels, rgba};
 use super::{Gui, Tool, exe_folder, file_name_parts, with_gui};
@@ -125,6 +127,12 @@ pub(super) struct Maker {
     last_live: Option<Pixels>,
     /// Splits to save once the ones being saved are, for the preset of that generation.
     queued: Option<(u64, Vec<usize>)>,
+    /// Every split is shown, with a checkbox for the ones the runner can turn on or off, which
+    /// Choose Splits under the list starts and Done ends. Off, splits that are off aren't shown.
+    choosing: bool,
+    /// Splits turned off while split images were being saved, for the preset of that generation,
+    /// whose images deleting waits for: one being written would come back after.
+    turned_off: Option<(u64, Vec<usize>)>,
 }
 
 /// Where a split's image comes from, as far as its preset's screenshot goes.
@@ -240,10 +248,22 @@ impl Maker {
         }
     }
 
+    /// Whether split `index` is off, where `enabled` is [`Gui::maker_enabled`]'s, so it gets no
+    /// split image. Never while editing, which shows the preset's splits as they are.
+    fn is_off(&self, enabled: &[bool], index: usize) -> bool {
+        self.edit.is_none() && enabled.get(index) == Some(&false)
+    }
+
+    /// The splits that aren't off, in order, with `enabled` like [`Maker::is_off`].
+    fn on_splits<'a>(&'a self, enabled: &'a [bool]) -> impl Iterator<Item = usize> + Clone + 'a {
+        (0..self.splits.len()).filter(move |&index| !self.is_off(enabled, index))
+    }
+
     /// How many of the shown preset's splits have a screenshot from it, and how many have to be
-    /// grabbed. Fade splits are in neither, since they're made from their color.
-    fn preset_screenshot_counts(&self) -> (usize, usize) {
-        let grabbed = (0..self.splits.len()).filter(|&index| self.fade_split(index).is_none());
+    /// grabbed. Fade splits are in neither, since they're made from their color, and splits
+    /// that are off, with `enabled` like [`Maker::is_off`].
+    fn preset_screenshot_counts(&self, enabled: &[bool]) -> (usize, usize) {
+        let grabbed = self.on_splits(enabled).filter(|&index| self.fade_split(index).is_none());
         let with = grabbed.clone().filter(|&index| self.usable_preset_screenshot(index).is_some()).count();
         (with, grabbed.count() - with)
     }
@@ -257,12 +277,13 @@ impl Maker {
     }
 
     /// The split a grab or Grab* goes on to after split `after`: the next one, past those whose
-    /// image comes from their preset's screenshot, which grabbing would replace. None when
-    /// there's none.
-    fn next_to_grab(&self, after: usize) -> Option<usize> {
-        let from_preset: Vec<bool> =
-            (0..self.splits.len()).map(|index| self.screenshot_use(index) == ScreenshotUse::FromPreset).collect();
-        next_to_grab(&from_preset, after)
+    /// image comes from their preset's screenshot, which grabbing would replace, and those that
+    /// are off, with `enabled` like [`Maker::is_off`]. None when there's none.
+    fn next_to_grab(&self, after: usize, enabled: &[bool]) -> Option<usize> {
+        let skipped: Vec<bool> = (0..self.splits.len())
+            .map(|index| self.screenshot_use(index) == ScreenshotUse::FromPreset || self.is_off(enabled, index))
+            .collect();
+        next_to_grab(&skipped, after)
     }
 
     /// Split `index` of the shown preset, when it's a fade split.
@@ -310,26 +331,57 @@ struct MakerView {
     working: bool,
     has_savestates: bool,
     has_instructions: bool,
+    /// The chosen preset has splits the runner can turn on or off.
+    has_choices: bool,
+    /// How many of them are off, for the strip under the list.
+    splits_off: usize,
+    /// How many splits that are off still have their image in the split image folder.
+    splits_kept: usize,
+    /// How many rows are shown: splits that are off are only shown while choosing.
+    shown_rows: usize,
+    /// Every split is shown, with checkboxes, which Choose Splits starts. Never while editing.
+    choosing: bool,
 }
 
 /// What the window shows for `maker`, whose splits have the file names `names`. `in_place` says
 /// which are saved, `problems` which have something to fix, `preset_problems` are the chosen
 /// preset's, and `grouping` is whether the profile compares images with the same number for one
-/// split.
+/// split. `enabled` says which of the chosen preset's splits are on, and `kept` which of those
+/// that are off still have their image in the split image folder.
+#[allow(clippy::too_many_arguments)]
 fn maker_view(
     maker: &Maker,
     names: &[String],
+    enabled: &[bool],
+    kept: &[bool],
     in_place: &[bool],
     problems: &[bool],
     preset_problems: &[Problem],
     grouping: bool,
 ) -> MakerView {
     let joined = |index| maker.shown().is_some_and(|preset| preset.joins_previous(index));
-    // Every other split is shaded, splits compared together as one
+    // The chosen preset, while not editing, which the checkboxes are for
+    let chosen = maker.loaded().filter(|_| maker.edit.is_none()).map(|loaded| &loaded.preset);
+    // The split each one is on or off with, once, since each looks at the splits after it
+    let leaders: Vec<Option<usize>> =
+        (0..names.len()).map(|index| chosen.and_then(|preset| preset.leader(index))).collect();
+    let toggleable = |index: usize| leaders.get(index) == Some(&Some(index));
+    // Splits that are off are only shown while choosing
+    let choosing = maker.choosing && chosen.is_some();
+    let shown: Vec<bool> = (0..names.len()).map(|index| choosing || !maker.is_off(enabled, index)).collect();
+    let places = row_places(&shown);
+    let slot = |index: Option<usize>| index.map_or(-1, |index| index as i32);
+    // Every other shown split is shaded, splits compared together as one
     let mut block = 0;
     let rows = (names.iter().enumerate())
         .map(|(index, name)| (index, name, thumb(maker, index)))
-        .map(|(index, name, thumb)| MakerRow {
+        .map(|(index, name, thumb)| (index, name, thumb, places[index], leaders[index]))
+        .map(|(index, name, thumb, place, leader)| {
+            // A checkbox's splits compared together: the first one's place, and how many they are
+            let group = chosen.map_or(index..index + 1, |preset| preset.group(index));
+            (index, name, thumb, place, leader, group)
+        })
+        .map(|(index, name, thumb, place, leader, group)| MakerRow {
             heading: maker.shown().map(|preset| split_heading(preset, index)).unwrap_or_default().into(),
             parts: file_name_parts(name),
             file: name.into(),
@@ -340,31 +392,55 @@ fn maker_view(
             problem: problems.get(index).copied().unwrap_or_default(),
             joined: joined(index),
             shaded: {
-                if index > 0 && !joined(index) {
+                if !place.hidden && place.place > 0 && !joined(index) {
                     block += 1;
                 }
                 block % 2 == 1
             },
+            toggleable: toggleable(index),
+            off: maker.is_off(enabled, index),
+            // Not for one compared together with a checkbox's split, where the checkbox is
+            fixed: chosen
+                .filter(|_| !leader.is_some_and(|leader| group.contains(&leader)))
+                .and_then(|preset| why_not_toggleable(preset, index))
+                .unwrap_or_default()
+                .into(),
+            kept: kept.get(index).copied().unwrap_or_default(),
+            hidden: place.hidden,
+            place: place.place as i32,
+            above: slot(place.above),
+            below: slot(place.below),
+            always_on: chosen.is_some() && leader.is_none(),
+            leader: slot(leader),
+            box_top: places[group.start].place as i32,
+            box_rows: group.len() as i32,
         })
         .collect();
     // A preset with problems is only for fixing, so nothing's made from it
     let summary = maker.loaded().and_then(|loaded| problem_summary(&loaded.preset, preset_problems));
     let usable = summary.is_none();
     let selected = maker.selected;
+    let selected_on = !maker.is_off(enabled, selected);
     let splits = maker.loaded().map_or(&[][..], |loaded| &loaded.preset.splits[..]);
+    let on = || splits.iter().zip(enabled).filter(|(_, on)| **on).map(|(split, _)| split);
     MakerView {
         rows,
         preset_problem: summary.unwrap_or_default(),
-        can_grab: !maker.splits.is_empty() && usable,
+        can_grab: !maker.splits.is_empty() && usable && selected_on,
         grab_suggested: maker.screenshot_use(selected) != ScreenshotUse::FromPreset,
         over_preset_screenshot: maker.screenshot_use(selected) == ScreenshotUse::Overridden,
-        can_save_selected: maker.source(selected).is_some() && usable,
-        can_save_all: (0..maker.splits.len()).any(|index| maker.source(index).is_some()) && usable,
+        can_save_selected: maker.source(selected).is_some() && usable && selected_on,
+        can_save_all: maker.on_splits(enabled).any(|index| maker.source(index).is_some()) && usable,
         can_test: in_place.get(selected).copied().unwrap_or_default() && usable,
-        needs_grouping: !grouping && maker.loaded().is_some_and(|loaded| loaded.preset.needs_grouping()),
+        needs_grouping: !grouping && maker.loaded().is_some_and(|loaded| loaded.preset.needs_grouping(enabled)),
         working: maker.working > 0,
-        has_savestates: usable && splits.iter().any(|split| !split.savestate.is_empty()),
-        has_instructions: splits.iter().any(|split| !split.savestate.is_empty() && !split.instructions.is_empty()),
+        has_savestates: usable && on().any(|split| !split.savestate.is_empty()),
+        has_instructions: on().any(|split| !split.savestate.is_empty() && !split.instructions.is_empty()),
+        has_choices: (0..names.len()).any(toggleable),
+        splits_off: (0..names.len()).filter(|&index| toggleable(index) && maker.is_off(enabled, index)).count(),
+        splits_kept: kept.iter().filter(|&&kept| kept).count(),
+        shown_rows: shown.iter().filter(|&&shown| shown).count(),
+        choosing,
     }
 }
 
@@ -447,9 +523,12 @@ impl Gui {
             gui.save_split_images(vec![selected]);
         });
         on!(weak, maker, on_save_all, () gui => {
-            let all = (0..gui.maker.borrow().splits.len()).collect();
-            gui.save_split_images(all);
+            let enabled = gui.maker_enabled();
+            let on = gui.maker.borrow().on_splits(&enabled).collect();
+            gui.save_split_images(on);
         });
+        on!(weak, maker, on_split_toggled, (index) gui => gui.toggle_split(index as usize));
+        on!(weak, maker, on_choose_splits, () gui => gui.choose_splits());
         on!(weak, maker, on_test, () gui => gui.test_split_image());
         on!(weak, maker, on_copy_savestates, () gui => gui.copy_savestates());
         on!(weak, maker, on_show_instructions, () gui => gui.show_instructions());
@@ -589,7 +668,8 @@ impl Gui {
     }
 
     /// Shows the `index`th preset, its game and the game's presets in the lists, and what's
-    /// been done with its splits.
+    /// been done with its splits, with the selected split, or the next one shown when it's hidden,
+    /// like after the preset was saved with the selected split turned off.
     fn show_preset(&self, index: usize) {
         let mut maker = self.maker.borrow_mut();
         maker.preset = index;
@@ -604,10 +684,23 @@ impl Gui {
         window.set_game_index(game_index as i32);
         window.set_presets(ModelRc::new(VecModel::from(names)));
         window.set_preset_index(of_game.iter().position(|&each| each == index).unwrap_or(0) as i32);
-        let selected = maker.selected;
         drop(maker);
         self.picture_preset_screenshots();
-        self.choose_split(selected);
+        self.choose_split(self.shown_selection());
+    }
+
+    /// The selected split, or when it's hidden, since it's off and not being chosen, the next split
+    /// that's on, or the last one before it. The first split that's on for a preset just chosen,
+    /// which the screenshot hotkey's first press grabs.
+    fn shown_selection(&self) -> usize {
+        let enabled = self.maker_enabled();
+        let maker = self.maker.borrow();
+        let selected = maker.selected;
+        if maker.choosing || !maker.is_off(&enabled, selected) {
+            return selected;
+        }
+        let on: Vec<usize> = maker.on_splits(&enabled).collect();
+        on.iter().find(|&&index| index > selected).or(on.last()).copied().unwrap_or(selected)
     }
 
     /// Makes the list's pictures of the splits made from their preset's screenshot, which no
@@ -639,7 +732,9 @@ impl Gui {
     /// Why Grab can't work yet, which its tooltip says, or empty. The hotkey still tries, and says
     /// so in a message. A fade split doesn't need the capture.
     fn grab_blocker(&self) -> String {
-        if !self.selected_fade() && !self.state.borrow().document.profile.has_capture_device() {
+        if let Some(off) = self.selected_off() {
+            off
+        } else if !self.selected_fade() && !self.state.borrow().document.profile.has_capture_device() {
             concat!(
                 "Pick a capture device in Settings (",
                 primary_key!(),
@@ -651,6 +746,149 @@ impl Gui {
         } else {
             String::new()
         }
+    }
+
+    /// Why the selected split gets no split image when it's off, naming the split to turn on for
+    /// one that goes with another, like a dummy, or `None` when it's on.
+    fn selected_off(&self) -> Option<String> {
+        let enabled = self.maker_enabled();
+        let maker = self.maker.borrow();
+        let selected = maker.selected;
+        if !maker.is_off(&enabled, selected) {
+            return None;
+        }
+        let preset = &maker.loaded()?.preset;
+        Some(match preset.leader(selected).filter(|&leader| leader != selected) {
+            Some(leader) => {
+                let name = split_heading(preset, leader);
+                format!(
+                    "This split is off with {name}, so it gets no split image. Turn {name} on with Choose Splits to make one."
+                )
+            }
+            None => {
+                "This split is off, so it gets no split image. Turn it on with Choose Splits to make one.".to_owned()
+            }
+        })
+    }
+
+    /// Choose Splits or Done: shows every split with checkboxes, or only the splits that are on.
+    /// Done moves the selection off a split that's hidden then, to the next one shown.
+    fn choose_splits(&self) {
+        let choosing = !self.maker.borrow().choosing;
+        self.maker.borrow_mut().choosing = choosing;
+        // Scrolled into view, since the rows above it show or hide
+        self.choose_split(self.shown_selection());
+    }
+
+    /// Turns split `index`, with the splits that follow it, on or off in the profile's choice for
+    /// the chosen preset. A choice that's the same as the preset again is dropped.
+    fn toggle_split(self: &Rc<Self>, index: usize) {
+        let enabled = self.maker_enabled();
+        let Some(&on) = enabled.get(index) else { return };
+        let maker = self.maker.borrow();
+        let Some(loaded) = maker.loaded().filter(|_| maker.edit.is_none()) else { return };
+        let mut state = self.state.borrow_mut();
+        let choices = &mut state.document.profile.split_choices;
+        let key = loaded.preset.choice_key();
+        let choice = choices.entry(key.clone()).or_default();
+        loaded.preset.choose(choice, index, !on);
+        if *choice == SplitChoice::default() {
+            choices.remove(&key);
+        }
+        // The split that was turned on or off, also from Space on a split that goes with it
+        let name = split_heading(&loaded.preset, loaded.preset.leader(index).unwrap_or(index));
+        drop((state, maker));
+        self.profile_edited();
+        // The timer's splits have to match, or the run splits on the wrong segments
+        let status = if on {
+            format!("{name} is off. Take its segment out of your LiveSplit splits too.")
+        } else {
+            format!("{name} is on. Add a segment for it to your LiveSplit splits too.")
+        };
+        self.windows.maker.set_status(status.into());
+        self.show_maker();
+        // Splits that are off have no instructions to show
+        self.refresh_instructions();
+        if on {
+            let after = self.maker_enabled();
+            let turned_off = (0..after.len()).filter(|&index| enabled[index] && !after[index]).collect();
+            self.offer_to_delete_off_images(turned_off);
+        }
+    }
+
+    /// The images in the split image folder of those of the chosen preset's splits `indexes` that
+    /// are off, by split, which AutoSplit would still compare. Splits without any aren't listed.
+    fn off_images_in_folder(&self, indexes: &[usize]) -> Vec<(usize, Vec<PathBuf>)> {
+        let Some(folder) = self.split_image_folder().filter(|folder| folder.is_dir()) else { return Vec::new() };
+        let enabled = self.maker_enabled();
+        let maker = self.maker.borrow();
+        let Some(loaded) = maker.loaded() else { return Vec::new() };
+        let (numbers, _) = loaded.preset.numbers();
+        let off: Vec<usize> = indexes.iter().copied().filter(|&index| maker.is_off(&enabled, index)).collect();
+        if off.is_empty() {
+            return Vec::new();
+        }
+        let existing = user_files(&folder).unwrap_or_default();
+        (off.into_iter())
+            .filter_map(|index| {
+                let split = (numbers.get(index)?, loaded.preset.splits.get(index)?.name.as_str());
+                let images = images_of_splits(&existing, &[(*split.0, split.1)]);
+                (!images.is_empty()).then_some((index, images))
+            })
+            .collect()
+    }
+
+    /// Asks whether to delete the split images in the split image folder of the splits
+    /// `turned_off`, which AutoSplit would still compare. Keeping them is the default, like for
+    /// other deletes. While split images are being saved, it waits until they are.
+    fn offer_to_delete_off_images(self: &Rc<Self>, turned_off: Vec<usize>) {
+        let mut maker = self.maker.borrow_mut();
+        if maker.saving {
+            let generation = maker.generation;
+            let waiting = maker.turned_off.get_or_insert_with(|| (generation, Vec::new()));
+            // Ones turned off in a preset chosen before don't count, like for queued saves
+            if waiting.0 != generation {
+                *waiting = (generation, Vec::new());
+            }
+            // Each once, so turning one off, on and off again doesn't list its images twice
+            for index in turned_off {
+                if !waiting.1.contains(&index) {
+                    waiting.1.push(index);
+                }
+            }
+            return;
+        }
+        drop(maker);
+        // Not ones turned back on while a save was waited for
+        let images: Vec<PathBuf> =
+            self.off_images_in_folder(&turned_off).into_iter().flat_map(|(_, images)| images).collect();
+        if images.is_empty() {
+            return;
+        }
+        let names: Vec<String> = images.iter().filter_map(|path| file_name_text(path)).collect();
+        let text = format!(
+            "The split image folder has images of the splits turned off, which AutoSplit would still compare:\n{}\n\n\
+             Delete them?",
+            names.join("\n")
+        );
+        let weak = Rc::downgrade(self);
+        // Enter keeps them: deleting is never the default
+        let labels = ["Delete Images", "Keep Images", ""];
+        self.show_message(Message::choice(text, labels, 1, move |answer| {
+            let Some(gui) = weak.upgrade().filter(|_| answer == Answer::Yes) else { return };
+            let errors: Vec<String> = (images.iter())
+                .filter_map(|path| {
+                    let error = std::fs::remove_file(path).err()?;
+                    Some(format!("Couldn't delete {}: {error}", path.display()))
+                })
+                .collect();
+            let deleted = images.len() - errors.len();
+            gui.windows.maker.set_status(format!("Deleted {}.", plural(deleted, "split image")).into());
+            gui.show_maker();
+            if !errors.is_empty() {
+                gui.show_message(Message::error(errors.join("\n")));
+            }
+        }));
     }
 
     /// What the split image folder's button is called in the messages: Browse..., or the folder
@@ -683,6 +921,15 @@ impl Gui {
         saves_in_place(&saved, names, folder.as_deref())
     }
 
+    /// Whether each split of the chosen preset is on, with the profile's choice for it.
+    pub(super) fn maker_enabled(&self) -> Vec<bool> {
+        let maker = self.maker.borrow();
+        let Some(loaded) = maker.loaded() else { return Vec::new() };
+        let state = self.state.borrow();
+        let choice = state.document.profile.split_choices.get(&loaded.preset.choice_key());
+        loaded.preset.enabled(choice.unwrap_or(&SplitChoice::default()))
+    }
+
     /// Puts the preset's splits, the selected split's split image and the buttons in the window.
     fn show_maker(&self) {
         let names = self.maker_file_names();
@@ -693,7 +940,14 @@ impl Gui {
             problems = problem_flags(&preset_problems, names.len());
         }
         let grouping = self.state.borrow().document.profile.group_split_images;
-        let view = maker_view(&self.maker.borrow(), &names, &in_place, &problems, &preset_problems, grouping);
+        let enabled = self.maker_enabled();
+        // Only splits that are off are looked for, so the folder isn't read without any
+        let mut kept = vec![false; names.len()];
+        for (index, _) in self.off_images_in_folder(&(0..names.len()).collect::<Vec<_>>()) {
+            kept[index] = true;
+        }
+        let view =
+            maker_view(&self.maker.borrow(), &names, &enabled, &kept, &in_place, &problems, &preset_problems, grouping);
         let grab_blocker = self.grab_blocker();
         self.maker_rows.set_vec(view.rows);
         let window = &self.windows.maker;
@@ -714,6 +968,12 @@ impl Gui {
         window.set_working(view.working);
         window.set_has_savestates(view.has_savestates);
         window.set_has_instructions(view.has_instructions);
+        window.set_has_choices(view.has_choices);
+        // Splits that are off aren't shown, so the strip says when one is still compared
+        window.set_choice_summary(choice_summary(view.splits_off, view.splits_kept).into());
+        window.set_choice_kept(view.splits_kept > 0);
+        window.set_shown_rows(view.shown_rows as i32);
+        window.set_choosing_splits(view.choosing);
         self.show_maker_preview();
         self.refresh_library();
         self.refresh_entry();
@@ -753,7 +1013,7 @@ impl Gui {
         if self.editing() {
             return self.show_message(Message::warning("Save or cancel the changes to the preset first, then grab."));
         }
-        if self.refused_for_problems() {
+        if self.refused_for_problems() || self.refused_for_off() {
             return;
         }
         let image = match image {
@@ -776,18 +1036,27 @@ impl Gui {
         if self.editing() {
             return self.show_message(Message::warning("Save or cancel the changes to the preset first, then grab."));
         }
-        if self.refused_for_problems() {
+        if self.refused_for_problems() || self.refused_for_off() {
             return;
         }
         let selected = self.maker.borrow().selected;
         self.after_grab(selected, self.save_split_images(vec![selected]));
     }
 
+    /// Says the selected split is off, for a grab, like from the screenshot hotkey, which Grab's
+    /// tooltip says too. Returns whether it is.
+    fn refused_for_off(&self) -> bool {
+        let Some(off) = self.selected_off() else { return false };
+        self.show_message(Message::warning(off));
+        true
+    }
+
     /// After a grab or Grab* of split `grabbed`, selects the next split to grab, when its image
     /// is being `saved`. It skips splits made from their preset's screenshot, which the next press
     /// of the screenshot hotkey would replace while playing through. Without one, it stays.
     fn after_grab(&self, grabbed: usize, saved: bool) {
-        let next = self.maker.borrow().next_to_grab(grabbed).filter(|_| saved);
+        let enabled = self.maker_enabled();
+        let next = self.maker.borrow().next_to_grab(grabbed, &enabled).filter(|_| saved);
         match next {
             Some(next) => self.choose_split(next),
             None => self.show_maker(),
@@ -827,18 +1096,24 @@ impl Gui {
     }
 
     fn use_screenshots(&self, paths: Vec<PathBuf>) {
+        let enabled = self.maker_enabled();
         let mut maker = self.maker.borrow_mut();
         if paths.len() == 1 && maker.fade_split(maker.selected).is_some() {
             drop(maker);
             return self.windows.maker.set_status("Fade splits are made from their color, not a screenshot.".into());
         }
-        // Fade splits are made from their color, so screenshots go to the others in order
-        let takes_screenshot: Vec<usize> =
-            (0..maker.splits.len()).filter(|&index| maker.fade_split(index).is_none()).collect();
-        let count = takes_screenshot.len();
-        let fades = maker.splits.len() - count;
+        if paths.len() == 1 && maker.is_off(&enabled, maker.selected) {
+            drop(maker);
+            return self.windows.maker.set_status("The selected split is off, so it gets no split image.".into());
+        }
+        // Fade splits are made from their color, so screenshots go to the others in order, past
+        // the ones that are off, which were never split on
+        let (takes_screenshot, fades): (Vec<usize>, Vec<usize>) =
+            maker.on_splits(&enabled).partition(|&index| maker.fade_split(index).is_none());
+        let (off, fades) = (maker.splits.len() - takes_screenshot.len() - fades.len(), fades.len());
         // Without splits, like with no presets or all of them removed, there's no selected one
         let selected = (maker.selected < maker.splits.len()).then_some(maker.selected);
+        let count = takes_screenshot.len();
         let targets = if paths.len() == 1 { selected.into_iter().collect() } else { takes_screenshot };
         let mut set = Vec::new();
         for (&index, path) in targets.iter().zip(&paths) {
@@ -854,19 +1129,7 @@ impl Gui {
                 "Screenshot set for the selected split. {} writes its split image.",
                 if self.state.borrow().document.profile.advanced_maker { "Save Selected" } else { "Save All" }
             ),
-            n if n == count && fades == 0 => {
-                format!("{n} screenshots set, one for each split. Save All writes their split images.")
-            }
-            n if n == count => format!(
-                "{n} screenshots set, one for each split that isn't a fade split. Save All writes their split images."
-            ),
-            n if fades == 0 => format!(
-                "{n} screenshots for {count} splits, set in order from the first. Save All writes their split images."
-            ),
-            n => format!(
-                "{n} screenshots for the {count} splits that aren't fade splits, set in order from the first. Save All \
-                 writes their split images."
-            ),
+            picked => screenshots_set_status(picked, count, fades, off),
         };
         self.windows.maker.set_status(status.into());
         // Split images picked as screenshots would be masked twice
@@ -913,7 +1176,8 @@ impl Gui {
     /// Says how many of the preset's splits have a screenshot and how many are left to grab, or
     /// nothing for a preset without screenshots.
     fn show_screenshots_status(&self) {
-        let (with, without) = self.maker.borrow().preset_screenshot_counts();
+        let enabled = self.maker_enabled();
+        let (with, without) = self.maker.borrow().preset_screenshot_counts(&enabled);
         self.windows.maker.set_status(screenshots_status(with, without).unwrap_or_default().into());
     }
 
@@ -929,7 +1193,8 @@ impl Gui {
         }
         let maker = self.maker.borrow();
         let Some(loaded) = maker.loaded() else { return };
-        let (name, needs_grouping) = (loaded.preset.profile_file_name(), loaded.preset.needs_grouping());
+        let name = loaded.preset.profile_file_name();
+        let needs_grouping = loaded.preset.needs_grouping(&self.maker_enabled());
         drop(maker);
         let folder = self.state.borrow().document.folder(&exe_folder());
         let dialog = self

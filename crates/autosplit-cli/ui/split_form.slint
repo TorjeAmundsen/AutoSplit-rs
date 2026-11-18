@@ -5,7 +5,7 @@ import { CheckBox } from "std-widgets.slint";
 import { Button, ComboBox, Label, SpinBox, TextArea, TextField, Theme, Tip } from "widgets.slint";
 
 // A field of the split form, which says it was edited. Its value is in its property.
-export enum SplitField { name, kind, compare, color, fade-time, threshold, delay, pause, dummy, below, with-previous, instructions }
+export enum SplitField { name, kind, compare, color, fade-time, threshold, delay, pause, dummy, below, with-previous, off, instructions }
 
 // What the form shows of the selected split besides its fields, while editing.
 export struct SplitForm {
@@ -16,6 +16,7 @@ export struct SplitForm {
     mask-problem: string,
     color-problem: string,
     group-problem: string,
+    off-problem: string,
     // A fade split's color, transparent while it isn't written right
     fade-color: color,
     // What a fade split's files from before, which aren't saved with it, say under its color, or
@@ -42,6 +43,10 @@ export struct SplitForm {
     can-join: bool,
     // Why not, for the greyed out checkbox's tooltip
     why-not-joined: string,
+    // The runner can turn it on or off, so it can be off by default
+    can-off: bool,
+    // Why not, for the greyed out checkbox's tooltip
+    why-not-off: string,
 }
 
 // A field's problems under it, lined up with the field and wrapped so all of them show. Also a
@@ -89,6 +94,7 @@ export global SplitValues {
     in-out property <bool> dummy;
     in-out property <bool> below;
     in-out property <bool> with-previous;
+    in-out property <bool> off;
     in-out property <string> instructions;
 }
 
@@ -516,12 +522,23 @@ export component SplitFormPanel inherits VerticalLayout {
         VerticalLayout {
             spacing: 2px;
 
+            // Starts off in the label column, like Dummy, so it needs no row of its own
             HorizontalLayout {
                 height: 24px;
-                spacing: 12px;
+                spacing: 6px;
 
-                Rectangle {
-                    width: root.label-width - 6px;
+                CheckBox {
+                    width: root.label-width;
+                    text: "Starts off";
+                    enabled: root.form.can-off || SplitValues.off;
+                    checked <=> SplitValues.off;
+                    toggled => { root.split-edited(SplitField.off); }
+
+                    Tooltip {
+                        Tip {
+                            text: (root.form.why-not-off == "" ? "" : root.form.why-not-off + "\n\n") + "Off until the runner turns it on with Choose Splits in Make Split Images, for a split some runners split on and most don't. Runners can turn any split on or off there, apart from start and reset images and the final split. Dummies and splits compared together go with their split.";
+                        }
+                    }
                 }
 
                 CheckBox {
@@ -541,6 +558,11 @@ export component SplitFormPanel inherits VerticalLayout {
             if root.form.group-problem != "": FieldProblem {
                 label-width: root.label-width;
                 text: root.form.group-problem;
+            }
+
+            if root.form.off-problem != "": FieldProblem {
+                label-width: root.label-width;
+                text: root.form.off-problem;
             }
 
             if root.form.group-problem == "" && root.form.grouping-off: FieldProblem {

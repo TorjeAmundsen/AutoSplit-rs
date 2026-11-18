@@ -549,6 +549,7 @@ fn a_preset_with_every_field_set_reads_back_as_saved() {
     let second = PresetSplit {
         name: "Door".into(),
         with_previous: true,
+        off: true,
         mask: file(&picked.path().join("door.png"), "o"),
         screenshot: file(&picked.path().join("door screen.png"), "c"),
         fade: Some("#a0a0a0".into()),

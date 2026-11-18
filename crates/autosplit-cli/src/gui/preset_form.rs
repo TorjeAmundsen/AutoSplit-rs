@@ -124,6 +124,8 @@ pub enum SplitEdit {
     Below(bool),
     /// Compared for the same split as the split before it.
     WithPrevious(bool),
+    /// Off unless the runner turns it on.
+    Off(bool),
     /// Like the mask. Empty for none. The instructions stay until saving, for a savestate picked
     /// again.
     Savestate(String),
@@ -173,6 +175,8 @@ pub enum Field {
     Color,
     /// Same split as the one above.
     Group,
+    /// Off by default.
+    Off,
 }
 
 impl SplitEdit {
@@ -246,6 +250,12 @@ impl Draft {
         }
     }
 
+    /// Why split `index` can't be off by default, for the greyed out checkbox, or `None` when it
+    /// can.
+    pub fn why_not_off(&self, index: usize) -> Option<String> {
+        why_not_toggleable(&self.preset, index)
+    }
+
     /// The preset as it's saved, each split like [`saved_split`] says.
     pub fn to_save(&self) -> Preset {
         Preset { splits: self.preset.splits.iter().map(saved_split).collect(), ..self.preset.clone() }
@@ -308,6 +318,7 @@ impl Draft {
             SplitEdit::Dummy(on) => split.dummy = on,
             SplitEdit::Below(on) => split.below = on,
             SplitEdit::WithPrevious(on) => split.with_previous = on,
+            SplitEdit::Off(on) => split.off = on,
             SplitEdit::Savestate(savestate) => split.savestate = savestate,
             SplitEdit::Instructions(text) => split.instructions = text,
         }
@@ -526,11 +537,13 @@ pub fn problems_of(preset: &Preset) -> Vec<Problem> {
         })
     });
     let mut problems: Vec<Problem> = whole.chain(splits).collect();
-    problems.extend((group_problems(preset).into_iter()).map(|(index, field, message)| Problem {
-        split: Some(index),
-        field: Some(field),
-        message,
-    }));
+    problems.extend(
+        (group_problems(preset).into_iter().chain(choice_problems(preset))).map(|(index, field, message)| Problem {
+            split: Some(index),
+            field: Some(field),
+            message,
+        }),
+    );
     // Stable, so each split's problems stay in the order they're found
     problems.sort_by_key(|problem| problem.split.map_or(0, |index| index + 1));
     problems
@@ -574,6 +587,44 @@ fn group_problems(preset: &Preset) -> Vec<(usize, Field, String)> {
         let message = "It has the same name as a split above it that it's compared together with. Give it \
                        another name.";
         problems.push((index, Field::Name, message.to_owned()));
+    }
+    problems
+}
+
+/// Why the runner can't turn split `index` on or off, naming the split it goes with, or `None`
+/// when they can, see [`Preset::leader`].
+pub fn why_not_toggleable(preset: &Preset, index: usize) -> Option<String> {
+    let split = preset.splits.get(index)?;
+    if preset.toggleable(index) {
+        return None;
+    }
+    let always_on = preset.leader(index).is_none();
+    Some(match preset.decider(index) {
+        _ if split.is_keyword() => "Start and reset images are always on.".to_owned(),
+        None => "A dummy with no split after it to go with is always on.".to_owned(),
+        Some(decider) if decider == index => "The final split is always on, since it ends the run.".to_owned(),
+        Some(decider) if always_on => {
+            format!("It goes with {}, the final split, which is always on.", split_heading(preset, decider))
+        }
+        Some(decider) => format!("It's on or off with {}.", split_heading(preset, decider)),
+    })
+}
+
+/// Splits off by default that the runner can't turn on, and splits the runner can turn on or off
+/// with the same name, which the runner's choice can't tell apart, since it has them by name.
+fn choice_problems(preset: &Preset) -> Vec<(usize, Field, String)> {
+    let mut problems = Vec::new();
+    for (index, split) in preset.splits.iter().enumerate() {
+        if let Some(reason) = why_not_toggleable(preset, index).filter(|_| split.off) {
+            problems.push((index, Field::Off, format!("It can't start off. {reason}")));
+        }
+        // The name first, since whether a split can be turned on or off takes a look at the others
+        let same_name = |other: usize| preset.splits[other].name == split.name && preset.toggleable(other);
+        if preset.toggleable(index) && (0..index).any(same_name) {
+            let message = "A split above that can be turned on or off has the same name, so turning one on or off \
+                           would turn both. Give it another name.";
+            problems.push((index, Field::Name, message.to_owned()));
+        }
     }
     problems
 }
@@ -873,17 +924,16 @@ pub struct InstructionText {
 }
 
 /// The cards of the Savestate Instructions window, in split order, named like Copy Savestates
-/// names the files, so each card goes with the savestate it's about.
-pub fn instruction_cards(preset: &Preset) -> Vec<InstructionText> {
-    let with_savestate = preset.splits.iter().enumerate().filter(|(_, split)| !split.savestate.is_empty());
-    // savestate_copies has one name for each split with a savestate, in the same order
-    (with_savestate.zip(preset.savestate_copies()))
-        .filter(|((_, split), _)| !split.instructions.is_empty())
-        .map(|((index, split), (_, file))| InstructionText {
+/// names the files, so each card goes with the savestate it's about. Only for the splits that are
+/// `enabled`, one for each split.
+pub fn instruction_cards(preset: &Preset, enabled: &[bool]) -> Vec<InstructionText> {
+    (preset.savestate_copies(enabled).into_iter())
+        .filter(|&(index, _, _)| !preset.splits[index].instructions.is_empty())
+        .map(|(index, _, file)| InstructionText {
             split: index,
             heading: split_heading(preset, index),
             file,
-            instructions: split.instructions.clone(),
+            instructions: preset.splits[index].instructions.clone(),
         })
         .collect()
 }
