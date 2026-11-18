@@ -462,6 +462,27 @@ fn the_runners_choice_goes_over_the_presets() {
     assert_eq!(enabled, [true, false, false, true, true, true]);
 }
 
+#[test_case(0, false, &[] => (vec![], vec!["A".to_owned()]); "a split turned off")]
+#[test_case(1, true, &[] => (vec!["B".to_owned()], vec![]); "a split off by default turned on")]
+#[test_case(1, false, &["B"] => (vec![], vec![]); "back to the presets")]
+#[test_case(2, false, &[] => (vec![], vec!["C".to_owned()]); "a dummy turns off its split")]
+#[test_case(4, false, &[] => (vec![], vec![]); "the final split")]
+fn choosing_keeps_only_what_differs_from_the_preset(
+    index: usize,
+    on: bool,
+    chosen_on: &[&str],
+) -> (Vec<String>, Vec<String>) {
+    // Arrange
+    let preset = marked_preset(&["A", "-B", "~Guard", "C", "End"]);
+    let mut choice = SplitChoice { on: chosen_on.iter().map(|name| (*name).to_owned()).collect(), off: vec![] };
+
+    // Act
+    preset.choose(&mut choice, index, on);
+
+    // Assert, with the expected value checked by test_case
+    (choice.on, choice.off)
+}
+
 #[test_case("Boss." => Some(0); "a dot at the end")]
 #[test_case("Boss .. " => Some(0); "dots and spaces at the end")]
 #[test_case("Boss.2" => None; "a dot inside")]

@@ -2,7 +2,7 @@
 // AutoSplit reads them, into the split image folder. Edit switches it to editing the preset, with
 // the selected split's mask shown on the capture as it's changed.
 
-import { ScrollView } from "std-widgets.slint";
+import { CheckBox, ScrollView } from "std-widgets.slint";
 import { Button, ClickAway, ComboBox, FileName, GridIcon, IconButton, Icons, IconToggle, Keys, Label, LiveIcon, MaskIcon, NamePart, OpenList, Preview, SavedCheck, SavedGlow, TextField, Theme, Tip } from "widgets.slint";
 import { InlineMessage, MessageOverlay } from "message.slint";
 import { SplitField, SplitForm, SplitFormPanel, SplitValues } from "split_form.slint";
@@ -28,6 +28,10 @@ export struct MakerRow {
     joined: bool,
     // Every other split, or group of splits compared together, is shaded
     shaded: bool,
+    // The runner can turn it on or off, with a checkbox
+    toggleable: bool,
+    // Turned off, by the preset or the runner, so it gets no split image
+    off: bool,
 }
 
 // The split image folder, like a read-only field without a cursor, with the whole path in its
@@ -125,6 +129,9 @@ export component MakerWindow inherits Window {
     in property <[string]> presets;
     in-out property <int> preset-index;
     in property <[MakerRow]> rows;
+    // The preset has splits the runner can turn on or off, which get checkboxes when not editing
+    in property <bool> has-choices;
+    property <bool> choosing: root.has-choices && !root.editing;
     in-out property <int> selected: 0;
     // Shown from its end when it's too long, since the end tells folders apart. Empty for none
     in property <string> output-folder;
@@ -241,6 +248,8 @@ export component MakerWindow inherits Window {
     // The index among the game's presets
     callback preset-chosen(int);
     callback split-chosen(int);
+    // The checkbox of split `index` was clicked, to turn it and the splits that follow it on or off
+    callback split-toggled(int);
     callback edit-preset();
     callback new-preset();
     callback import-preset();
@@ -561,6 +570,11 @@ export component MakerWindow inherits Window {
                                 root.pick(root.selected + 1);
                                 return accept;
                             }
+                            // Space ticks or unticks the selected split's checkbox
+                            if (event.text == " " && root.choosing && root.rows[root.selected].toggleable) {
+                                root.split-toggled(root.selected);
+                                return accept;
+                            }
                             reject
                         }
 
@@ -608,12 +622,36 @@ export component MakerWindow inherits Window {
                                     padding-right: root.rows.length * root.row-height > list.visible-height ? 20px : 6px;
                                     spacing: 8px;
 
+                                    // Whether the split is on. The click goes to Rust, which
+                                    // has what's on, instead of ticking the box, so the box keeps
+                                    // following the row when the rows change
+                                    if root.choosing: VerticalLayout {
+                                        alignment: center;
+                                        width: 20px;
+
+                                        if row.toggleable: Rectangle {
+                                            height: 20px;
+
+                                            CheckBox {
+                                                checked: !row.off;
+                                            }
+
+                                            TouchArea {
+                                                clicked => {
+                                                    list-keys.focus();
+                                                    root.split-toggled(index);
+                                                }
+                                            }
+                                        }
+                                    }
+
                                     // The split image at a glance, or an empty box until there's
                                     // something to make it from
                                     VerticalLayout {
                                         alignment: center;
 
                                         Rectangle {
+                                            opacity: row.off ? 0.4 : 1;
                                             width: 48px;
                                             height: 36px;
                                             border-width: 1px;
@@ -643,11 +681,12 @@ export component MakerWindow inherits Window {
                                             height: 18px;
                                             font-size: 13px;
                                             font-weight: 600;
-                                            color: row.problem ? Theme.error : Theme.text;
+                                            color: row.problem ? Theme.error : row.off ? Theme.secondary-text : Theme.text;
                                             text: row.heading;
                                         }
 
                                         if root.details: Rectangle {
+                                            opacity: row.off ? 0.4 : 1;
                                             height: 16px;
                                             clip: true;
 

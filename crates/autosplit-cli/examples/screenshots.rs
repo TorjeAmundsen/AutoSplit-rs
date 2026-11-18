@@ -225,6 +225,8 @@ fn main() {
         problem: false,
         joined: false,
         shaded: false,
+        toggleable: false,
+        off: false,
     };
     let rows = vec![
         row("Reset Image", "reset_(0.96)_[0.1].png", "000_SplitImage.png", true),
@@ -232,7 +234,7 @@ fn main() {
         row("DekuDummy", "02_DekuDummy_(0.94)_[6.5]_{d}.png", "002_SplitImage.png", false),
         row("EnterDeku", "03_EnterDeku_(0.92)_[60]_#1000#.png", "", false),
     ];
-    maker.set_rows(std::rc::Rc::new(slint::VecModel::from(rows)).into());
+    maker.set_rows(std::rc::Rc::new(slint::VecModel::from(rows.clone())).into());
     maker.set_selected(2);
     maker.set_output_folder("G:/AutoSplit segmented practice/VCAM/Portable OBS/AutoSplit/OoT".into());
     // Half the split image is transparent, over the transparency grid
@@ -256,6 +258,23 @@ fn main() {
     save(&window, PhysicalSize::new(708, 612), &folder.join("maker-simple.png"));
     maker.set_advanced(true);
     save(&window, PhysicalSize::new(828, 672), &folder.join("maker.png"));
+    // A preset with splits the runner turns on or off: DekuDummy follows EnterDeku, which is off
+    let choices = vec![
+        rows[0].clone(),
+        rows[1].clone(),
+        MakerRow { off: true, ..rows[2].clone() },
+        MakerRow { toggleable: true, off: true, ..rows[3].clone() },
+        MakerRow { toggleable: true, ..row("Bottle", "04_Bottle_(0.93)_[35]_{b}.png", "", false) },
+        row("Ganon", "05_Ganon_(0.92).png", "", false),
+    ];
+    maker.set_rows(std::rc::Rc::new(slint::VecModel::from(choices)).into());
+    maker.set_has_choices(true);
+    save(&window, PhysicalSize::new(828, 672), &folder.join("maker-choices.png"));
+    maker.set_advanced(false);
+    save(&window, PhysicalSize::new(708, 612), &folder.join("maker-choices-simple.png"));
+    maker.set_advanced(true);
+    maker.set_has_choices(false);
+    maker.set_rows(std::rc::Rc::new(slint::VecModel::from(rows)).into());
     // A fade split selected, which isn't made from the capture
     maker.set_grab_fade(true);
     save(&window, PhysicalSize::new(828, 672), &folder.join("maker-fade.png"));

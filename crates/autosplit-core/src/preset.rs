@@ -361,6 +361,20 @@ impl Preset {
         self.leader(index) == Some(index)
     }
 
+    /// Puts in `choice` that split `index`, with the splits that follow it, is `on`. Only what
+    /// differs from the preset is kept. Nothing changes for a split that's always on.
+    pub fn choose(&self, choice: &mut SplitChoice, index: usize, on: bool) {
+        let Some(leader) = self.leader(index) else { return };
+        let split = &self.splits[leader];
+        choice.on.retain(|name| *name != split.name);
+        choice.off.retain(|name| *name != split.name);
+        // The preset has it on unless it's off by default
+        if on == split.off {
+            let names = if on { &mut choice.on } else { &mut choice.off };
+            names.push(split.name.clone());
+        }
+    }
+
     /// Whether each split is on, with `choice` over the preset's own [`PresetSplit::off`].
     pub fn enabled(&self, choice: &SplitChoice) -> Vec<bool> {
         (0..self.splits.len())
