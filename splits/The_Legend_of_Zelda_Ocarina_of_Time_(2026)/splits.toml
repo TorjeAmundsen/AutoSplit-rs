@@ -125,3 +125,11 @@ screenshot = "screenshot_Hookshot.png"
 threshold = 0.93
 description = "Splits on the first frame the item model appears."
 base_image = "base_Hookshot.png"
+
+[[split]]
+name = "HoverBoots"
+mask = "HoverBoots.png"
+screenshot = "screenshot_HoverBoots.png"
+threshold = 0.93
+description = "Splits on the first frame the item model appears."
+base_image = "base_HoverBoots.png"
