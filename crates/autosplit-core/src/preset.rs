@@ -287,12 +287,11 @@ impl Preset {
     }
 
     /// The savestates to copy for the practice tool, each with its split and the name it's copied
-    /// as: the split's
-    /// number and name like its split image, `_SEE_INSTRUCTIONS` when it has instructions, and
-    /// the savestate's extension, and the place of a reset or start image past the first. Splits
-    /// compared together share a number, so they need their own names: the editor doesn't save
-    /// a preset without, and Make Split Images does nothing with one until it's fixed. Only the
-    /// splits that are `enabled`, one for each split, have theirs copied.
+    /// as: the split's number and name like its split image, `_SEE_INSTRUCTIONS` when it has
+    /// instructions, and the savestate's extension, and the place of a reset or start image past
+    /// the first. Splits compared together share a number, so they need their own names: the
+    /// editor doesn't save a preset without, and Make Split Images does nothing with one until
+    /// it's fixed. Only the splits that are `enabled`, one for each split, have theirs copied.
     pub fn savestate_copies(&self, enabled: &[bool]) -> Vec<(usize, &str, String)> {
         let (numbers, count) = self.numbers();
         let width = count.to_string().len();

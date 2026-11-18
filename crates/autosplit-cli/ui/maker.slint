@@ -151,7 +151,7 @@ export component MakerWindow inherits Window {
     // The preset has splits the runner can turn on or off, which get checkboxes when not editing
     in property <bool> has-choices;
     // The strip under the list says how many are off, with Choose Splits, which shows every split
-    // with a switch until Done
+    // with checkboxes until Done
     property <bool> show-strip: root.has-choices && !root.editing;
     in property <bool> choosing-splits;
     property <bool> choosing: root.show-strip && root.choosing-splits;
@@ -713,7 +713,7 @@ export component MakerWindow inherits Window {
                                             text: row.heading;
                                         }
 
-                                        // Clipped, so the labels and switch beside it keep their room
+                                        // Clipped, so the labels and checkbox beside it keep their room
                                         if root.details: Rectangle {
                                             opacity: row.off ? 0.4 : 1;
                                             min-width: 0px;
@@ -731,7 +731,7 @@ export component MakerWindow inherits Window {
                                         alignment: center;
                                         horizontal-stretch: 0;
 
-                                        // Not while choosing, which needs the room for the switches
+                                        // Not while choosing, which needs the room for the checkboxes and always on
                                         if root.details && !root.choosing: Label {
                                             height: 16px;
                                             horizontal-alignment: right;
@@ -876,7 +876,7 @@ export component MakerWindow inherits Window {
                             Button {
                                 text: root.choosing ? "Done" : "Choose Splits";
                                 clicked => { root.choose-splits(); }
-                                tip: root.choosing ? "Show only the splits that are on" : "Show every split, with a switch for each one you can turn on or off, like splits some runners don't split on";
+                                tip: root.choosing ? "Show only the splits that are on" : "Show every split, with a checkbox for each one you can turn on or off, like splits some runners don't split on";
                             }
                         }
                     }

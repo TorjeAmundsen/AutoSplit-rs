@@ -127,8 +127,8 @@ pub(super) struct Maker {
     last_live: Option<Pixels>,
     /// Splits to save once the ones being saved are, for the preset of that generation.
     queued: Option<(u64, Vec<usize>)>,
-    /// Every split is shown, with a switch for the ones the runner can turn on or off, which Choose
-    /// Splits under the list starts and Done ends. Off, splits that are off aren't shown.
+    /// Every split is shown, with a checkbox for the ones the runner can turn on or off, which
+    /// Choose Splits under the list starts and Done ends. Off, splits that are off aren't shown.
     choosing: bool,
     /// Splits turned off while split images were being saved, for the preset of that generation,
     /// whose images deleting waits for: one being written would come back after.
@@ -736,9 +736,8 @@ impl Gui {
         }
     }
 
-    /// Whether the selected split is off, so it gets no split image.
-    /// Why the selected split gets no split image when it's off, naming the split to tick for one
-    /// that goes with another, like a dummy, or `None` when it's on.
+    /// Why the selected split gets no split image when it's off, naming the split to turn on for
+    /// one that goes with another, like a dummy, or `None` when it's on.
     fn selected_off(&self) -> Option<String> {
         let enabled = self.maker_enabled();
         let maker = self.maker.borrow();
@@ -750,13 +749,17 @@ impl Gui {
         Some(match preset.leader(selected).filter(|&leader| leader != selected) {
             Some(leader) => {
                 let name = split_heading(preset, leader);
-                format!("This split is off with {name}, so it gets no split image. Tick {name} to make one.")
+                format!(
+                    "This split is off with {name}, so it gets no split image. Turn {name} on with Choose Splits to make one."
+                )
             }
-            None => "This split is off, so it gets no split image. Tick it to make one.".to_owned(),
+            None => {
+                "This split is off, so it gets no split image. Turn it on with Choose Splits to make one.".to_owned()
+            }
         })
     }
 
-    /// Choose Splits or Done: shows every split with a switch, or only the splits that are on.
+    /// Choose Splits or Done: shows every split with checkboxes, or only the splits that are on.
     /// Done moves the selection off a split that's hidden then, to the next one shown.
     fn choose_splits(&self) {
         let choosing = !self.maker.borrow().choosing;
