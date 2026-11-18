@@ -322,12 +322,10 @@ fn main() {
     save(&window, PhysicalSize::new(708, 612), &folder.join("maker-choosing-simple.png"));
     maker.set_advanced(true);
     save(&window, PhysicalSize::new(828, 672), &folder.join("maker-choosing.png"));
-    // The pointer over EnterDeku's checkbox, which pulses DekuDummy with it, at the pulse's
-    // strongest, half a period in
+    // The pointer over EnterDeku's checkbox, which highlights DekuDummy with it, before its
+    // tooltip shows
     let over = slint::LogicalPosition::new(466.0, 249.0);
     window.dispatch_event(slint::platform::WindowEvent::PointerMoved { position: over });
-    std::thread::sleep(std::time::Duration::from_millis(800));
-    slint::platform::update_timers_and_animations();
     save(&window, PhysicalSize::new(828, 672), &folder.join("maker-choosing-hover.png"));
     let away = slint::LogicalPosition::new(700.0, 600.0);
     window.dispatch_event(slint::platform::WindowEvent::PointerMoved { position: away });

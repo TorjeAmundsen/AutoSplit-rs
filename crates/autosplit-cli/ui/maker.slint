@@ -634,10 +634,10 @@ export component MakerWindow inherits Window {
                                     shown: root.saved-rows[index];
                                 }
 
-                                // A slow pulse on every split the hovered checkbox turns on or
-                                // off, like the dummies before it, before it's clicked
+                                // A highlight on every split the hovered checkbox turns on or off,
+                                // like the dummies before it, before it's clicked
                                 if root.choosing && root.hovered-leader >= 0 && row.leader == root.hovered-leader: Rectangle {
-                                    background: Theme.focus.with-alpha(0.1 + 0.15 * (1 - cos(animation-tick() / 1600ms * 360deg)) / 2);
+                                    background: Theme.warning.with-alpha(0.16);
                                 }
 
                                 TouchArea {
@@ -751,8 +751,8 @@ export component MakerWindow inherits Window {
 
                                     // While choosing, that a split is always on. The checkboxes are
                                     // drawn over the rows, below, centered on the splits compared
-                                    // together, and a split that goes with one pulses when it's
-                                    // hovered
+                                    // together, and a split that goes with one is highlighted when
+                                    // it's hovered
                                     if root.choosing: VerticalLayout {
                                         alignment: center;
                                         width: 96px;
@@ -814,7 +814,7 @@ export component MakerWindow inherits Window {
 
                                 Tooltip {
                                     Tip {
-                                        text: "Split here. Off, the split gets no split image, and Grab and Save All skip it, with the splits that go with it, which pulse while the pointer is here. Your LiveSplit splits need a segment for each split that's on, apart from dummies.";
+                                        text: "Split here. Off, the split gets no split image, and Grab and Save All skip it, with the splits that go with it, which are highlighted while the pointer is here. Your LiveSplit splits need a segment for each split that's on, apart from dummies.";
                                     }
                                 }
                             }
