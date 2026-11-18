@@ -390,8 +390,10 @@ fn maker_view(
             },
             toggleable: toggleable(index),
             off: maker.is_off(enabled, index),
-            fixed: (maker.loaded().filter(|_| maker.edit.is_none()))
-                .and_then(|loaded| why_not_toggleable(&loaded.preset, index))
+            // Not for one compared together with a checkbox's split, where the checkbox is
+            fixed: chosen
+                .filter(|preset| !leader(index).is_some_and(|leader| preset.group(leader).contains(&index)))
+                .and_then(|preset| why_not_toggleable(preset, index))
                 .unwrap_or_default()
                 .into(),
             // Read from the folder by the caller

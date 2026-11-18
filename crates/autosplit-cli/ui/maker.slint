@@ -604,16 +604,17 @@ export component MakerWindow inherits Window {
                         y: 0px;
 
                         key-pressed(event) => {
-                            if (event.text == Key.UpArrow && root.rows[root.selected].above >= 0) {
+                            // Not without rows, where the selected one is a default row
+                            if (event.text == Key.UpArrow && root.selected < root.rows.length && root.rows[root.selected].above >= 0) {
                                 root.pick(root.rows[root.selected].above);
                                 return accept;
                             }
-                            if (event.text == Key.DownArrow && root.rows[root.selected].below >= 0) {
+                            if (event.text == Key.DownArrow && root.selected < root.rows.length && root.rows[root.selected].below >= 0) {
                                 root.pick(root.rows[root.selected].below);
                                 return accept;
                             }
                             // Space turns the selected split on or off while choosing
-                            if (event.text == " " && root.choosing && root.rows[root.selected].leader >= 0) {
+                            if (event.text == " " && root.choosing && root.selected < root.rows.length && root.rows[root.selected].leader >= 0) {
                                 root.split-toggled(root.selected);
                                 return accept;
                             }
@@ -757,13 +758,25 @@ export component MakerWindow inherits Window {
                                     // it's hovered
                                     if root.choosing: VerticalLayout {
                                         alignment: center;
-                                        width: 96px;
+                                        width: 64px;
 
                                         if row.always-on: Label {
                                             height: 16px;
                                             horizontal-alignment: right;
                                             color: Theme.secondary-text;
                                             text: "always on";
+
+                                            Tooltip {
+                                                Tip {
+                                                    text: row.fixed;
+                                                }
+                                            }
+                                        }
+
+                                        // Why a dummy has no checkbox: the split it goes with,
+                                        // which hovering that split's checkbox highlights too
+                                        if !row.always-on && !row.toggleable && row.fixed != "": Rectangle {
+                                            height: 20px;
 
                                             Tooltip {
                                                 Tip {

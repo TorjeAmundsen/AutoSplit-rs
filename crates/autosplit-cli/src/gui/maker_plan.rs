@@ -103,8 +103,8 @@ pub fn stale_to_delete(stale: &[PathBuf], written: &[PathBuf]) -> Vec<PathBuf> {
 
 /// The split images among a folder's `existing` files of `splits`, each its number and name,
 /// like the splits just turned off: PNGs named for one of them, its number, by value, so
-/// `5_Boss` and `05_Boss` are both 5, then `_` and its name, which ends the name or comes before
-/// a `_` or the extension. The name is checked too, since an image from an older version of the
+/// `5_Boss` and `05_Boss` are both 5, then `_` and its name, followed by the extension or by
+/// `_` and a setting, like `_(0.9)`. The name is checked too, since an image from an older version of the
 /// preset can have the number of another split. Not reset or start images, and not screenshots
 /// (`NNN_SplitImage`), whose numbers count from 1.
 pub fn images_of_splits(existing: &[PathBuf], splits: &[(usize, &str)]) -> Vec<PathBuf> {
@@ -112,7 +112,12 @@ pub fn images_of_splits(existing: &[PathBuf], splits: &[(usize, &str)]) -> Vec<P
         let Some(SplitKey::Number(found)) = split_key(file) else { return false };
         let digits = number_prefix(file).map_or(0, str::len);
         let rest = file[digits..].strip_prefix('_').and_then(|rest| rest.strip_prefix(name));
-        found == number as u64 && rest.is_some_and(|rest| rest.starts_with(['_', '.']))
+        // The extension, or a setting, not more of a longer name like Boss_2's
+        let ends = |rest: &str| {
+            rest.starts_with('.')
+                || rest.strip_prefix('_').is_some_and(|setting| setting.starts_with(['(', '[', '#', '@', '{', '^']))
+        };
+        found == number as u64 && rest.is_some_and(ends)
     };
     (existing.iter())
         .filter(|path| is_png(path))

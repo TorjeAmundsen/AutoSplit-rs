@@ -650,12 +650,14 @@ fn the_strip_says_how_many_splits_are_off_and_still_compared(off: usize, kept: u
 #[test]
 fn images_of_splits_turned_off_are_found_by_number_and_name() {
     // Arrange: split 3 compares Boss and Boss Alt, under names from other settings too, among
-    // others, like 03_Other from before a split was added above
+    // others, like 03_Other from before a split was added above, and 03_Boss_2 of a split named
+    // Boss_2
     let existing: Vec<PathBuf> = [
         "03_Boss_(0.9).png",
         "3_Boss.png",
         "03_Boss Alt_[1].png",
         "03_Bosses.png",
+        "03_Boss_2.png",
         "03_Other.png",
         "04_Boss.png",
         "13_Boss.png",
