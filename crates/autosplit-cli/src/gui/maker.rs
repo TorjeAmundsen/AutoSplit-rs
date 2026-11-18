@@ -125,6 +125,9 @@ pub(super) struct Maker {
     last_live: Option<Pixels>,
     /// Splits to save once the ones being saved are, for the preset of that generation.
     queued: Option<(u64, Vec<usize>)>,
+    /// Splits turned off while split images were being saved, for the preset of that generation,
+    /// whose images deleting waits for: one being written would come back after.
+    turned_off: Option<(u64, Vec<usize>)>,
 }
 
 /// Where a split's image comes from, as far as its preset's screenshot goes.
@@ -710,24 +713,36 @@ impl Gui {
         // Splits that are off have no instructions to show
         self.refresh_instructions();
         if on {
-            self.offer_to_delete_off_images(&enabled, &self.maker_enabled());
+            let after = self.maker_enabled();
+            let turned_off = (0..after.len()).filter(|&index| enabled[index] && !after[index]).collect();
+            self.offer_to_delete_off_images(turned_off);
         }
     }
 
-    /// Asks whether to delete the split images in the split image folder of the splits that were
-    /// on `before` and are off `after`, which AutoSplit would still compare. Keeping them is the
-    /// default, like for other deletes.
-    fn offer_to_delete_off_images(self: &Rc<Self>, before: &[bool], after: &[bool]) {
+    /// Asks whether to delete the split images in the split image folder of the splits
+    /// `turned_off`, which AutoSplit would still compare. Keeping them is the default, like for
+    /// other deletes. While split images are being saved, it waits until they are.
+    fn offer_to_delete_off_images(self: &Rc<Self>, turned_off: Vec<usize>) {
+        let mut maker = self.maker.borrow_mut();
+        if maker.saving {
+            let generation = maker.generation;
+            let waiting = maker.turned_off.get_or_insert_with(|| (generation, Vec::new()));
+            waiting.1.extend(turned_off);
+            return;
+        }
+        drop(maker);
         let Some(folder) = self.split_image_folder().filter(|folder| folder.is_dir()) else { return };
+        let enabled = self.maker_enabled();
         let maker = self.maker.borrow();
         let Some(loaded) = maker.loaded() else { return };
         let (numbers, _) = loaded.preset.numbers();
-        let turned_off: Vec<usize> = (0..numbers.len())
-            .filter(|&index| before.get(index) == Some(&true) && after.get(index) == Some(&false))
-            .map(|index| numbers[index])
+        // Not ones turned back on while a save was waited for
+        let numbers: Vec<usize> = (turned_off.into_iter())
+            .filter(|&index| maker.is_off(&enabled, index))
+            .filter_map(|index| numbers.get(index).copied())
             .collect();
         drop(maker);
-        let images = images_numbered(&user_files(&folder).unwrap_or_default(), &turned_off);
+        let images = images_numbered(&user_files(&folder).unwrap_or_default(), &numbers);
         if images.is_empty() {
             return;
         }

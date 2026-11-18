@@ -622,22 +622,23 @@ export component MakerWindow inherits Window {
                                     padding-right: root.rows.length * root.row-height > list.visible-height ? 20px : 6px;
                                     spacing: 8px;
 
-                                    // Whether the split is on. The click goes to Rust, which
-                                    // has what's on, instead of ticking the box, so the box keeps
-                                    // following the row when the rows change
+                                    // Whether the split is on. The box ticks itself, from a click
+                                    // or Space while it has focus, which drops its binding, so it's
+                                    // put back to what Rust has each time the row changes
                                     if root.choosing: VerticalLayout {
                                         alignment: center;
                                         width: 20px;
 
                                         if row.toggleable: Rectangle {
                                             height: 20px;
-
-                                            CheckBox {
-                                                checked: !row.off;
+                                            property <bool> on: !row.off;
+                                            changed on => {
+                                                box.checked = self.on;
                                             }
 
-                                            TouchArea {
-                                                clicked => {
+                                            box := CheckBox {
+                                                checked: !row.off;
+                                                toggled => {
                                                     list-keys.focus();
                                                     root.split-toggled(index);
                                                 }

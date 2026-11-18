@@ -38,6 +38,15 @@ impl Gui {
         if self.refused_for_problems() {
             return false;
         }
+        // Also for a save queued before they were turned off: they get no split image
+        let enabled = self.maker_enabled();
+        let indexes: Vec<usize> = {
+            let maker = self.maker.borrow();
+            indexes.into_iter().filter(|&index| !maker.is_off(&enabled, index)).collect()
+        };
+        if indexes.is_empty() {
+            return false;
+        }
         if self.queued_behind_saving(&indexes) {
             return true;
         }
@@ -253,6 +262,13 @@ impl Gui {
         }
         if let Some((_, indexes)) = queued {
             self.save_split_images(indexes);
+        }
+        // Once nothing's being written, so a file still being written isn't left after deleting
+        if !self.maker.borrow().saving {
+            let turned_off = self.maker.borrow_mut().turned_off.take();
+            if let Some((_, turned_off)) = turned_off.filter(|(generation, _)| *generation == generation_now) {
+                self.offer_to_delete_off_images(turned_off);
+            }
         }
     }
 
