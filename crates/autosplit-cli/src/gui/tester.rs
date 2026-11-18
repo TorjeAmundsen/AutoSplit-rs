@@ -4,7 +4,6 @@
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
-use autosplit_core::tester::group_paths;
 use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
 
 use super::paths::{canonical, file_name_text};
@@ -159,11 +158,7 @@ impl Gui {
         tester.set_can_reload(true);
         tester.set_can_previous_image(index.is_some_and(|index| index > 0));
         tester.set_can_next_image(index.is_some_and(|index| index + 1 < images.len()));
-        // Checked only while it applies, but kept for the next image that has a group
-        let can_group = group_paths(&path).len() > 1;
-        let group = can_group && self.tester_state.borrow().group;
-        tester.set_can_group(can_group);
-        tester.set_grouped(group);
+        let group = self.tester_state.borrow().group;
         self.send(UiCommand::OpenTester { path, group, request });
     }
 
@@ -185,6 +180,10 @@ impl Gui {
         tester.set_split_image(slint::Image::default());
         tester.set_group_shown(false);
         self.tester_rows.clear();
+        // While it's on, it can be turned off, since one of the group's images can be what failed
+        let group = self.tester_state.borrow().group;
+        tester.set_can_group(group);
+        tester.set_grouped(group);
         self.take_kept(KeptFrames { cleared: true, added: Vec::new() });
     }
 
@@ -245,6 +244,9 @@ impl Gui {
             };
             self.tester_info.set_vec(texts.info.into_iter().map(cell).collect::<Vec<_>>());
             tester.set_group_shown(!texts.rows.is_empty());
+            // Checked only while it applies, but kept for the next image that has a group
+            tester.set_can_group(texts.can_group);
+            tester.set_grouped(texts.can_group && self.tester_state.borrow().group);
             let row = |[live, highest, threshold]: [String; 3]| SimilarityRow {
                 live: live.into(),
                 highest: highest.into(),

@@ -7,10 +7,8 @@ use std::time::Duration;
 
 use crate::compare::CompareScratch;
 use crate::fade::{FadeTracker, reached};
-use crate::filename::{RESET_KEYWORD, START_KEYWORD, has_keyword, number_prefix};
 use crate::image::BgraImage;
 use crate::runner::{Captured, interval, next_grid_tick};
-use crate::split_folder::{MAX_GROUP_SIZE, user_files};
 use crate::split_image::{ImageType, LoadError, SplitDefaults, SplitImage};
 
 /// Where the tester is in the images' trigger sequence.
@@ -344,36 +342,5 @@ impl Tester {
             }
             (phase, None) => phase,
         };
-    }
-}
-
-/// The images compared together with the image at `path` in a run that compares images with the
-/// same number for one split, in the order they're compared, with `path` among them: the PNG
-/// images in its folder with its number, or the other start or reset images. Only `path` when
-/// there are none or more than a run can compare, or for a split image without a number.
-pub fn group_paths(path: &Path) -> Vec<PathBuf> {
-    let alone = vec![path.to_owned()];
-    let Some(folder) = path.parent() else { return alone };
-    let Some(key) = group_key(path) else { return alone };
-    let group: Vec<PathBuf> = (user_files(folder).unwrap_or_default().into_iter())
-        .filter(|other| other.extension().is_some_and(|extension| extension.eq_ignore_ascii_case("png")))
-        .filter(|other| group_key(other).as_ref() == Some(&key))
-        .collect();
-    if group.len() > MAX_GROUP_SIZE || !group.iter().any(|other| other == path) {
-        return alone;
-    }
-    group
-}
-
-/// What images in one group share, read from the file name like [`SplitImage::load`] and
-/// [`crate::split_folder`] do: start, reset, or a split image's number without its leading zeros.
-fn group_key(path: &Path) -> Option<String> {
-    let filename = path.file_name()?.to_string_lossy().to_lowercase();
-    if has_keyword(&filename, START_KEYWORD) {
-        Some(START_KEYWORD.into())
-    } else if has_keyword(&filename, RESET_KEYWORD) {
-        Some(RESET_KEYWORD.into())
-    } else {
-        number_prefix(&filename).map(|digits| format!("#{}", digits.trim_start_matches('0')))
     }
 }

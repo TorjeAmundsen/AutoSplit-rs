@@ -17,10 +17,11 @@ use autosplit_core::hotkeys::HotkeyAction;
 use autosplit_core::image::BgraImage;
 use autosplit_core::profile::{Region, UserProfile, capture_method_name};
 use autosplit_core::runner::{Captured, Effect, Runner, RunnerSettings, Status};
+use autosplit_core::split_folder::group_paths;
 use autosplit_core::split_folder::{
     FolderLoad, SplitSet, ValidationError, load_profile_folder, load_profile_folder_to_start,
 };
-use autosplit_core::tester::{Tester, group_paths};
+use autosplit_core::tester::Tester;
 use autosplit_core::text::{Compared, status_line};
 
 use crate::console::Console;
@@ -170,6 +171,8 @@ pub struct Snapshot<'a> {
     pub tester_loaded: u64,
     /// The window's last [`UiCommand::OpenTester`] request.
     pub tester_request: u64,
+    /// The Live Tester's image has a group, which it can test together.
+    pub tester_can_group: bool,
 }
 
 /// Shows a session in a window.
@@ -569,9 +572,11 @@ impl Session {
         let current = TesterFiles::read(files.opened.clone(), files.group);
         // A file whose time changed, or that joined or left the group
         let differs = |a: &TesterFiles, b: &TesterFiles| a.files.iter().find(|file| !b.files.contains(file)).cloned();
-        let Some((path, _)) = differs(&current, files).or_else(|| differs(files, &current)) else { return };
+        let changed = differs(&current, files).or_else(|| differs(files, &current));
         let (paths, opened) = current.paths();
+        // Kept also without a change to reload, since the image can have gained or lost its group
         self.tester_files = Some(current);
+        let Some((path, _)) = changed else { return };
         match Tester::open_group(&paths, opened, self.profile.split_defaults(), self.elapsed()) {
             Ok(tester) => {
                 self.console.log(format_args!("Live Tester: {} changed, loaded it again", path.display()));
@@ -1172,6 +1177,7 @@ impl Session {
             tester: self.tester.as_ref(),
             tester_loaded: self.tester_loaded,
             tester_request: self.tester_request,
+            tester_can_group: self.tester_files.as_ref().is_some_and(|files| files.can_group),
         });
         self.view = Some(view);
     }
@@ -1244,6 +1250,8 @@ struct TesterFiles {
     opened: PathBuf,
     /// Its group is tested with it.
     group: bool,
+    /// It has a group, so testing it can be turned on.
+    can_group: bool,
     /// The images tested, in order, each with its time, or `None` when that can't be read.
     files: Vec<(PathBuf, Option<SystemTime>)>,
 }
@@ -1251,10 +1259,12 @@ struct TesterFiles {
 impl TesterFiles {
     /// The files of `opened`, or of its group with `group`, as they are now.
     fn read(opened: PathBuf, group: bool) -> Self {
-        let paths = if group { group_paths(&opened) } else { vec![opened.clone()] };
+        let group_paths = group_paths(&opened);
+        let can_group = group_paths.len() > 1;
+        let paths = if group { group_paths } else { vec![opened.clone()] };
         let modified = |path: &Path| std::fs::metadata(path).and_then(|metadata| metadata.modified()).ok();
         let files = paths.into_iter().map(|path| (path.clone(), modified(&path))).collect();
-        Self { opened, group, files }
+        Self { opened, group, can_group, files }
     }
 
     /// The paths to test, and which of them is the opened image.

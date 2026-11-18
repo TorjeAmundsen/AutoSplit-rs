@@ -91,6 +91,8 @@ pub struct TesterTexts {
     pub live_message: String,
     /// With several images, the live, highest and threshold of each, else nothing.
     pub rows: Vec<[String; 3]>,
+    /// The image has a group, so Test Its Group can be turned on.
+    pub can_group: bool,
 }
 
 /// Frames the Live Tester kept that the window doesn't have yet, with their captions. A frame
@@ -397,6 +399,7 @@ impl GuiView {
             ),
             live_message,
             rows: if tester.grouped() { tester_rows(tester, snapshot.receiving) } else { Vec::new() },
+            can_group: snapshot.tester_can_group,
         };
         if shown.texts.as_ref() != Some(&texts) {
             shown.texts = Some(texts.clone());

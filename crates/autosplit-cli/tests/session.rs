@@ -26,6 +26,8 @@ struct Seen {
     testers: Arc<Mutex<Vec<Tested>>>,
     /// The file names of the Live Tester's images, while it's open.
     tester_images: Arc<Mutex<Vec<Vec<String>>>>,
+    /// Whether the Live Tester's image has a group.
+    tester_can_group: Arc<Mutex<Vec<bool>>>,
 }
 
 impl Seen {
@@ -43,6 +45,10 @@ impl Seen {
 
     fn last_tester(&self) -> Tested {
         self.testers.lock().unwrap().last().cloned().flatten()
+    }
+
+    fn last_tester_can_group(&self) -> bool {
+        self.tester_can_group.lock().unwrap().last().copied().unwrap_or_default()
     }
 
     fn last_tester_images(&self) -> Vec<String> {
@@ -70,6 +76,7 @@ impl View for FakeView {
         self.0.testers.lock().unwrap().push(tester);
         let images = snapshot.tester.map(|tester| tester.slots().iter().map(|slot| slot.image().display_name()));
         self.0.tester_images.lock().unwrap().push(images.into_iter().flatten().collect());
+        self.0.tester_can_group.lock().unwrap().push(snapshot.tester_can_group);
     }
 
     fn notice(&mut self, notice: Notice) {
@@ -373,6 +380,21 @@ fn closing_the_live_tester_drops_its_image() {
 
     // Assert: no dialog, which an image that couldn't be opened would show, and closed
     assert_eq!((seen.notices(), seen.last_tester()), (Vec::<String>::new(), None));
+}
+
+#[test]
+fn live_tester_says_whether_its_image_has_a_group() {
+    // Arrange: one image alone, and one with another of its number
+    let (alone, grouped) = (split_folder(), split_folder());
+    std::fs::copy(grouped.path().join("001_split.png"), grouped.path().join("001_other.png")).unwrap();
+    let open = |folder: &tempfile::TempDir| vec![open_tester(folder.path().join("001_split.png"))];
+
+    // Act
+    let seen = [&alone, &grouped].map(|folder| run(UserProfile::default(), open(folder)));
+
+    // Assert: tested alone, which the box being off asked for, either way
+    let said = seen.map(|seen| (seen.last_tester_can_group(), seen.last_tester_images()));
+    assert_eq!(said, [(false, vec!["001_split.png".to_owned()]), (true, vec!["001_split.png".to_owned()])]);
 }
 
 #[test]

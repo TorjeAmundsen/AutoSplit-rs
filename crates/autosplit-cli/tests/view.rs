@@ -55,6 +55,7 @@ fn show(view: &mut GuiView, profile: &UserProfile, device_problem: Option<&str>,
         tester: None,
         tester_loaded: 0,
         tester_request,
+        tester_can_group: false,
     });
 }
 

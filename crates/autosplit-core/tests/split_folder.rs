@@ -6,7 +6,8 @@ use autosplit_core::filename::{FilenameWarning, Setting};
 use autosplit_core::image::BgraImage;
 use autosplit_core::profile::UserProfile;
 use autosplit_core::split_folder::{
-    ValidationContext, ValidationError, load_profile_folder, load_profile_folder_to_start, load_split_folder,
+    ValidationContext, ValidationError, group_paths, load_profile_folder, load_profile_folder_to_start,
+    load_split_folder,
 };
 use autosplit_core::split_image::{LoadWarning, SplitImage};
 use tempfile::TempDir;
@@ -251,4 +252,62 @@ fn fade_images_too_short_for_the_fps_limit_are_warned_about(fps_limit: i64) -> V
 
     // Assert, with the expected value checked by test_case
     warnings.into_iter().map(|warning| warning.warning).collect()
+}
+
+/// The file names of the group of `opened` in `directory`.
+fn group_in(directory: &TempDir, opened: &str) -> Vec<String> {
+    let group = group_paths(&directory.path().join(opened));
+    group.iter().map(|path| path.file_name().unwrap().to_string_lossy().into_owned()).collect()
+}
+
+/// The group of `opened` in a [`folder`] of `names`.
+fn group_of(names: &[&str], opened: &str) -> Vec<String> {
+    group_in(&folder(names), opened)
+}
+
+const FOLDER: &[&str] = &[
+    "01_a.png",
+    "1_b.png",
+    "1_c.txt",
+    "10_d.png",
+    "2_e.png",
+    "start_auto_splitter.png",
+    "start_auto_splitter_2.png",
+    "reset.png",
+    "split.png",
+];
+
+#[test_case("1_b.png" => vec!["01_a.png", "1_b.png"]; "the same number with or without leading zeros")]
+#[test_case("2_e.png" => vec!["2_e.png"]; "a number no other image has")]
+#[test_case("start_auto_splitter_2.png" => vec!["start_auto_splitter.png", "start_auto_splitter_2.png"]; "start images")]
+#[test_case("split.png" => vec!["split.png"]; "a split image without a number")]
+fn group_paths_finds_the_images_of_the_split(opened: &str) -> Vec<String> {
+    group_of(FOLDER, opened)
+}
+
+#[test]
+fn group_paths_is_only_the_image_when_a_run_could_not_compare_the_group() {
+    // Arrange: one more than a run compares for one split, next to a group it can compare
+    let names = ["1_a.png", "1_b.png", "1_c.png", "1_d.png", "1_e.png", "2_a.png", "2_b.png"];
+
+    // Act
+    let groups = (group_of(&names, "1_c.png"), group_of(&names, "2_a.png"));
+
+    // Assert
+    assert_eq!(groups, (vec!["1_c.png".to_owned()], vec!["2_a.png".to_owned(), "2_b.png".to_owned()]));
+}
+
+#[test]
+fn group_paths_goes_by_what_a_file_is_like_a_folder_load() {
+    // Arrange: a PNG without the extension, and a file named like a PNG that isn't one
+    let directory = folder(&["1_a.png"]);
+    let png = std::fs::read(directory.path().join("1_a.png")).unwrap();
+    std::fs::write(directory.path().join("1_b"), png).unwrap();
+    std::fs::write(directory.path().join("1_c.png"), b"not an image").unwrap();
+
+    // Act
+    let group = group_in(&directory, "1_a.png");
+
+    // Assert
+    assert_eq!(group, ["1_a.png", "1_b"]);
 }
