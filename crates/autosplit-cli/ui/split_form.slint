@@ -536,7 +536,7 @@ export component SplitFormPanel inherits VerticalLayout {
 
                     Tooltip {
                         Tip {
-                            text: (root.form.why-not-off == "" ? "" : root.form.why-not-off + "\n\n") + "Off unless the runner turns it on in Make Split Images, for a split some runners split on and most don't. Runners can turn other splits off there too, apart from the start and reset images and the final split.";
+                            text: (root.form.why-not-off == "" ? "" : root.form.why-not-off + "\n\n") + "Off unless the runner turns it on in Make Split Images, for a split some runners split on and most don't. Runners can turn any split on or off there, apart from start and reset images, the final split, and dummies and splits compared together, which go with their split.";
                         }
                     }
                 }

@@ -610,7 +610,7 @@ fn off_by_default_where_it_cant_be_is_a_problem() {
     let off = |index| field_problems(&problems, index, Field::Off);
     assert_eq!(
         (off(0), off(1)),
-        (String::new(), "It can't be off by default. The final split is always on, since it ends the run.".to_owned())
+        (String::new(), "It can't be optional. The final split is always on, since it ends the run.".to_owned())
     );
 }
 

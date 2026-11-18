@@ -32,6 +32,8 @@ export struct MakerRow {
     toggleable: bool,
     // Turned off, by the preset or the runner, so it gets no split image
     off: bool,
+    // Why the runner can't turn it on or off, for the tooltip where its checkbox would be
+    fixed: string,
 }
 
 // The split image folder, like a read-only field without a cursor, with the whole path in its
@@ -641,6 +643,22 @@ export component MakerWindow inherits Window {
                                                 toggled => {
                                                     list-keys.focus();
                                                     root.split-toggled(index);
+                                                }
+
+                                                Tooltip {
+                                                    Tip {
+                                                        text: "Split here. Unticked, the split gets no split image, and Grab and Save All skip it. Your LiveSplit splits need a segment for each split that's on, apart from dummies.";
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        if !row.toggleable: Rectangle {
+                                            height: 20px;
+
+                                            Tooltip {
+                                                Tip {
+                                                    text: row.fixed;
                                                 }
                                             }
                                         }

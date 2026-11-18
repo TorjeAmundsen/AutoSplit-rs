@@ -23,7 +23,9 @@ use super::maker_plan::{
 use super::messages::{Answer, Message};
 use super::paths::{canonical, file_name_text};
 use super::placement::beside;
-use super::preset_form::{Problem, instruction_cards, problem_flags, problem_summary, problems_of, split_heading};
+use super::preset_form::{
+    Problem, instruction_cards, problem_flags, problem_summary, problems_of, split_heading, why_not_toggleable,
+};
 use super::ui::{InstructionCard, MakerRow};
 use super::view::{Pixels, rgba};
 use super::{Gui, Tool, exe_folder, file_name_parts, with_gui};
@@ -365,6 +367,10 @@ fn maker_view(
             },
             toggleable: toggleable(index),
             off: maker.is_off(enabled, index),
+            fixed: (maker.loaded().filter(|_| maker.edit.is_none()))
+                .and_then(|loaded| why_not_toggleable(&loaded.preset, index))
+                .unwrap_or_default()
+                .into(),
         })
         .collect();
     // A preset with problems is only for fixing, so nothing's made from it
@@ -668,8 +674,8 @@ impl Gui {
     /// Why Grab can't work yet, which its tooltip says, or empty. The hotkey still tries, and says
     /// so in a message. A fade split doesn't need the capture.
     fn grab_blocker(&self) -> String {
-        if self.selected_off() {
-            "This split is off, so it gets no split image. Tick it to make one.".to_owned()
+        if let Some(off) = self.selected_off() {
+            off
         } else if !self.selected_fade() && !self.state.borrow().document.profile.has_capture_device() {
             concat!(
                 "Pick a capture device in Settings (",
@@ -685,10 +691,23 @@ impl Gui {
     }
 
     /// Whether the selected split is off, so it gets no split image.
-    fn selected_off(&self) -> bool {
+    /// Why the selected split gets no split image when it's off, naming the split to tick for one
+    /// that goes with another, like a dummy, or `None` when it's on.
+    fn selected_off(&self) -> Option<String> {
         let enabled = self.maker_enabled();
         let maker = self.maker.borrow();
-        maker.is_off(&enabled, maker.selected)
+        let selected = maker.selected;
+        if !maker.is_off(&enabled, selected) {
+            return None;
+        }
+        let preset = &maker.loaded()?.preset;
+        Some(match preset.leader(selected).filter(|&leader| leader != selected) {
+            Some(leader) => {
+                let name = split_heading(preset, leader);
+                format!("This split is off with {name}, so it gets no split image. Tick {name} to make one.")
+            }
+            None => "This split is off, so it gets no split image. Tick it to make one.".to_owned(),
+        })
     }
 
     /// Turns split `index`, with the splits that follow it, on or off in the profile's choice for
@@ -706,9 +725,16 @@ impl Gui {
         if *choice == SplitChoice::default() {
             choices.remove(&key);
         }
+        let name = split_heading(&loaded.preset, index);
         drop((state, maker));
         self.profile_edited();
-        self.show_screenshots_status();
+        // The timer's splits have to match, or the run splits on the wrong segments
+        let status = if on {
+            format!("{name} is off. Take its segment out of your LiveSplit splits too.")
+        } else {
+            format!("{name} is on. Add a segment for it to your LiveSplit splits too.")
+        };
+        self.windows.maker.set_status(status.into());
         self.show_maker();
         // Splits that are off have no instructions to show
         self.refresh_instructions();
@@ -916,13 +942,9 @@ impl Gui {
     /// Says the selected split is off, for a grab, like from the screenshot hotkey, which Grab's
     /// tooltip says too. Returns whether it is.
     fn refused_for_off(&self) -> bool {
-        let off = self.selected_off();
-        if off {
-            self.show_message(Message::warning(
-                "The selected split is off, so it gets no split image. Tick it to make one, or select another split.",
-            ));
-        }
-        off
+        let Some(off) = self.selected_off() else { return false };
+        self.show_message(Message::warning(off));
+        true
     }
 
     /// After a grab or Grab* of split `grabbed`, selects the next split to grab, when its image

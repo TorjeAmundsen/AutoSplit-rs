@@ -593,7 +593,7 @@ fn group_problems(preset: &Preset) -> Vec<(usize, Field, String)> {
 
 /// Why the runner can't turn split `index` on or off, or `None` when they can, see
 /// [`Preset::leader`].
-fn why_not_toggleable(preset: &Preset, index: usize) -> Option<&'static str> {
+pub fn why_not_toggleable(preset: &Preset, index: usize) -> Option<&'static str> {
     let split = preset.splits.get(index)?;
     if preset.toggleable(index) {
         return None;
@@ -615,7 +615,7 @@ fn choice_problems(preset: &Preset) -> Vec<(usize, Field, String)> {
     let mut problems = Vec::new();
     for (index, split) in preset.splits.iter().enumerate() {
         if let Some(reason) = why_not_toggleable(preset, index).filter(|_| split.off) {
-            problems.push((index, Field::Off, format!("It can't be off by default. {reason}")));
+            problems.push((index, Field::Off, format!("It can't be optional. {reason}")));
         }
         let same_name = |other: usize| preset.toggleable(other) && preset.splits[other].name == split.name;
         if preset.toggleable(index) && (0..index).any(same_name) {

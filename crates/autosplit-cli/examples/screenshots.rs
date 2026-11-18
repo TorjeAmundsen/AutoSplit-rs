@@ -227,6 +227,7 @@ fn main() {
         shaded: false,
         toggleable: false,
         off: false,
+        fixed: "".into(),
     };
     let rows = vec![
         row("Reset Image", "reset_(0.96)_[0.1].png", "000_SplitImage.png", true),
