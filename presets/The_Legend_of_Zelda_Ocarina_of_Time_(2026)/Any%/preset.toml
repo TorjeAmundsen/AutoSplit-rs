@@ -23,29 +23,85 @@ threshold = 0.999
 
 [[split]]
 name = "KokiriEmerald"
-mask = "KokiriEmerald.png"
-fade = "#e5e5e5"
-fade_time = 850
-threshold = 0.999
-pause = 10.0
+fade = "#e8e8e8"
+fade_time = 750
+threshold = 1.0
 
 [[split]]
 name = "PotionBottle"
 mask = "PotionBottle.png"
 screenshot = "screenshots/PotionBottle.png"
-threshold = 0.95
+threshold = 0.93
 
 [[split]]
 name = "ZeldasLetter"
 mask = "ZeldasLetter.png"
 screenshot = "screenshots/ZeldasLetter.png"
-threshold = 0.95
+threshold = 0.93
 
 [[split]]
 name = "SariasSong"
 mask = "SariasSong.png"
 screenshot = "screenshots/SariasSong.png"
+threshold = 0.93
+
+[[split]]
+name = "GoronShuffleDummy"
+mask = "GoronShuffleDummy.png"
+screenshot = "screenshots/GoronShuffleDummy.png"
+threshold = 0.93
+pause = 3.0
+dummy = true
+
+[[split]]
+name = "EnterDodongoCavern"
+fade = "#000000"
+fade_time = 500
+threshold = 0.999
+
+[[split]]
+name = "BombBag"
+mask = "BombBag.png"
+screenshot = "screenshots/BombBag.png"
+threshold = 0.93
+
+[[split]]
+name = "DinsFire"
+mask = "DinsFire.png"
+screenshot = "screenshots/DinsFire.png"
+threshold = 0.93
+
+[[split]]
+name = "GraveyardDummy"
+mask = "GraveyardDummy.png"
+screenshot = "screenshots/GraveyardDummy.png"
 threshold = 0.95
+dummy = true
+
+[[split]]
+name = "EnterShadowTemple"
+fade = "#000000"
+fade_time = 500
+threshold = 0.999
+
+[[split]]
+name = "Boat"
+mask = "Boat.png"
+screenshot = "screenshots/Boat.png"
+threshold = 0.94
+below = true
+
+[[split]]
+name = "ShadowMedallion"
+fade = "#e8e8e8"
+fade_time = 750
+threshold = 1.0
+
+[[split]]
+name = "Hookshot"
+mask = "Hookshot.png"
+screenshot = "screenshots/Hookshot.png"
+threshold = 0.93
 
 [[split]]
 name = "Ganon"

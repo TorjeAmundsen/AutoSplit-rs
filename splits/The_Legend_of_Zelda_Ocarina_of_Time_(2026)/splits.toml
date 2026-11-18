@@ -23,18 +23,8 @@ name = "Slingshot"
 mask = "Slingshot.png"
 screenshot = "screenshot_Slingshot.png"
 threshold = 0.95
-description = "Splits on the first frame of the item model appearing."
+description = "Splits on the first frame the item model appears."
 base_image = "base_Slingshot.png"
-
-[[split]]
-name = "FadeToWhite"
-mask = "FadeToWhite.png"
-fade = "#e5e5e5"
-fade_time = 850
-threshold = 0.999
-pause = 10.0
-description = "Splits on full fade to white after entering an end-of-dungeon blue warp."
-base_image = "base_FadeToWhite.png"
 
 [[split]]
 name = "Ganon"
@@ -58,7 +48,7 @@ name = "ZeldasLetter"
 mask = "ZeldasLetter.png"
 screenshot = "screenshot_ZeldasLetter.png"
 threshold = 0.95
-description = "Splits on the first frame of the item model appearing."
+description = "Splits on the first frame the item model appears."
 base_image = "base_ZeldasLetter.png"
 
 [[split]]
@@ -66,7 +56,7 @@ name = "PotionBottle"
 mask = "PotionBottle.png"
 screenshot = "screenshot_PotionBottle.png"
 threshold = 0.95
-description = "Splits on the first frame of the item model appearing."
+description = "Splits on the first frame the item model appears."
 base_image = "base_PotionBottle.png"
 
 [[split]]
@@ -76,3 +66,62 @@ fade_time = 500
 threshold = 0.999
 description = "Splits on full black frame at the end of a loading zone's fade to black."
 base_image = "base_LoadingZoneFade.png"
+
+[[split]]
+name = "GoronBracelet"
+mask = "GoronBracelet.png"
+screenshot = "screenshot_GoronBracelet.png"
+threshold = 0.93
+description = "Splits on the first frame the item model appears."
+base_image = "base_GoronBracelet.png"
+
+[[split]]
+name = "BombBag"
+mask = "BombBag.png"
+screenshot = "screenshot_BombBag.png"
+threshold = 0.93
+description = "Splits on the first frame the item model appears."
+base_image = "base_BombBag.png"
+
+[[split]]
+name = "DinsFire"
+mask = "DinsFire.png"
+screenshot = "screenshot_DinsFire.png"
+threshold = 0.93
+description = "Splits on the first frame the item model appears."
+base_image = "base_DinsFire.png"
+
+[[split]]
+name = "GraveyardDummy"
+mask = "GraveyardDummy.png"
+screenshot = "screenshot_GraveyardDummy.png"
+threshold = 0.95
+dummy = true
+description = "Dummy split for entering graveyard for the first time, detected by the unique border pattern rather than the text to stay language agnostic."
+base_image = "base_GraveyardDummy.png"
+
+[[split]]
+name = "PlayedZeldasLullaby"
+mask = "PlayedZeldasLullaby.png"
+screenshot = "screenshot_PlayedZeldasLullaby.png"
+threshold = 0.94
+below = true
+description = "Splits any time you play Zelda's Lullaby successfully, on the frame the notes disappear."
+base_image = "base_PlayedZeldasLullaby.png"
+
+[[split]]
+name = "FadeToWhite"
+fade = "#e8e8e8"
+fade_time = 750
+threshold = 1.0
+pause = 10.0
+description = "Splits on full fade to white, after entering an end-of-dungeon blue warp."
+base_image = "base_FadeToWhite.png"
+
+[[split]]
+name = "Hookshot"
+mask = "Hookshot.png"
+screenshot = "screenshot_Hookshot.png"
+threshold = 0.93
+description = "Splits on the first frame the item model appears."
+base_image = "base_Hookshot.png"
