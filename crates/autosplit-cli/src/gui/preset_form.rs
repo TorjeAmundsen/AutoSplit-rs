@@ -616,7 +616,7 @@ fn choice_problems(preset: &Preset) -> Vec<(usize, Field, String)> {
     let mut problems = Vec::new();
     for (index, split) in preset.splits.iter().enumerate() {
         if let Some(reason) = why_not_toggleable(preset, index).filter(|_| split.off) {
-            problems.push((index, Field::Off, format!("It can't be optional. {reason}")));
+            problems.push((index, Field::Off, format!("It can't start off. {reason}")));
         }
         // The name first, since whether a split can be turned on or off takes a look at the others
         let same_name = |other: usize| preset.splits[other].name == split.name && preset.toggleable(other);

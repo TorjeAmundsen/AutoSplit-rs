@@ -127,6 +127,9 @@ pub(super) struct Maker {
     last_live: Option<Pixels>,
     /// Splits to save once the ones being saved are, for the preset of that generation.
     queued: Option<(u64, Vec<usize>)>,
+    /// Every split is shown, with a switch for the ones the runner can turn on or off, which Choose
+    /// Splits under the list starts and Done ends. Off, splits that are off aren't shown.
+    choosing: bool,
     /// Splits turned off while split images were being saved, for the preset of that generation,
     /// whose images deleting waits for: one being written would come back after.
     turned_off: Option<(u64, Vec<usize>)>,
@@ -330,6 +333,10 @@ struct MakerView {
     has_instructions: bool,
     /// The chosen preset has splits the runner can turn on or off.
     has_choices: bool,
+    /// How many of them are off, for the strip under the list.
+    choice_summary: String,
+    /// How many rows are shown: splits that are off are only shown while choosing.
+    shown_rows: usize,
 }
 
 /// What the window shows for `maker`, whose splits have the file names `names`. `in_place` says
@@ -349,7 +356,19 @@ fn maker_view(
     // The chosen preset's, which editing doesn't show
     let toggleable =
         |index| maker.edit.is_none() && maker.loaded().is_some_and(|loaded| loaded.preset.toggleable(index));
-    // Every other split is shaded, splits compared together as one
+    // Splits that are off are only shown while choosing
+    let choosing = maker.choosing && maker.edit.is_none();
+    let hidden = |index| !choosing && maker.is_off(enabled, index);
+    let shown: Vec<usize> = (0..names.len()).filter(|&index| !hidden(index)).collect();
+    let place = |index| shown.iter().position(|&each| each == index).unwrap_or_default();
+    let above = |index| shown.iter().rev().find(|&&each| each < index).map_or(-1, |&each| each as i32);
+    let below = |index| shown.iter().find(|&&each| each > index).map_or(-1, |&each| each as i32);
+    // The chosen preset, while not editing, which the checkboxes are for
+    let chosen = maker.loaded().filter(|_| maker.edit.is_none()).map(|loaded| &loaded.preset);
+    let leader = |index| chosen.and_then(|preset| preset.leader(index));
+    // A checkbox's splits compared together: the first one's place, and how many they are
+    let group = |index: usize| chosen.map_or(index..index + 1, |preset| preset.group(index));
+    // Every other shown split is shaded, splits compared together as one
     let mut block = 0;
     let rows = (names.iter().enumerate())
         .map(|(index, name)| (index, name, thumb(maker, index)))
@@ -364,7 +383,7 @@ fn maker_view(
             problem: problems.get(index).copied().unwrap_or_default(),
             joined: joined(index),
             shaded: {
-                if index > 0 && !joined(index) {
+                if !hidden(index) && place(index) > 0 && !joined(index) {
                     block += 1;
                 }
                 block % 2 == 1
@@ -377,6 +396,14 @@ fn maker_view(
                 .into(),
             // Read from the folder by the caller
             kept: false,
+            hidden: hidden(index),
+            place: place(index) as i32,
+            above: above(index),
+            below: below(index),
+            always_on: chosen.is_some_and(|preset| preset.leader(index).is_none()),
+            leader: leader(index).map_or(-1, |leader| leader as i32),
+            box_top: place(group(index).start) as i32,
+            box_rows: group(index).len() as i32,
         })
         .collect();
     // A preset with problems is only for fixing, so nothing's made from it
@@ -400,6 +427,15 @@ fn maker_view(
         has_savestates: usable && on().any(|split| !split.savestate.is_empty()),
         has_instructions: on().any(|split| !split.savestate.is_empty() && !split.instructions.is_empty()),
         has_choices: (0..splits.len()).any(toggleable),
+        choice_summary: match (0..splits.len())
+            .filter(|&index| toggleable(index) && maker.is_off(enabled, index))
+            .count()
+        {
+            0 => "Every split is on.".to_owned(),
+            1 => "1 split is off.".to_owned(),
+            off => format!("{off} splits are off."),
+        },
+        shown_rows: shown.len(),
     }
 }
 
@@ -487,6 +523,7 @@ impl Gui {
             gui.save_split_images(on);
         });
         on!(weak, maker, on_split_toggled, (index) gui => gui.toggle_split(index as usize));
+        on!(weak, maker, on_choose_splits, () gui => gui.choose_splits());
         on!(weak, maker, on_test, () gui => gui.test_split_image());
         on!(weak, maker, on_copy_savestates, () gui => gui.copy_savestates());
         on!(weak, maker, on_show_instructions, () gui => gui.show_instructions());
@@ -715,6 +752,27 @@ impl Gui {
         })
     }
 
+    /// Choose Splits or Done: shows every split with a switch, or only the splits that are on.
+    /// Done moves the selection off a split that's hidden then, to the next one shown.
+    fn choose_splits(&self) {
+        let choosing = !self.maker.borrow().choosing;
+        self.maker.borrow_mut().choosing = choosing;
+        let enabled = self.maker_enabled();
+        let maker = self.maker.borrow();
+        let selected = maker.selected;
+        let shown = (!choosing && maker.is_off(&enabled, selected))
+            .then(|| {
+                let on: Vec<usize> = maker.on_splits(&enabled).collect();
+                on.iter().find(|&&index| index > selected).or(on.last()).copied()
+            })
+            .flatten();
+        drop(maker);
+        match shown {
+            Some(index) => self.choose_split(index),
+            None => self.show_maker(),
+        }
+    }
+
     /// Turns split `index`, with the splits that follow it, on or off in the profile's choice for
     /// the chosen preset. A choice that's the same as the preset again is dropped.
     fn toggle_split(self: &Rc<Self>, index: usize) {
@@ -730,7 +788,8 @@ impl Gui {
         if *choice == SplitChoice::default() {
             choices.remove(&key);
         }
-        let name = split_heading(&loaded.preset, index);
+        // The split that was turned on or off, also from Space on a split that goes with it
+        let name = split_heading(&loaded.preset, loaded.preset.leader(index).unwrap_or(index));
         drop((state, maker));
         self.profile_edited();
         // The timer's splits have to match, or the run splits on the wrong segments
@@ -893,6 +952,9 @@ impl Gui {
         window.set_has_savestates(view.has_savestates);
         window.set_has_instructions(view.has_instructions);
         window.set_has_choices(view.has_choices);
+        window.set_choice_summary(view.choice_summary.into());
+        window.set_shown_rows(view.shown_rows as i32);
+        window.set_choosing_splits(self.maker.borrow().choosing);
         self.show_maker_preview();
         self.refresh_library();
         self.refresh_entry();

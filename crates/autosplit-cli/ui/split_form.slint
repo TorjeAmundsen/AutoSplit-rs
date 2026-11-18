@@ -522,21 +522,21 @@ export component SplitFormPanel inherits VerticalLayout {
         VerticalLayout {
             spacing: 2px;
 
-            // Optional in the label column, like Dummy, so it needs no row of its own
+            // Starts off in the label column, like Dummy, so it needs no row of its own
             HorizontalLayout {
                 height: 24px;
                 spacing: 6px;
 
                 CheckBox {
                     width: root.label-width;
-                    text: "Optional";
+                    text: "Starts off";
                     enabled: root.form.can-off || SplitValues.off;
                     checked <=> SplitValues.off;
                     toggled => { root.split-edited(SplitField.off); }
 
                     Tooltip {
                         Tip {
-                            text: (root.form.why-not-off == "" ? "" : root.form.why-not-off + "\n\n") + "Off unless the runner turns it on in Make Split Images, for a split some runners split on and most don't. Runners can turn any split on or off there, apart from start and reset images, the final split, and dummies and splits compared together, which go with their split.";
+                            text: (root.form.why-not-off == "" ? "" : root.form.why-not-off + "\n\n") + "Off until the runner turns it on with Choose Splits in Make Split Images, for a split some runners split on and most don't. Runners can turn any split on or off there, apart from start and reset images and the final split. Dummies and splits compared together go with their split.";
                         }
                     }
                 }

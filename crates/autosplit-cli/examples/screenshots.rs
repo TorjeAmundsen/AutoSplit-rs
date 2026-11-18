@@ -52,6 +52,28 @@ fn library_parts(name: &str) -> slint::ModelRc<autosplit::gui::ui::NamePart> {
     name_parts_model(parts)
 }
 
+/// Shows `rows` in the split list like the window does: splits that are off are hidden unless
+/// `choosing`, and the shown ones take the places in turn. A row's `box_top` is written as the
+/// index of the first split compared together with it.
+fn show_rows(maker: &MakerWindow, rows: Vec<MakerRow>, choosing: bool) {
+    let shown: Vec<usize> = (0..rows.len()).filter(|&index| choosing || !rows[index].off).collect();
+    let count = shown.len() as i32;
+    let place = |index: usize| shown.iter().position(|&each| each == index).unwrap_or_default() as i32;
+    let rows: Vec<MakerRow> = (rows.into_iter().enumerate())
+        .map(|(index, row)| MakerRow {
+            hidden: !shown.contains(&index),
+            place: place(index),
+            box_top: place(row.box_top as usize),
+            above: shown.iter().rev().find(|&&each| each < index).map_or(-1, |&each| each as i32),
+            below: shown.iter().find(|&&each| each > index).map_or(-1, |&each| each as i32),
+            ..row
+        })
+        .collect();
+    maker.set_rows(Rc::new(slint::VecModel::from(rows)).into());
+    maker.set_shown_rows(count);
+    maker.set_choosing_splits(choosing);
+}
+
 fn main() {
     let folder = std::path::PathBuf::from(std::env::args().nth(1).unwrap_or_else(|| ".".into()));
     let window = MinimalSoftwareWindow::new(RepaintBufferType::NewBuffer);
@@ -229,6 +251,7 @@ fn main() {
         off: false,
         fixed: "".into(),
         kept: false,
+        ..MakerRow::default()
     };
     let rows = vec![
         row("Reset Image", "reset_(0.96)_[0.1].png", "000_SplitImage.png", true),
@@ -236,7 +259,7 @@ fn main() {
         row("DekuDummy", "02_DekuDummy_(0.94)_[6.5]_{d}.png", "002_SplitImage.png", false),
         row("EnterDeku", "03_EnterDeku_(0.92)_[60]_#1000#.png", "", false),
     ];
-    maker.set_rows(std::rc::Rc::new(slint::VecModel::from(rows.clone())).into());
+    show_rows(&maker, rows.clone(), false);
     maker.set_selected(2);
     maker.set_output_folder("G:/AutoSplit segmented practice/VCAM/Portable OBS/AutoSplit/OoT".into());
     // Half the split image is transparent, over the transparency grid
@@ -260,23 +283,57 @@ fn main() {
     save(&window, PhysicalSize::new(708, 612), &folder.join("maker-simple.png"));
     maker.set_advanced(true);
     save(&window, PhysicalSize::new(828, 672), &folder.join("maker.png"));
-    // A preset with splits the runner turns on or off: DekuDummy follows EnterDeku, which is off
+    // A preset with splits the runner turns on or off: DekuDummy goes with EnterDeku, which is
+    // off, so both are hidden until Choose Splits shows them, and the two Kokiri Sword images are
+    // one split with one checkbox
+    let always = |row: MakerRow, fixed: &str| MakerRow { always_on: true, fixed: fixed.into(), leader: -1, ..row };
+    let toggle = |row: MakerRow, index: i32, rows: i32| MakerRow {
+        toggleable: true,
+        leader: index,
+        box_top: index,
+        box_rows: rows,
+        ..row
+    };
+    let keyword = "Start and reset images are always on.";
     let choices = vec![
-        rows[0].clone(),
-        rows[1].clone(),
-        MakerRow { off: true, kept: true, ..rows[2].clone() },
-        MakerRow { toggleable: true, off: true, ..rows[3].clone() },
-        MakerRow { toggleable: true, ..row("Bottle", "04_Bottle_(0.93)_[35]_{b}.png", "", false) },
-        row("Ganon", "05_Ganon_(0.92).png", "", false),
+        always(rows[0].clone(), keyword),
+        always(rows[1].clone(), keyword),
+        MakerRow {
+            off: true,
+            kept: true,
+            fixed: "It's on or off with EnterDeku.".into(),
+            leader: 3,
+            ..rows[2].clone()
+        },
+        MakerRow { off: true, ..toggle(rows[3].clone(), 3, 1) },
+        toggle(row("KokiriSwordLeft", "04_KokiriSwordLeft_(0.95).png", "", false), 4, 2),
+        MakerRow { joined: true, leader: 4, ..row("KokiriSwordRight", "04_KokiriSwordRight_(0.95).png", "", false) },
+        MakerRow { shaded: true, ..toggle(row("Bottle", "05_Bottle_(0.93)_[35]_{b}.png", "", false), 6, 1) },
+        always(row("Ganon", "06_Ganon_(0.92).png", "", false), "The final split is always on, since it ends the run."),
     ];
-    maker.set_rows(std::rc::Rc::new(slint::VecModel::from(choices)).into());
     maker.set_has_choices(true);
+    maker.set_choice_summary("1 split is off.".into());
+    maker.set_selected(4);
+    show_rows(&maker, choices.clone(), false);
     save(&window, PhysicalSize::new(828, 672), &folder.join("maker-choices.png"));
     maker.set_advanced(false);
     save(&window, PhysicalSize::new(708, 612), &folder.join("maker-choices-simple.png"));
+    show_rows(&maker, choices.clone(), true);
+    save(&window, PhysicalSize::new(708, 612), &folder.join("maker-choosing-simple.png"));
     maker.set_advanced(true);
+    save(&window, PhysicalSize::new(828, 672), &folder.join("maker-choosing.png"));
+    // The pointer over EnterDeku's checkbox, which pulses DekuDummy with it, at the pulse's
+    // strongest, half a period in
+    let over = slint::LogicalPosition::new(466.0, 249.0);
+    window.dispatch_event(slint::platform::WindowEvent::PointerMoved { position: over });
+    std::thread::sleep(std::time::Duration::from_millis(800));
+    slint::platform::update_timers_and_animations();
+    save(&window, PhysicalSize::new(828, 672), &folder.join("maker-choosing-hover.png"));
+    let away = slint::LogicalPosition::new(700.0, 600.0);
+    window.dispatch_event(slint::platform::WindowEvent::PointerMoved { position: away });
     maker.set_has_choices(false);
-    maker.set_rows(std::rc::Rc::new(slint::VecModel::from(rows)).into());
+    maker.set_selected(2);
+    show_rows(&maker, rows, false);
     // A fade split selected, which isn't made from the capture
     maker.set_grab_fade(true);
     save(&window, PhysicalSize::new(828, 672), &folder.join("maker-fade.png"));
@@ -338,7 +395,7 @@ Replace them?",
             row("Boss", &format!("{index:02}_Boss_(0.95).png"), if index % 2 == 0 { "grabbed" } else { "" }, true)
         })
         .collect();
-    maker.set_rows(std::rc::Rc::new(slint::VecModel::from(many)).into());
+    show_rows(&maker, many, false);
     save(&window, PhysicalSize::new(828, 672), &folder.join("maker-long.png"));
     // Editing, with the masked capture below the form and a split that needs a mask
     let mut rows = vec![
@@ -354,7 +411,7 @@ Replace them?",
         rows[index].shaded = shaded;
     }
     rows[5].problem = true;
-    maker.set_rows(std::rc::Rc::new(slint::VecModel::from(rows)).into());
+    show_rows(&maker, rows, false);
     maker.set_selected(3);
     maker.set_editing(true);
     let kinds: Vec<slint::SharedString> = ["Split", "Start Image", "Reset Image"].map(Into::into).into();
