@@ -17,8 +17,8 @@ use slint::{ComponentHandle, ModelRc, Rgba8Pixel, SharedPixelBuffer, SharedStrin
 
 use super::document::Document;
 use super::maker_plan::{
-    PresetList, looks_made, move_to_base, next_to_grab, plan_writes, saves_in_place, screenshots_status,
-    screenshots_to_move, stale_to_delete, writes_over,
+    PresetList, images_numbered, looks_made, move_to_base, next_to_grab, plan_writes, saves_in_place,
+    screenshots_status, screenshots_to_move, stale_to_delete, writes_over,
 };
 use super::messages::{Answer, Message};
 use super::paths::{canonical, file_name_text};
@@ -690,7 +690,7 @@ impl Gui {
 
     /// Turns split `index`, with the splits that follow it, on or off in the profile's choice for
     /// the chosen preset. A choice that's the same as the preset again is dropped.
-    fn toggle_split(&self, index: usize) {
+    fn toggle_split(self: &Rc<Self>, index: usize) {
         let enabled = self.maker_enabled();
         let Some(&on) = enabled.get(index) else { return };
         let maker = self.maker.borrow();
@@ -709,6 +709,52 @@ impl Gui {
         self.show_maker();
         // Splits that are off have no instructions to show
         self.refresh_instructions();
+        if on {
+            self.offer_to_delete_off_images(&enabled, &self.maker_enabled());
+        }
+    }
+
+    /// Asks whether to delete the split images in the split image folder of the splits that were
+    /// on `before` and are off `after`, which AutoSplit would still compare. Keeping them is the
+    /// default, like for other deletes.
+    fn offer_to_delete_off_images(self: &Rc<Self>, before: &[bool], after: &[bool]) {
+        let Some(folder) = self.split_image_folder().filter(|folder| folder.is_dir()) else { return };
+        let maker = self.maker.borrow();
+        let Some(loaded) = maker.loaded() else { return };
+        let (numbers, _) = loaded.preset.numbers();
+        let turned_off: Vec<usize> = (0..numbers.len())
+            .filter(|&index| before.get(index) == Some(&true) && after.get(index) == Some(&false))
+            .map(|index| numbers[index])
+            .collect();
+        drop(maker);
+        let images = images_numbered(&user_files(&folder).unwrap_or_default(), &turned_off);
+        if images.is_empty() {
+            return;
+        }
+        let names: Vec<String> = images.iter().filter_map(|path| file_name_text(path)).collect();
+        let text = format!(
+            "The split image folder has images of the splits turned off, which AutoSplit would still compare:\n{}\n\n\
+             Delete them?",
+            names.join("\n")
+        );
+        let weak = Rc::downgrade(self);
+        // Enter keeps them: deleting is never the default
+        let labels = ["Delete Images", "Keep Images", ""];
+        self.show_message(Message::choice(text, labels, 1, move |answer| {
+            let Some(gui) = weak.upgrade().filter(|_| answer == Answer::Yes) else { return };
+            let errors: Vec<String> = (images.iter())
+                .filter_map(|path| {
+                    let error = std::fs::remove_file(path).err()?;
+                    Some(format!("Couldn't delete {}: {error}", path.display()))
+                })
+                .collect();
+            let deleted = images.len() - errors.len();
+            gui.windows.maker.set_status(format!("Deleted {}.", plural(deleted, "split image")).into());
+            gui.show_maker();
+            if !errors.is_empty() {
+                gui.show_message(Message::error(errors.join("\n")));
+            }
+        }));
     }
 
     /// What the split image folder's button is called in the messages: Browse..., or the folder

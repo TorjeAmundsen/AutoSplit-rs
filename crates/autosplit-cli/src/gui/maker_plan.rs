@@ -101,6 +101,22 @@ pub fn stale_to_delete(stale: &[PathBuf], written: &[PathBuf]) -> Vec<PathBuf> {
         .collect()
 }
 
+/// The split images among a folder's `existing` files of the splits numbered `numbers`, like the
+/// splits just turned off: PNGs that start with one of the numbers, by value, so `5_Boss` and
+/// `05_Boss` are both 5. Not reset or start images, and not screenshots (`NNN_SplitImage`), whose
+/// numbers count from 1.
+pub fn images_numbered(existing: &[PathBuf], numbers: &[usize]) -> Vec<PathBuf> {
+    let numbered = |name: &str| match split_key(name) {
+        Some(SplitKey::Number(number)) => numbers.iter().any(|&each| each as u64 == number),
+        _ => false,
+    };
+    (existing.iter())
+        .filter(|path| is_png(path))
+        .filter(|path| file_name_text(path).is_some_and(|name| !is_screenshot_name(&name) && numbered(&name)))
+        .cloned()
+        .collect()
+}
+
 /// What the window says about a preset's screenshots: `with` of its splits have one, and
 /// `without` have to be grabbed, fade splits counted in neither, since they're made from their
 /// color. None for a preset without screenshots, which is grabbed like always. Short, since it
