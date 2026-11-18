@@ -157,6 +157,8 @@ export component MakerWindow inherits Window {
     property <bool> choosing: root.show-strip && root.choosing-splits;
     // Like 2 splits off
     in property <string> choice-summary;
+    // A split that's off still has its image in the split image folder, which AutoSplit compares
+    in property <bool> choice-kept;
     property <length> strip-height: 30px;
     // How many rows are shown, the ones that aren't hidden
     in property <int> shown-rows;
@@ -861,8 +863,14 @@ export component MakerWindow inherits Window {
 
                             Label {
                                 horizontal-stretch: 1;
-                                color: Theme.secondary-text;
+                                color: !root.choosing && root.choice-kept ? Theme.warning : Theme.secondary-text;
                                 text: root.choosing ? "Turn on the splits you split on." : root.choice-summary;
+
+                                if !root.choosing && root.choice-kept: Tooltip {
+                                    Tip {
+                                        text: "A split that's off still has its image in the split image folder, so AutoSplit-rs still splits there. Choose Splits shows it as still compared. Turn it on and off again to be asked whether to delete its image.";
+                                    }
+                                }
                             }
 
                             Button {

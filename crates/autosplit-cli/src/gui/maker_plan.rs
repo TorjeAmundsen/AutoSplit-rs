@@ -141,6 +141,21 @@ pub fn screenshots_status(with: usize, without: usize) -> Option<String> {
     })
 }
 
+/// What the strip under the split list says when not choosing: how many of the splits the runner
+/// can turn on or off are `off`, and how many splits that are off still have their image in the
+/// split image folder, `kept`, which AutoSplit compares anyway.
+pub fn choice_summary(off: usize, kept: usize) -> String {
+    let off = match off {
+        0 => return "Every split is on.".to_owned(),
+        1 => "1 split is off".to_owned(),
+        off => format!("{off} splits are off"),
+    };
+    match kept {
+        0 => format!("{off}."),
+        kept => format!("{off}, {kept} still compared."),
+    }
+}
+
 /// What the window says after `picked` screenshots were set in order, from the first, for the
 /// `count` splits that take one: past `fades` fade splits, made from their color, and `off`
 /// splits that are off, which get no split image.

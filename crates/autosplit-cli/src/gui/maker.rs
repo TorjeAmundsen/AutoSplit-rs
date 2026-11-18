@@ -17,7 +17,7 @@ use slint::{ComponentHandle, ModelRc, Rgba8Pixel, SharedPixelBuffer, SharedStrin
 
 use super::document::Document;
 use super::maker_plan::{
-    PresetList, images_of_splits, looks_made, move_to_base, next_to_grab, plan_writes, saves_in_place,
+    PresetList, choice_summary, images_of_splits, looks_made, move_to_base, next_to_grab, plan_writes, saves_in_place,
     screenshots_set_status, screenshots_status, screenshots_to_move, stale_to_delete, writes_over,
 };
 use super::messages::{Answer, Message};
@@ -334,7 +334,7 @@ struct MakerView {
     /// The chosen preset has splits the runner can turn on or off.
     has_choices: bool,
     /// How many of them are off, for the strip under the list.
-    choice_summary: String,
+    splits_off: usize,
     /// How many rows are shown: splits that are off are only shown while choosing.
     shown_rows: usize,
 }
@@ -427,14 +427,7 @@ fn maker_view(
         has_savestates: usable && on().any(|split| !split.savestate.is_empty()),
         has_instructions: on().any(|split| !split.savestate.is_empty() && !split.instructions.is_empty()),
         has_choices: (0..splits.len()).any(toggleable),
-        choice_summary: match (0..splits.len())
-            .filter(|&index| toggleable(index) && maker.is_off(enabled, index))
-            .count()
-        {
-            0 => "Every split is on.".to_owned(),
-            1 => "1 split is off.".to_owned(),
-            off => format!("{off} splits are off."),
-        },
+        splits_off: (0..splits.len()).filter(|&index| toggleable(index) && maker.is_off(enabled, index)).count(),
         shown_rows: shown.len(),
     }
 }
@@ -929,8 +922,9 @@ impl Gui {
             maker_view(&self.maker.borrow(), &names, &enabled, &in_place, &problems, &preset_problems, grouping);
         let grab_blocker = self.grab_blocker();
         // Only splits that are off are looked for, so the folder isn't read without any
-        for (index, _) in self.off_images_in_folder(&(0..view.rows.len()).collect::<Vec<_>>()) {
-            view.rows[index].kept = true;
+        let kept = self.off_images_in_folder(&(0..view.rows.len()).collect::<Vec<_>>());
+        for (index, _) in &kept {
+            view.rows[*index].kept = true;
         }
         self.maker_rows.set_vec(view.rows);
         let window = &self.windows.maker;
@@ -952,7 +946,9 @@ impl Gui {
         window.set_has_savestates(view.has_savestates);
         window.set_has_instructions(view.has_instructions);
         window.set_has_choices(view.has_choices);
-        window.set_choice_summary(view.choice_summary.into());
+        // Splits that are off aren't shown, so the strip says when one is still compared
+        window.set_choice_summary(choice_summary(view.splits_off, kept.len()).into());
+        window.set_choice_kept(!kept.is_empty());
         window.set_shown_rows(view.shown_rows as i32);
         window.set_choosing_splits(self.maker.borrow().choosing);
         self.show_maker_preview();

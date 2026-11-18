@@ -92,7 +92,7 @@ For a preset with splits to choose, a strip at the bottom of the split list says
 - The start and reset images and the final split are always on, and say so.
 - What you choose goes into the profile, for each preset, so save the profile to keep it. A split you didn't change follows the preset if the preset changes later.
 - Split images keep their number when other splits are turned on or off, so the numbers in the folder can have gaps, like `03_` and then `05_`. Nothing is renamed, so a split turned back on only needs to be grabbed again.
-- Turning off a split whose image is in the split image folder asks whether to delete that image, since AutoSplit-rs would still compare it. Keep Images is the default. A split that's off but still has its image says still compared while choosing.
+- Turning off a split whose image is in the split image folder asks whether to delete that image, since AutoSplit-rs would still compare it. Keep Images is the default. A split that's off but still has its image says still compared while choosing, and the strip counts it in amber, like 1 split is off, 1 still compared. To delete its image later, turn it on and off again.
 
 Your timer needs a segment for each split that's on, apart from dummies. After turning a split on or off, add or remove its segment in LiveSplit too, or the run splits on the wrong segments. The bottom line reminds you after each change.
 

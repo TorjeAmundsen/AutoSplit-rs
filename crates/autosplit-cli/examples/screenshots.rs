@@ -312,7 +312,8 @@ fn main() {
         always(row("Ganon", "06_Ganon_(0.92).png", "", false), "The final split is always on, since it ends the run."),
     ];
     maker.set_has_choices(true);
-    maker.set_choice_summary("1 split is off.".into());
+    maker.set_choice_summary("1 split is off, 1 still compared.".into());
+    maker.set_choice_kept(true);
     maker.set_selected(4);
     show_rows(&maker, choices.clone(), false);
     save(&window, PhysicalSize::new(828, 672), &folder.join("maker-choices.png"));
@@ -330,6 +331,7 @@ fn main() {
     let away = slint::LogicalPosition::new(700.0, 600.0);
     window.dispatch_event(slint::platform::WindowEvent::PointerMoved { position: away });
     maker.set_has_choices(false);
+    maker.set_choice_kept(false);
     maker.set_selected(2);
     show_rows(&maker, rows, false);
     // A fade split selected, which isn't made from the capture

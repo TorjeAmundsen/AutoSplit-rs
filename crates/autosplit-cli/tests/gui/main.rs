@@ -11,9 +11,9 @@ use std::rc::Rc;
 use autosplit::gui::document::{Document, folder_text, profile_on_open};
 use autosplit::gui::log::{LOG_LINES, LogLines};
 use autosplit::gui::maker_plan::{
-    DeletedPreset, PresetList, WritePlan, images_of_splits, looks_made, move_to_base, next_to_grab, plan_writes,
-    preset_after_delete, saved_from_after_preset_save, saves_in_place, screenshots_set_status, screenshots_status,
-    screenshots_to_move, stale_to_delete, writes_over,
+    DeletedPreset, PresetList, WritePlan, choice_summary, images_of_splits, looks_made, move_to_base, next_to_grab,
+    plan_writes, preset_after_delete, saved_from_after_preset_save, saves_in_place, screenshots_set_status,
+    screenshots_status, screenshots_to_move, stale_to_delete, writes_over,
 };
 use autosplit::gui::messages::{Answer, Buttons, Message, MessageQueue};
 use autosplit::gui::placement::{Area, beside, centered_over};
@@ -636,6 +636,15 @@ fn other_split_images_compared_for_the_same_split_arent_stale() {
 fn picked_screenshots_say_which_splits_they_went_to(picked: usize, count: usize, fades: usize, off: usize) -> String {
     // Act, with the expected value checked by test_case
     screenshots_set_status(picked, count, fades, off)
+}
+
+#[test_case(0, 0 => "Every split is on."; "none off")]
+#[test_case(1, 0 => "1 split is off."; "one off")]
+#[test_case(3, 0 => "3 splits are off."; "several off")]
+#[test_case(3, 1 => "3 splits are off, 1 still compared."; "one off still compared")]
+fn the_strip_says_how_many_splits_are_off_and_still_compared(off: usize, kept: usize) -> String {
+    // Act, with the expected value checked by test_case
+    choice_summary(off, kept)
 }
 
 #[test]
