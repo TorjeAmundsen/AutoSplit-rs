@@ -4,11 +4,12 @@
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
-use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
+use autosplit_core::tester::group_paths;
+use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
 
 use super::paths::{canonical, file_name_text};
 use super::placement::beside;
-use super::ui::{InfoCell, TesterReading};
+use super::ui::{InfoCell, SimilarityRow, TesterReading};
 use super::view::{KeptFrames, TesterUpdate};
 use super::{Gui, Tool, exe_folder, file_name_parts, png_images, shown_image};
 use crate::session::UiCommand;
@@ -24,6 +25,10 @@ impl Gui {
         on!(weak, tester, on_previous_image, () gui => gui.step_tester_image(-1));
         on!(weak, tester, on_next_image, () gui => gui.step_tester_image(1));
         on!(weak, tester, on_reload_image, () gui => gui.load_tester_image());
+        on!(weak, tester, on_group_toggled, () gui => {
+            gui.tester_state.borrow_mut().group = gui.windows.tester.get_grouped();
+            gui.load_tester_image();
+        });
         on!(weak, tester, on_rearm, () gui => gui.send(UiCommand::RearmTester));
         on!(weak, tester, on_previous_kept, () gui => gui.show_kept(-1));
         on!(weak, tester, on_next_kept, () gui => gui.show_kept(1));
@@ -154,7 +159,12 @@ impl Gui {
         tester.set_can_reload(true);
         tester.set_can_previous_image(index.is_some_and(|index| index > 0));
         tester.set_can_next_image(index.is_some_and(|index| index + 1 < images.len()));
-        self.send(UiCommand::OpenTester { path, request });
+        // Checked only while it applies, but kept for the next image that has a group
+        let can_group = group_paths(&path).len() > 1;
+        let group = can_group && self.tester_state.borrow().group;
+        tester.set_can_group(can_group);
+        tester.set_grouped(group);
+        self.send(UiCommand::OpenTester { path, group, request });
     }
 
     /// Shows the Live Tester's file name, each part colored by what it does.
@@ -173,6 +183,8 @@ impl Gui {
         tester.set_reading(cleared_reading());
         tester.set_live_image(slint::Image::default());
         tester.set_split_image(slint::Image::default());
+        tester.set_group_shown(false);
+        self.tester_rows.clear();
         self.take_kept(KeptFrames { cleared: true, added: Vec::new() });
     }
 
@@ -232,6 +244,23 @@ impl Gui {
                 note: cell.note.into(),
             };
             self.tester_info.set_vec(texts.info.into_iter().map(cell).collect::<Vec<_>>());
+            tester.set_group_shown(!texts.rows.is_empty());
+            let row = |[live, highest, threshold]: [String; 3]| SimilarityRow {
+                live: live.into(),
+                highest: highest.into(),
+                threshold: threshold.into(),
+            };
+            let rows: Vec<SimilarityRow> = texts.rows.into_iter().map(row).collect();
+            // Row by row, so the rows aren't made again for every frame
+            if rows.len() == self.tester_rows.row_count() {
+                for (index, row) in rows.into_iter().enumerate() {
+                    if self.tester_rows.row_data(index).as_ref() != Some(&row) {
+                        self.tester_rows.set_row_data(index, row);
+                    }
+                }
+            } else {
+                self.tester_rows.set_vec(rows);
+            }
             let (live_value, highest_value, threshold_value) = texts.meter;
             tester.set_reading(TesterReading {
                 ignored: texts.ignored.into(),
@@ -253,6 +282,11 @@ impl Gui {
         }
         if let Some(split) = shown_image(update.image) {
             tester.set_split_image(split);
+        }
+        for (index, tile) in update.tiles.into_iter().enumerate() {
+            if let Some(tile) = shown_image(tile) {
+                self.tester_tiles.set_row_data(index, tile);
+            }
         }
         self.take_kept(update.kept);
     }
@@ -278,6 +312,8 @@ fn cleared_reading() -> TesterReading {
 pub(super) struct TesterState {
     /// Its image.
     pub(super) path: Option<PathBuf>,
+    /// Test Its Group is on, which compares the images of the image's split together.
+    group: bool,
     /// Numbers its loads, so updates for an older one are ignored.
     pub(super) request: u64,
     /// The frames it kept, with their captions, and which one it shows.

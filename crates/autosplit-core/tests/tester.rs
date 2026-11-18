@@ -6,9 +6,10 @@ use std::time::Duration;
 use autosplit_core::image::BgraImage;
 use autosplit_core::runner::Captured;
 use autosplit_core::split_image::{LoadError, SplitDefaults};
-use autosplit_core::tester::{Tester, TriggerKind};
+use autosplit_core::tester::{Phase, Tester, TriggerKind, group_paths};
 use autosplit_core::text::{tester_info, tester_noise, tester_status, trigger_caption};
 use tempfile::TempDir;
+use test_case::test_case;
 
 type Bgr = [u8; 3];
 const RED: Bgr = [0, 0, 255];
@@ -48,6 +49,25 @@ impl Harness {
         std::fs::write(&path, solid(RED).encode_png().unwrap()).unwrap();
         let tester = Tester::open(&path, defaults, Duration::ZERO).unwrap();
         Self { _directory: directory, tester, now: Duration::ZERO, next_sequence: 0 }
+    }
+
+    /// A tester of the images `images`, compared together in that order, each one color.
+    fn group(images: &[(&str, Bgr)]) -> Self {
+        let directory = tempfile::tempdir().unwrap();
+        let paths: Vec<PathBuf> = (images.iter())
+            .map(|(name, color)| {
+                let path = directory.path().join(name);
+                std::fs::write(&path, solid(*color).encode_png().unwrap()).unwrap();
+                path
+            })
+            .collect();
+        let tester = Tester::open_group(&paths, 0, DEFAULTS, Duration::ZERO).unwrap();
+        Self { _directory: directory, tester, now: Duration::ZERO, next_sequence: 0 }
+    }
+
+    /// The kept frames' kinds, with which image each is of.
+    fn kept_slots(&self) -> Vec<(TriggerKind, usize)> {
+        self.tester.triggers().iter().map(|trigger| (trigger.kind, trigger.slot)).collect()
     }
 
     /// Feeds `frame` (or no capture) for `duration`, a new frame every tick.
@@ -465,4 +485,96 @@ fn noise_isnt_shown_for_images_that_dont_fade() {
 
     // Assert
     assert_eq!(tester_noise(&harness.tester, true), Vec::<String>::new());
+}
+
+#[test]
+fn group_acts_on_the_image_that_matched_then_stops() {
+    // Arrange
+    let mut harness = Harness::group(&[("1_red.png", RED), ("1_blue.png", BLUE)]);
+
+    // Act: the second image matches, then the first one's screen comes too late
+    harness.feed(Some(BLUE), SECOND);
+    harness.feed(Some(RED), SECOND);
+
+    // Assert
+    assert_eq!(
+        (harness.kept_slots(), harness.tester.phase()),
+        (vec![(TriggerKind::Acted { delay: 0 }, 1)], Phase::Done { slot: 1 })
+    );
+}
+
+#[test]
+fn group_acts_on_an_earlier_image_while_a_below_image_waits_to_drop() {
+    // Arrange: the {b} image is second, so the first one is compared first on every frame
+    let mut harness = Harness::group(&[("1_blue.png", BLUE), ("1_red_{b}.png", RED)]);
+
+    // Act: the red image reaches its threshold, then the blue screen makes it drop back below
+    // on the same frame the blue image matches
+    harness.feed(Some(RED), SECOND);
+    harness.feed(Some(BLUE), SECOND);
+
+    // Assert
+    assert_eq!(
+        (harness.captions(), tester_status(&harness.tester)),
+        (
+            vec!["Image 2, Reached: 1.000".to_owned(), "Image 1, Split: 1.000".to_owned()],
+            "Done: image 1 matched first, this is where it splits. Press Start Over to watch for the next match."
+                .to_owned()
+        )
+    );
+}
+
+#[test]
+fn group_status_says_which_image_waits_for_its_delay() {
+    // Arrange
+    let mut harness = Harness::group(&[("1_blue.png", BLUE), ("1_red_#500#.png", RED)]);
+
+    // Act
+    harness.feed(Some(RED), ms(100));
+
+    // Assert
+    assert_eq!(tester_status(&harness.tester), "Image 2 matched first. Waiting for its 500 ms delay.");
+}
+
+/// Writes empty files named `names` into a new folder, which `group_paths` only reads the names
+/// of, and the group of `opened` as file names.
+fn group_of(names: &[&str], opened: &str) -> Vec<String> {
+    let directory = tempfile::tempdir().unwrap();
+    for name in names {
+        std::fs::write(directory.path().join(name), b"").unwrap();
+    }
+    let group = group_paths(&directory.path().join(opened));
+    group.iter().map(|path| path.file_name().unwrap().to_string_lossy().into_owned()).collect()
+}
+
+const FOLDER: &[&str] = &[
+    "01_a.png",
+    "1_b.png",
+    "1_c.txt",
+    "10_d.png",
+    "2_e.png",
+    "start_auto_splitter.png",
+    "start_auto_splitter_2.png",
+    "reset.png",
+    "split.png",
+];
+
+#[test_case("1_b.png" => vec!["01_a.png", "1_b.png"]; "the same number with or without leading zeros")]
+#[test_case("2_e.png" => vec!["2_e.png"]; "a number no other image has")]
+#[test_case("start_auto_splitter_2.png" => vec!["start_auto_splitter.png", "start_auto_splitter_2.png"]; "start images")]
+#[test_case("split.png" => vec!["split.png"]; "a split image without a number")]
+fn group_paths_finds_the_images_of_the_split(opened: &str) -> Vec<String> {
+    group_of(FOLDER, opened)
+}
+
+#[test]
+fn group_paths_is_only_the_image_when_a_run_could_not_compare_the_group() {
+    // Arrange: one more than a run compares for one split, next to a group it can compare
+    let names = ["1_a.png", "1_b.png", "1_c.png", "1_d.png", "1_e.png", "2_a.png", "2_b.png"];
+
+    // Act
+    let groups = (group_of(&names, "1_c.png"), group_of(&names, "2_a.png"));
+
+    // Assert
+    assert_eq!(groups, (vec!["1_c.png".to_owned()], vec!["2_a.png".to_owned(), "2_b.png".to_owned()]));
 }

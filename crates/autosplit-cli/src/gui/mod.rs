@@ -169,6 +169,9 @@ struct Gui {
     current_tiles: Rc<VecModel<slint::Image>>,
     /// The Live Tester's information about its image.
     tester_info: Rc<VecModel<InfoCell>>,
+    /// The Live Tester's grid tiles and similarity rows, when it compares a group.
+    tester_tiles: Rc<VecModel<slint::Image>>,
+    tester_rows: Rc<VecModel<SimilarityRow>>,
     /// The Live Tester's image and kept frames.
     tester_state: RefCell<tester::TesterState>,
     maker: RefCell<maker::Maker>,
@@ -566,6 +569,8 @@ pub fn run(options: Options) -> Result<(), Error> {
         group_rows: Rc::new(VecModel::from(vec![SimilarityRow::default(); MAX_GROUP_SIZE])),
         current_tiles: Rc::new(VecModel::from(vec![slint::Image::default(); MAX_GROUP_SIZE])),
         tester_info: Rc::new(VecModel::default()),
+        tester_tiles: Rc::new(VecModel::from(vec![slint::Image::default(); MAX_GROUP_SIZE])),
+        tester_rows: Rc::new(VecModel::default()),
         tester_state: RefCell::default(),
         maker: RefCell::default(),
         maker_rows: Rc::new(VecModel::default()),
@@ -606,6 +611,8 @@ pub fn run(options: Options) -> Result<(), Error> {
     windows.main.set_group_rows(ModelRc::from(gui.group_rows.clone()));
     windows.main.set_current_tiles(ModelRc::from(gui.current_tiles.clone()));
     windows.tester.set_info(ModelRc::from(gui.tester_info.clone()));
+    windows.tester.set_tiles(ModelRc::from(gui.tester_tiles.clone()));
+    windows.tester.set_rows(ModelRc::from(gui.tester_rows.clone()));
     windows.settings.set_auto_controlled(options.auto_controlled);
     windows.settings.set_molok_listed(cfg!(target_os = "linux"));
     windows.about.set_version(crate::VERSION.into());

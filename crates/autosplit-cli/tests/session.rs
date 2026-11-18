@@ -323,7 +323,7 @@ fn timer_connection_switches_when_the_run_ends() {
 }
 
 fn open_tester(path: std::path::PathBuf) -> Event {
-    Event::Ui(UiCommand::OpenTester { path, request: 1 })
+    Event::Ui(UiCommand::OpenTester { path, group: false, request: 1 })
 }
 
 #[test]

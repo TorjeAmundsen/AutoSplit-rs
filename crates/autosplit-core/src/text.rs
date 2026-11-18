@@ -6,7 +6,7 @@ use crate::commands::Command;
 use crate::fade::MAX_NOISE;
 use crate::runner::{ImageRef, ResetReading, Showing, StartStatus, Status};
 use crate::split_folder::MAX_GROUP_SIZE;
-use crate::split_image::ImageType;
+use crate::split_image::{ImageType, SplitImage};
 use crate::tester::{Phase, Tester, Trigger, TriggerKind};
 
 /// Truncates to 3 decimals, so a similarity just under a threshold never shows as reaching it.
@@ -217,7 +217,7 @@ pub fn tester_info(tester: &Tester) -> Vec<InfoCell> {
     let cell = |name, value: String, note: &str| InfoCell { name, value, note: note.to_owned() };
     let from_profile = |named: bool| if named { "" } else { "from profile" };
     let reset = image.image_type == ImageType::Reset;
-    let action = match action(tester) {
+    let action = match action(image) {
         action if tester.below() => format!("{action} once it drops back below"),
         action => action.to_owned(),
     };
@@ -249,9 +249,8 @@ pub fn tester_ignored(tester: &Tester) -> String {
     if warnings.is_empty() { String::new() } else { format!("Ignored in the name: {}", warnings.join("; ")) }
 }
 
-/// What the Live Tester's image does when it triggers, as in "it {action}".
-fn action(tester: &Tester) -> &'static str {
-    let image = tester.image();
+/// What a Live Tester image does when it triggers, as in "it {action}".
+fn action(image: &SplitImage) -> &'static str {
     match image.image_type {
         ImageType::Start if image.is_dummy() => "starts the run without the start hotkey",
         ImageType::Start => "starts the run",
@@ -262,9 +261,10 @@ fn action(tester: &Tester) -> &'static str {
     }
 }
 
-/// The caption of a frame the Live Tester kept.
+/// The caption of a frame the Live Tester kept. With several images, it starts with which one,
+/// numbered from 1 like the rows of their similarities.
 pub fn trigger_caption(tester: &Tester, trigger: &Trigger) -> String {
-    let image = tester.image();
+    let image = tester.slots()[trigger.slot].image();
     let similarity = decimal(trigger.similarity);
     let acted = match image.image_type {
         ImageType::Start => "Start",
@@ -273,16 +273,21 @@ pub fn trigger_caption(tester: &Tester, trigger: &Trigger) -> String {
         ImageType::Split if image.is_pause() => "Pause",
         ImageType::Split => "Split",
     };
-    match trigger.kind {
+    let caption = match trigger.kind {
         TriggerKind::Reached => format!("Reached: {similarity}"),
         TriggerKind::DroppedBelow => format!("Dropped below: {similarity}"),
         TriggerKind::Acted { delay } if delay > 0 => format!("{acted} +{delay} ms: {similarity}"),
         TriggerKind::Acted { .. } => format!("{acted}: {similarity}"),
-    }
+    };
+    if tester.grouped() { format!("Image {}, {caption}", trigger.slot + 1) } else { caption }
 }
 
-/// What the Live Tester is waiting for.
+/// What the Live Tester is waiting for. With several images, it says which one, numbered from 1
+/// like the rows of their similarities.
 pub fn tester_status(tester: &Tester) -> String {
+    if tester.grouped() {
+        return group_status(tester);
+    }
     let at_threshold = tester.similarity().is_some_and(|similarity| similarity >= tester.threshold());
     match tester.phase() {
         Phase::Waiting if tester.image().is_fade() && at_threshold => {
@@ -293,8 +298,33 @@ pub fn tester_status(tester: &Tester) -> String {
         Phase::Armed if tester.image().is_fade() => "Faded to the color. Waiting for it to drop back below.".into(),
         Phase::Armed => "Reached the threshold. Waiting for it to drop back below.".into(),
         Phase::Delaying { delay, .. } => format!("Waiting for the {delay} ms delay."),
-        Phase::Done => {
-            format!("Done: this is where it {}. Press Start Over to watch for the next match.", action(tester))
+        Phase::Done { .. } => {
+            format!("Done: this is where it {}. Press Start Over to watch for the next match.", action(tester.image()))
         }
+    }
+}
+
+/// [`tester_status`] for several images.
+fn group_status(tester: &Tester) -> String {
+    let number = |slot: usize| slot + 1;
+    match tester.phase() {
+        Phase::Waiting => "Waiting for an image to reach its threshold.".into(),
+        Phase::Armed => {
+            let slot = tester.armed().unwrap_or_default();
+            let reached =
+                if tester.slots()[slot].image().is_fade() { "faded to the color" } else { "reached its threshold" };
+            format!(
+                "Image {} {reached}. Waiting for it to drop back below, unless another image matches first.",
+                number(slot)
+            )
+        }
+        Phase::Delaying { delay, slot, .. } => {
+            format!("Image {} matched first. Waiting for its {delay} ms delay.", number(slot))
+        }
+        Phase::Done { slot } => format!(
+            "Done: image {} matched first, this is where it {}. Press Start Over to watch for the next match.",
+            number(slot),
+            action(tester.slots()[slot].image())
+        ),
     }
 }

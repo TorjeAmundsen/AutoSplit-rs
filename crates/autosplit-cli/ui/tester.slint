@@ -1,8 +1,10 @@
-// The Live Tester: one split image compared with the capture region outside of a run, with the
-// frames that would have made it act.
+// The Live Tester: a split image, or the images of one split, compared with the capture region
+// outside of a run, with the frames that would have made them act.
 
+import { CheckBox } from "std-widgets.slint";
 import { Button, ClickAway, FileName, Label, NamePart, Preview, Theme, Tip } from "widgets.slint";
 import { InlineMessage, MessageOverlay } from "message.slint";
+import { SimilarityRow, SimilarityViewer } from "similarity.slint";
 
 // How far the live similarity is from the threshold: a bar filled up to the similarity, a tick at
 // the highest, and a mark at the threshold where the green part starts.
@@ -299,6 +301,15 @@ export component TesterWindow inherits Window {
     in property <TesterReading> reading;
     in property <image> live-image;
     in property <image> split-image;
+    // The image has others compared with it for one split
+    in property <bool> can-group;
+    // Its group is compared, shown like the main window shows a split's images: in a 2x2 grid,
+    // with a row of similarities each
+    in-out property <bool> grouped;
+    // What's shown is a group, which the session says
+    in property <bool> group-shown;
+    in property <[image]> tiles;
+    in property <[SimilarityRow]> rows;
     in property <image> kept-image;
     in property <string> kept-caption;
     in property <string> kept-position;
@@ -315,6 +326,7 @@ export component TesterWindow inherits Window {
     callback previous-image();
     callback next-image();
     callback reload-image();
+    callback group-toggled();
     callback rearm();
     callback previous-kept();
     callback next-kept();
@@ -357,6 +369,19 @@ export component TesterWindow inherits Window {
                 enabled: root.can-reload;
                 clicked => { root.reload-image(); }
                 tip: "Load the image again. It also loads again by itself when the file changes.";
+            }
+
+            CheckBox {
+                text: "Test Its Group";
+                enabled: root.can-group;
+                checked <=> root.grouped;
+                toggled => { root.group-toggled(); }
+
+                Tooltip {
+                    Tip {
+                        text: "Compare it together with the other images of its split, like a run does with Compare images with the same number for one split turned on: the first one that matches acts. Its group is the images with its number, or all start or all reset images.";
+                    }
+                }
             }
 
             FileName {
@@ -420,15 +445,30 @@ export component TesterWindow inherits Window {
 
                 Label {
                     height: 18px;
-                    text: "Split Image";
+                    text: root.group-shown ? "Split Images" : "Split Image";
                     horizontal-alignment: center;
                 }
 
-                Preview {
+                if !root.group-shown: Preview {
                     width: 320px;
                     height: 240px;
                     source: root.split-image;
                     message: root.has-image ? "" : "No image open";
+                }
+
+                // Like the main window's grid
+                if root.group-shown: Rectangle {
+                    width: 320px;
+                    height: 240px;
+
+                    for tile[index] in root.tiles: Preview {
+                        x: mod(index, 2) * 160px;
+                        y: floor(index / 2) * 120px;
+                        width: 160px;
+                        height: 120px;
+                        source: tile;
+                        message: tile.width == 0 ? "None" : "";
+                    }
                 }
             }
 
@@ -480,7 +520,16 @@ export component TesterWindow inherits Window {
             spacing: 8px;
             alignment: start;
 
-            LiveReading {
+            if root.group-shown: SimilarityViewer {
+                width: 321px;
+                height: 40px + root.rows.length * 22px;
+                grouped: true;
+                group-rows: root.rows;
+                row-name: "Image";
+                reset-row: false;
+            }
+
+            if !root.group-shown: LiveReading {
                 width: 320px;
                 live: root.reading.live;
                 highest: root.reading.highest;

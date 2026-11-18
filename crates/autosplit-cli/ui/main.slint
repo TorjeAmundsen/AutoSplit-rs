@@ -6,114 +6,14 @@ import { AboutWindow } from "about.slint";
 import { LogWindow } from "log.slint";
 import { InlineMessage, MessageOverlay, MessageWindow } from "message.slint";
 import { InfoCell, TesterReading, TesterWindow } from "tester.slint";
+import { SimilarityRow, SimilarityViewer } from "similarity.slint";
 import { MakerRow, MakerWindow, SplitField, SplitForm, SplitValues } from "maker.slint";
 import { InstructionCard, InstructionsWindow } from "instructions.slint";
 import { LibraryItem, LibraryStep, LibraryWindow } from "library.slint";
 import { EntryStep, LibraryEntryWindow } from "library_entry.slint";
 import { Button, ClickAway, Keys, Label, NameKind, NamePart, Preview, SpinBox, TextField, Theme, Tip, WindowFocus } from "widgets.slint";
 
-export { SettingsWindow, HotkeyRow, InlineMessage, Setting, AboutWindow, LogWindow, MessageWindow, InfoCell, NameKind, NamePart, TesterReading, TesterWindow, MakerRow, MakerWindow, SplitField, SplitForm, SplitValues, InstructionCard, InstructionsWindow, LibraryItem, LibraryStep, LibraryWindow, EntryStep, LibraryEntryWindow, WindowFocus }
-
-export struct SimilarityRow {
-    live: string,
-    highest: string,
-    threshold: string,
-}
-
-// AutoSplit's "Similarity Viewer" box: live, highest and threshold of the current and reset
-// images, with its grid lines. Grouped split images get a current image row each.
-component SimilarityViewer inherits Rectangle {
-    in property <string> current-live;
-    in property <string> current-highest;
-    in property <string> current-threshold;
-    in property <bool> grouped;
-    in property <[SimilarityRow]> group-rows;
-    in property <string> reset-live;
-    in property <string> reset-highest;
-    in property <string> reset-threshold;
-
-    // Qt's group box frame starts half a line below the top, where the title sits
-    Rectangle {
-        y: 7px;
-        height: parent.height - 7px;
-        border-width: 1px;
-        border-color: Palette.border;
-        border-radius: 3px;
-    }
-
-    Rectangle {
-        x: (parent.width - self.width) / 2;
-        y: 0px;
-        width: title.preferred-width + 6px;
-        height: 16px;
-        background: Palette.background;
-
-        title := Label {
-            text: "Similarity Viewer";
-        }
-    }
-
-    property <[SimilarityRow]> rows: root.grouped ? root.group-rows : [
-        { live: root.current-live, highest: root.current-highest, threshold: root.current-threshold },
-    ];
-    property <length> reset-y: 39px + root.rows.length * 22px;
-
-    for row[index] in root.rows: Rectangle {
-        y: 39px + index * 22px;
-        height: 22px;
-
-        Rectangle {
-            y: 0px;
-            height: 1px;
-            background: Palette.border;
-        }
-
-        for cell in [
-            { x: 10px, y: 3px, width: 111px, text: root.grouped ? "Current Image (\{index + 1})" : "Current Image", center: false },
-            { x: 133px, y: 4px, width: 57px, text: row.live, center: true },
-            { x: 197px, y: 4px, width: 57px, text: row.highest, center: true },
-            { x: 260px, y: 4px, width: 57px, text: row.threshold, center: true },
-        ]: Label {
-            x: cell.x;
-            y: cell.y;
-            width: cell.width;
-            height: 16px;
-            text: cell.text;
-            horizontal-alignment: cell.center ? center : left;
-        }
-    }
-
-    Rectangle {
-        y: root.reset-y;
-        height: 1px;
-        background: Palette.border;
-    }
-
-    for line in [{ x: 129px }, { x: 193px }, { x: 257px }]: Rectangle {
-        x: line.x;
-        y: 20px;
-        width: 1px;
-        height: parent.height - 21px;
-        background: Palette.border;
-    }
-
-    for cell in [
-        { x: 133px, y: 22px, width: 57px, text: "Live", center: true },
-        { x: 197px, y: 22px, width: 57px, text: "Highest", center: true },
-        { x: 261px, y: 22px, width: 56px, text: "Threshold", center: true },
-        { x: 10px, y: root.reset-y + 3px, width: 111px, text: "Reset Image", center: false },
-        { x: 133px, y: root.reset-y + 3px, width: 57px, text: root.reset-live, center: true },
-        { x: 197px, y: root.reset-y + 3px, width: 57px, text: root.reset-highest, center: true },
-        { x: 260px, y: root.reset-y + 3px, width: 57px, text: root.reset-threshold, center: true },
-    ]: Label {
-        x: cell.x;
-        y: cell.y;
-        width: cell.width;
-        height: 16px;
-        text: cell.text;
-        horizontal-alignment: cell.center ? center : left;
-    }
-}
+export { SimilarityRow, SettingsWindow, HotkeyRow, InlineMessage, Setting, AboutWindow, LogWindow, MessageWindow, InfoCell, NameKind, NamePart, TesterReading, TesterWindow, MakerRow, MakerWindow, SplitField, SplitForm, SplitValues, InstructionCard, InstructionsWindow, LibraryItem, LibraryStep, LibraryWindow, EntryStep, LibraryEntryWindow, WindowFocus }
 
 export component MainWindow inherits Window {
     in property <string> window-title: "AutoSplit";

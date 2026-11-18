@@ -205,7 +205,7 @@ Import checks the file before it adds anything. It refuses a file whose preset u
 
 ## Live Tester
 
-File > Live Tester compares one split image with the capture region, without starting a run, to check an image before you rely on it.
+File > Live Tester compares a split image with the capture region, without starting a run, to check an image before you rely on it. It can also compare the images of a [grouped split](#several-images-for-one-split) together, see [Testing a group](#testing-a-group).
 
 ![The Live Tester as a split's screen comes up: the similarity climbs past the threshold, Highest gets its green dot, and the frames where it would split appear on the right](docs/live-tester.gif)
 
@@ -225,7 +225,17 @@ The right side keeps the frames that would have made the image act in a run:
 - A reset image keeps the frame that reached the threshold.
 - A [fade image](#fade-images) keeps the frame where the fade reached the threshold. The line next to Start Over says when the screen reached the threshold without fading there, like after a cut, so you can tell a cut from a missed fade. Under Highest and Threshold, it shows the noise it left out of the live frame, see [Fade images](#fade-images).
 
-`<` and `>` above the frames go through them. Start Over clears them and Highest. The tester takes one image at a time, so the images of a [grouped split](#several-images-for-one-split) are tested one by one.
+`<` and `>` above the frames go through them. Start Over clears them and Highest.
+
+### Testing a group
+
+Test Its Group, beside the file name, compares the image together with the other images of its split, like a run does with [Compare images with the same number for one split](#several-images-for-one-split) on. Its group is the images in its folder with its number, like `01_boss_left.png` and `01_boss_right.png`, or all start images or all reset images. It's off for an image without others, or with more than 4, which a run couldn't compare.
+
+- The split image becomes a 2x2 grid of the group's images, and Live, Highest and Threshold become a row for each, like the main window's similarity viewer. They're numbered in the order they're compared.
+- Like in a run, the first image that matches acts, and the others stop with it. So when the wrong image matches early, you see it act instead of the right one. Start Over waits for a match again.
+- The kept frames say which image they're of, like Image 2, Split: 0.962. A `{b}` image that reached its threshold keeps its frame, and another image can still act before it drops back below.
+- It stays on for the next image that has a group, and the images reload when any of their files changes. Reload also finds images added to the group.
+- The meter and a fade image's noise aren't shown for a group. Turn Test Its Group off to see them for the open image.
 
 ## Settings
 

@@ -20,7 +20,7 @@ use autosplit_core::runner::{Captured, Effect, Runner, RunnerSettings, Status};
 use autosplit_core::split_folder::{
     FolderLoad, SplitSet, ValidationError, load_profile_folder, load_profile_folder_to_start,
 };
-use autosplit_core::tester::Tester;
+use autosplit_core::tester::{Tester, group_paths};
 use autosplit_core::text::{Compared, status_line};
 
 use crate::console::Console;
@@ -92,10 +92,12 @@ pub enum UiCommand {
         folder: PathBuf,
         loaded: bool,
     },
-    /// The Live Tester compares this image with the capture, or loads it again. `request`
-    /// numbers the window's requests, which the view tells it back.
+    /// The Live Tester compares this image with the capture, or loads it again. With `group`,
+    /// together with the images compared with it for one split. `request` numbers the window's
+    /// requests, which the view tells it back.
     OpenTester {
         path: PathBuf,
+        group: bool,
         request: u64,
     },
     /// The Live Tester forgets its highest similarity and kept frames, and waits for a match
@@ -215,8 +217,8 @@ pub struct Session {
     maker_open: bool,
     /// The Live Tester or Make Split Images is open.
     tool_open: bool,
-    /// The Live Tester's file and when it was changed, to load it again when it changes.
-    tester_file: Option<(PathBuf, Option<SystemTime>)>,
+    /// The Live Tester's files and when they were changed, to load them again when one changes.
+    tester_files: Option<Vec<(PathBuf, Option<SystemTime>)>>,
     next_tester_file_check: Instant,
     timer: PreciseTimer,
     next_view: Instant,
@@ -265,7 +267,7 @@ impl Session {
             tester_request: 0,
             maker_open: false,
             tool_open: false,
-            tester_file: None,
+            tester_files: None,
             next_tester_file_check: now,
             timer: PreciseTimer::default(),
             next_view: now,
@@ -554,22 +556,27 @@ impl Session {
         tester.tick(now, capture);
     }
 
-    /// Loads the Live Tester's image again when its file changed, like after AutoMask saved it
-    /// again. A file that can't be loaded, maybe because it's still being written, keeps the
-    /// image that was loaded, and is tried again when it changes again.
+    /// Loads the Live Tester's images again when one of their files changed, like after AutoMask
+    /// saved it again. A file that can't be loaded, maybe because it's still being written, keeps
+    /// the images that were loaded, and is tried again when it changes again.
     fn check_tester_file(&mut self, now: Instant) {
         if now < self.next_tester_file_check {
             return;
         }
         self.next_tester_file_check = now + TESTER_FILE_INTERVAL;
-        let Some((path, modified)) = &mut self.tester_file else { return };
-        let changed = std::fs::metadata(&*path).and_then(|metadata| metadata.modified()).ok();
-        if changed == *modified {
-            return;
+        let Some(files) = &mut self.tester_files else { return };
+        let mut changed = None;
+        for (path, modified) in files.iter_mut() {
+            let now_modified = modified_time(path);
+            if now_modified != *modified {
+                *modified = now_modified;
+                changed.get_or_insert_with(|| path.clone());
+            }
         }
-        *modified = changed;
-        let path = path.clone();
-        match Tester::open(&path, self.profile.split_defaults(), self.elapsed()) {
+        let Some(path) = changed else { return };
+        let paths: Vec<PathBuf> = files.iter().map(|(path, _)| path.clone()).collect();
+        let opened = self.tester.as_ref().map_or(0, Tester::opened);
+        match Tester::open_group(&paths, opened, self.profile.split_defaults(), self.elapsed()) {
             Ok(tester) => {
                 self.console.log(format_args!("Live Tester: {} changed, loaded it again", path.display()));
                 self.tester = Some(tester);
@@ -678,9 +685,9 @@ impl Session {
                     self.settings_changed();
                 }
             }
-            UiCommand::OpenTester { path, request } => {
+            UiCommand::OpenTester { path, group, request } => {
                 self.tester_request = request;
-                self.open_tester(path);
+                self.open_tester(path, group);
                 // Shown right away, instead of after the view's interval for no tester
                 self.next_view = Instant::now();
             }
@@ -689,7 +696,7 @@ impl Session {
                     tester.rearm();
                 }
             }
-            UiCommand::CloseTester => (self.tester, self.tester_file) = (None, None),
+            UiCommand::CloseTester => (self.tester, self.tester_files) = (None, None),
             UiCommand::SetMakerOpen(open) => self.maker_open = open,
             UiCommand::SetToolOpen(open) => {
                 self.tool_open = open;
@@ -704,17 +711,22 @@ impl Session {
     }
 
     /// Loads the Live Tester's image, with the profile's defaults for what its name leaves out.
-    fn open_tester(&mut self, path: PathBuf) {
-        let modified = std::fs::metadata(&path).and_then(|metadata| metadata.modified()).ok();
-        match Tester::open(&path, self.profile.split_defaults(), self.elapsed()) {
+    /// With `group`, also the images compared with it for one split.
+    fn open_tester(&mut self, path: PathBuf, group: bool) {
+        let paths = if group { group_paths(&path) } else { vec![path.clone()] };
+        let opened = paths.iter().position(|other| *other == path).unwrap_or_default();
+        let files = paths.iter().map(|path| (path.clone(), modified_time(path))).collect();
+        match Tester::open_group(&paths, opened, self.profile.split_defaults(), self.elapsed()) {
             Ok(tester) => {
-                self.console.log(format_args!("Live Tester: testing {}", path.display()));
+                for path in &paths {
+                    self.console.log(format_args!("Live Tester: testing {}", path.display()));
+                }
                 self.tester = Some(tester);
                 self.tester_loaded += 1;
-                self.tester_file = Some((path, modified));
+                self.tester_files = Some(files);
             }
             Err(error) => {
-                (self.tester, self.tester_file) = (None, None);
+                (self.tester, self.tester_files) = (None, None);
                 self.dialog(error);
             }
         }
@@ -1229,4 +1241,9 @@ impl Session {
         let status = status_line(self.runner.status(), self.elapsed(), &idle, self.device.receiving());
         problems.into_iter().map(|problem| format!("{problem} | ")).collect::<String>() + &status
     }
+}
+
+/// When the file at `path` was last changed, or `None` when that can't be read.
+fn modified_time(path: &Path) -> Option<SystemTime> {
+    std::fs::metadata(path).and_then(|metadata| metadata.modified()).ok()
 }
