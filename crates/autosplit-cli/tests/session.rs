@@ -24,6 +24,8 @@ struct Seen {
     current_files: Arc<Mutex<Vec<String>>>,
     current_messages: Arc<Mutex<Vec<String>>>,
     testers: Arc<Mutex<Vec<Tested>>>,
+    /// The file names of the Live Tester's images, while it's open.
+    tester_images: Arc<Mutex<Vec<Vec<String>>>>,
 }
 
 impl Seen {
@@ -41,6 +43,10 @@ impl Seen {
 
     fn last_tester(&self) -> Tested {
         self.testers.lock().unwrap().last().cloned().flatten()
+    }
+
+    fn last_tester_images(&self) -> Vec<String> {
+        self.tester_images.lock().unwrap().last().cloned().unwrap_or_default()
     }
 }
 
@@ -62,6 +68,8 @@ impl View for FakeView {
         self.0.idle.lock().unwrap().push(snapshot.idle);
         let tester = snapshot.tester.map(|tester| (tester.image().display_name(), tester.threshold()));
         self.0.testers.lock().unwrap().push(tester);
+        let images = snapshot.tester.map(|tester| tester.slots().iter().map(|slot| slot.image().display_name()));
+        self.0.tester_images.lock().unwrap().push(images.into_iter().flatten().collect());
     }
 
     fn notice(&mut self, notice: Notice) {
@@ -89,6 +97,18 @@ fn run(profile: UserProfile, events: Vec<Event>) -> Seen {
 /// Runs a session for a moment with `events`, after the session set itself up and then
 /// `meanwhile` ran, then stops it.
 fn run_after(profile: UserProfile, meanwhile: impl FnOnce(), events: Vec<Event>) -> Seen {
+    run_with(profile, meanwhile, events, || {}, Duration::from_millis(50))
+}
+
+/// Runs a session like [`run_after`], with `later` running a moment after `events` were sent,
+/// and the session stopping `stop_after` after that.
+fn run_with(
+    profile: UserProfile,
+    meanwhile: impl FnOnce(),
+    events: Vec<Event>,
+    later: impl FnOnce() + Send + 'static,
+    stop_after: Duration,
+) -> Seen {
     let seen = Seen::default();
     let (sender, receiver) = mpsc::channel();
     let mut session = Session::new(
@@ -104,7 +124,9 @@ fn run_after(profile: UserProfile, meanwhile: impl FnOnce(), events: Vec<Event>)
         sender.send(event).unwrap();
     }
     std::thread::spawn(move || {
-        std::thread::sleep(Duration::from_millis(100));
+        std::thread::sleep(Duration::from_millis(50));
+        later();
+        std::thread::sleep(stop_after);
         let _ = sender.send(Event::Stop);
     });
     session.run(&receiver);
@@ -351,6 +373,23 @@ fn closing_the_live_tester_drops_its_image() {
 
     // Assert: no dialog, which an image that couldn't be opened would show, and closed
     assert_eq!((seen.notices(), seen.last_tester()), (Vec::<String>::new(), None));
+}
+
+#[test]
+fn live_tester_group_follows_an_image_saved_under_a_new_name() {
+    // Arrange: a group of two, the second saved again with another threshold in its name, which
+    // Make Split Images does by writing the new name and removing the old one
+    let folder = split_folder();
+    std::fs::copy(folder.path().join("001_split.png"), folder.path().join("001_other.png")).unwrap();
+    let open = Event::Ui(UiCommand::OpenTester { path: folder.path().join("001_split.png"), group: true, request: 1 });
+    let (old, new) = (folder.path().join("001_other.png"), folder.path().join("001_other_(0.5).png"));
+    let rename = move || std::fs::rename(old, new).unwrap();
+
+    // Act: past the next check of the files
+    let seen = run_with(UserProfile::default(), || {}, vec![open], rename, Duration::from_millis(700));
+
+    // Assert
+    assert_eq!(seen.last_tester_images(), ["001_other_(0.5).png", "001_split.png"]);
 }
 
 #[test]

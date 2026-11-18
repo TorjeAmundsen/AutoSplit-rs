@@ -217,8 +217,8 @@ pub struct Session {
     maker_open: bool,
     /// The Live Tester or Make Split Images is open.
     tool_open: bool,
-    /// The Live Tester's files and when they were changed, to load them again when one changes.
-    tester_files: Option<Vec<(PathBuf, Option<SystemTime>)>>,
+    /// The Live Tester's files, to load them again when they change.
+    tester_files: Option<TesterFiles>,
     next_tester_file_check: Instant,
     timer: PreciseTimer,
     next_view: Instant,
@@ -557,25 +557,21 @@ impl Session {
     }
 
     /// Loads the Live Tester's images again when one of their files changed, like after AutoMask
-    /// saved it again. A file that can't be loaded, maybe because it's still being written, keeps
-    /// the images that were loaded, and is tried again when it changes again.
+    /// saved it again, or its group changed, like after Make Split Images saved an image under a
+    /// new name. A file that can't be loaded, maybe because it's still being written, keeps the
+    /// images that were loaded, and is tried again when it changes again.
     fn check_tester_file(&mut self, now: Instant) {
         if now < self.next_tester_file_check {
             return;
         }
         self.next_tester_file_check = now + TESTER_FILE_INTERVAL;
-        let Some(files) = &mut self.tester_files else { return };
-        let mut changed = None;
-        for (path, modified) in files.iter_mut() {
-            let now_modified = modified_time(path);
-            if now_modified != *modified {
-                *modified = now_modified;
-                changed.get_or_insert_with(|| path.clone());
-            }
-        }
-        let Some(path) = changed else { return };
-        let paths: Vec<PathBuf> = files.iter().map(|(path, _)| path.clone()).collect();
-        let opened = self.tester.as_ref().map_or(0, Tester::opened);
+        let Some(files) = &self.tester_files else { return };
+        let current = TesterFiles::read(files.opened.clone(), files.group);
+        // A file whose time changed, or that joined or left the group
+        let differs = |a: &TesterFiles, b: &TesterFiles| a.files.iter().find(|file| !b.files.contains(file)).cloned();
+        let Some((path, _)) = differs(&current, files).or_else(|| differs(files, &current)) else { return };
+        let (paths, opened) = current.paths();
+        self.tester_files = Some(current);
         match Tester::open_group(&paths, opened, self.profile.split_defaults(), self.elapsed()) {
             Ok(tester) => {
                 self.console.log(format_args!("Live Tester: {} changed, loaded it again", path.display()));
@@ -713,9 +709,8 @@ impl Session {
     /// Loads the Live Tester's image, with the profile's defaults for what its name leaves out.
     /// With `group`, also the images compared with it for one split.
     fn open_tester(&mut self, path: PathBuf, group: bool) {
-        let paths = if group { group_paths(&path) } else { vec![path.clone()] };
-        let opened = paths.iter().position(|other| *other == path).unwrap_or_default();
-        let files = paths.iter().map(|path| (path.clone(), modified_time(path))).collect();
+        let files = TesterFiles::read(path, group);
+        let (paths, opened) = files.paths();
         match Tester::open_group(&paths, opened, self.profile.split_defaults(), self.elapsed()) {
             Ok(tester) => {
                 for path in &paths {
@@ -1243,7 +1238,29 @@ impl Session {
     }
 }
 
-/// When the file at `path` was last changed, or `None` when that can't be read.
-fn modified_time(path: &Path) -> Option<SystemTime> {
-    std::fs::metadata(path).and_then(|metadata| metadata.modified()).ok()
+/// The Live Tester's files and when each was last changed, to load them again when they change.
+struct TesterFiles {
+    /// The image the window opened.
+    opened: PathBuf,
+    /// Its group is tested with it.
+    group: bool,
+    /// The images tested, in order, each with its time, or `None` when that can't be read.
+    files: Vec<(PathBuf, Option<SystemTime>)>,
+}
+
+impl TesterFiles {
+    /// The files of `opened`, or of its group with `group`, as they are now.
+    fn read(opened: PathBuf, group: bool) -> Self {
+        let paths = if group { group_paths(&opened) } else { vec![opened.clone()] };
+        let modified = |path: &Path| std::fs::metadata(path).and_then(|metadata| metadata.modified()).ok();
+        let files = paths.into_iter().map(|path| (path.clone(), modified(&path))).collect();
+        Self { opened, group, files }
+    }
+
+    /// The paths to test, and which of them is the opened image.
+    fn paths(&self) -> (Vec<PathBuf>, usize) {
+        let paths: Vec<PathBuf> = self.files.iter().map(|(path, _)| path.clone()).collect();
+        let opened = paths.iter().position(|path| *path == self.opened).unwrap_or_default();
+        (paths, opened)
+    }
 }
