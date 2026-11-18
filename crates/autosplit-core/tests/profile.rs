@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 
 use autosplit_core::commands::Command;
 use autosplit_core::image::Rect;
+use autosplit_core::preset::SplitChoice;
 use autosplit_core::profile::{
     NEW_PROFILE_REGION, ProfileError, Region, RegionFit, TimerConnection, UserProfile, capture_method_name,
 };
@@ -74,6 +75,14 @@ fn saved_profile_loads_back_identical() {
         split_image_grid: true,
         fade_ignore_noise: false,
         advanced_maker: true,
+        split_choices: [
+            (
+                "Ocarina of Time: Master Quest/Any%".to_owned(),
+                SplitChoice { on: vec!["Bow".into()], off: vec!["Forest Temple".into()] },
+            ),
+            ("Majora's Mask/100%".to_owned(), SplitChoice { on: vec![], off: vec!["Moon".into()] }),
+        ]
+        .into(),
         ..configured()
     };
 

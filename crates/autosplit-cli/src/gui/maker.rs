@@ -9,7 +9,7 @@ use std::sync::Arc;
 use autosplit_core::image::{BgraImage, BgraView};
 use autosplit_core::imgproc::{ResizeBuffers, stretch_to_rgba};
 use autosplit_core::mask::{Mask, apply_mask, fade_image};
-use autosplit_core::preset::{LoadedPreset, Preset, PresetError, PresetSplit, load_presets};
+use autosplit_core::preset::{LoadedPreset, Preset, PresetError, PresetSplit, SplitChoice, load_presets};
 use autosplit_core::profile::UserProfile;
 use autosplit_core::split_folder::user_files;
 use autosplit_core::text::hex_color;
@@ -315,10 +315,11 @@ struct MakerView {
 /// What the window shows for `maker`, whose splits have the file names `names`. `in_place` says
 /// which are saved, `problems` which have something to fix, `preset_problems` are the chosen
 /// preset's, and `grouping` is whether the profile compares images with the same number for one
-/// split.
+/// split. `enabled` says which of the chosen preset's splits are on.
 fn maker_view(
     maker: &Maker,
     names: &[String],
+    enabled: &[bool],
     in_place: &[bool],
     problems: &[bool],
     preset_problems: &[Problem],
@@ -352,6 +353,7 @@ fn maker_view(
     let usable = summary.is_none();
     let selected = maker.selected;
     let splits = maker.loaded().map_or(&[][..], |loaded| &loaded.preset.splits[..]);
+    let on = || splits.iter().zip(enabled).filter(|(_, on)| **on).map(|(split, _)| split);
     MakerView {
         rows,
         preset_problem: summary.unwrap_or_default(),
@@ -361,10 +363,10 @@ fn maker_view(
         can_save_selected: maker.source(selected).is_some() && usable,
         can_save_all: (0..maker.splits.len()).any(|index| maker.source(index).is_some()) && usable,
         can_test: in_place.get(selected).copied().unwrap_or_default() && usable,
-        needs_grouping: !grouping && maker.loaded().is_some_and(|loaded| loaded.preset.needs_grouping()),
+        needs_grouping: !grouping && maker.loaded().is_some_and(|loaded| loaded.preset.needs_grouping(enabled)),
         working: maker.working > 0,
-        has_savestates: usable && splits.iter().any(|split| !split.savestate.is_empty()),
-        has_instructions: splits.iter().any(|split| !split.savestate.is_empty() && !split.instructions.is_empty()),
+        has_savestates: usable && on().any(|split| !split.savestate.is_empty()),
+        has_instructions: on().any(|split| !split.savestate.is_empty() && !split.instructions.is_empty()),
     }
 }
 
@@ -683,6 +685,15 @@ impl Gui {
         saves_in_place(&saved, names, folder.as_deref())
     }
 
+    /// Whether each split of the chosen preset is on, with the profile's choice for it.
+    pub(super) fn maker_enabled(&self) -> Vec<bool> {
+        let maker = self.maker.borrow();
+        let Some(loaded) = maker.loaded() else { return Vec::new() };
+        let state = self.state.borrow();
+        let choice = state.document.profile.split_choices.get(&loaded.preset.choice_key());
+        loaded.preset.enabled(choice.unwrap_or(&SplitChoice::default()))
+    }
+
     /// Puts the preset's splits, the selected split's split image and the buttons in the window.
     fn show_maker(&self) {
         let names = self.maker_file_names();
@@ -693,7 +704,8 @@ impl Gui {
             problems = problem_flags(&preset_problems, names.len());
         }
         let grouping = self.state.borrow().document.profile.group_split_images;
-        let view = maker_view(&self.maker.borrow(), &names, &in_place, &problems, &preset_problems, grouping);
+        let enabled = self.maker_enabled();
+        let view = maker_view(&self.maker.borrow(), &names, &enabled, &in_place, &problems, &preset_problems, grouping);
         let grab_blocker = self.grab_blocker();
         self.maker_rows.set_vec(view.rows);
         let window = &self.windows.maker;
@@ -929,7 +941,8 @@ impl Gui {
         }
         let maker = self.maker.borrow();
         let Some(loaded) = maker.loaded() else { return };
-        let (name, needs_grouping) = (loaded.preset.profile_file_name(), loaded.preset.needs_grouping());
+        let name = loaded.preset.profile_file_name();
+        let needs_grouping = loaded.preset.needs_grouping(&self.maker_enabled());
         drop(maker);
         let folder = self.state.borrow().document.folder(&exe_folder());
         let dialog = self

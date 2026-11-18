@@ -363,6 +363,7 @@ Replace them?",
         color_problem: "".into(),
         fade_drops: "".into(),
         group_problem: "".into(),
+        off_problem: "".into(),
         fade_color: Default::default(),
         mask: elide_middle("006_a_button_flip_after_the_door.png", MASK_NAME_CHARS).into(),
         savestate: elide_middle("006 enter deku.gzs", SAVESTATE_NAME_CHARS).into(),
@@ -377,6 +378,8 @@ Replace them?",
         grouping_off: false,
         can_join: true,
         why_not_joined: "".into(),
+        can_off: true,
+        why_not_off: "".into(),
     });
     maker.set_problems("Split1: It needs a mask. Choose one.".into());
     maker.set_has_problems(true);
