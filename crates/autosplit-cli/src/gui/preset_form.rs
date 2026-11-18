@@ -618,7 +618,8 @@ fn choice_problems(preset: &Preset) -> Vec<(usize, Field, String)> {
         if let Some(reason) = why_not_toggleable(preset, index).filter(|_| split.off) {
             problems.push((index, Field::Off, format!("It can't be optional. {reason}")));
         }
-        let same_name = |other: usize| preset.toggleable(other) && preset.splits[other].name == split.name;
+        // The name first, since whether a split can be turned on or off takes a look at the others
+        let same_name = |other: usize| preset.splits[other].name == split.name && preset.toggleable(other);
         if preset.toggleable(index) && (0..index).any(same_name) {
             let message = "A split above that can be turned on or off has the same name, so turning one on or off \
                            would turn both. Give it another name.";
@@ -926,16 +927,13 @@ pub struct InstructionText {
 /// names the files, so each card goes with the savestate it's about. Only for the splits that are
 /// `enabled`, one for each split.
 pub fn instruction_cards(preset: &Preset, enabled: &[bool]) -> Vec<InstructionText> {
-    let with_savestate =
-        (preset.splits.iter().enumerate()).filter(|&(index, split)| enabled[index] && !split.savestate.is_empty());
-    // savestate_copies has one name for each split on with a savestate, in the same order
-    (with_savestate.zip(preset.savestate_copies(enabled)))
-        .filter(|((_, split), _)| !split.instructions.is_empty())
-        .map(|((index, split), (_, file))| InstructionText {
+    (preset.savestate_copies(enabled).into_iter())
+        .filter(|&(index, _, _)| !preset.splits[index].instructions.is_empty())
+        .map(|(index, _, file)| InstructionText {
             split: index,
             heading: split_heading(preset, index),
             file,
-            instructions: split.instructions.clone(),
+            instructions: preset.splits[index].instructions.clone(),
         })
         .collect()
 }

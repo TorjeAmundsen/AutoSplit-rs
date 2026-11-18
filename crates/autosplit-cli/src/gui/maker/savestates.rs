@@ -17,7 +17,7 @@ impl Gui {
         let maker = self.maker.borrow();
         let Some(loaded) = maker.loaded() else { return };
         let copies: Vec<(PathBuf, String)> = (loaded.preset.savestate_copies(&enabled).into_iter())
-            .map(|(path, name)| (loaded.file(path), name))
+            .map(|(_, path, name)| (loaded.file(path), name))
             .collect();
         drop(maker);
         let folder = crate::platform::temp_folder().join(SAVESTATES_FOLDER);

@@ -283,8 +283,8 @@ fn savestates_are_copied_numbered_like_the_split_images() {
     assert_eq!(
         copies,
         [
-            ("savestates/000 start.gzs", "08_reset.gzs".to_owned()),
-            ("savestates/boss.gzs", "09_Boss_SEE_INSTRUCTIONS.gzs".to_owned())
+            (8, "savestates/000 start.gzs", "08_reset.gzs".to_owned()),
+            (9, "savestates/boss.gzs", "09_Boss_SEE_INSTRUCTIONS.gzs".to_owned())
         ]
     );
 }
@@ -379,7 +379,7 @@ fn savestates_of_several_reset_images_get_their_place() {
     }
 
     // Act
-    let names: Vec<String> = preset.savestate_copies(&[true; 3]).into_iter().map(|(_, name)| name).collect();
+    let names: Vec<String> = preset.savestate_copies(&[true; 3]).into_iter().map(|(_, _, name)| name).collect();
 
     // Assert
     assert_eq!(names, ["0_reset.gzs", "0_reset_2.gzs", "1_Boss.gzs"]);

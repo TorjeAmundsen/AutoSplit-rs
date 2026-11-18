@@ -251,12 +251,16 @@ impl Maker {
         self.edit.is_none() && enabled.get(index) == Some(&false)
     }
 
+    /// The splits that aren't off, in order, with `enabled` like [`Maker::is_off`].
+    fn on_splits<'a>(&'a self, enabled: &'a [bool]) -> impl Iterator<Item = usize> + Clone + 'a {
+        (0..self.splits.len()).filter(move |&index| !self.is_off(enabled, index))
+    }
+
     /// How many of the shown preset's splits have a screenshot from it, and how many have to be
     /// grabbed. Fade splits are in neither, since they're made from their color, and splits
     /// that are off, with `enabled` like [`Maker::is_off`].
     fn preset_screenshot_counts(&self, enabled: &[bool]) -> (usize, usize) {
-        let grabbed =
-            (0..self.splits.len()).filter(|&index| self.fade_split(index).is_none() && !self.is_off(enabled, index));
+        let grabbed = self.on_splits(enabled).filter(|&index| self.fade_split(index).is_none());
         let with = grabbed.clone().filter(|&index| self.usable_preset_screenshot(index).is_some()).count();
         (with, grabbed.count() - with)
     }
@@ -389,9 +393,7 @@ fn maker_view(
         grab_suggested: maker.screenshot_use(selected) != ScreenshotUse::FromPreset,
         over_preset_screenshot: maker.screenshot_use(selected) == ScreenshotUse::Overridden,
         can_save_selected: maker.source(selected).is_some() && usable && selected_on,
-        can_save_all: (0..maker.splits.len())
-            .any(|index| maker.source(index).is_some() && !maker.is_off(enabled, index))
-            && usable,
+        can_save_all: maker.on_splits(enabled).any(|index| maker.source(index).is_some()) && usable,
         can_test: in_place.get(selected).copied().unwrap_or_default() && usable,
         needs_grouping: !grouping && maker.loaded().is_some_and(|loaded| loaded.preset.needs_grouping(enabled)),
         working: maker.working > 0,
@@ -481,9 +483,7 @@ impl Gui {
         });
         on!(weak, maker, on_save_all, () gui => {
             let enabled = gui.maker_enabled();
-            let maker = gui.maker.borrow();
-            let on = (0..maker.splits.len()).filter(|&index| !maker.is_off(&enabled, index)).collect();
-            drop(maker);
+            let on = gui.maker.borrow().on_splits(&enabled).collect();
             gui.save_split_images(on);
         });
         on!(weak, maker, on_split_toggled, (index) gui => gui.toggle_split(index as usize));
@@ -1027,13 +1027,9 @@ impl Gui {
         }
         // Fade splits are made from their color, so screenshots go to the others in order, past
         // the ones that are off, which were never split on
-        let off = (0..maker.splits.len()).filter(|&index| maker.is_off(&enabled, index)).count();
-        let fades = (0..maker.splits.len())
-            .filter(|&index| maker.fade_split(index).is_some() && !maker.is_off(&enabled, index))
-            .count();
-        let takes_screenshot: Vec<usize> = (0..maker.splits.len())
-            .filter(|&index| maker.fade_split(index).is_none() && !maker.is_off(&enabled, index))
-            .collect();
+        let (takes_screenshot, fades): (Vec<usize>, Vec<usize>) =
+            maker.on_splits(&enabled).partition(|&index| maker.fade_split(index).is_none());
+        let (off, fades) = (maker.splits.len() - takes_screenshot.len() - fades.len(), fades.len());
         // Without splits, like with no presets or all of them removed, there's no selected one
         let selected = (maker.selected < maker.splits.len()).then_some(maker.selected);
         let count = takes_screenshot.len();
