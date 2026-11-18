@@ -34,6 +34,8 @@ export struct MakerRow {
     off: bool,
     // Why the runner can't turn it on or off, for the tooltip where its checkbox would be
     fixed: string,
+    // Off, with an image in the split image folder, which AutoSplit still compares
+    kept: bool,
 }
 
 // The split image folder, like a read-only field without a cursor, with the whole path in its
@@ -727,11 +729,13 @@ export component MakerWindow inherits Window {
                                             text: row.source;
                                         }
 
+                                        // An image of a split that's off is still compared, since
+                                        // it's in the folder
                                         Label {
                                             height: 16px;
                                             horizontal-alignment: right;
-                                            color: Theme.reached;
-                                            text: row.saved ? "saved" : "";
+                                            color: row.kept ? Theme.warning : Theme.reached;
+                                            text: row.kept ? "still compared" : row.saved ? "saved" : "";
                                         }
                                     }
                                 }

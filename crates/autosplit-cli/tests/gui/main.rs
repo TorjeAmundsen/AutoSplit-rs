@@ -11,7 +11,7 @@ use std::rc::Rc;
 use autosplit::gui::document::{Document, folder_text, profile_on_open};
 use autosplit::gui::log::{LOG_LINES, LogLines};
 use autosplit::gui::maker_plan::{
-    DeletedPreset, PresetList, WritePlan, images_numbered, looks_made, move_to_base, next_to_grab, plan_writes,
+    DeletedPreset, PresetList, WritePlan, images_of_splits, looks_made, move_to_base, next_to_grab, plan_writes,
     preset_after_delete, saved_from_after_preset_save, saves_in_place, screenshots_set_status, screenshots_status,
     screenshots_to_move, stale_to_delete, writes_over,
 };
@@ -639,13 +639,17 @@ fn picked_screenshots_say_which_splits_they_went_to(picked: usize, count: usize,
 }
 
 #[test]
-fn images_of_splits_turned_off_are_found_by_number() {
-    // Arrange: split 3's images, under names from other settings too, among others
+fn images_of_splits_turned_off_are_found_by_number_and_name() {
+    // Arrange: split 3 compares Boss and Boss Alt, under names from other settings too, among
+    // others, like 03_Other from before a split was added above
     let existing: Vec<PathBuf> = [
         "03_Boss_(0.9).png",
-        "3_Boss Alt.png",
-        "04_Next.png",
-        "13_Later.png",
+        "3_Boss.png",
+        "03_Boss Alt_[1].png",
+        "03_Bosses.png",
+        "03_Other.png",
+        "04_Boss.png",
+        "13_Boss.png",
         "003_SplitImage.png",
         "03_Boss.txt",
         "03_reset.png",
@@ -655,10 +659,11 @@ fn images_of_splits_turned_off_are_found_by_number() {
     .into();
 
     // Act
-    let images = images_numbered(&existing, &[3]);
+    let images = images_of_splits(&existing, &[(3, "Boss"), (3, "Boss Alt")]);
 
     // Assert
-    assert_eq!(images, [PathBuf::from("03_Boss_(0.9).png"), PathBuf::from("3_Boss Alt.png")]);
+    let expected = ["03_Boss_(0.9).png", "3_Boss.png", "03_Boss Alt_[1].png"].map(PathBuf::from);
+    assert_eq!(images, expected);
 }
 
 #[test]

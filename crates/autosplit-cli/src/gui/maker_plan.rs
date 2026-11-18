@@ -101,18 +101,26 @@ pub fn stale_to_delete(stale: &[PathBuf], written: &[PathBuf]) -> Vec<PathBuf> {
         .collect()
 }
 
-/// The split images among a folder's `existing` files of the splits numbered `numbers`, like the
-/// splits just turned off: PNGs that start with one of the numbers, by value, so `5_Boss` and
-/// `05_Boss` are both 5. Not reset or start images, and not screenshots (`NNN_SplitImage`), whose
-/// numbers count from 1.
-pub fn images_numbered(existing: &[PathBuf], numbers: &[usize]) -> Vec<PathBuf> {
-    let numbered = |name: &str| match split_key(name) {
-        Some(SplitKey::Number(number)) => numbers.iter().any(|&each| each as u64 == number),
-        _ => false,
+/// The split images among a folder's `existing` files of `splits`, each its number and name,
+/// like the splits just turned off: PNGs named for one of them, its number, by value, so
+/// `5_Boss` and `05_Boss` are both 5, then `_` and its name, which ends the name or comes before
+/// a `_` or the extension. The name is checked too, since an image from an older version of the
+/// preset can have the number of another split. Not reset or start images, and not screenshots
+/// (`NNN_SplitImage`), whose numbers count from 1.
+pub fn images_of_splits(existing: &[PathBuf], splits: &[(usize, &str)]) -> Vec<PathBuf> {
+    let of_split = |file: &str, number: usize, name: &str| {
+        let Some(SplitKey::Number(found)) = split_key(file) else { return false };
+        let digits = number_prefix(file).map_or(0, str::len);
+        let rest = file[digits..].strip_prefix('_').and_then(|rest| rest.strip_prefix(name));
+        found == number as u64 && rest.is_some_and(|rest| rest.starts_with(['_', '.']))
     };
     (existing.iter())
         .filter(|path| is_png(path))
-        .filter(|path| file_name_text(path).is_some_and(|name| !is_screenshot_name(&name) && numbered(&name)))
+        .filter(|path| {
+            file_name_text(path).is_some_and(|file| {
+                !is_screenshot_name(&file) && splits.iter().any(|&(number, name)| of_split(&file, number, name))
+            })
+        })
         .cloned()
         .collect()
 }

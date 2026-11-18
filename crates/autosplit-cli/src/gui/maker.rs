@@ -17,7 +17,7 @@ use slint::{ComponentHandle, ModelRc, Rgba8Pixel, SharedPixelBuffer, SharedStrin
 
 use super::document::Document;
 use super::maker_plan::{
-    PresetList, images_numbered, looks_made, move_to_base, next_to_grab, plan_writes, saves_in_place,
+    PresetList, images_of_splits, looks_made, move_to_base, next_to_grab, plan_writes, saves_in_place,
     screenshots_set_status, screenshots_status, screenshots_to_move, stale_to_delete, writes_over,
 };
 use super::messages::{Answer, Message};
@@ -371,6 +371,8 @@ fn maker_view(
                 .and_then(|loaded| why_not_toggleable(&loaded.preset, index))
                 .unwrap_or_default()
                 .into(),
+            // Read from the folder by the caller
+            kept: false,
         })
         .collect();
     // A preset with problems is only for fixing, so nothing's made from it
@@ -745,6 +747,28 @@ impl Gui {
         }
     }
 
+    /// The images in the split image folder of those of the chosen preset's splits `indexes` that
+    /// are off, by split, which AutoSplit would still compare. Splits without any aren't listed.
+    fn off_images_in_folder(&self, indexes: &[usize]) -> Vec<(usize, Vec<PathBuf>)> {
+        let Some(folder) = self.split_image_folder().filter(|folder| folder.is_dir()) else { return Vec::new() };
+        let enabled = self.maker_enabled();
+        let maker = self.maker.borrow();
+        let Some(loaded) = maker.loaded() else { return Vec::new() };
+        let (numbers, _) = loaded.preset.numbers();
+        let off: Vec<usize> = indexes.iter().copied().filter(|&index| maker.is_off(&enabled, index)).collect();
+        if off.is_empty() {
+            return Vec::new();
+        }
+        let existing = user_files(&folder).unwrap_or_default();
+        (off.into_iter())
+            .filter_map(|index| {
+                let split = (numbers.get(index)?, loaded.preset.splits.get(index)?.name.as_str());
+                let images = images_of_splits(&existing, &[(*split.0, split.1)]);
+                (!images.is_empty()).then_some((index, images))
+            })
+            .collect()
+    }
+
     /// Asks whether to delete the split images in the split image folder of the splits
     /// `turned_off`, which AutoSplit would still compare. Keeping them is the default, like for
     /// other deletes. While split images are being saved, it waits until they are.
@@ -757,18 +781,9 @@ impl Gui {
             return;
         }
         drop(maker);
-        let Some(folder) = self.split_image_folder().filter(|folder| folder.is_dir()) else { return };
-        let enabled = self.maker_enabled();
-        let maker = self.maker.borrow();
-        let Some(loaded) = maker.loaded() else { return };
-        let (numbers, _) = loaded.preset.numbers();
         // Not ones turned back on while a save was waited for
-        let numbers: Vec<usize> = (turned_off.into_iter())
-            .filter(|&index| maker.is_off(&enabled, index))
-            .filter_map(|index| numbers.get(index).copied())
-            .collect();
-        drop(maker);
-        let images = images_numbered(&user_files(&folder).unwrap_or_default(), &numbers);
+        let images: Vec<PathBuf> =
+            self.off_images_in_folder(&turned_off).into_iter().flat_map(|(_, images)| images).collect();
         if images.is_empty() {
             return;
         }
@@ -848,8 +863,13 @@ impl Gui {
         }
         let grouping = self.state.borrow().document.profile.group_split_images;
         let enabled = self.maker_enabled();
-        let view = maker_view(&self.maker.borrow(), &names, &enabled, &in_place, &problems, &preset_problems, grouping);
+        let mut view =
+            maker_view(&self.maker.borrow(), &names, &enabled, &in_place, &problems, &preset_problems, grouping);
         let grab_blocker = self.grab_blocker();
+        // Only splits that are off are looked for, so the folder isn't read without any
+        for (index, _) in self.off_images_in_folder(&(0..view.rows.len()).collect::<Vec<_>>()) {
+            view.rows[index].kept = true;
+        }
         self.maker_rows.set_vec(view.rows);
         let window = &self.windows.maker;
         // Empty without one, which the window says

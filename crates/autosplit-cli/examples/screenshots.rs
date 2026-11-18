@@ -228,6 +228,7 @@ fn main() {
         toggleable: false,
         off: false,
         fixed: "".into(),
+        kept: false,
     };
     let rows = vec![
         row("Reset Image", "reset_(0.96)_[0.1].png", "000_SplitImage.png", true),
@@ -263,7 +264,7 @@ fn main() {
     let choices = vec![
         rows[0].clone(),
         rows[1].clone(),
-        MakerRow { off: true, ..rows[2].clone() },
+        MakerRow { off: true, kept: true, ..rows[2].clone() },
         MakerRow { toggleable: true, off: true, ..rows[3].clone() },
         MakerRow { toggleable: true, ..row("Bottle", "04_Bottle_(0.93)_[35]_{b}.png", "", false) },
         row("Ganon", "05_Ganon_(0.92).png", "", false),
