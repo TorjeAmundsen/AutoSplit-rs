@@ -146,6 +146,37 @@ pub fn screenshots_status(with: usize, without: usize) -> Option<String> {
     })
 }
 
+/// Where a split's row is in the split list, which hides some rows, like splits that are off.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RowPlace {
+    pub hidden: bool,
+    /// Its place among the shown rows, from 0. For a hidden row, the place the next shown one has.
+    pub place: usize,
+    /// The shown rows above and below it, which Up and Down go to.
+    pub above: Option<usize>,
+    pub below: Option<usize>,
+}
+
+/// Each row's place in the split list, where `shown` says which rows are shown.
+pub fn row_places(shown: &[bool]) -> Vec<RowPlace> {
+    let mut places = Vec::with_capacity(shown.len());
+    let (mut place, mut above) = (0, None);
+    for (index, &is_shown) in shown.iter().enumerate() {
+        places.push(RowPlace { hidden: !is_shown, place, above, below: None });
+        if is_shown {
+            (place, above) = (place + 1, Some(index));
+        }
+    }
+    let mut below = None;
+    for (index, &is_shown) in shown.iter().enumerate().rev() {
+        places[index].below = below;
+        if is_shown {
+            below = Some(index);
+        }
+    }
+    places
+}
+
 /// What the strip under the split list says when not choosing: how many of the splits the runner
 /// can turn on or off are `off`, and how many splits that are off still have their image in the
 /// split image folder, `kept`, which AutoSplit compares anyway.

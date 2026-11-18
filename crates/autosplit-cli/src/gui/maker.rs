@@ -17,8 +17,8 @@ use slint::{ComponentHandle, ModelRc, Rgba8Pixel, SharedPixelBuffer, SharedStrin
 
 use super::document::Document;
 use super::maker_plan::{
-    PresetList, choice_summary, images_of_splits, looks_made, move_to_base, next_to_grab, plan_writes, saves_in_place,
-    screenshots_set_status, screenshots_status, screenshots_to_move, stale_to_delete, writes_over,
+    PresetList, choice_summary, images_of_splits, looks_made, move_to_base, next_to_grab, plan_writes, row_places,
+    saves_in_place, screenshots_set_status, screenshots_status, screenshots_to_move, stale_to_delete, writes_over,
 };
 use super::messages::{Answer, Message};
 use super::paths::{canonical, file_name_text};
@@ -335,44 +335,53 @@ struct MakerView {
     has_choices: bool,
     /// How many of them are off, for the strip under the list.
     splits_off: usize,
+    /// How many splits that are off still have their image in the split image folder.
+    splits_kept: usize,
     /// How many rows are shown: splits that are off are only shown while choosing.
     shown_rows: usize,
+    /// Every split is shown, with checkboxes, which Choose Splits starts. Never while editing.
+    choosing: bool,
 }
 
 /// What the window shows for `maker`, whose splits have the file names `names`. `in_place` says
 /// which are saved, `problems` which have something to fix, `preset_problems` are the chosen
 /// preset's, and `grouping` is whether the profile compares images with the same number for one
-/// split. `enabled` says which of the chosen preset's splits are on.
+/// split. `enabled` says which of the chosen preset's splits are on, and `kept` which of those
+/// that are off still have their image in the split image folder.
+#[allow(clippy::too_many_arguments)]
 fn maker_view(
     maker: &Maker,
     names: &[String],
     enabled: &[bool],
+    kept: &[bool],
     in_place: &[bool],
     problems: &[bool],
     preset_problems: &[Problem],
     grouping: bool,
 ) -> MakerView {
     let joined = |index| maker.shown().is_some_and(|preset| preset.joins_previous(index));
-    // The chosen preset's, which editing doesn't show
-    let toggleable =
-        |index| maker.edit.is_none() && maker.loaded().is_some_and(|loaded| loaded.preset.toggleable(index));
-    // Splits that are off are only shown while choosing
-    let choosing = maker.choosing && maker.edit.is_none();
-    let hidden = |index| !choosing && maker.is_off(enabled, index);
-    let shown: Vec<usize> = (0..names.len()).filter(|&index| !hidden(index)).collect();
-    let place = |index| shown.iter().position(|&each| each == index).unwrap_or_default();
-    let above = |index| shown.iter().rev().find(|&&each| each < index).map_or(-1, |&each| each as i32);
-    let below = |index| shown.iter().find(|&&each| each > index).map_or(-1, |&each| each as i32);
     // The chosen preset, while not editing, which the checkboxes are for
     let chosen = maker.loaded().filter(|_| maker.edit.is_none()).map(|loaded| &loaded.preset);
-    let leader = |index| chosen.and_then(|preset| preset.leader(index));
-    // A checkbox's splits compared together: the first one's place, and how many they are
-    let group = |index: usize| chosen.map_or(index..index + 1, |preset| preset.group(index));
+    // The split each one is on or off with, once, since each looks at the splits after it
+    let leaders: Vec<Option<usize>> =
+        (0..names.len()).map(|index| chosen.and_then(|preset| preset.leader(index))).collect();
+    let toggleable = |index: usize| leaders.get(index) == Some(&Some(index));
+    // Splits that are off are only shown while choosing
+    let choosing = maker.choosing && chosen.is_some();
+    let shown: Vec<bool> = (0..names.len()).map(|index| choosing || !maker.is_off(enabled, index)).collect();
+    let places = row_places(&shown);
+    let slot = |index: Option<usize>| index.map_or(-1, |index| index as i32);
     // Every other shown split is shaded, splits compared together as one
     let mut block = 0;
     let rows = (names.iter().enumerate())
         .map(|(index, name)| (index, name, thumb(maker, index)))
-        .map(|(index, name, thumb)| MakerRow {
+        .map(|(index, name, thumb)| (index, name, thumb, places[index], leaders[index]))
+        .map(|(index, name, thumb, place, leader)| {
+            // A checkbox's splits compared together: the first one's place, and how many they are
+            let group = chosen.map_or(index..index + 1, |preset| preset.group(index));
+            (index, name, thumb, place, leader, group)
+        })
+        .map(|(index, name, thumb, place, leader, group)| MakerRow {
             heading: maker.shown().map(|preset| split_heading(preset, index)).unwrap_or_default().into(),
             parts: file_name_parts(name),
             file: name.into(),
@@ -383,7 +392,7 @@ fn maker_view(
             problem: problems.get(index).copied().unwrap_or_default(),
             joined: joined(index),
             shaded: {
-                if !hidden(index) && place(index) > 0 && !joined(index) {
+                if !place.hidden && place.place > 0 && !joined(index) {
                     block += 1;
                 }
                 block % 2 == 1
@@ -392,20 +401,19 @@ fn maker_view(
             off: maker.is_off(enabled, index),
             // Not for one compared together with a checkbox's split, where the checkbox is
             fixed: chosen
-                .filter(|preset| !leader(index).is_some_and(|leader| preset.group(leader).contains(&index)))
+                .filter(|_| !leader.is_some_and(|leader| group.contains(&leader)))
                 .and_then(|preset| why_not_toggleable(preset, index))
                 .unwrap_or_default()
                 .into(),
-            // Read from the folder by the caller
-            kept: false,
-            hidden: hidden(index),
-            place: place(index) as i32,
-            above: above(index),
-            below: below(index),
-            always_on: chosen.is_some_and(|preset| preset.leader(index).is_none()),
-            leader: leader(index).map_or(-1, |leader| leader as i32),
-            box_top: place(group(index).start) as i32,
-            box_rows: group(index).len() as i32,
+            kept: kept.get(index).copied().unwrap_or_default(),
+            hidden: place.hidden,
+            place: place.place as i32,
+            above: slot(place.above),
+            below: slot(place.below),
+            always_on: chosen.is_some() && leader.is_none(),
+            leader: slot(leader),
+            box_top: places[group.start].place as i32,
+            box_rows: group.len() as i32,
         })
         .collect();
     // A preset with problems is only for fixing, so nothing's made from it
@@ -428,9 +436,11 @@ fn maker_view(
         working: maker.working > 0,
         has_savestates: usable && on().any(|split| !split.savestate.is_empty()),
         has_instructions: on().any(|split| !split.savestate.is_empty() && !split.instructions.is_empty()),
-        has_choices: (0..splits.len()).any(toggleable),
-        splits_off: (0..splits.len()).filter(|&index| toggleable(index) && maker.is_off(enabled, index)).count(),
-        shown_rows: shown.len(),
+        has_choices: (0..names.len()).any(toggleable),
+        splits_off: (0..names.len()).filter(|&index| toggleable(index) && maker.is_off(enabled, index)).count(),
+        splits_kept: kept.iter().filter(|&&kept| kept).count(),
+        shown_rows: shown.iter().filter(|&&shown| shown).count(),
+        choosing,
     }
 }
 
@@ -931,14 +941,14 @@ impl Gui {
         }
         let grouping = self.state.borrow().document.profile.group_split_images;
         let enabled = self.maker_enabled();
-        let mut view =
-            maker_view(&self.maker.borrow(), &names, &enabled, &in_place, &problems, &preset_problems, grouping);
-        let grab_blocker = self.grab_blocker();
         // Only splits that are off are looked for, so the folder isn't read without any
-        let kept = self.off_images_in_folder(&(0..view.rows.len()).collect::<Vec<_>>());
-        for (index, _) in &kept {
-            view.rows[*index].kept = true;
+        let mut kept = vec![false; names.len()];
+        for (index, _) in self.off_images_in_folder(&(0..names.len()).collect::<Vec<_>>()) {
+            kept[index] = true;
         }
+        let view =
+            maker_view(&self.maker.borrow(), &names, &enabled, &kept, &in_place, &problems, &preset_problems, grouping);
+        let grab_blocker = self.grab_blocker();
         self.maker_rows.set_vec(view.rows);
         let window = &self.windows.maker;
         // Empty without one, which the window says
@@ -960,10 +970,10 @@ impl Gui {
         window.set_has_instructions(view.has_instructions);
         window.set_has_choices(view.has_choices);
         // Splits that are off aren't shown, so the strip says when one is still compared
-        window.set_choice_summary(choice_summary(view.splits_off, kept.len()).into());
-        window.set_choice_kept(!kept.is_empty());
+        window.set_choice_summary(choice_summary(view.splits_off, view.splits_kept).into());
+        window.set_choice_kept(view.splits_kept > 0);
         window.set_shown_rows(view.shown_rows as i32);
-        window.set_choosing_splits(self.maker.borrow().choosing);
+        window.set_choosing_splits(view.choosing);
         self.show_maker_preview();
         self.refresh_library();
         self.refresh_entry();

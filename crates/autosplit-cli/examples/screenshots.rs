@@ -3,6 +3,7 @@
 
 use std::rc::Rc;
 
+use autosplit::gui::maker_plan::row_places;
 use autosplit::gui::messages::Buttons;
 use autosplit::gui::preset_form::{FADE_MASK_NAME_CHARS, MASK_NAME_CHARS, SAVESTATE_NAME_CHARS, elide_middle};
 use autosplit::gui::ui::{
@@ -53,24 +54,21 @@ fn library_parts(name: &str) -> slint::ModelRc<autosplit::gui::ui::NamePart> {
 }
 
 /// Shows `rows` in the split list like the window does: splits that are off are hidden unless
-/// `choosing`, and the shown ones take the places in turn. A row's `box_top` is written as the
-/// index of the first split compared together with it.
+/// `choosing`, and the shown ones take the places in turn.
 fn show_rows(maker: &MakerWindow, rows: Vec<MakerRow>, choosing: bool) {
-    let shown: Vec<usize> = (0..rows.len()).filter(|&index| choosing || !rows[index].off).collect();
-    let count = shown.len() as i32;
-    let place = |index: usize| shown.iter().position(|&each| each == index).unwrap_or_default() as i32;
-    let rows: Vec<MakerRow> = (rows.into_iter().enumerate())
-        .map(|(index, row)| MakerRow {
-            hidden: !shown.contains(&index),
-            place: place(index),
-            box_top: place(row.box_top as usize),
-            above: shown.iter().rev().find(|&&each| each < index).map_or(-1, |&each| each as i32),
-            below: shown.iter().find(|&&each| each > index).map_or(-1, |&each| each as i32),
+    let shown: Vec<bool> = rows.iter().map(|row| choosing || !row.off).collect();
+    let slot = |index: Option<usize>| index.map_or(-1, |index| index as i32);
+    let rows: Vec<MakerRow> = (rows.into_iter().zip(row_places(&shown)))
+        .map(|(row, place)| MakerRow {
+            hidden: place.hidden,
+            place: place.place as i32,
+            above: slot(place.above),
+            below: slot(place.below),
             ..row
         })
         .collect();
     maker.set_rows(Rc::new(slint::VecModel::from(rows)).into());
-    maker.set_shown_rows(count);
+    maker.set_shown_rows(shown.iter().filter(|&&shown| shown).count() as i32);
     maker.set_choosing_splits(choosing);
 }
 
@@ -244,13 +242,6 @@ fn main() {
         saved,
         thumb: if source.is_empty() { slint::Image::default() } else { thumb.clone() },
         has_thumb: !source.is_empty(),
-        problem: false,
-        joined: false,
-        shaded: false,
-        toggleable: false,
-        off: false,
-        fixed: "".into(),
-        kept: false,
         ..MakerRow::default()
     };
     let rows = vec![
@@ -287,6 +278,7 @@ fn main() {
     // off, so both are hidden until Choose Splits shows them, and the two Kokiri Sword images are
     // one split with one checkbox
     let always = |row: MakerRow, fixed: &str| MakerRow { always_on: true, fixed: fixed.into(), leader: -1, ..row };
+    // The checkbox only shows while choosing, when every split is shown, so its place is its index
     let toggle = |row: MakerRow, index: i32, rows: i32| MakerRow {
         toggleable: true,
         leader: index,
