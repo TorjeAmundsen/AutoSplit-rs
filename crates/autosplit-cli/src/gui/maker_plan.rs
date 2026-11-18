@@ -133,6 +133,25 @@ pub fn screenshots_status(with: usize, without: usize) -> Option<String> {
     })
 }
 
+/// What the window says after `picked` screenshots were set in order, from the first, for the
+/// `count` splits that take one: past `fades` fade splits, made from their color, and `off`
+/// splits that are off, which get no split image.
+pub fn screenshots_set_status(picked: usize, count: usize, fades: usize, off: usize) -> String {
+    // For each split, and for the splits
+    let (each, all) = match (fades > 0, off > 0) {
+        (false, false) => ("", ""),
+        (true, false) => (" that isn't a fade split", " that aren't fade splits"),
+        (false, true) => (" that's on", " that are on"),
+        (true, true) => (" that's on and isn't a fade split", " that are on and aren't fade splits"),
+    };
+    let save = "Save All writes their split images.";
+    match picked {
+        _ if picked == count => format!("{picked} screenshots set, one for each split{each}. {save}"),
+        _ if all.is_empty() => format!("{picked} screenshots for {count} splits, set in order from the first. {save}"),
+        _ => format!("{picked} screenshots for the {count} splits{all}, set in order from the first. {save}"),
+    }
+}
+
 /// The split to select after grabbing split `after`, where `skipped` says which splits aren't
 /// grabbed, like ones made from their preset's screenshot: the next one that is, so playing
 /// through and pressing the screenshot hotkey never replaces one. None when no split after it is

@@ -12,8 +12,8 @@ use autosplit::gui::document::{Document, folder_text, profile_on_open};
 use autosplit::gui::log::{LOG_LINES, LogLines};
 use autosplit::gui::maker_plan::{
     DeletedPreset, PresetList, WritePlan, images_numbered, looks_made, move_to_base, next_to_grab, plan_writes,
-    preset_after_delete, saved_from_after_preset_save, saves_in_place, screenshots_status, screenshots_to_move,
-    stale_to_delete, writes_over,
+    preset_after_delete, saved_from_after_preset_save, saves_in_place, screenshots_set_status, screenshots_status,
+    screenshots_to_move, stale_to_delete, writes_over,
 };
 use autosplit::gui::messages::{Answer, Buttons, Message, MessageQueue};
 use autosplit::gui::placement::{Area, beside, centered_over};
@@ -625,6 +625,17 @@ fn other_split_images_compared_for_the_same_split_arent_stale() {
 
     // Assert
     assert_eq!(plan.stale, Vec::<PathBuf>::new());
+}
+
+#[test_case(8, 8, 0, 0 => "8 screenshots set, one for each split. Save All writes their split images."; "one each")]
+#[test_case(8, 8, 1, 0 => "8 screenshots set, one for each split that isn't a fade split. Save All writes their split images."; "one each past fades")]
+#[test_case(8, 8, 0, 2 => "8 screenshots set, one for each split that's on. Save All writes their split images."; "one each past splits that are off")]
+#[test_case(8, 8, 1, 2 => "8 screenshots set, one for each split that's on and isn't a fade split. Save All writes their split images."; "one each past both")]
+#[test_case(5, 8, 0, 0 => "5 screenshots for 8 splits, set in order from the first. Save All writes their split images."; "fewer")]
+#[test_case(5, 8, 0, 2 => "5 screenshots for the 8 splits that are on, set in order from the first. Save All writes their split images."; "fewer past splits that are off")]
+fn picked_screenshots_say_which_splits_they_went_to(picked: usize, count: usize, fades: usize, off: usize) -> String {
+    // Act, with the expected value checked by test_case
+    screenshots_set_status(picked, count, fades, off)
 }
 
 #[test]

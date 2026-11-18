@@ -18,7 +18,7 @@ use slint::{ComponentHandle, ModelRc, Rgba8Pixel, SharedPixelBuffer, SharedStrin
 use super::document::Document;
 use super::maker_plan::{
     PresetList, images_numbered, looks_made, move_to_base, next_to_grab, plan_writes, saves_in_place,
-    screenshots_status, screenshots_to_move, stale_to_delete, writes_over,
+    screenshots_set_status, screenshots_status, screenshots_to_move, stale_to_delete, writes_over,
 };
 use super::messages::{Answer, Message};
 use super::paths::{canonical, file_name_text};
@@ -976,15 +976,22 @@ impl Gui {
             drop(maker);
             return self.windows.maker.set_status("Fade splits are made from their color, not a screenshot.".into());
         }
+        if paths.len() == 1 && maker.is_off(&enabled, maker.selected) {
+            drop(maker);
+            return self.windows.maker.set_status("The selected split is off, so it gets no split image.".into());
+        }
         // Fade splits are made from their color, so screenshots go to the others in order, past
         // the ones that are off, which were never split on
+        let off = (0..maker.splits.len()).filter(|&index| maker.is_off(&enabled, index)).count();
+        let fades = (0..maker.splits.len())
+            .filter(|&index| maker.fade_split(index).is_some() && !maker.is_off(&enabled, index))
+            .count();
         let takes_screenshot: Vec<usize> = (0..maker.splits.len())
             .filter(|&index| maker.fade_split(index).is_none() && !maker.is_off(&enabled, index))
             .collect();
-        let count = takes_screenshot.len();
-        let fades = maker.splits.len() - count;
         // Without splits, like with no presets or all of them removed, there's no selected one
         let selected = (maker.selected < maker.splits.len()).then_some(maker.selected);
+        let count = takes_screenshot.len();
         let targets = if paths.len() == 1 { selected.into_iter().collect() } else { takes_screenshot };
         let mut set = Vec::new();
         for (&index, path) in targets.iter().zip(&paths) {
@@ -1000,19 +1007,7 @@ impl Gui {
                 "Screenshot set for the selected split. {} writes its split image.",
                 if self.state.borrow().document.profile.advanced_maker { "Save Selected" } else { "Save All" }
             ),
-            n if n == count && fades == 0 => {
-                format!("{n} screenshots set, one for each split. Save All writes their split images.")
-            }
-            n if n == count => format!(
-                "{n} screenshots set, one for each split that isn't a fade split. Save All writes their split images."
-            ),
-            n if fades == 0 => format!(
-                "{n} screenshots for {count} splits, set in order from the first. Save All writes their split images."
-            ),
-            n => format!(
-                "{n} screenshots for the {count} splits that aren't fade splits, set in order from the first. Save All \
-                 writes their split images."
-            ),
+            picked => screenshots_set_status(picked, count, fades, off),
         };
         self.windows.maker.set_status(status.into());
         // Split images picked as screenshots would be masked twice
