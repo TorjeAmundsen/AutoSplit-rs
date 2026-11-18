@@ -440,6 +440,8 @@ fn splits_follow_the_split_that_decides_whether_they_are_on() {
 #[test_case(&["A", "B", "+B2"] => vec![Some(0), None, None]; "a final group")]
 #[test_case(&["A", "~Guard", "reset", "B", "C"] => vec![Some(0), None, None, Some(3), None]; "a dummy before a reset image")]
 #[test_case(&["A", "reset", "+B"] => vec![Some(0), None, None]; "a final split that cant join a reset image")]
+#[test_case(&["A", "~D", "+B", "C", "End"] => vec![Some(0), Some(2), Some(2), Some(3), None]; "a group led by a dummy")]
+#[test_case(&["A", "~D", "+B"] => vec![Some(0), None, None]; "a final group led by a dummy")]
 fn the_split_a_split_follows(names: &[&str]) -> Vec<Option<usize>> {
     // Arrange
     let preset = marked_preset(names);

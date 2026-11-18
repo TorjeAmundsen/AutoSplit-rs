@@ -585,14 +585,16 @@ fn marked(names: &[&str]) -> Draft {
     draft
 }
 
-#[test_case(0 => Some("Start and reset images are always on."); "reset image")]
-#[test_case(1 => Some("A dummy is on or off with the next split that isn't a dummy."); "dummy")]
+#[test_case(0 => Some("Start and reset images are always on.".to_owned()); "reset image")]
+#[test_case(1 => Some("It's on or off with A.".to_owned()); "dummy")]
 #[test_case(2 => None; "a split")]
-#[test_case(3 => Some("It's on or off with the first of the splits it's compared together with."); "compared together")]
-#[test_case(5 => Some("The final split is always on, since it ends the run."); "final split")]
-fn the_checkbox_says_why_it_cant_be_off(index: usize) -> Option<&'static str> {
+#[test_case(3 => Some("It's on or off with A.".to_owned()); "compared together")]
+#[test_case(5 => Some("It goes with End, the final split, which is always on.".to_owned()); "dummy before the final split")]
+#[test_case(6 => Some("The final split is always on, since it ends the run.".to_owned()); "final split")]
+#[test_case(7 => Some("A dummy with no split after it to go with is always on.".to_owned()); "dummy at the end")]
+fn the_checkbox_says_why_it_cant_be_off(index: usize) -> Option<String> {
     // Arrange
-    let draft = marked(&["reset", "~Guard", "A", "+A2", "B", "End"]);
+    let draft = marked(&["reset", "~Guard", "A", "+A2", "B", "~Last", "End", "~After"]);
 
     // Act, with the expected value checked by test_case
     draft.why_not_off(index)

@@ -621,6 +621,9 @@ impl Gui {
         let count = maker.loaded().map_or(0, |loaded| loaded.preset.splits.len());
         maker.start_over(count);
         drop(maker);
+        // The first split that's on, which the screenshot hotkey's first press grabs
+        let first_on = self.maker_enabled().iter().position(|&on| on).unwrap_or(0);
+        self.maker.borrow_mut().selected = first_on;
         self.show_screenshots_status();
         self.show_preset(index);
     }

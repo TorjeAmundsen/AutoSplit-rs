@@ -252,7 +252,7 @@ impl Draft {
 
     /// Why split `index` can't be off by default, for the greyed out checkbox, or `None` when it
     /// can.
-    pub fn why_not_off(&self, index: usize) -> Option<&'static str> {
+    pub fn why_not_off(&self, index: usize) -> Option<String> {
         why_not_toggleable(&self.preset, index)
     }
 
@@ -591,21 +591,22 @@ fn group_problems(preset: &Preset) -> Vec<(usize, Field, String)> {
     problems
 }
 
-/// Why the runner can't turn split `index` on or off, or `None` when they can, see
-/// [`Preset::leader`].
-pub fn why_not_toggleable(preset: &Preset, index: usize) -> Option<&'static str> {
+/// Why the runner can't turn split `index` on or off, naming the split it goes with, or `None`
+/// when they can, see [`Preset::leader`].
+pub fn why_not_toggleable(preset: &Preset, index: usize) -> Option<String> {
     let split = preset.splits.get(index)?;
     if preset.toggleable(index) {
         return None;
     }
-    Some(if split.is_keyword() {
-        "Start and reset images are always on."
-    } else if preset.joins_previous(index) {
-        "It's on or off with the first of the splits it's compared together with."
-    } else if split.dummy {
-        "A dummy is on or off with the next split that isn't a dummy."
-    } else {
-        "The final split is always on, since it ends the run."
+    let always_on = preset.leader(index).is_none();
+    Some(match preset.decider(index) {
+        _ if split.is_keyword() => "Start and reset images are always on.".to_owned(),
+        None => "A dummy with no split after it to go with is always on.".to_owned(),
+        Some(decider) if decider == index => "The final split is always on, since it ends the run.".to_owned(),
+        Some(decider) if always_on => {
+            format!("It goes with {}, the final split, which is always on.", split_heading(preset, decider))
+        }
+        Some(decider) => format!("It's on or off with {}.", split_heading(preset, decider)),
     })
 }
 

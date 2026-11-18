@@ -336,23 +336,40 @@ impl Preset {
         start..end
     }
 
-    /// The split whose being on or off split `index` follows, or `None` for a split that's always
-    /// on: a reset or start image, the final split, and the splits that follow it. A split compared
-    /// with the one before follows the first of its group, and dummies follow the next split that
-    /// isn't one. The final split is the last that isn't a reset or start image or a dummy.
-    pub fn leader(&self, index: usize) -> Option<usize> {
-        // The first split of each group stands for the group
-        let leads = |first: usize| {
-            let split = &self.splits[first];
-            !split.is_keyword() && !split.dummy && !self.joins_previous(first)
-        };
+    /// The split that stands for the splits compared together with split `index`: the first of
+    /// them that isn't a dummy, or `None` when all of them are.
+    fn group_lead(&self, index: usize) -> Option<usize> {
+        self.group(index).find(|&each| !self.splits[each].dummy)
+    }
+
+    /// The split that split `index` is on or off with, whether the runner can turn that one on or
+    /// off or not: the one that stands for its group, see [`Preset::group_lead`], and for a group
+    /// of dummies the next group's. `None` for a reset or start image, and for dummies with no
+    /// split after them before a reset or start image or the end.
+    pub fn decider(&self, index: usize) -> Option<usize> {
         let mut first = self.group(index).start;
-        while self.splits.get(first).is_some_and(|split| !split.is_keyword() && split.dummy) {
+        loop {
+            if self.splits.get(first)?.is_keyword() {
+                return None;
+            }
+            if let Some(lead) = self.group_lead(first) {
+                return Some(lead);
+            }
             first = self.group(first).end;
         }
-        self.splits.get(first).filter(|split| !split.is_keyword())?;
-        let is_final = !(self.group(first).end..self.splits.len()).any(leads);
-        (!is_final).then_some(first)
+    }
+
+    /// The split whose being on or off split `index` follows, see [`Preset::decider`], or `None`
+    /// for a split that's always on: a reset or start image, the final split, and the splits that
+    /// go with it. The final split is the last that isn't a reset or start image or a dummy.
+    pub fn leader(&self, index: usize) -> Option<usize> {
+        let lead = self.decider(index)?;
+        // Each group that isn't only dummies, by its first split
+        let leads = |first: usize| {
+            !self.splits[first].is_keyword() && !self.joins_previous(first) && self.group_lead(first).is_some()
+        };
+        let is_final = !(self.group(lead).end..self.splits.len()).any(leads);
+        (!is_final).then_some(lead)
     }
 
     /// Whether the runner can turn split `index` on or off: it's no other split's follower and
