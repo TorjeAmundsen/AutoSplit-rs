@@ -61,6 +61,7 @@ base_image = "base_PotionBottle.png"
 
 [[split]]
 name = "LoadingZoneFade"
+mask = "LoadingZoneFade.png"
 fade = "#000000"
 fade_time = 500
 threshold = 0.999

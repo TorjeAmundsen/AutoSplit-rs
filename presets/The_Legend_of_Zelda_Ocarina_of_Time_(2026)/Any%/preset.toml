@@ -90,6 +90,7 @@ dummy = true
 
 [[split]]
 name = "EnterDodongoCavern"
+mask = "EnterDodongoCavern.png"
 fade = "#000000"
 fade_time = 500
 threshold = 0.999
@@ -116,6 +117,7 @@ dummy = true
 [[split]]
 name = "EnterShadowTemple"
 off = true
+mask = "EnterShadowTemple.png"
 fade = "#000000"
 fade_time = 500
 threshold = 0.999
