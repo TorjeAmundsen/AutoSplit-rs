@@ -1,8 +1,10 @@
-// The Live Tester: one split image compared with the capture region outside of a run, with the
-// frames that would have made it act.
+// The Live Tester: a split image, or the images of one split, compared with the capture region
+// outside of a run, with the frames that would have made them act.
 
+import { CheckBox } from "std-widgets.slint";
 import { Button, ClickAway, FileName, Label, NamePart, Preview, Theme, Tip } from "widgets.slint";
 import { InlineMessage, MessageOverlay } from "message.slint";
+import { SimilarityRow, SimilarityViewer } from "similarity.slint";
 
 // How far the live similarity is from the threshold: a bar filled up to the similarity, a tick at
 // the highest, and a mark at the threshold where the green part starts.
@@ -299,6 +301,17 @@ export component TesterWindow inherits Window {
     in property <TesterReading> reading;
     in property <image> live-image;
     in property <image> split-image;
+    // The image has others compared with it for one split
+    in property <bool> can-group;
+    // Test Its Group's box, checked while it's on and the image has a group or failed to load
+    in-out property <bool> group-checked;
+    // Test Its Group is on, also for an image without a group
+    in property <bool> group-on;
+    // What's shown is a group, which the session says. It's shown like the main window shows a
+    // split's images: in a 2x2 grid, with a row of similarities each
+    in property <bool> group-shown;
+    in property <[image]> tiles;
+    in property <[SimilarityRow]> rows;
     in property <image> kept-image;
     in property <string> kept-caption;
     in property <string> kept-position;
@@ -315,6 +328,7 @@ export component TesterWindow inherits Window {
     callback previous-image();
     callback next-image();
     callback reload-image();
+    callback group-toggled();
     callback rearm();
     callback previous-kept();
     callback next-kept();
@@ -357,6 +371,19 @@ export component TesterWindow inherits Window {
                 enabled: root.can-reload;
                 clicked => { root.reload-image(); }
                 tip: "Load the image again. It also loads again by itself when the file changes.";
+            }
+
+            CheckBox {
+                text: "Test Its Group";
+                enabled: root.can-group;
+                checked <=> root.group-checked;
+                toggled => { root.group-toggled(); }
+
+                Tooltip {
+                    Tip {
+                        text: "Compare it together with the other images of its split, like a run does with Compare images with the same number for one split turned on: the first one that matches acts. Its group is the images with its number, or all start or all reset images. It's off for an image without others, or with more than 4, which a run couldn't compare. Turning it on or off starts over, like Start Over.";
+                    }
+                }
             }
 
             FileName {
@@ -420,15 +447,30 @@ export component TesterWindow inherits Window {
 
                 Label {
                     height: 18px;
-                    text: "Split Image";
+                    text: root.group-shown ? "Split Images" : "Split Image";
                     horizontal-alignment: center;
                 }
 
-                Preview {
+                if !root.group-shown: Preview {
                     width: 320px;
                     height: 240px;
                     source: root.split-image;
                     message: root.has-image ? "" : "No image open";
+                }
+
+                // Like the main window's grid
+                if root.group-shown: Rectangle {
+                    width: 320px;
+                    height: 240px;
+
+                    for tile[index] in root.tiles: Preview {
+                        x: mod(index, 2) * 160px;
+                        y: floor(index / 2) * 120px;
+                        width: 160px;
+                        height: 120px;
+                        source: tile;
+                        message: tile.width == 0 ? "None" : "";
+                    }
                 }
             }
 
@@ -476,37 +518,53 @@ export component TesterWindow inherits Window {
             }
         }
 
-        HorizontalLayout {
-            spacing: 8px;
+        // While Test Its Group is on, as tall as the rows of a group of 4, so stepping through
+        // images doesn't resize the window
+        VerticalLayout {
             alignment: start;
+            min-height: root.group-on ? 40px + 4 * 22px : 0px;
 
-            LiveReading {
-                width: 320px;
-                live: root.reading.live;
-                highest: root.reading.highest;
-                threshold: root.reading.threshold;
-                noise: root.reading.noise;
-                live-value: root.reading.live-value;
-                highest-value: root.reading.highest-value;
-                threshold-value: root.reading.threshold-value;
-                met: root.reading.reached;
-                highest-met: root.reading.highest-reached;
-            }
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: start;
 
-            VerticalLayout {
-                alignment: center;
-
-                Button {
-                    width: 80px;
-                    text: "Start Over";
-                    enabled: root.has-image;
-                    clicked => { root.rearm(); }
-                    tip: "Clear the highest similarity and the kept frames, and wait for a match again";
+                if root.group-shown: SimilarityViewer {
+                    width: 321px;
+                    height: 40px + root.rows.length * 22px;
+                    grouped: true;
+                    group-rows: root.rows;
+                    row-name: "Image";
+                    reset-row: false;
                 }
-            }
 
-            Label {
-                text: root.reading.status;
+                if !root.group-shown: LiveReading {
+                    width: 320px;
+                    live: root.reading.live;
+                    highest: root.reading.highest;
+                    threshold: root.reading.threshold;
+                    noise: root.reading.noise;
+                    live-value: root.reading.live-value;
+                    highest-value: root.reading.highest-value;
+                    threshold-value: root.reading.threshold-value;
+                    met: root.reading.reached;
+                    highest-met: root.reading.highest-reached;
+                }
+
+                VerticalLayout {
+                    alignment: center;
+
+                    Button {
+                        width: 80px;
+                        text: "Start Over";
+                        enabled: root.has-image;
+                        clicked => { root.rearm(); }
+                        tip: "Clear the highest similarity and the kept frames, and wait for a match again";
+                    }
+                }
+
+                Label {
+                    text: root.reading.status;
+                }
             }
         }
     }

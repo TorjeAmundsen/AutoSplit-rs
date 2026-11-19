@@ -22,6 +22,19 @@ pub enum ImageType {
     Start,
 }
 
+impl ImageType {
+    /// What an image is used for, from its lowercase file name.
+    pub fn from_filename(filename: &str) -> Self {
+        if filename::has_keyword(filename, START_KEYWORD) {
+            Self::Start
+        } else if filename::has_keyword(filename, RESET_KEYWORD) {
+            Self::Reset
+        } else {
+            Self::Split
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub enum SplitContent {
     Image {
@@ -47,6 +60,19 @@ pub enum LoadError {
     FullyTransparent(PathBuf),
     #[error("'{}' is a fade image, with the {{f}} flag, so it has to be one solid color.", file_name(.0))]
     FadeNotSolid(PathBuf),
+}
+
+impl LoadError {
+    /// The file that couldn't be loaded.
+    pub fn path(&self) -> &Path {
+        match self {
+            Self::Unreadable(path)
+            | Self::NotPng(path)
+            | Self::OcrUnsupported(path)
+            | Self::FullyTransparent(path)
+            | Self::FadeNotSolid(path) => path,
+        }
+    }
 }
 
 /// A filename value that's ignored, with the file it's in.
@@ -103,13 +129,7 @@ pub struct SplitImage {
 impl SplitImage {
     pub fn load(path: &Path) -> Self {
         let filename = path.file_name().map(|name| name.to_string_lossy().to_lowercase()).unwrap_or_default();
-        let image_type = if filename::has_keyword(&filename, START_KEYWORD) {
-            ImageType::Start
-        } else if filename::has_keyword(&filename, RESET_KEYWORD) {
-            ImageType::Reset
-        } else {
-            ImageType::Split
-        };
+        let image_type = ImageType::from_filename(&filename);
         let content = if path.extension().is_some_and(|extension| extension.eq_ignore_ascii_case("txt")) {
             SplitContent::Invalid(LoadError::OcrUnsupported(path.to_owned()))
         } else {

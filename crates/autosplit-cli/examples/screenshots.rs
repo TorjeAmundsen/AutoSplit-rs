@@ -220,6 +220,27 @@ fn main() {
     save(&window, PhysicalSize::new(992, 470), &folder.join("tester.png"));
     tester.set_reading(TesterReading { reached: false, live: "0.412".into(), live_value: 0.412, ..reached });
     save(&window, PhysicalSize::new(992, 470), &folder.join("tester-waiting.png"));
+    // Testing a group of three images, the second of which split
+    tester.set_can_group(true);
+    tester.set_group_checked(true);
+    tester.set_group_on(true);
+    tester.set_group_shown(true);
+    let tiles = [solid([60, 90, 200]), solid([60, 160, 60]), solid([200, 120, 60]), slint::Image::default()];
+    tester.set_tiles(std::rc::Rc::new(slint::VecModel::from(tiles.to_vec())).into());
+    let row = |live: &str, highest: &str, threshold: &str| SimilarityRow {
+        live: live.into(),
+        highest: highest.into(),
+        threshold: threshold.into(),
+    };
+    let rows = [row("0.412", "0.611", "0.950"), row("0.962", "0.962", "0.900"), row("0.233", "0.301", "0.950")];
+    tester.set_rows(std::rc::Rc::new(slint::VecModel::from(rows.to_vec())).into());
+    tester.set_kept_caption("Image 2, Split: 0.962".into());
+    let status = "Done: image 2 matched first, this is where it splits. Press Start Over to watch for the next match.";
+    tester.set_reading(TesterReading { status: status.into(), ..TesterReading::default() });
+    // Past the checkbox's change
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    slint::platform::update_timers_and_animations();
+    save(&window, PhysicalSize::new(992, 540), &folder.join("tester-group.png"));
     tester.hide().unwrap();
 
     let maker = MakerWindow::new().unwrap();

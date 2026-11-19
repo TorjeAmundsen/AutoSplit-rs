@@ -13,8 +13,8 @@ use autosplit_core::split_folder::MAX_GROUP_SIZE;
 use autosplit_core::split_image::{SplitContent, SplitImage};
 use autosplit_core::tester::Phase;
 use autosplit_core::text::{
-    InfoCell, WindowTexts, decimal, decimal_or_dash, tester_ignored, tester_info, tester_noise, tester_status,
-    trigger_caption, window_texts,
+    InfoCell, WindowTexts, decimal, decimal_or_dash, tester_ignored, tester_info, tester_noise, tester_rows,
+    tester_status, trigger_caption, window_texts,
 };
 use slint::{Rgba8Pixel, SharedPixelBuffer};
 
@@ -89,6 +89,10 @@ pub struct TesterTexts {
     pub meter: (f32, f32, f32),
     /// Shown instead of the live preview.
     pub live_message: String,
+    /// With several images, the live, highest and threshold of each, else nothing.
+    pub rows: Vec<[String; 3]>,
+    /// The image has a group, so Test Its Group can be turned on.
+    pub can_group: bool,
 }
 
 /// Frames the Live Tester kept that the window doesn't have yet, with their captions. A frame
@@ -159,6 +163,8 @@ pub struct TesterUpdate {
     pub texts: Option<TesterTexts>,
     pub live: Picture,
     pub image: Picture,
+    /// With several images, the grid's tiles, cleared when there's no image for them.
+    pub tiles: [Picture; MAX_GROUP_SIZE],
     pub kept: KeptFrames,
     /// It has no image: it couldn't load one, or it was closed.
     pub gone: bool,
@@ -173,10 +179,12 @@ impl TesterUpdate {
         if self.request != older.request {
             return self;
         }
+        let mut older_tiles = older.tiles.into_iter();
         TesterUpdate {
             texts: self.texts.or(older.texts),
             live: self.live.after(older.live),
             image: self.image.after(older.image),
+            tiles: self.tiles.map(|tile| tile.after(older_tiles.next().unwrap_or(Picture::Keep))),
             kept: self.kept.after(older.kept),
             gone: self.gone || older.gone,
             request: self.request,
@@ -184,7 +192,7 @@ impl TesterUpdate {
     }
 
     pub fn is_empty(&self) -> bool {
-        let pictures = [&self.live, &self.image];
+        let pictures = [&self.live, &self.image].into_iter().chain(&self.tiles);
         self.texts.is_none()
             && pictures.into_iter().all(|picture| matches!(picture, Picture::Keep))
             && self.kept.is_empty()
@@ -356,10 +364,16 @@ impl GuiView {
             shown.shown = Some(snapshot.tester_loaded);
             // The window cleared its texts for the new image
             shown.texts = None;
-            update.image = match &image.content {
+            let picture = |image: &SplitImage| match &image.content {
                 SplitContent::Image { pixels, .. } => Picture::Show(rgba(pixels.view())),
                 SplitContent::Invalid(_) => Picture::Clear,
             };
+            update.image = picture(image);
+            let slots = tester.slots();
+            update.tiles = std::array::from_fn(|slot| match slots.get(slot) {
+                Some(slot) if tester.grouped() => picture(slot.image()),
+                _ => Picture::Clear,
+            });
         }
         let threshold = tester.threshold();
         let similarity = tester.similarity().filter(|_| snapshot.receiving);
@@ -384,6 +398,8 @@ impl GuiView {
                 threshold as f32,
             ),
             live_message,
+            rows: if tester.grouped() { tester_rows(tester, snapshot.receiving) } else { Vec::new() },
+            can_group: snapshot.tester_can_group,
         };
         if shown.texts.as_ref() != Some(&texts) {
             shown.texts = Some(texts.clone());

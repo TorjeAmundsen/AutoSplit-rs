@@ -53,7 +53,7 @@ The workspace has four crates:
 A few design notes:
 
 - The runner never blocks. The host calls `tick` with the latest frame when `next_wakeup` is due, then acts on the effects it returns.
-- The Live Tester decides the same way the runner does, for one image, outside of a run.
+- The Live Tester decides the same way the runner does, for one image or the images of one split, outside of a run.
 - Hotkeys go through livesplit-hotkey on Windows and Linux. On macOS, `autosplit-input/src/macos.rs` has its own listen-only event tap, because livesplit-hotkey's asks for Accessibility permission, which only sending key presses needs.
 
 ## Tests

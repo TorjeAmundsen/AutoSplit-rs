@@ -4,6 +4,7 @@ use std::ops::Range;
 use std::path::{Path, PathBuf};
 
 use crate::filename::{FADE_COMPARISONS, FilenameWarning, RESET_KEYWORD, START_KEYWORD, number_prefix};
+use crate::image::BgraImage;
 use crate::profile::UserProfile;
 use crate::split_image::{self, ImageType, LoadError, LoadWarning, SplitImage};
 
@@ -236,7 +237,7 @@ fn group_splits(splits: &mut [SplitImage], by_number: bool) -> Result<Vec<Range<
         number_prefix(&image.filename).unwrap_or_default()
     }
     fn number(image: &SplitImage) -> (usize, &str) {
-        let significant = digits(image).trim_start_matches('0');
+        let significant = significant_number(&image.filename).unwrap_or_default();
         (significant.len(), significant)
     }
     // Stable, so images with the same number stay in name order
@@ -255,6 +256,61 @@ fn group_splits(splits: &mut [SplitImage], by_number: bool) -> Result<Vec<Range<
         groups.push(start..start + group.len());
     }
     Ok(groups)
+}
+
+/// A split image's number without its leading zeros, which images compared for one split share:
+/// "1_a.png" and "01_b.png" are both "1". `None` without a number.
+fn significant_number(filename: &str) -> Option<&str> {
+    number_prefix(filename).map(|digits| digits.trim_start_matches('0'))
+}
+
+/// The images compared together with the image at `path` in a run that compares images with the
+/// same number for one split, in the order they're compared, with `path` among them: the images in
+/// its folder with its number, or the other start or reset images. Like a folder load, files that
+/// aren't PNG images inside are left out, whatever their extension. Only `path` when there are no
+/// others or more than a run can compare, or for a split image without a number.
+pub fn group_paths(path: &Path) -> Vec<PathBuf> {
+    let alone = vec![path.to_owned()];
+    let (Some(folder), Some(name)) = (path.parent(), lowercase_name(path)) else { return alone };
+    let image_type = ImageType::from_filename(&name);
+    let number = significant_number(&name);
+    if image_type == ImageType::Split && number.is_none() {
+        return alone;
+    }
+    let in_group = |other: &Path| {
+        let Some(other_name) = lowercase_name(other) else { return false };
+        let other_type = ImageType::from_filename(&other_name);
+        other_type == image_type
+            && (image_type != ImageType::Split || significant_number(&other_name) == number)
+            && reads_as_png(other)
+    };
+    let group: Vec<PathBuf> =
+        user_files(folder).unwrap_or_default().into_iter().filter(|other| in_group(other)).collect();
+    if group.len() > MAX_GROUP_SIZE || !group.iter().any(|other| other == path) {
+        return alone;
+    }
+    group
+}
+
+/// A file's name in lowercase, the way [`SplitImage::load`] reads it.
+fn lowercase_name(path: &Path) -> Option<String> {
+    path.file_name().map(|name| name.to_string_lossy().to_lowercase())
+}
+
+/// Whether a folder load would read the file as a split image: it isn't a text file and doesn't
+/// start like another kind of file. A file that can't be read is kept, which a folder load
+/// refuses, so the tester says why too.
+fn reads_as_png(path: &Path) -> bool {
+    use std::io::Read;
+    if path.extension().is_some_and(|extension| extension.eq_ignore_ascii_case("txt")) {
+        return false;
+    }
+    let mut header = [0; 8];
+    match std::fs::File::open(path).and_then(|mut file| file.read_exact(&mut header)) {
+        Ok(()) => BgraImage::is_png(&header),
+        Err(error) if error.kind() == std::io::ErrorKind::UnexpectedEof => false,
+        Err(_) => true,
+    }
 }
 
 /// Files in the folder, sorted by name. Hidden files, system files and folders are skipped.

@@ -6,8 +6,8 @@ use std::time::Duration;
 use autosplit_core::image::BgraImage;
 use autosplit_core::runner::Captured;
 use autosplit_core::split_image::{LoadError, SplitDefaults};
-use autosplit_core::tester::{Tester, TriggerKind};
-use autosplit_core::text::{tester_info, tester_noise, tester_status, trigger_caption};
+use autosplit_core::tester::{Phase, Tester, TriggerKind};
+use autosplit_core::text::{tester_ignored, tester_info, tester_noise, tester_status, trigger_caption};
 use tempfile::TempDir;
 
 type Bgr = [u8; 3];
@@ -48,6 +48,26 @@ impl Harness {
         std::fs::write(&path, solid(RED).encode_png().unwrap()).unwrap();
         let tester = Tester::open(&path, defaults, Duration::ZERO).unwrap();
         Self { _directory: directory, tester, now: Duration::ZERO, next_sequence: 0 }
+    }
+
+    /// A tester of the images `images`, compared together in that order, each one color, with
+    /// the one at `opened` opened.
+    fn group(images: &[(&str, Bgr)], opened: usize) -> Self {
+        let directory = tempfile::tempdir().unwrap();
+        let paths: Vec<PathBuf> = (images.iter())
+            .map(|(name, color)| {
+                let path = directory.path().join(name);
+                std::fs::write(&path, solid(*color).encode_png().unwrap()).unwrap();
+                path
+            })
+            .collect();
+        let tester = Tester::open_group(&paths, opened, DEFAULTS, Duration::ZERO).unwrap();
+        Self { _directory: directory, tester, now: Duration::ZERO, next_sequence: 0 }
+    }
+
+    /// The kept frames' kinds, with which image each is of.
+    fn kept_slots(&self) -> Vec<(TriggerKind, usize)> {
+        self.tester.triggers().iter().map(|trigger| (trigger.kind, trigger.slot)).collect()
     }
 
     /// Feeds `frame` (or no capture) for `duration`, a new frame every tick.
@@ -465,4 +485,87 @@ fn noise_isnt_shown_for_images_that_dont_fade() {
 
     // Assert
     assert_eq!(tester_noise(&harness.tester, true), Vec::<String>::new());
+}
+
+#[test]
+fn group_acts_on_the_image_that_matched_then_stops() {
+    // Arrange
+    let mut harness = Harness::group(&[("1_red.png", RED), ("1_blue.png", BLUE)], 0);
+
+    // Act: the second image matches, then the first one's screen comes too late
+    harness.feed(Some(BLUE), SECOND);
+    harness.feed(Some(RED), SECOND);
+
+    // Assert
+    assert_eq!(
+        (harness.kept_slots(), harness.tester.phase()),
+        (vec![(TriggerKind::Acted { delay: 0 }, 1)], Phase::Done { slot: 1 })
+    );
+}
+
+#[test]
+fn group_acts_on_an_earlier_image_while_a_below_image_waits_to_drop() {
+    // Arrange: the {b} image is second, so the first one is compared first on every frame
+    let mut harness = Harness::group(&[("1_blue.png", BLUE), ("1_red_{b}.png", RED)], 0);
+
+    // Act: the red image reaches its threshold, then the blue screen makes it drop back below
+    // on the same frame the blue image matches
+    harness.feed(Some(RED), SECOND);
+    harness.feed(Some(BLUE), SECOND);
+
+    // Assert
+    assert_eq!(
+        (harness.captions(), tester_status(&harness.tester)),
+        (
+            vec!["Image 2, Reached: 1.000".to_owned(), "Image 1, Split: 1.000".to_owned()],
+            "Done: image 1 matched first, this is where it splits. Press Start Over to watch for the next match."
+                .to_owned()
+        )
+    );
+}
+
+#[test]
+fn group_status_says_which_image_waits_for_its_delay() {
+    // Arrange
+    let mut harness = Harness::group(&[("1_blue.png", BLUE), ("1_red_#500#.png", RED)], 0);
+
+    // Act
+    harness.feed(Some(RED), ms(100));
+
+    // Assert
+    assert_eq!(tester_status(&harness.tester), "Image 2 matched first. Waiting for its 500 ms delay.");
+}
+
+#[test]
+fn group_info_says_which_image_it_is_and_ignored_values_say_whose() {
+    // Arrange: the second image opened, and a value the first one's name ignores
+    let harness = Harness::group(&[("1_blue_@0@.png", BLUE), ("1_red_{d}.png", RED)], 1);
+
+    // Act
+    let (acts, ignored) = (harness.info()[0].clone(), tester_ignored(&harness.tester));
+
+    // Assert
+    assert_eq!(
+        (acts.as_str(), ignored.as_str()),
+        (
+            "ACTS: moves to the next image without splitting (image 2, dummy)",
+            "Ignored in the name: '1_blue_@0@.png': the loop count 0 isn't 1 or more, so the image is used once"
+        )
+    );
+}
+
+#[test]
+fn group_status_says_which_fade_image_a_cut_left_waiting() {
+    // Arrange: the second image fades to red
+    let mut harness = Harness::group(&[("1_blue.png", BLUE), ("1_red_{f}.png", RED)], 0);
+    harness.feed(Some([0, 255, 0]), SECOND);
+
+    // Act: a cut to red
+    harness.feed(Some(RED), SECOND);
+
+    // Assert
+    assert_eq!(
+        tester_status(&harness.tester),
+        "Image 2 is at the threshold, but it didn't fade there, like after a cut. Waiting for an image to reach its threshold."
+    );
 }

@@ -24,6 +24,10 @@ struct Seen {
     current_files: Arc<Mutex<Vec<String>>>,
     current_messages: Arc<Mutex<Vec<String>>>,
     testers: Arc<Mutex<Vec<Tested>>>,
+    /// The file names of the Live Tester's images, while it's open.
+    tester_images: Arc<Mutex<Vec<Vec<String>>>>,
+    /// Whether the Live Tester's image has a group.
+    tester_can_group: Arc<Mutex<Vec<bool>>>,
 }
 
 impl Seen {
@@ -41,6 +45,14 @@ impl Seen {
 
     fn last_tester(&self) -> Tested {
         self.testers.lock().unwrap().last().cloned().flatten()
+    }
+
+    fn last_tester_can_group(&self) -> bool {
+        self.tester_can_group.lock().unwrap().last().copied().unwrap_or_default()
+    }
+
+    fn last_tester_images(&self) -> Vec<String> {
+        self.tester_images.lock().unwrap().last().cloned().unwrap_or_default()
     }
 }
 
@@ -62,6 +74,9 @@ impl View for FakeView {
         self.0.idle.lock().unwrap().push(snapshot.idle);
         let tester = snapshot.tester.map(|tester| (tester.image().display_name(), tester.threshold()));
         self.0.testers.lock().unwrap().push(tester);
+        let images = snapshot.tester.map(|tester| tester.slots().iter().map(|slot| slot.image().display_name()));
+        self.0.tester_images.lock().unwrap().push(images.into_iter().flatten().collect());
+        self.0.tester_can_group.lock().unwrap().push(snapshot.tester_can_group);
     }
 
     fn notice(&mut self, notice: Notice) {
@@ -89,6 +104,18 @@ fn run(profile: UserProfile, events: Vec<Event>) -> Seen {
 /// Runs a session for a moment with `events`, after the session set itself up and then
 /// `meanwhile` ran, then stops it.
 fn run_after(profile: UserProfile, meanwhile: impl FnOnce(), events: Vec<Event>) -> Seen {
+    run_with(profile, meanwhile, events, || {}, Duration::from_millis(50))
+}
+
+/// Runs a session like [`run_after`], with `later` running a moment after `events` were sent,
+/// and the session stopping `stop_after` after that.
+fn run_with(
+    profile: UserProfile,
+    meanwhile: impl FnOnce(),
+    events: Vec<Event>,
+    later: impl FnOnce() + Send + 'static,
+    stop_after: Duration,
+) -> Seen {
     let seen = Seen::default();
     let (sender, receiver) = mpsc::channel();
     let mut session = Session::new(
@@ -104,7 +131,9 @@ fn run_after(profile: UserProfile, meanwhile: impl FnOnce(), events: Vec<Event>)
         sender.send(event).unwrap();
     }
     std::thread::spawn(move || {
-        std::thread::sleep(Duration::from_millis(100));
+        std::thread::sleep(Duration::from_millis(50));
+        later();
+        std::thread::sleep(stop_after);
         let _ = sender.send(Event::Stop);
     });
     session.run(&receiver);
@@ -323,7 +352,7 @@ fn timer_connection_switches_when_the_run_ends() {
 }
 
 fn open_tester(path: std::path::PathBuf) -> Event {
-    Event::Ui(UiCommand::OpenTester { path, request: 1 })
+    Event::Ui(UiCommand::OpenTester { path, group: false, request: 1 })
 }
 
 #[test]
@@ -351,6 +380,63 @@ fn closing_the_live_tester_drops_its_image() {
 
     // Assert: no dialog, which an image that couldn't be opened would show, and closed
     assert_eq!((seen.notices(), seen.last_tester()), (Vec::<String>::new(), None));
+}
+
+#[test]
+fn live_tester_says_whether_its_image_has_a_group() {
+    // Arrange: one image alone, and one with another of its number
+    let (alone, grouped) = (split_folder(), split_folder());
+    std::fs::copy(grouped.path().join("001_split.png"), grouped.path().join("001_other.png")).unwrap();
+    let open = |folder: &tempfile::TempDir| vec![open_tester(folder.path().join("001_split.png"))];
+
+    // Act
+    let seen = [&alone, &grouped].map(|folder| run(UserProfile::default(), open(folder)));
+
+    // Assert: tested alone, which the box being off asked for, either way
+    let said = seen.map(|seen| (seen.last_tester_can_group(), seen.last_tester_images()));
+    assert_eq!(said, [(false, vec!["001_split.png".to_owned()]), (true, vec!["001_split.png".to_owned()])]);
+}
+
+#[test]
+fn live_tester_group_follows_an_image_saved_under_a_new_name() {
+    // Arrange: a group of two, the second saved again with another threshold in its name, which
+    // Make Split Images does by writing the new name and removing the old one
+    let folder = split_folder();
+    std::fs::copy(folder.path().join("001_split.png"), folder.path().join("001_other.png")).unwrap();
+    let open = Event::Ui(UiCommand::OpenTester { path: folder.path().join("001_split.png"), group: true, request: 1 });
+    let (old, new) = (folder.path().join("001_other.png"), folder.path().join("001_other_(0.5).png"));
+    let rename = move || std::fs::rename(old, new).unwrap();
+
+    // Act: past the next check of the files
+    let seen = run_with(UserProfile::default(), || {}, vec![open], rename, Duration::from_millis(700));
+
+    // Assert
+    assert_eq!(seen.last_tester_images(), ["001_other_(0.5).png", "001_split.png"]);
+}
+
+#[test]
+fn live_tester_group_with_an_unusable_image_says_to_test_the_opened_one_alone() {
+    // Arrange: a group whose second image is fully transparent
+    let folder = split_folder();
+    let clear = BgraImage::from_raw(8, 8, vec![0; 256]);
+    std::fs::write(folder.path().join("001_clear.png"), clear.encode_png().unwrap()).unwrap();
+    let open = |name: &str| {
+        let path = folder.path().join(name);
+        vec![Event::Ui(UiCommand::OpenTester { path, group: true, request: 1 })]
+    };
+
+    // Act: opening the usable image, and the unusable one, which alone wouldn't help
+    let seen = ["001_split.png", "001_clear.png"].map(|name| run(UserProfile::default(), open(name)).notices());
+
+    // Assert
+    let transparent = "dialog: '001_clear.png' is fully transparent, so there's nothing to compare.";
+    assert_eq!(
+        seen,
+        [
+            vec![format!("{transparent} Turn off Test Its Group to test '001_split.png' alone.")],
+            vec![transparent.to_owned()]
+        ]
+    );
 }
 
 #[test]
