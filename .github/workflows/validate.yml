@@ -118,65 +118,21 @@ jobs:
           cargo test --profile ci -p autosplit-core --test preset --test mask
           cargo test --profile ci -p autosplit --test gui bundled_presets
 
-  build:
-    needs: changes
-    if: needs.changes.outputs.code == 'true'
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: windows-x64
-            os: windows-latest
-          - name: windows-arm64
-            os: windows-11-arm
-          # Ubuntu 22.04 so the binaries run on its glibc and anything newer
-          - name: linux-x64
-            os: ubuntu-22.04
-          - name: linux-arm64
-            os: ubuntu-22.04-arm
-          # Apple Silicon. The x64 half of the universal binary is tested under Rosetta 2.
-          - name: macos-universal
-            os: macos-latest
-            extra-test-target: x86_64-apple-darwin
-    runs-on: ${{ matrix.os }}
+  # Pushes to main are published as latest-dev, so they get a version that can't pass for the
+  # release in Cargo.toml: the commits on main since the last release tag, then this commit.
+  # Empty for anything else. A job of its own, since the build and macos-universal jobs both
+  # name their zips with it.
+  dev-version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.name.outputs.version }}
     steps:
       - uses: actions/checkout@v7
-
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.extra-test-target }}
-          components: clippy
-
-      # Shared by name instead of keyed by job, so preset-tests can read the linux-x64 one
-      - uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: ${{ matrix.name }}
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-          cache-on-failure: true
-
-      - name: Install NASM
-        if: matrix.name == 'linux-x64'
-        run: sudo apt-get update && sudo apt-get install -y nasm
-
-      # The lint job only sees Linux code; the Windows and macOS backends are linted here. Linux
-      # x64 is the lint job's own.
-      - name: Clippy
-        if: matrix.name != 'linux-x64'
-        run: cargo clippy --workspace --all-targets -- -D warnings
-
-      - name: Test
-        run: cargo test --workspace --profile ci
-
-      - name: Test x64 under Rosetta 2
-        if: matrix.extra-test-target
-        run: cargo test --workspace --profile ci --target ${{ matrix.extra-test-target }}
-
-      # Pushes to main are published as latest-dev, so they get a version that can't pass for the
-      # release in Cargo.toml: the commits on main since the last release tag, then this commit.
-      # Set after the tests, which don't need it, so they don't rebuild.
-      - name: Name the dev version
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        shell: bash
+
+      - name: Name the dev version
+        id: name
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
           git fetch --quiet --unshallow --tags origin
           base=$(sed -n '/^\[workspace\.package\]/,/^\[/s/^version *= *"\(.*\)"/\1/p' Cargo.toml)
@@ -194,16 +150,127 @@ jobs:
           count=$(git rev-list --count --first-parent "$tag..HEAD")
           version="$base-dev.$count+$(git rev-parse --short HEAD)"
           echo "$version"
-          echo "AUTOSPLIT_VERSION=$version" >> "$GITHUB_ENV"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: [changes, dev-version]
+    if: needs.changes.outputs.code == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: windows-x64
+            os: windows-latest
+          - name: windows-arm64
+            os: windows-11-arm
+          # Ubuntu 22.04 so the binaries run on its glibc and anything newer
+          - name: linux-x64
+            os: ubuntu-22.04
+          - name: linux-arm64
+            os: ubuntu-22.04-arm
+          # The two halves of the universal binary, built at the same time on their own runners
+          # and put together by the macos-universal job. Both are Apple Silicon, so the x64 half
+          # is cross-compiled and tested under Rosetta 2.
+          - name: macos-arm64
+            os: macos-latest
+            target: aarch64-apple-darwin
+          - name: macos-x64
+            os: macos-latest
+            target: x86_64-apple-darwin
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+          components: clippy
+
+      # Shared by name instead of keyed by job, so preset-tests can read the linux-x64 one
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ${{ matrix.name }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+          cache-on-failure: true
+
+      - name: Install NASM
+        if: matrix.name == 'linux-x64'
+        run: sudo apt-get update && sudo apt-get install -y nasm
+
+      # The lint job only sees Linux code; the Windows and macOS backends are linted here. Linux
+      # x64 is the lint job's own, and macOS x64 has the same code as macOS arm64.
+      - name: Clippy
+        if: matrix.name != 'linux-x64' && matrix.name != 'macos-x64'
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Test
+        if: matrix.name != 'macos-x64'
+        run: cargo test --workspace --profile ci
+
+      - name: Test x64 under Rosetta 2
+        if: matrix.name == 'macos-x64'
+        run: cargo test --workspace --profile ci --target ${{ matrix.target }}
+
+      # Set after the tests, which don't need it, so they don't rebuild
+      - name: Use the dev version
+        if: needs.dev-version.outputs.version
+        shell: bash
+        run: echo "AUTOSPLIT_VERSION=${{ needs.dev-version.outputs.version }}" >> "$GITHUB_ENV"
 
       - name: Build release zip
+        if: "!matrix.target"
         shell: pwsh
         run: ./build.ps1 ${{ matrix.name }}
 
-      # Starts both halves of the universal binary that ships, which the tests above don't run,
-      # so a framework call newer than the minimum macOS version shows up as a load error here
+      - uses: actions/upload-artifact@v7
+        if: "!matrix.target"
+        with:
+          name: build-${{ matrix.name }}
+          path: build/AutoSplit-*-${{ matrix.name }}.zip
+          if-no-files-found: error
+
+      # A macOS half is only its binary, zipped by the macos-universal job. Not named build-, so
+      # releases and latest-dev don't pick it up.
+      - name: Build the binary
+        if: matrix.target
+        run: cargo build --release -p autosplit --target ${{ matrix.target }}
+
+      - uses: actions/upload-artifact@v7
+        if: matrix.target
+        with:
+          name: binary-${{ matrix.target }}
+          path: target/${{ matrix.target }}/release/autosplit
+          if-no-files-found: error
+
+  # The universal macOS zip, from the two halves the build job made
+  macos-universal:
+    needs: [dev-version, build]
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Use the dev version
+        if: needs.dev-version.outputs.version
+        run: echo "AUTOSPLIT_VERSION=${{ needs.dev-version.outputs.version }}" >> "$GITHUB_ENV"
+
+      # Where build.ps1 would have built them
+      - uses: actions/download-artifact@v8
+        with:
+          name: binary-aarch64-apple-darwin
+          path: target/aarch64-apple-darwin/release
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: binary-x86_64-apple-darwin
+          path: target/x86_64-apple-darwin/release
+
+      - name: Build release zip
+        shell: pwsh
+        run: ./build.ps1 macos-universal --prebuilt
+
+      # Starts both halves of the universal binary that ships, which the tests don't run, so a
+      # framework call newer than the minimum macOS version shows up as a load error here
       - name: Start the shipped binary
-        if: matrix.name == 'macos-universal'
         run: |
           unzip -q build/AutoSplit-*-macos-universal.zip -d "$RUNNER_TEMP/zip"
           arch -arm64 "$RUNNER_TEMP/zip/autosplit" --version
@@ -212,15 +279,15 @@ jobs:
 
       - uses: actions/upload-artifact@v7
         with:
-          name: build-${{ matrix.name }}
-          path: build/AutoSplit-*-${{ matrix.name }}.zip
+          name: build-macos-universal
+          path: build/AutoSplit-*-macos-universal.zip
           if-no-files-found: error
 
   # The one check for branch protection to require. Skipped jobs pass, failed or cancelled ones
   # don't, so it holds whatever the changes job picked.
   ci-passed:
     name: CI passed
-    needs: [changes, lint, savestates, preset-tests, build]
+    needs: [changes, dev-version, lint, savestates, preset-tests, build, macos-universal]
     if: always()
     runs-on: ubuntu-latest
     steps:
