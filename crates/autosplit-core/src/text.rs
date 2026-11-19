@@ -4,6 +4,7 @@ use std::time::Duration;
 
 use crate::commands::Command;
 use crate::fade::MAX_NOISE;
+use crate::filename::FilenameWarning;
 use crate::runner::{ImageRef, ResetReading, Showing, StartStatus, Status};
 use crate::split_folder::MAX_GROUP_SIZE;
 use crate::split_image::{ImageType, SplitImage};
@@ -228,7 +229,7 @@ pub fn tester_info(tester: &Tester) -> Vec<InfoCell> {
         delay => cell("DELAY", format!("{delay} ms"), from_profile(image.names_delay())),
     };
     vec![
-        cell(ACTS_CELL, action, if image.is_dummy() { "dummy" } else { "" }),
+        cell(ACTS_CELL, action, &acts_note(tester)),
         match (image.fade_color(), image.comparison_method(defaults)) {
             (Some(color), _) => {
                 let note =
@@ -243,9 +244,23 @@ pub fn tester_info(tester: &Tester) -> Vec<InfoCell> {
     ]
 }
 
-/// The values in the Live Tester's image's name that are ignored, or nothing.
+/// The note under what the Live Tester's image does: which of several images the cells are of,
+/// numbered from 1 like the rows of their similarities, and that it's a dummy.
+fn acts_note(tester: &Tester) -> String {
+    let image = (tester.grouped()).then(|| format!("image {}", tester.opened() + 1));
+    let dummy = tester.image().is_dummy().then(|| "dummy".to_owned());
+    image.into_iter().chain(dummy).collect::<Vec<_>>().join(", ")
+}
+
+/// The values in the Live Tester's images' names that are ignored, or nothing. With several
+/// images, each starts with its file name.
 pub fn tester_ignored(tester: &Tester) -> String {
-    let warnings: Vec<String> = tester.image().warnings.iter().map(ToString::to_string).collect();
+    let named = |image: &SplitImage, warning: &FilenameWarning| {
+        if tester.grouped() { format!("'{}': {warning}", image.display_name()) } else { warning.to_string() }
+    };
+    let images = tester.slots().iter().map(|slot| slot.image());
+    let warnings: Vec<String> =
+        images.flat_map(|image| image.warnings.iter().map(move |warning| named(image, warning))).collect();
     if warnings.is_empty() { String::new() } else { format!("Ignored in the name: {}", warnings.join("; ")) }
 }
 
@@ -304,11 +319,27 @@ pub fn tester_status(tester: &Tester) -> String {
     }
 }
 
+/// The first fade image at its threshold while waiting, which it hasn't reached without a fade
+/// there, like after a cut.
+fn fade_at_threshold(tester: &Tester) -> Option<usize> {
+    let slots = tester.slots().iter().enumerate();
+    slots
+        .filter(|(_, slot)| slot.image().is_fade())
+        .find(|(index, slot)| slot.similarity().is_some_and(|similarity| similarity >= tester.threshold_of(*index)))
+        .map(|(index, _)| index)
+}
+
 /// [`tester_status`] for several images.
 fn group_status(tester: &Tester) -> String {
     let number = |slot: usize| slot + 1;
     match tester.phase() {
-        Phase::Waiting => "Waiting for an image to reach its threshold.".into(),
+        Phase::Waiting => match fade_at_threshold(tester) {
+            Some(slot) => format!(
+                "Image {} is at the threshold, but it didn't fade there, like after a cut. Waiting for an image to reach its threshold.",
+                number(slot)
+            ),
+            None => "Waiting for an image to reach its threshold.".into(),
+        },
         Phase::Armed => {
             let slot = tester.armed().unwrap_or_default();
             let reached =

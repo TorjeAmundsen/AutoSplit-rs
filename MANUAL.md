@@ -236,7 +236,8 @@ Test Its Group, beside the file name, compares the image together with the other
 - The kept frames say which image they're of, like Image 2, Split: 0.962. A `{b}` image that reached its threshold keeps its frame, and another image can still act before it drops back below.
 - When another image of the group can't be loaded, like a fully transparent one, nothing is tested and the message names that image. Turn off Test Its Group to test the opened image alone.
 - It stays on for the next image that has a group. The images reload when any of their files changes, or when an image joins or leaves the group, like when Make Split Images saves one under a new name.
-- The meter and a fade image's noise aren't shown for a group. Turn Test Its Group off to see them for the open image.
+- The cards above the pictures are about the opened image, and the one for what it does says its number, like image 2. Values ignored in any of the images' names are listed, each after its file name.
+- The meter and a fade image's noise aren't shown for a group. Turn Test Its Group off to see them for the opened image.
 
 ## Settings
 
