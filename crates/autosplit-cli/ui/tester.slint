@@ -303,10 +303,12 @@ export component TesterWindow inherits Window {
     in property <image> split-image;
     // The image has others compared with it for one split
     in property <bool> can-group;
-    // Its group is compared, shown like the main window shows a split's images: in a 2x2 grid,
-    // with a row of similarities each
-    in-out property <bool> grouped;
-    // What's shown is a group, which the session says
+    // Test Its Group's box, checked while it's on and the image has a group or failed to load
+    in-out property <bool> group-checked;
+    // Test Its Group is on, also for an image without a group
+    in property <bool> group-on;
+    // What's shown is a group, which the session says. It's shown like the main window shows a
+    // split's images: in a 2x2 grid, with a row of similarities each
     in property <bool> group-shown;
     in property <[image]> tiles;
     in property <[SimilarityRow]> rows;
@@ -374,7 +376,7 @@ export component TesterWindow inherits Window {
             CheckBox {
                 text: "Test Its Group";
                 enabled: root.can-group;
-                checked <=> root.grouped;
+                checked <=> root.group-checked;
                 toggled => { root.group-toggled(); }
 
                 Tooltip {
@@ -516,46 +518,53 @@ export component TesterWindow inherits Window {
             }
         }
 
-        HorizontalLayout {
-            spacing: 8px;
+        // While Test Its Group is on, as tall as the rows of a group of 4, so stepping through
+        // images doesn't resize the window
+        VerticalLayout {
             alignment: start;
+            min-height: root.group-on ? 40px + 4 * 22px : 0px;
 
-            if root.group-shown: SimilarityViewer {
-                width: 321px;
-                height: 40px + root.rows.length * 22px;
-                grouped: true;
-                group-rows: root.rows;
-                row-name: "Image";
-                reset-row: false;
-            }
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: start;
 
-            if !root.group-shown: LiveReading {
-                width: 320px;
-                live: root.reading.live;
-                highest: root.reading.highest;
-                threshold: root.reading.threshold;
-                noise: root.reading.noise;
-                live-value: root.reading.live-value;
-                highest-value: root.reading.highest-value;
-                threshold-value: root.reading.threshold-value;
-                met: root.reading.reached;
-                highest-met: root.reading.highest-reached;
-            }
-
-            VerticalLayout {
-                alignment: center;
-
-                Button {
-                    width: 80px;
-                    text: "Start Over";
-                    enabled: root.has-image;
-                    clicked => { root.rearm(); }
-                    tip: "Clear the highest similarity and the kept frames, and wait for a match again";
+                if root.group-shown: SimilarityViewer {
+                    width: 321px;
+                    height: 40px + root.rows.length * 22px;
+                    grouped: true;
+                    group-rows: root.rows;
+                    row-name: "Image";
+                    reset-row: false;
                 }
-            }
 
-            Label {
-                text: root.reading.status;
+                if !root.group-shown: LiveReading {
+                    width: 320px;
+                    live: root.reading.live;
+                    highest: root.reading.highest;
+                    threshold: root.reading.threshold;
+                    noise: root.reading.noise;
+                    live-value: root.reading.live-value;
+                    highest-value: root.reading.highest-value;
+                    threshold-value: root.reading.threshold-value;
+                    met: root.reading.reached;
+                    highest-met: root.reading.highest-reached;
+                }
+
+                VerticalLayout {
+                    alignment: center;
+
+                    Button {
+                        width: 80px;
+                        text: "Start Over";
+                        enabled: root.has-image;
+                        clicked => { root.rearm(); }
+                        tip: "Clear the highest similarity and the kept frames, and wait for a match again";
+                    }
+                }
+
+                Label {
+                    text: root.reading.status;
+                }
             }
         }
     }

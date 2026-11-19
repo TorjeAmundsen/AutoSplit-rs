@@ -381,6 +381,25 @@ fn png_images(folder: &Path) -> Vec<PathBuf> {
     user_files(folder).unwrap_or_default().into_iter().filter(|path| paths::is_png(path)).collect()
 }
 
+/// Shows `rows` of live, highest and threshold in a similarity viewer's model. Only the rows that
+/// changed are set, so the rows aren't made again for every frame.
+fn show_similarity_rows(model: &VecModel<SimilarityRow>, rows: impl IntoIterator<Item = [String; 3]>) {
+    let row = |[live, highest, threshold]: [String; 3]| SimilarityRow {
+        live: live.into(),
+        highest: highest.into(),
+        threshold: threshold.into(),
+    };
+    let rows: Vec<SimilarityRow> = rows.into_iter().map(row).collect();
+    if rows.len() != model.row_count() {
+        return model.set_vec(rows);
+    }
+    for (index, row) in rows.into_iter().enumerate() {
+        if model.row_data(index).as_ref() != Some(&row) {
+            model.set_row_data(index, row);
+        }
+    }
+}
+
 /// A picture of an update as an image for the window, or `None` to keep what it shows.
 fn shown_image(picture: Picture) -> Option<slint::Image> {
     match picture {
@@ -1524,12 +1543,7 @@ impl Gui {
             main.set_reset_live(reset_live.into());
             main.set_reset_highest(reset_highest.into());
             main.set_reset_threshold(reset_threshold.into());
-            for (index, [live, highest, threshold]) in window.group_rows.into_iter().enumerate() {
-                let row = SimilarityRow { live: live.into(), highest: highest.into(), threshold: threshold.into() };
-                if self.group_rows.row_data(index).as_ref() != Some(&row) {
-                    self.group_rows.set_row_data(index, row);
-                }
-            }
+            show_similarity_rows(&self.group_rows, window.group_rows);
             main.set_image_loop(window.image_loop.into());
             main.set_start_image_status(window.start_status.into());
             let [start, reset, skip, undo, next, previous] = texts.buttons;

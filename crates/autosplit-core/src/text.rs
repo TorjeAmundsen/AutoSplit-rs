@@ -252,6 +252,18 @@ fn acts_note(tester: &Tester) -> String {
     image.into_iter().chain(dummy).collect::<Vec<_>>().join(", ")
 }
 
+/// The Live Tester's live, highest and threshold of each of its images. Without a frame
+/// `receiving`, the live similarities show as `-`.
+pub fn tester_rows(tester: &Tester, receiving: bool) -> Vec<[String; 3]> {
+    let slots = tester.slots().iter().enumerate();
+    slots
+        .map(|(index, slot)| {
+            let live = slot.similarity().filter(|_| receiving);
+            [decimal_or_dash(live), decimal_or_dash(slot.highest()), decimal(tester.threshold_of(index))]
+        })
+        .collect()
+}
+
 /// The values in the Live Tester's images' names that are ignored, or nothing. With several
 /// images, each starts with its file name.
 pub fn tester_ignored(tester: &Tester) -> String {

@@ -11,10 +11,10 @@ use autosplit_core::profile::UserProfile;
 use autosplit_core::runner::{ImageRef, Showing};
 use autosplit_core::split_folder::MAX_GROUP_SIZE;
 use autosplit_core::split_image::{SplitContent, SplitImage};
-use autosplit_core::tester::{Phase, Tester};
+use autosplit_core::tester::Phase;
 use autosplit_core::text::{
-    InfoCell, WindowTexts, decimal, decimal_or_dash, tester_ignored, tester_info, tester_noise, tester_status,
-    trigger_caption, window_texts,
+    InfoCell, WindowTexts, decimal, decimal_or_dash, tester_ignored, tester_info, tester_noise, tester_rows,
+    tester_status, trigger_caption, window_texts,
 };
 use slint::{Rgba8Pixel, SharedPixelBuffer};
 
@@ -448,18 +448,6 @@ impl GuiView {
         });
         (picture(image), [const { Picture::Clear }; MAX_GROUP_SIZE])
     }
-}
-
-/// The Live Tester's live, highest and threshold of each of its images. Without a frame
-/// `receiving`, the live similarities show as `-`.
-fn tester_rows(tester: &Tester, receiving: bool) -> Vec<[String; 3]> {
-    let slots = tester.slots().iter().enumerate();
-    slots
-        .map(|(index, slot)| {
-            let live = slot.similarity().filter(|_| receiving);
-            [decimal_or_dash(live), decimal_or_dash(slot.highest()), decimal(tester.threshold_of(index))]
-        })
-        .collect()
 }
 
 /// Shown instead of the capture when the profile has no capture device.

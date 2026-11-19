@@ -222,7 +222,8 @@ fn main() {
     save(&window, PhysicalSize::new(992, 470), &folder.join("tester-waiting.png"));
     // Testing a group of three images, the second of which split
     tester.set_can_group(true);
-    tester.set_grouped(true);
+    tester.set_group_checked(true);
+    tester.set_group_on(true);
     tester.set_group_shown(true);
     let tiles = [solid([60, 90, 200]), solid([60, 160, 60]), solid([200, 120, 60]), slint::Image::default()];
     tester.set_tiles(std::rc::Rc::new(slint::VecModel::from(tiles.to_vec())).into());

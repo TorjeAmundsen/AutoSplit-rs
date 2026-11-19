@@ -322,8 +322,8 @@ impl Tester {
         self.phase = match (self.phase, matched) {
             // A delay of 0 or less acts on the triggering frame, like the runner
             (_, Some((slot, kind))) => {
-                for slot in &mut self.slots {
-                    slot.armed = false;
+                for other in &mut self.slots {
+                    other.armed = false;
                 }
                 let delay = self.delay_of(slot);
                 if delay > 0 {

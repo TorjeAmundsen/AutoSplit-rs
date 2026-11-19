@@ -8,9 +8,9 @@ use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
 
 use super::paths::{canonical, file_name_text};
 use super::placement::beside;
-use super::ui::{InfoCell, SimilarityRow, TesterReading};
+use super::ui::{InfoCell, TesterReading};
 use super::view::{KeptFrames, TesterUpdate};
-use super::{Gui, Tool, exe_folder, file_name_parts, png_images, shown_image};
+use super::{Gui, Tool, exe_folder, file_name_parts, png_images, show_similarity_rows, shown_image};
 use crate::session::UiCommand;
 
 /// What the Live Tester says before it has an image.
@@ -25,7 +25,9 @@ impl Gui {
         on!(weak, tester, on_next_image, () gui => gui.step_tester_image(1));
         on!(weak, tester, on_reload_image, () gui => gui.load_tester_image());
         on!(weak, tester, on_group_toggled, () gui => {
-            gui.tester_state.borrow_mut().group = gui.windows.tester.get_grouped();
+            let group = gui.windows.tester.get_group_checked();
+            gui.tester_state.borrow_mut().group = group;
+            gui.windows.tester.set_group_on(group);
             gui.load_tester_image();
         });
         on!(weak, tester, on_rearm, () gui => gui.send(UiCommand::RearmTester));
@@ -183,7 +185,7 @@ impl Gui {
         // While it's on, it can be turned off, since one of the group's images can be what failed
         let group = self.tester_state.borrow().group;
         tester.set_can_group(group);
-        tester.set_grouped(group);
+        tester.set_group_checked(group);
         self.take_kept(KeptFrames { cleared: true, added: Vec::new() });
     }
 
@@ -246,23 +248,8 @@ impl Gui {
             tester.set_group_shown(!texts.rows.is_empty());
             // Checked only while it applies, but kept for the next image that has a group
             tester.set_can_group(texts.can_group);
-            tester.set_grouped(texts.can_group && self.tester_state.borrow().group);
-            let row = |[live, highest, threshold]: [String; 3]| SimilarityRow {
-                live: live.into(),
-                highest: highest.into(),
-                threshold: threshold.into(),
-            };
-            let rows: Vec<SimilarityRow> = texts.rows.into_iter().map(row).collect();
-            // Row by row, so the rows aren't made again for every frame
-            if rows.len() == self.tester_rows.row_count() {
-                for (index, row) in rows.into_iter().enumerate() {
-                    if self.tester_rows.row_data(index).as_ref() != Some(&row) {
-                        self.tester_rows.set_row_data(index, row);
-                    }
-                }
-            } else {
-                self.tester_rows.set_vec(rows);
-            }
+            tester.set_group_checked(texts.can_group && self.tester_state.borrow().group);
+            show_similarity_rows(&self.tester_rows, texts.rows);
             let (live_value, highest_value, threshold_value) = texts.meter;
             tester.set_reading(TesterReading {
                 ignored: texts.ignored.into(),
