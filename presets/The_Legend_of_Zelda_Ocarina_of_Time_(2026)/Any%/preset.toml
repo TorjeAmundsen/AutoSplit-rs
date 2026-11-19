@@ -17,29 +17,33 @@ pause = 0.0
 
 [[split]]
 name = "EnterDekuDummyTop"
-mask = "EnterDekuDummyTop (1).png"
+mask = "EnterDekuDummyTop.png"
 screenshot = "screenshots/EnterDekuDummyTop.png"
-threshold = 0.9
+threshold = 0.96
 pause = 0.0
+dummy = true
 
 [[split]]
 name = "EnterDekuDummyCenter"
 with_previous = true
-mask = "EnterDekuDummyCenter (1).png"
+mask = "EnterDekuDummyCenter.png"
 screenshot = "screenshots/EnterDekuDummyCenter.png"
-threshold = 0.9
+threshold = 0.96
 pause = 0.0
+dummy = true
 
 [[split]]
 name = "EnterDekuDummyBottom"
 with_previous = true
-mask = "EnterDekuDummyBottom (1).png"
+mask = "EnterDekuDummyBottom.png"
 screenshot = "screenshots/EnterDekuDummyBottom.png"
-threshold = 0.9
+threshold = 0.96
 pause = 0.0
+dummy = true
 
 [[split]]
 name = "EnterDeku"
+mask = "EnterDeku.png"
 fade = "#000000"
 fade_time = 500
 threshold = 0.999
