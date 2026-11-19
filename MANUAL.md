@@ -229,7 +229,7 @@ The right side keeps the frames that would have made the image act in a run:
 
 ### Testing a group
 
-Test Its Group, beside the file name, compares the image together with the other images of its split, like a run does with [Compare images with the same number for one split](#several-images-for-one-split) on. Its group is the images in its folder with its number, like `01_boss_left.png` and `01_boss_right.png`, or all start images or all reset images. It's off for an image without others, or with more than 4, which a run couldn't compare.
+Test Its Group, beside the file name, compares the image together with the other images of its split, like a run does with [Compare images with the same number for one split](#several-images-for-one-split) on. Its group is the images in its folder with its number, like `01_boss_left.png` and `01_boss_right.png`, or all start images or all reset images. It's off for an image without others, or with more than 4, which a run couldn't compare. Turning it on or off starts over, like Start Over, so the kept frames and Highest are cleared.
 
 - The split image becomes a 2x2 grid of the group's images, and Live, Highest and Threshold become a row for each, like the main window's similarity viewer. They're numbered in the order they're compared.
 - Like in a run, the first image that matches acts, and the others stop with it. So when the wrong image matches early, you see it act instead of the right one. Start Over waits for a match again.
