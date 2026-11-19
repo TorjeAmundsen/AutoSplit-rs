@@ -63,7 +63,7 @@ threshold = 0.93
 
 [[split]]
 name = "ZeldasLetter"
-mask = "ZeldasLetter.png"
+mask = "ZeldasLetter (1).png"
 screenshot = "screenshots/ZeldasLetter.png"
 threshold = 0.93
 
@@ -103,7 +103,7 @@ threshold = 0.93
 
 [[split]]
 name = "DinsFire"
-mask = "DinsFire.png"
+mask = "DinsFire (1).png"
 screenshot = "screenshots/DinsFire.png"
 threshold = 0.93
 
