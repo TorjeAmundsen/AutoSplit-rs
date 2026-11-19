@@ -5,6 +5,8 @@
 #   ./build.ps1 windows-x64 ...     build these targets
 #   ./build.ps1 --all               build every target this machine can build
 #   ./build.ps1 --debug ...         keep debug symbols
+#   ./build.ps1 --prebuilt ...      zip the binaries already in target/{triple}/release, for CI,
+#                                   which builds each half of the macOS binary on its own runner
 #
 # Same OS as this machine: plain cargo. Linux from another OS: cargo-zigbuild. Windows from
 # another OS: cargo-xwin. macOS only builds on a Mac, because Apple's SDK is only licensed there.
@@ -24,6 +26,7 @@ $glibcVersion = "2.35"
 
 $debug = $args -contains "--debug"
 $all = $args -contains "--all"
+$prebuilt = $args -contains "--prebuilt"
 $requested = @($args | Where-Object { -not $_.StartsWith("--") })
 
 $cargoToml = Get-Content "$PSScriptRoot/Cargo.toml" -Raw
@@ -86,6 +89,7 @@ function Invoke-Cargo($cargoArgs) {
 
 # Builds one Rust target and returns the folder with its binaries.
 function BuildTriple($triple) {
+    if ($prebuilt) { return "$targetDir/$triple/release" }
     rustup target add $triple | Out-Host
     $os = OsOf $triple
     $profileArgs = @("--release", "-p", "autosplit")

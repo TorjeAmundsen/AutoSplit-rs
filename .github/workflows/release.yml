@@ -32,8 +32,10 @@ jobs:
     permissions:
       contents: write
     steps:
+      # Only the zips, not the macOS halves the universal zip was made from
       - uses: actions/download-artifact@v8
         with:
+          pattern: build-*
           path: artifacts
           merge-multiple: true
 
