@@ -727,7 +727,13 @@ impl Session {
             }
             Err(error) => {
                 (self.tester, self.tester_files) = (None, None);
-                self.dialog(error);
+                // Another image of the group, which testing the opened image alone leaves out
+                if error.path() != files.opened {
+                    let opened = files.opened.file_name().unwrap_or_default().to_string_lossy();
+                    self.dialog(format_args!("{error} Turn off Test Its Group to test '{opened}' alone."));
+                } else {
+                    self.dialog(error);
+                }
             }
         }
     }

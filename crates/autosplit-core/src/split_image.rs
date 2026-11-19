@@ -62,6 +62,19 @@ pub enum LoadError {
     FadeNotSolid(PathBuf),
 }
 
+impl LoadError {
+    /// The file that couldn't be loaded.
+    pub fn path(&self) -> &Path {
+        match self {
+            Self::Unreadable(path)
+            | Self::NotPng(path)
+            | Self::OcrUnsupported(path)
+            | Self::FullyTransparent(path)
+            | Self::FadeNotSolid(path) => path,
+        }
+    }
+}
+
 /// A filename value that's ignored, with the file it's in.
 #[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
 #[error("'{}': {warning}", file_name(.path))]

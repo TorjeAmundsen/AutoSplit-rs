@@ -415,6 +415,31 @@ fn live_tester_group_follows_an_image_saved_under_a_new_name() {
 }
 
 #[test]
+fn live_tester_group_with_an_unusable_image_says_to_test_the_opened_one_alone() {
+    // Arrange: a group whose second image is fully transparent
+    let folder = split_folder();
+    let clear = BgraImage::from_raw(8, 8, vec![0; 256]);
+    std::fs::write(folder.path().join("001_clear.png"), clear.encode_png().unwrap()).unwrap();
+    let open = |name: &str| {
+        let path = folder.path().join(name);
+        vec![Event::Ui(UiCommand::OpenTester { path, group: true, request: 1 })]
+    };
+
+    // Act: opening the usable image, and the unusable one, which alone wouldn't help
+    let seen = ["001_split.png", "001_clear.png"].map(|name| run(UserProfile::default(), open(name)).notices());
+
+    // Assert
+    let transparent = "dialog: '001_clear.png' is fully transparent, so there's nothing to compare.";
+    assert_eq!(
+        seen,
+        [
+            vec![format!("{transparent} Turn off Test Its Group to test '001_split.png' alone.")],
+            vec![transparent.to_owned()]
+        ]
+    );
+}
+
+#[test]
 fn live_tester_with_an_unusable_image_shows_a_dialog() {
     // Arrange
     let folder = tempfile::tempdir().unwrap();
