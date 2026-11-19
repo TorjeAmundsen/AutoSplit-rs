@@ -281,6 +281,50 @@ impl ComparisonCache {
     }
 }
 
+/// What one comparison of a start or split image decides, the same in a run and in the Live
+/// Tester.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Step {
+    /// Nothing yet.
+    Waiting,
+    /// A `{b}` image reached its threshold, and acts once it drops back below. Only on the
+    /// comparison where it reached it.
+    Armed,
+    /// The image matches: it reached its threshold, or with `dropped_below`, a `{b}` image dropped
+    /// back below it.
+    Matched { dropped_below: bool },
+}
+
+/// Decides one comparison of `image`, whose similarity is `similarity`. `below` is whether
+/// `{b}` applies, and `armed` whether it reached its threshold before. A lost capture
+/// (`captured` false) doesn't count as dropping below.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn step(
+    image: &SplitImage,
+    below: bool,
+    armed: &mut bool,
+    fade: &mut FadeTracker,
+    now: Duration,
+    similarity: f64,
+    threshold: f64,
+    captured: bool,
+) -> Step {
+    if reached(image, fade, now, similarity, threshold) {
+        if !below {
+            Step::Matched { dropped_below: false }
+        } else if *armed {
+            Step::Waiting
+        } else {
+            *armed = true;
+            Step::Armed
+        }
+    } else if below && *armed && similarity < threshold && captured {
+        Step::Matched { dropped_below: true }
+    } else {
+        Step::Waiting
+    }
+}
+
 /// At least 1ns, so absurd FPS limits can't make the runner or the Live Tester wake up without
 /// time passing.
 pub(crate) fn interval(fps_limit: i64) -> Duration {
@@ -753,14 +797,10 @@ impl Runner {
                 continue;
             }
             let threshold = start.similarity_threshold(&defaults);
-            let armed = &mut self.below_armed[slot];
-            if reached(start, &mut self.fades[slot], now, similarity, threshold) {
-                if start.is_below() {
-                    *armed = true;
-                } else {
-                    matched = Some(slot);
-                }
-            } else if start.is_below() && *armed && similarity < threshold && capture.is_some() {
+            let (armed, fade) = (&mut self.below_armed[slot], &mut self.fades[slot]);
+            let below = start.is_below();
+            if let Step::Matched { .. } = step(start, below, armed, fade, now, similarity, threshold, capture.is_some())
+            {
                 matched = Some(slot);
             }
         }
@@ -833,14 +873,10 @@ impl Runner {
                 continue;
             }
             let threshold = image.similarity_threshold(&defaults);
-            let armed = &mut self.below_armed[slot];
-            if reached(image, &mut self.fades[slot], now, similarity, threshold) {
-                if image.is_below() {
-                    *armed = true;
-                } else {
-                    matched = Some(split);
-                }
-            } else if image.is_below() && *armed && similarity < threshold && capture.is_some() {
+            let (armed, fade) = (&mut self.below_armed[slot], &mut self.fades[slot]);
+            let below = image.is_below();
+            if let Step::Matched { .. } = step(image, below, armed, fade, now, similarity, threshold, capture.is_some())
+            {
                 matched = Some(split);
             }
         }

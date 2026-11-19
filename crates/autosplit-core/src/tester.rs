@@ -6,9 +6,9 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use crate::compare::CompareScratch;
-use crate::fade::{FadeTracker, reached};
+use crate::fade::FadeTracker;
 use crate::image::BgraImage;
-use crate::runner::{Captured, interval, next_grid_tick};
+use crate::runner::{Captured, Step, interval, next_grid_tick, step};
 use crate::split_image::{ImageType, LoadError, SplitDefaults, SplitImage};
 
 /// Where the tester is in the images' trigger sequence.
@@ -298,17 +298,15 @@ impl Tester {
             if !comparing || matched.is_some() {
                 continue;
             }
-            if reached(&slot.image, &mut slot.fade, now, similarity, threshold) {
-                if !below {
-                    matched = Some((index, TriggerKind::Reached));
-                } else if !slot.armed {
-                    slot.armed = true;
+            let (armed, fade) = (&mut slot.armed, &mut slot.fade);
+            match step(&slot.image, below, armed, fade, now, similarity, threshold, capture.is_some()) {
+                Step::Waiting => {}
+                Step::Armed => {
                     let frame = capture.map(|capture| capture.view.to_image());
                     self.triggers.push(Trigger { kind: TriggerKind::Reached, slot: index, similarity, frame });
                 }
-            // Like the runner, a lost capture doesn't count as dropping below
-            } else if below && slot.armed && similarity < threshold && capture.is_some() {
-                matched = Some((index, TriggerKind::DroppedBelow));
+                Step::Matched { dropped_below: false } => matched = Some((index, TriggerKind::Reached)),
+                Step::Matched { dropped_below: true } => matched = Some((index, TriggerKind::DroppedBelow)),
             }
         }
         self.frame = capture.map(|capture| capture.sequence);
