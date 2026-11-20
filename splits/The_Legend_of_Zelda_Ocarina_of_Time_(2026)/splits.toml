@@ -60,15 +60,6 @@ description = "Splits on the first frame the item model appears."
 base_image = "base_PotionBottle.png"
 
 [[split]]
-name = "LoadingZoneFade"
-mask = "LoadingZoneFade.png"
-fade = "#000000"
-fade_time = 500
-threshold = 0.999
-description = "Splits on full black frame at the end of a loading zone's fade to black."
-base_image = "base_LoadingZoneFade.png"
-
-[[split]]
 name = "GoronBracelet"
 mask = "GoronBracelet.png"
 screenshot = "screenshot_GoronBracelet.png"
@@ -114,8 +105,7 @@ base_image = "base_PlayedZeldasLullaby.png"
 name = "FadeToWhite"
 fade = "#e8e8e8"
 fade_time = 750
-threshold = 1.0
-pause = 10.0
+threshold = 0.999
 description = "Splits on full fade to white, after entering an end-of-dungeon blue warp."
 base_image = "base_FadeToWhite.png"
 
@@ -134,3 +124,19 @@ screenshot = "screenshot_HoverBoots.png"
 threshold = 0.93
 description = "Splits on the first frame the item model appears."
 base_image = "base_HoverBoots.png"
+
+[[split]]
+name = "LoadingZone"
+mask = "LoadingZone.png"
+screenshot = "screenshot_LoadingZone.png"
+threshold = 0.97
+description = "Splits on the first frame of the little triforce loading icon appearing in the bottom right. Happens 4 frames after full black fade (0.066s)."
+base_image = "base_LoadingZone.png"
+
+[[split]]
+name = "MegatonHammer"
+mask = "MegatonHammer.png"
+screenshot = "screenshot_MegatonHammer.png"
+threshold = 0.93
+description = "Splits on the first frame the item model appears."
+base_image = "base_MegatonHammer.png"

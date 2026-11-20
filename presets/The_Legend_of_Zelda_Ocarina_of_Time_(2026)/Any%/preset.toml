@@ -43,16 +43,15 @@ dummy = true
 
 [[split]]
 name = "EnterDeku"
-mask = "EnterDeku.png"
-fade = "#000000"
-fade_time = 500
-threshold = 0.999
+mask = "EnterDeku (1).png"
+screenshot = "screenshots/EnterDeku.png"
+threshold = 0.97
 
 [[split]]
 name = "KokiriEmerald"
 fade = "#e8e8e8"
 fade_time = 750
-threshold = 1.0
+threshold = 0.999
 
 [[split]]
 name = "PotionBottle"
@@ -63,7 +62,7 @@ threshold = 0.93
 
 [[split]]
 name = "ZeldasLetter"
-mask = "ZeldasLetter (1).png"
+mask = "ZeldasLetter.png"
 screenshot = "screenshots/ZeldasLetter.png"
 threshold = 0.93
 
@@ -90,10 +89,9 @@ dummy = true
 
 [[split]]
 name = "EnterDodongoCavern"
-mask = "EnterDodongoCavern.png"
-fade = "#000000"
-fade_time = 500
-threshold = 0.999
+mask = "EnterDodongoCavern (1).png"
+screenshot = "screenshots/EnterDodongoCavern.png"
+threshold = 0.97
 
 [[split]]
 name = "BombBag"
@@ -116,14 +114,13 @@ dummy = true
 
 [[split]]
 name = "EnterShadowTemple"
-off = true
-mask = "EnterShadowTemple.png"
-fade = "#000000"
-fade_time = 500
-threshold = 0.999
+mask = "EnterDodongoCavern (1).png"
+screenshot = "screenshots/EnterDodongoCavern.png"
+threshold = 0.97
 
 [[split]]
 name = "HoverBoots"
+off = true
 mask = "HoverBoots.png"
 screenshot = "screenshots/HoverBoots.png"
 threshold = 0.93
@@ -140,13 +137,49 @@ below = true
 name = "ShadowMedallion"
 fade = "#e8e8e8"
 fade_time = 750
-threshold = 1.0
+threshold = 0.999
 
 [[split]]
 name = "Hookshot"
 mask = "Hookshot.png"
 screenshot = "screenshots/Hookshot.png"
 threshold = 0.93
+
+[[split]]
+name = "BoleroDummy"
+mask = "BoleroDummy.png"
+screenshot = "screenshots/BoleroDummy.png"
+threshold = 0.94
+pause = 50.0
+dummy = true
+below = true
+
+[[split]]
+name = "EnterFireTemple"
+mask = "EnterDodongoCavern (1).png"
+screenshot = "screenshots/EnterDodongoCavern.png"
+threshold = 0.97
+
+[[split]]
+name = "MegatonHammer"
+mask = "MegatonHammer.png"
+screenshot = "screenshots/MegatonHammer.png"
+threshold = 0.93
+
+[[split]]
+name = "MinuetDummy"
+mask = "MinuetDummy.png"
+screenshot = "screenshots/MinuetDummy.png"
+threshold = 0.94
+pause = 40.0
+dummy = true
+below = true
+
+[[split]]
+name = "EnterForestTemple"
+mask = "EnterForestTemple.png"
+screenshot = "screenshots/EnterForestTemple.png"
+threshold = 0.97
 
 [[split]]
 name = "Ganon"
