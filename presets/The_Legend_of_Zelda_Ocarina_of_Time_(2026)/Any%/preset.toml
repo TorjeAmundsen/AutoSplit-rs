@@ -4,7 +4,7 @@ game = "The Legend of Zelda: Ocarina of Time (2026)"
 [[split]]
 name = "start_auto_splitter"
 mask = "start_auto_splitter.png"
-screenshot = "screenshots/start_auto_splitter (1).png"
+screenshot = "screenshots/start_auto_splitter.png"
 threshold = 0.995
 pause = 10.0
 
@@ -43,7 +43,7 @@ dummy = true
 
 [[split]]
 name = "EnterDeku"
-mask = "EnterDeku (1).png"
+mask = "EnterDeku.png"
 screenshot = "screenshots/EnterDeku.png"
 threshold = 0.97
 
@@ -89,7 +89,7 @@ dummy = true
 
 [[split]]
 name = "EnterDodongoCavern"
-mask = "EnterDodongoCavern (1).png"
+mask = "EnterDodongoCavern.png"
 screenshot = "screenshots/EnterDodongoCavern.png"
 threshold = 0.97
 
@@ -101,7 +101,7 @@ threshold = 0.93
 
 [[split]]
 name = "DinsFire"
-mask = "DinsFire (1).png"
+mask = "DinsFire.png"
 screenshot = "screenshots/DinsFire.png"
 threshold = 0.93
 
@@ -114,7 +114,7 @@ dummy = true
 
 [[split]]
 name = "EnterShadowTemple"
-mask = "EnterDodongoCavern (1).png"
+mask = "EnterDodongoCavern.png"
 screenshot = "screenshots/EnterDodongoCavern.png"
 threshold = 0.97
 
@@ -156,7 +156,7 @@ below = true
 
 [[split]]
 name = "EnterFireTemple"
-mask = "EnterDodongoCavern (1).png"
+mask = "EnterDodongoCavern.png"
 screenshot = "screenshots/EnterDodongoCavern.png"
 threshold = 0.97
 

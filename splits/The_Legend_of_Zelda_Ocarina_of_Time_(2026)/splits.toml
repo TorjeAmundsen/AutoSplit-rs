@@ -85,12 +85,12 @@ base_image = "base_DinsFire.png"
 
 [[split]]
 name = "OverworldFrameDummy"
-mask = "OverworldFrameDummy (1).png"
+mask = "OverworldFrameDummy.png"
 screenshot = "screenshot_GraveyardDummy.png"
 threshold = 0.95
 dummy = true
 description = "Dummy split for entering an overworld area for the first time, detected by the unique border pattern rather than the text to stay language agnostic."
-base_image = "base_OverworldFrameDummy (1).png"
+base_image = "base_OverworldFrameDummy.png"
 
 [[split]]
 name = "PlayedZeldasLullaby"
