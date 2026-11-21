@@ -1,4 +1,4 @@
-name = "Any%"
+name = "Any% (Forest before Spirit)"
 game = "The Legend of Zelda: Ocarina of Time (2026)"
 
 [[split]]
@@ -180,6 +180,39 @@ name = "EnterForestTemple"
 mask = "EnterForestTemple.png"
 screenshot = "screenshots/EnterForestTemple.png"
 threshold = 0.97
+
+[[split]]
+name = "FairyBow"
+mask = "FairyBow.png"
+screenshot = "screenshots/FairyBow.png"
+threshold = 0.93
+
+[[split]]
+name = "MirrorShieldDay"
+mask = "MirrorShieldDay.png"
+screenshot = "screenshots/MirrorShieldDay.png"
+threshold = 0.92
+
+[[split]]
+name = "MirrorShieldDusk"
+with_previous = true
+mask = "MirrorShieldDay.png"
+screenshot = "screenshots/MirrorShieldDusk.png"
+threshold = 0.92
+
+[[split]]
+name = "MirrorShieldAlmostNight"
+with_previous = true
+mask = "MirrorShieldDay.png"
+screenshot = "screenshots/MirrorShieldAlmostNight.png"
+threshold = 0.92
+
+[[split]]
+name = "MirrorShieldNight"
+with_previous = true
+mask = "MirrorShieldDay.png"
+screenshot = "screenshots/MirrorShieldNight.png"
+threshold = 0.92
 
 [[split]]
 name = "Ganon"

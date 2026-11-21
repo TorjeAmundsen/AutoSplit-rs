@@ -140,3 +140,46 @@ screenshot = "screenshot_MegatonHammer.png"
 threshold = 0.93
 description = "Splits on the first frame the item model appears."
 base_image = "base_MegatonHammer.png"
+
+[[split]]
+name = "FairyBow"
+mask = "FairyBow.png"
+screenshot = "screenshot_FairyBow.png"
+threshold = 0.93
+description = "Splits on the first frame the item model appears."
+base_image = "base_FairyBow.png"
+
+[[split]]
+name = "MirrorShieldDay"
+mask = "MirrorShieldDay.png"
+screenshot = "screenshot_MirrorShieldDay.png"
+threshold = 0.92
+description = "Splits on the first frame of the item model appearing."
+base_image = "base_MirrorShieldDay.png"
+
+[[split]]
+name = "MirrorShieldDusk"
+with_previous = true
+mask = "MirrorShieldDusk.png"
+screenshot = "screenshot_MirrorShieldDusk.png"
+threshold = 0.92
+base_image = "base_MirrorShieldDusk.png"
+then = true
+
+[[split]]
+name = "MirrorShieldAlmostNight"
+with_previous = true
+mask = "MirrorShieldAlmostNight.png"
+screenshot = "screenshot_MirrorShieldAlmostNight.png"
+threshold = 0.92
+base_image = "base_MirrorShieldAlmostNight.png"
+then = true
+
+[[split]]
+name = "MirrorShieldNight"
+with_previous = true
+mask = "MirrorShieldNight.png"
+screenshot = "screenshot_MirrorShieldNight.png"
+threshold = 0.92
+base_image = "base_MirrorShieldNight.png"
+then = true
