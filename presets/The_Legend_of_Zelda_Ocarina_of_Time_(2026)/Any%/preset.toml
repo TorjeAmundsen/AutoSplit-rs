@@ -257,6 +257,7 @@ name = "GanondoorDummy"
 mask = "GanondoorDummy.png"
 screenshot = "screenshots/GanondoorDummy.png"
 threshold = 0.93
+pause = 0.0
 dummy = true
 
 [[split]]
@@ -267,7 +268,6 @@ threshold = 0.999
 
 [[split]]
 name = "Ganondorf"
-mask = "Ganondorf.png"
 fade = "#e8e8e8"
 fade_time = 800
 threshold = 0.999
