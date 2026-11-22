@@ -54,17 +54,26 @@ fade_time = 750
 threshold = 0.999
 
 [[split]]
-name = "PotionBottle"
-off = true
-mask = "PotionBottle.png"
-screenshot = "screenshots/PotionBottle.png"
-threshold = 0.93
-
-[[split]]
 name = "ZeldasLetter"
 mask = "ZeldasLetter.png"
 screenshot = "screenshots/ZeldasLetter.png"
 threshold = 0.93
+delay = 683
+below = true
+
+[[split]]
+name = "PotionBottleDummy"
+mask = "PotionBottle.png"
+screenshot = "screenshots/PotionBottle.png"
+threshold = 0.93
+pause = 0.0
+dummy = true
+
+[[split]]
+name = "LoadingZone"
+mask = "LoadingZone.png"
+screenshot = "screenshots/LoadingZone.png"
+threshold = 0.97
 
 [[split]]
 name = "SariasSong"
@@ -73,18 +82,19 @@ screenshot = "screenshots/SariasSong.png"
 threshold = 0.93
 
 [[split]]
-name = "GoronBracelet"
-off = true
+name = "GoronBraceletDummy"
 mask = "GoronBracelet.png"
 screenshot = "screenshots/GoronBracelet.png"
 threshold = 0.93
+pause = 10.0
+dummy = true
 
 [[split]]
-name = "GoronShuffleDummy"
-mask = "GoronShuffleDummy.png"
-screenshot = "screenshots/GoronShuffleDummy.png"
-threshold = 0.93
-pause = 3.0
+name = "EnterTrailDummy"
+mask = "EnterDodongoCavern.png"
+screenshot = "screenshots/EnterDodongoCavern.png"
+threshold = 0.97
+pause = 10.0
 dummy = true
 
 [[split]]
@@ -104,6 +114,8 @@ name = "DinsFire"
 mask = "DinsFire.png"
 screenshot = "screenshots/DinsFire.png"
 threshold = 0.93
+delay = 683
+below = true
 
 [[split]]
 name = "GraveyardDummy"
@@ -213,6 +225,66 @@ with_previous = true
 mask = "MirrorShieldDay.png"
 screenshot = "screenshots/MirrorShieldNight.png"
 threshold = 0.92
+
+[[split]]
+name = "FadeToWhite"
+fade = "#e8e8e8"
+fade_time = 750
+threshold = 0.999
+
+[[split]]
+name = "GoldenGauntlets"
+mask = "GoldenGauntlets.png"
+screenshot = "screenshots/GoldenGauntlets.png"
+threshold = 0.93
+
+[[split]]
+name = "TrialsDummy"
+mask = "TrialsDummy.png"
+screenshot = "screenshots/TrialsDummy.png"
+threshold = 0.93
+pause = 0.0
+dummy = true
+
+[[split]]
+name = "Trials"
+fade = "#e8e8e8"
+fade_time = 216
+threshold = 0.999
+
+[[split]]
+name = "GanondoorDummy"
+mask = "GanondoorDummy.png"
+screenshot = "screenshots/GanondoorDummy.png"
+threshold = 0.93
+dummy = true
+
+[[split]]
+name = "EnterGanondorf"
+fade = "#000000"
+fade_time = 800
+threshold = 0.999
+
+[[split]]
+name = "Ganondorf"
+mask = "Ganondorf.png"
+fade = "#e8e8e8"
+fade_time = 800
+threshold = 0.999
+
+[[split]]
+name = "CollapseDummy"
+mask = "CollapseDummy.png"
+screenshot = "screenshots/CollapseDummy.png"
+threshold = 0.93
+pause = 0.0
+dummy = true
+
+[[split]]
+name = "Collapse"
+fade = "#000000"
+fade_time = 1000
+threshold = 0.999
 
 [[split]]
 name = "Ganon"

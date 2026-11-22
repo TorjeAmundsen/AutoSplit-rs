@@ -47,7 +47,9 @@ base_image = "base_SariasSong.png"
 name = "ZeldasLetter"
 mask = "ZeldasLetter.png"
 screenshot = "screenshot_ZeldasLetter.png"
-threshold = 0.95
+threshold = 0.93
+delay = 683
+below = true
 description = "Splits on the first frame the item model appears."
 base_image = "base_ZeldasLetter.png"
 
@@ -80,6 +82,8 @@ name = "DinsFire"
 mask = "DinsFire.png"
 screenshot = "screenshot_DinsFire.png"
 threshold = 0.93
+delay = 683
+below = true
 description = "Splits on the first frame the item model appears."
 base_image = "base_DinsFire.png"
 
@@ -182,4 +186,30 @@ mask = "MirrorShieldNight.png"
 screenshot = "screenshot_MirrorShieldNight.png"
 threshold = 0.92
 base_image = "base_MirrorShieldNight.png"
+then = true
+
+[[split]]
+name = "GoldenGauntlets"
+mask = "GoldenGauntlets.png"
+screenshot = "screenshot_GoldenGauntlets.png"
+threshold = 0.93
+description = "Splits on the first frame the item model appears."
+base_image = "base_GoldenGauntlets.png"
+
+[[split]]
+name = "TrialsDummy"
+mask = "TrialsDummy.png"
+screenshot = "screenshot_TrialsDummy.png"
+threshold = 0.93
+pause = 0.0
+dummy = true
+description = "Splits on white flash as the Trials barrier gets cleared."
+base_image = "base_TrialsDummy.png"
+
+[[split]]
+name = "Trials"
+fade = "#e8e8e8"
+fade_time = 216
+threshold = 0.999
+base_image = "base_Trials.png"
 then = true
