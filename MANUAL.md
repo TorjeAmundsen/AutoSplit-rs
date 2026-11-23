@@ -146,7 +146,7 @@ With [Advanced Make Split Images](#other) on, the pencil button next to the pres
   - Some ready-made splits take several images in a row, like a dummy for a boss's intro text and then its death. They're inserted together, a split for each image.
   - If the preset already has a split with the same name, its row shows where: that split's number, colored like in the split list's file names, or `reset` or `start` for a reset or start image.
   - A grayed-out name can't be inserted, like a fifth reset image. When you pick it, a red line above the buttons says why.
-  - The window stays open. Saving the preset copies the masks, savestates and screenshots of inserted splits into it.
+  - The window stays open. Saving the preset copies the masks of inserted splits into it, and shares their savestates and screenshots with the game's other presets.
 
   ![Split Library: the search field above the ready-made splits on the left, and EnterDeku picked on the right, its two images, DekuCSDummy and EnterDeku, each with a picture, settings and file name, above Insert Above and Insert Below](docs/split-library.png)
 
@@ -189,10 +189,10 @@ A split without a mask yet shows the live capture as it is, so you can see the s
 
 Splits with something to fix have a red name. The bottom line shows the first problem and how many more there are. Click it, or press F8, to go to the next split with a problem. Hover over it, or the red `!` beside it, to see them all.
 
-- Save saves the preset and ends editing. Masks, savestates and screenshots picked from elsewhere are copied into the preset, and ones it doesn't use anymore are deleted. When a new savestate is the same as one another split already uses, Save asks whether to use that one instead of keeping a copy.
+- Save saves the preset and ends editing. Masks picked from elsewhere are copied into the preset. Savestates and screenshots are kept once for all of the game's presets and its split library: one that's the same as one they have already is used instead of a copy. Files nothing uses anymore are deleted. A preset from an older version that kept its own savestates and screenshots can be saved without changes, which shares them.
 - Save as New saves the changes as another preset and leaves the old one as it was. If the game already has a preset with that name, the new one is called `Name (2)`.
 - Cancel, closing the window or quitting asks before throwing changes away.
-- Delete Preset asks, then deletes the preset with the masks, savestates and screenshots it came with, and ends editing. The split images you made with it stay in your split image folder. A preset that was never saved has nothing to delete yet.
+- Delete Preset asks, then deletes the preset with its masks, and its savestates and screenshots unless another preset or the split library uses them, and ends editing. The split images you made with it stay in your split image folder. A preset that was never saved has nothing to delete yet.
 
 ## Sharing presets
 

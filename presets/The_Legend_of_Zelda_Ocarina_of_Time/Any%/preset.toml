@@ -6,7 +6,7 @@ name = "reset"
 mask = "reset.png"
 threshold = 0.96
 pause = 0.1
-savestate = "savestates/000_start_and_reset.gzs"
+savestate = "../savestates/000_start_and_reset.gzs"
 
 [[split]]
 name = "start_auto_splitter"
@@ -14,22 +14,20 @@ mask = "start_auto_splitter.png"
 threshold = 0.96
 pause = 10.0
 below = true
-savestate = "savestates/000_start_and_reset.gzs"
+savestate = "../savestates/000_start_and_reset.gzs"
 
 [[split]]
 name = "KokiriSwordLeft"
 mask = "KokiriSwordLeft.png"
 threshold = 0.93
-savestate = "savestates/009-kokiri_forest.gzs"
+savestate = "../savestates/009-kokiri_forest.gzs"
 
 [[split]]
 name = "KokiriSwordRight"
 with_previous = true
 mask = "KokiriSwordRight.png"
 threshold = 0.93
-savestate = "savestates/008-kokiri_forest.gzs"
-
-
+savestate = "../savestates/008-kokiri_forest.gzs"
 
 [[split]]
 name = "NutDummy"
@@ -37,7 +35,7 @@ mask = "NutDummy.png"
 threshold = 0.95
 pause = 1.0
 dummy = true
-savestate = "savestates/010-kokiri_shop.gzs"
+savestate = "../savestates/010-kokiri_shop.gzs"
 
 [[split]]
 name = "ExitKokiriShop"
@@ -51,7 +49,7 @@ name = "CrawlspaceLeft"
 mask = "CrawlspaceLeft.png"
 threshold = 0.93
 pause = 30.0
-savestate = "savestates/012-crawl.gzs"
+savestate = "../savestates/012-crawl.gzs"
 
 [[split]]
 name = "CrawlspaceRight"
@@ -59,7 +57,7 @@ with_previous = true
 mask = "CrawlspaceRight.png"
 threshold = 0.93
 pause = 30.0
-savestate = "savestates/012-crawl.gzs"
+savestate = "../savestates/012-crawl.gzs"
 
 [[split]]
 name = "LoadDummy"
@@ -67,7 +65,7 @@ mask = "LoadDummy.png"
 threshold = 0.95
 pause = 0.0
 dummy = true
-savestate = "savestates/011-kokiri_forest.gzs"
+savestate = "../savestates/011-kokiri_forest.gzs"
 
 [[split]]
 name = "Credits"

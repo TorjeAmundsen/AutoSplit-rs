@@ -4,9 +4,9 @@ use std::path::Path;
 
 use autosplit_core::compare::ComparisonMethod;
 use autosplit_core::preset::{
-    PRESET_FILE, Preset, PresetError, PresetSplit, SAVESTATE_NOTE_FILE, delete_preset, duplicate_savestates,
-    duplicates_among, load_presets, move_to_game_folder, new_preset_folder, sanitize_file_name, save_preset,
-    unique_file_name,
+    LIBRARY_FILE, PRESET_FILE, Preset, PresetError, PresetSplit, SAVESTATE_NOTE_FILE, delete_preset,
+    duplicate_savestates, duplicates_among, keeps_own_files, load_presets, move_to_game_folder, new_preset_folder,
+    sanitize_file_name, save_in_presets, save_preset, sweep_shared_files, unique_file_name,
 };
 use test_case::test_case;
 
@@ -67,7 +67,7 @@ fn taken_names_get_a_number() {
 /// A preset of `game` saved in `folder`, with one mask.
 fn saved(folder: &Path, game: &str) {
     file(&folder.join("boss.png"), "mask");
-    save_preset(Some(folder), folder, &Preset { game: game.into(), ..preset(vec![split("Boss", "boss.png")]) })
+    save_preset(Some(folder), folder, None, &Preset { game: game.into(), ..preset(vec![split("Boss", "boss.png")]) })
         .unwrap();
 }
 
@@ -174,17 +174,18 @@ fn a_game_folder_left_with_only_finders_file_is_removed() {
     assert!(!presets.path().join("Old_Game").exists());
 }
 
-#[test]
-fn a_game_folder_in_another_case_is_the_games_folder() {
-    // Arrange: the game's folder, as it was named when the game was typed in another case
+#[test_case("mario_64", "mario 64"; "in another case")]
+#[test_case("Mario__64", "Mario  64"; "with two spaces")]
+fn a_game_folder_of_the_game_typed_another_way_is_the_games_folder(on_disk: &str, typed: &str) {
+    // Arrange: the game's folder, as it was named when the game was typed another way
     let presets = tempfile::tempdir().unwrap();
-    saved(&presets.path().join("mario_64").join("Any%"), "mario 64");
+    saved(&presets.path().join(on_disk).join("Any%"), typed);
 
     // Act
     let folder = new_preset_folder(presets.path(), "Mario 64", "100%");
 
     // Assert: the folder as it's spelled on disk, also where names differ by case, like Linux
-    assert_eq!(folder, presets.path().join("mario_64").join("100%"));
+    assert_eq!(folder, presets.path().join(on_disk).join("100%"));
 }
 
 #[test]
@@ -251,7 +252,7 @@ fn picked_files_are_copied_in_once_and_named_for_their_split() {
     second.savestate = savestate;
 
     // Act
-    let saved = save_preset(None, target.path(), &preset(vec![first, second])).unwrap();
+    let saved = save_preset(None, target.path(), None, &preset(vec![first, second])).unwrap();
 
     // Assert: one copy each, which both splits use
     let paths: Vec<(&str, &str)> =
@@ -279,7 +280,7 @@ fn copies_dont_replace_files_that_are_there() {
     file(&target.path().join("Boss.png"), "someone else's");
 
     // Act
-    let saved = save_preset(None, target.path(), &preset(vec![split("Boss", &mask)])).unwrap();
+    let saved = save_preset(None, target.path(), None, &preset(vec![split("Boss", &mask)])).unwrap();
 
     // Assert
     assert_eq!(
@@ -296,7 +297,7 @@ fn files_in_the_folder_stay_where_they_are() {
     let loaded = preset(vec![split("Boss", "masks/boss.png")]);
 
     // Act
-    let saved = save_preset(Some(folder.path()), folder.path(), &loaded).unwrap();
+    let saved = save_preset(Some(folder.path()), folder.path(), None, &loaded).unwrap();
 
     // Assert
     assert_eq!((saved, files(folder.path())), (loaded, vec!["masks/boss.png".to_owned(), PRESET_FILE.to_owned()]));
@@ -355,11 +356,11 @@ fn saving_twice_changes_nothing() {
     let picked = tempfile::tempdir().unwrap();
     let mask = file(&picked.path().join("mask.png"), "mask");
     let target = tempfile::tempdir().unwrap();
-    let saved = save_preset(None, target.path(), &preset(vec![split("Boss", &mask)])).unwrap();
+    let saved = save_preset(None, target.path(), None, &preset(vec![split("Boss", &mask)])).unwrap();
     let before = files(target.path());
 
     // Act
-    let again = save_preset(Some(target.path()), target.path(), &saved).unwrap();
+    let again = save_preset(Some(target.path()), target.path(), None, &saved).unwrap();
 
     // Assert
     assert_eq!((again, files(target.path())), (saved, before));
@@ -374,11 +375,11 @@ fn saving_as_new_copies_everything_and_leaves_the_old_preset() {
     file(&old.join("savestates/boss.gzs"), "state");
     let mut boss = split("Boss", "boss.png");
     boss.savestate = "savestates/boss.gzs".into();
-    let loaded = save_preset(Some(&old), &old, &preset(vec![boss])).unwrap();
+    let loaded = save_preset(Some(&old), &old, None, &preset(vec![boss])).unwrap();
     let new = new_preset_folder(presets.path(), "Game", "Any%");
 
     // Act
-    let saved = save_preset(Some(&old), &new, &loaded).unwrap();
+    let saved = save_preset(Some(&old), &new, None, &loaded).unwrap();
 
     // Assert
     assert_eq!(
@@ -415,10 +416,10 @@ fn files_the_preset_stopped_using_are_deleted() {
     let mut boss = split("Boss", "boss.png");
     boss.savestate = "savestates/boss.gzs".into();
     boss.screenshot = "screenshots/boss.png".into();
-    save_preset(Some(folder.path()), folder.path(), &preset(vec![boss, split("Door", "door.png")])).unwrap();
+    save_preset(Some(folder.path()), folder.path(), None, &preset(vec![boss, split("Door", "door.png")])).unwrap();
 
     // Act: the boss split is removed
-    save_preset(Some(folder.path()), folder.path(), &preset(vec![split("Door", "door.png")])).unwrap();
+    save_preset(Some(folder.path()), folder.path(), None, &preset(vec![split("Door", "door.png")])).unwrap();
 
     // Assert
     assert_eq!(
@@ -445,7 +446,7 @@ fn masks_written_another_way_are_still_used(written: &str) {
     std::fs::write(folder.path().join(PRESET_FILE), loaded.to_toml()).unwrap();
 
     // Act
-    let saved = save_preset(Some(folder.path()), folder.path(), &loaded).unwrap();
+    let saved = save_preset(Some(folder.path()), folder.path(), None, &loaded).unwrap();
 
     // Assert
     assert_eq!((saved.splits[0].mask.as_str(), folder.path().join("boss.png").is_file()), ("boss.png", true));
@@ -463,7 +464,7 @@ fn a_failed_save_leaves_the_folder_as_it_was() {
 
     // Act
     let splits = vec![split("Boss", &mask), split("Door", &not_a_file.display().to_string())];
-    let error = save_preset(None, folder.path(), &preset(splits));
+    let error = save_preset(None, folder.path(), None, &preset(splits));
 
     // Assert
     assert_eq!((error.is_err(), files(folder.path())), (true, vec!["notes.txt".to_owned()]));
@@ -481,7 +482,7 @@ fn a_failed_save_as_new_leaves_no_folder() {
 
     // Act
     let splits = vec![split("Boss", &mask), split("Door", &not_a_file.display().to_string())];
-    let error = save_preset(None, &new, &preset(splits));
+    let error = save_preset(None, &new, None, &preset(splits));
 
     // Assert: the game's folder made for it goes too
     assert_eq!((error.is_err(), new.exists(), presets.path().join("Game").exists()), (true, false, false));
@@ -499,7 +500,7 @@ fn files_picked_for_splits_with_the_same_name_get_their_own_copies() {
     let target = tempfile::tempdir().unwrap();
 
     // Act
-    let saved = save_preset(None, target.path(), &preset(vec![boss, again])).unwrap();
+    let saved = save_preset(None, target.path(), None, &preset(vec![boss, again])).unwrap();
 
     // Assert
     let paths: Vec<(&str, &str)> =
@@ -516,7 +517,7 @@ fn masks_of_names_that_sanitize_the_same_get_their_own_copies() {
 
     // Act
     let saved =
-        save_preset(None, target.path(), &preset(vec![split("Boss?", &first), split("Boss:", &second)])).unwrap();
+        save_preset(None, target.path(), None, &preset(vec![split("Boss?", &first), split("Boss:", &second)])).unwrap();
 
     // Assert: one name each, and each copy is its own mask
     let masks: Vec<&str> = saved.splits.iter().map(|split| split.mask.as_str()).collect();
@@ -533,7 +534,7 @@ fn a_preset_of_only_a_reset_image_saves() {
     let reset = split("reset", &file(&picked.path().join("reset.png"), "r"));
 
     // Act
-    let saved = save_preset(None, target.path(), &preset(vec![reset])).unwrap();
+    let saved = save_preset(None, target.path(), None, &preset(vec![reset])).unwrap();
 
     // Assert
     assert_eq!(Preset::load(&target.path().join(PRESET_FILE)).unwrap(), saved);
@@ -567,7 +568,7 @@ fn a_preset_with_every_field_set_reads_back_as_saved() {
     };
 
     // Act
-    let saved = save_preset(None, target.path(), &preset(vec![first, second.clone()])).unwrap();
+    let saved = save_preset(None, target.path(), None, &preset(vec![first, second.clone()])).unwrap();
 
     // Assert: everything but the paths, which became the copies', is as given
     let read = Preset::load(&target.path().join(PRESET_FILE)).unwrap();
@@ -591,7 +592,7 @@ fn missing_files_stop_the_save_before_anything_is_written() {
     let missing = target.path().join("gone.png");
 
     // Act
-    let error = save_preset(None, target.path(), &preset(vec![split("Boss", &missing.display().to_string())]));
+    let error = save_preset(None, target.path(), None, &preset(vec![split("Boss", &missing.display().to_string())]));
 
     // Assert
     assert_eq!(
@@ -607,7 +608,7 @@ fn deleted_presets_are_gone() {
     for name in ["Any%", "100%"] {
         let folder = presets.path().join(name);
         file(&folder.join("boss.png"), "mask");
-        save_preset(Some(&folder), &folder, &preset(vec![split("Boss", "boss.png")])).unwrap();
+        save_preset(Some(&folder), &folder, None, &preset(vec![split("Boss", "boss.png")])).unwrap();
     }
 
     // Act
@@ -645,4 +646,254 @@ fn deleting_again_removes_what_was_left() {
 
     // Assert
     assert_eq!(files(presets.path()), Vec::<String>::new());
+}
+
+/// A split with a screenshot, which presets of a game share, and a mask.
+fn pictured(name: &str, mask: &str, screenshot: &str) -> PresetSplit {
+    PresetSplit { screenshot: screenshot.into(), ..split(name, mask) }
+}
+
+#[test]
+fn screenshots_with_the_same_contents_are_shared_by_a_games_presets() {
+    // Arrange: the second preset's Boss screenshot is another file with the same contents, and
+    // its Door screenshot differs
+    let picked = tempfile::tempdir().unwrap();
+    let mask = file(&picked.path().join("mask.png"), "mask");
+    let boss = file(&picked.path().join("boss.png"), "boss");
+    let same = file(&picked.path().join("again/boss.png"), "boss");
+    let door = file(&picked.path().join("door.png"), "door");
+    let game = tempfile::tempdir().unwrap();
+    let first = game.path().join("Any%");
+    let second = game.path().join("100%");
+    save_preset(None, &first, Some(game.path()), &preset(vec![pictured("Boss", &mask, &boss)])).unwrap();
+
+    // Act
+    let splits = vec![pictured("Boss", &mask, &same), pictured("Door", &mask, &door)];
+    let saved = save_preset(None, &second, Some(game.path()), &preset(splits)).unwrap();
+
+    // Assert
+    let screenshots: Vec<&str> = saved.splits.iter().map(|split| split.screenshot.as_str()).collect();
+    assert_eq!(
+        (screenshots, files(&game.path().join("screenshots"))),
+        (
+            vec!["../screenshots/Boss.png", "../screenshots/Door.png"],
+            vec!["Boss.png".to_owned(), "Door.png".to_owned()]
+        )
+    );
+}
+
+#[test]
+fn saving_moves_a_presets_own_screenshots_and_savestates_to_its_games_folder() {
+    // Arrange: a preset as saved before game folders shared files
+    let game = tempfile::tempdir().unwrap();
+    let folder = game.path().join("Any%");
+    file(&folder.join("boss.png"), "mask");
+    file(&folder.join("screenshots/Boss.png"), "boss");
+    file(&folder.join("savestates/deku.gzs"), "state");
+    file(&folder.join(format!("savestates/{SAVESTATE_NOTE_FILE}")), "note");
+    let mut boss = pictured("Boss", "boss.png", "screenshots/Boss.png");
+    boss.savestate = "savestates/deku.gzs".into();
+    let loaded = preset(vec![boss]);
+    save_preset(Some(&folder), &folder, None, &loaded).unwrap();
+
+    // Act
+    let saved = save_preset(Some(&folder), &folder, Some(game.path()), &loaded).unwrap();
+
+    // Assert
+    assert_eq!(
+        (keeps_own_files(&loaded), keeps_own_files(&saved), files(game.path())),
+        (
+            true,
+            false,
+            vec![
+                "Any%/boss.png".to_owned(),
+                format!("Any%/{PRESET_FILE}"),
+                format!("savestates/{SAVESTATE_NOTE_FILE}"),
+                "savestates/deku.gzs".to_owned(),
+                "screenshots/Boss.png".to_owned(),
+            ]
+        )
+    );
+}
+
+#[test]
+fn a_failed_save_takes_back_what_it_copied_to_the_shared_folders() {
+    // Arrange: Boss's screenshot is copied to the shared folder, then Door's mask, a folder,
+    // can't be
+    let picked = tempfile::tempdir().unwrap();
+    let mask = file(&picked.path().join("mask.png"), "mask");
+    let boss = file(&picked.path().join("boss.png"), "boss");
+    let not_a_file = picked.path().join("folder.png");
+    std::fs::create_dir(&not_a_file).unwrap();
+    let game = tempfile::tempdir().unwrap();
+    file(&game.path().join("screenshots/Other.png"), "another preset's");
+
+    // Act
+    let splits = vec![pictured("Boss", &mask, &boss), split("Door", &not_a_file.display().to_string())];
+    let error = save_preset(None, &game.path().join("Any%"), Some(game.path()), &preset(splits));
+
+    // Assert
+    assert_eq!((error.is_err(), files(game.path())), (true, vec!["screenshots/Other.png".to_owned()]));
+}
+
+#[test]
+fn a_preset_folder_never_takes_the_name_of_the_shared_folders() {
+    // Arrange
+    let presets = tempfile::tempdir().unwrap();
+
+    // Act
+    let folder = new_preset_folder(presets.path(), "Game", "Screenshots");
+
+    // Assert
+    assert_eq!(folder.file_name().unwrap(), "Screenshots_2");
+}
+
+/// A games folder in `presets` with a preset using `used.png` and a library in `libraries`
+/// using `library.png`, and `unused.png` and `in use.png` that neither uses.
+fn shared_files(presets: &Path, libraries: &Path) -> std::path::PathBuf {
+    let game = presets.join("Game");
+    for name in ["used.png", "library.png", "unused.png", "in use.png"] {
+        file(&game.join("screenshots").join(name), name);
+    }
+    file(&game.join("Any%/boss.png"), "mask");
+    let any = preset(vec![pictured("Boss", "boss.png", "../screenshots/used.png")]);
+    std::fs::write(game.join("Any%").join(PRESET_FILE), any.to_toml()).unwrap();
+    let library = "game = \"Game\"\n\n[[split]]\nname = \"Door\"\nscreenshot = \
+                   \"../../presets/Game/screenshots/library.png\"\n";
+    file(&libraries.join("Game").join(LIBRARY_FILE), library);
+    game
+}
+
+#[test]
+fn files_nothing_uses_go_from_the_shared_folders() {
+    // Arrange
+    let root = tempfile::tempdir().unwrap();
+    let (presets, libraries) = (root.path().join("presets"), root.path().join("splits"));
+    let game = shared_files(&presets, &libraries);
+
+    // Act
+    sweep_shared_files(&game, &presets, &libraries, &[game.join("screenshots/in use.png")]);
+
+    // Assert
+    assert_eq!(
+        files(&game.join("screenshots")),
+        vec!["in use.png".to_owned(), "library.png".to_owned(), "used.png".to_owned()]
+    );
+}
+
+#[test]
+fn shared_files_stay_while_a_preset_cant_be_read() {
+    // Arrange: one that may use unused.png
+    let root = tempfile::tempdir().unwrap();
+    let (presets, libraries) = (root.path().join("presets"), root.path().join("splits"));
+    let game = shared_files(&presets, &libraries);
+    file(&game.join("Broken").join(PRESET_FILE), "not = [toml");
+
+    // Act
+    sweep_shared_files(&game, &presets, &libraries, &[]);
+
+    // Assert
+    assert_eq!(files(&game.join("screenshots")).len(), 4);
+}
+
+#[test]
+fn a_shared_file_never_gets_a_name_another_has_in_another_case() {
+    // Arrange: the game's presets share boss.png, and this Boss has another picture. Linux would
+    // take Boss.png, which is the same file as boss.png on Windows and macOS.
+    let picked = tempfile::tempdir().unwrap();
+    let mask = file(&picked.path().join("mask.png"), "mask");
+    let boss = file(&picked.path().join("boss.png"), "this boss");
+    let game = tempfile::tempdir().unwrap();
+    file(&game.path().join("screenshots/boss.png"), "another boss");
+
+    // Act
+    let saved =
+        save_preset(None, &game.path().join("Any%"), Some(game.path()), &preset(vec![pictured("Boss", &mask, &boss)]))
+            .unwrap();
+
+    // Assert
+    assert_eq!(saved.splits[0].screenshot, "../screenshots/Boss (1).png");
+}
+
+#[test]
+fn a_preset_folder_with_the_shared_folders_name_is_never_swept() {
+    // Arrange: a preset from before the name was kept for the shared screenshots
+    let root = tempfile::tempdir().unwrap();
+    let (presets, libraries) = (root.path().join("presets"), root.path().join("splits"));
+    let game = presets.join("Game");
+    file(&game.join("screenshots/boss.png"), "mask");
+    std::fs::write(game.join("screenshots").join(PRESET_FILE), preset(vec![split("Boss", "boss.png")]).to_toml())
+        .unwrap();
+    file(&game.join("screenshots/unused.png"), "nothing uses it");
+
+    // Act
+    sweep_shared_files(&game, &presets, &libraries, &[]);
+
+    // Assert
+    assert_eq!(files(&game.join("screenshots")).len(), 3);
+}
+
+#[cfg(any(windows, target_os = "macos"))]
+#[test]
+fn a_shared_folder_spelled_in_another_case_is_used_as_it_is() {
+    // Arrange: the shared folder is Screenshots, which is the same folder as screenshots here
+    let game = tempfile::tempdir().unwrap();
+    file(&game.path().join("Screenshots/Boss.png"), "boss");
+    let folder = game.path().join("Any%");
+    file(&folder.join("boss.png"), "mask");
+    let loaded = preset(vec![pictured("Boss", "boss.png", "../Screenshots/Boss.png")]);
+
+    // Act
+    let saved = save_preset(Some(&folder), &folder, Some(game.path()), &loaded).unwrap();
+
+    // Assert: no second copy
+    assert_eq!(
+        (saved.splits[0].screenshot.as_str(), files(&game.path().join("Screenshots"))),
+        ("../Screenshots/Boss.png", vec!["Boss.png".to_owned()])
+    );
+}
+
+#[test]
+fn a_preset_whose_game_changed_takes_its_shared_files_to_the_new_games_folder() {
+    // Arrange: a preset of A sharing A's screenshot
+    let root = tempfile::tempdir().unwrap();
+    let (presets, libraries) = (root.path().join("presets"), root.path().join("splits"));
+    let old = presets.join("A/Any%");
+    file(&old.join("boss.png"), "mask");
+    file(&presets.join("A/screenshots/Boss.png"), "boss");
+    let loaded = Preset { game: "A".into(), ..preset(vec![pictured("Boss", "boss.png", "../screenshots/Boss.png")]) };
+    std::fs::write(old.join(PRESET_FILE), loaded.to_toml()).unwrap();
+
+    // Act
+    let saved =
+        save_in_presets(&presets, &libraries, Some(&old), &old, &Preset { game: "B".into(), ..loaded }).unwrap();
+
+    // Assert: A keeps nothing, since nothing else uses its screenshot
+    assert_eq!(
+        (saved.folder, saved.left_behind.is_none(), files(&presets)),
+        (
+            presets.join("B").join("Any%"),
+            true,
+            vec!["B/Any%/Boss.png".to_owned(), format!("B/Any%/{PRESET_FILE}"), "B/screenshots/Boss.png".to_owned()]
+        )
+    );
+}
+
+#[test]
+fn a_failed_save_takes_back_the_shared_folder_it_made() {
+    // Arrange: the game's presets don't share screenshots yet. Boss's is copied, then Door's mask,
+    // a folder, can't be.
+    let picked = tempfile::tempdir().unwrap();
+    let mask = file(&picked.path().join("mask.png"), "mask");
+    let boss = file(&picked.path().join("boss.png"), "boss");
+    let not_a_file = picked.path().join("folder.png");
+    std::fs::create_dir(&not_a_file).unwrap();
+    let game = tempfile::tempdir().unwrap();
+
+    // Act
+    let splits = vec![pictured("Boss", &mask, &boss), split("Door", &not_a_file.display().to_string())];
+    let error = save_preset(None, &game.path().join("Any%"), Some(game.path()), &preset(splits));
+
+    // Assert
+    assert_eq!((error.is_err(), game.path().join("screenshots").exists()), (true, false));
 }

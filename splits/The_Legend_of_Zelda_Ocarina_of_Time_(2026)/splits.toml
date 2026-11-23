@@ -3,7 +3,7 @@ game = "The Legend of Zelda: Ocarina of Time (2026)"
 [[split]]
 name = "start_auto_splitter"
 mask = "start_auto_splitter.png"
-screenshot = "screenshot_start_auto_splitter.png"
+screenshot = "../../presets/The_Legend_of_Zelda_Ocarina_of_Time_(2026)/screenshots/start_auto_splitter.png"
 threshold = 0.995
 pause = 10.0
 description = "Starts when pressing A to start a fresh file."
@@ -12,7 +12,7 @@ base_image = "base_start_auto_splitter.png"
 [[split]]
 name = "reset"
 mask = "reset.png"
-screenshot = "screenshot_reset.png"
+screenshot = "../../presets/The_Legend_of_Zelda_Ocarina_of_Time_(2026)/screenshots/reset (1).png"
 threshold = 0.995
 pause = 0.0
 description = "Resets when you're about to start a new file."
@@ -21,7 +21,7 @@ base_image = "base_reset.png"
 [[split]]
 name = "Slingshot"
 mask = "Slingshot.png"
-screenshot = "screenshot_Slingshot.png"
+screenshot = "../../presets/The_Legend_of_Zelda_Ocarina_of_Time_(2026)/screenshots/Slingshot.png"
 threshold = 0.95
 description = "Splits on the first frame the item model appears."
 base_image = "base_Slingshot.png"
@@ -29,7 +29,7 @@ base_image = "base_Slingshot.png"
 [[split]]
 name = "Ganon"
 mask = "Ganon.png"
-screenshot = "screenshot_Ganon.png"
+screenshot = "../../presets/The_Legend_of_Zelda_Ocarina_of_Time_(2026)/screenshots/Ganon.png"
 threshold = 0.95
 delay = 316
 description = "Splits on 2nd blur frame as sword connects with the head (subject to change)."
@@ -38,7 +38,7 @@ base_image = "base_Ganon.png"
 [[split]]
 name = "SariasSong"
 mask = "SariasSong.png"
-screenshot = "screenshot_SariasSong.png"
+screenshot = "../../presets/The_Legend_of_Zelda_Ocarina_of_Time_(2026)/screenshots/SariasSong.png"
 threshold = 0.95
 description = """Splits on camera snap back to Link, right before the "You learned Saria's Song!" textbox."""
 base_image = "base_SariasSong.png"
@@ -46,7 +46,7 @@ base_image = "base_SariasSong.png"
 [[split]]
 name = "ZeldasLetter"
 mask = "ZeldasLetter.png"
-screenshot = "screenshot_ZeldasLetter.png"
+screenshot = "../../presets/The_Legend_of_Zelda_Ocarina_of_Time_(2026)/screenshots/ZeldasLetter.png"
 threshold = 0.93
 delay = 683
 below = true
@@ -56,7 +56,7 @@ base_image = "base_ZeldasLetter.png"
 [[split]]
 name = "PotionBottle"
 mask = "PotionBottle.png"
-screenshot = "screenshot_PotionBottle.png"
+screenshot = "../../presets/The_Legend_of_Zelda_Ocarina_of_Time_(2026)/screenshots/PotionBottleDummy.png"
 threshold = 0.95
 description = "Splits on the first frame the item model appears."
 base_image = "base_PotionBottle.png"
@@ -64,7 +64,7 @@ base_image = "base_PotionBottle.png"
 [[split]]
 name = "GoronBracelet"
 mask = "GoronBracelet.png"
-screenshot = "screenshot_GoronBracelet.png"
+screenshot = "../../presets/The_Legend_of_Zelda_Ocarina_of_Time_(2026)/screenshots/GoronBraceletDummy.png"
 threshold = 0.93
 description = "Splits on the first frame the item model appears."
 base_image = "base_GoronBracelet.png"
@@ -72,7 +72,7 @@ base_image = "base_GoronBracelet.png"
 [[split]]
 name = "BombBag"
 mask = "BombBag.png"
-screenshot = "screenshot_BombBag.png"
+screenshot = "../../presets/The_Legend_of_Zelda_Ocarina_of_Time_(2026)/screenshots/BombBag.png"
 threshold = 0.93
 description = "Splits on the first frame the item model appears."
 base_image = "base_BombBag.png"
@@ -80,7 +80,7 @@ base_image = "base_BombBag.png"
 [[split]]
 name = "DinsFire"
 mask = "DinsFire.png"
-screenshot = "screenshot_DinsFire.png"
+screenshot = "../../presets/The_Legend_of_Zelda_Ocarina_of_Time_(2026)/screenshots/DinsFire.png"
 threshold = 0.93
 delay = 683
 below = true
@@ -90,7 +90,7 @@ base_image = "base_DinsFire.png"
 [[split]]
 name = "OverworldFrameDummy"
 mask = "OverworldFrameDummy.png"
-screenshot = "screenshot_GraveyardDummy.png"
+screenshot = "../../presets/The_Legend_of_Zelda_Ocarina_of_Time_(2026)/screenshots/GraveyardDummy.png"
 threshold = 0.95
 dummy = true
 description = "Dummy split for entering an overworld area for the first time, detected by the unique border pattern rather than the text to stay language agnostic."
@@ -99,7 +99,7 @@ base_image = "base_OverworldFrameDummy.png"
 [[split]]
 name = "PlayedZeldasLullaby"
 mask = "PlayedZeldasLullaby.png"
-screenshot = "screenshot_PlayedZeldasLullaby.png"
+screenshot = "../../presets/The_Legend_of_Zelda_Ocarina_of_Time_(2026)/screenshots/Boat.png"
 threshold = 0.94
 below = true
 description = "Splits any time you play Zelda's Lullaby successfully, on the frame the notes disappear."
@@ -116,7 +116,7 @@ base_image = "base_FadeToWhite.png"
 [[split]]
 name = "Hookshot"
 mask = "Hookshot.png"
-screenshot = "screenshot_Hookshot.png"
+screenshot = "../../presets/The_Legend_of_Zelda_Ocarina_of_Time_(2026)/screenshots/Hookshot.png"
 threshold = 0.93
 description = "Splits on the first frame the item model appears."
 base_image = "base_Hookshot.png"
@@ -124,7 +124,7 @@ base_image = "base_Hookshot.png"
 [[split]]
 name = "HoverBoots"
 mask = "HoverBoots.png"
-screenshot = "screenshot_HoverBoots.png"
+screenshot = "../../presets/The_Legend_of_Zelda_Ocarina_of_Time_(2026)/screenshots/HoverBoots.png"
 threshold = 0.93
 description = "Splits on the first frame the item model appears."
 base_image = "base_HoverBoots.png"
@@ -132,15 +132,15 @@ base_image = "base_HoverBoots.png"
 [[split]]
 name = "LoadingZone"
 mask = "LoadingZone.png"
-screenshot = "screenshot_LoadingZone.png"
+screenshot = "../../presets/The_Legend_of_Zelda_Ocarina_of_Time_(2026)/screenshots/EnterDeku.png"
 threshold = 0.97
-description = "Splits on the first frame of the little triforce loading icon appearing in the bottom right. Happens 4 frames after full black fade (0.066s)."
+description = "Splits on the first frame of the little triforce loading icon appearing in the bottom right. Happens 4 frames after full black fade (66ms)."
 base_image = "base_LoadingZone.png"
 
 [[split]]
 name = "MegatonHammer"
 mask = "MegatonHammer.png"
-screenshot = "screenshot_MegatonHammer.png"
+screenshot = "../../presets/The_Legend_of_Zelda_Ocarina_of_Time_(2026)/screenshots/MegatonHammer.png"
 threshold = 0.93
 description = "Splits on the first frame the item model appears."
 base_image = "base_MegatonHammer.png"
@@ -148,7 +148,7 @@ base_image = "base_MegatonHammer.png"
 [[split]]
 name = "FairyBow"
 mask = "FairyBow.png"
-screenshot = "screenshot_FairyBow.png"
+screenshot = "../../presets/The_Legend_of_Zelda_Ocarina_of_Time_(2026)/screenshots/FairyBow.png"
 threshold = 0.93
 description = "Splits on the first frame the item model appears."
 base_image = "base_FairyBow.png"
@@ -156,7 +156,7 @@ base_image = "base_FairyBow.png"
 [[split]]
 name = "MirrorShieldDay"
 mask = "MirrorShieldDay.png"
-screenshot = "screenshot_MirrorShieldDay.png"
+screenshot = "../../presets/The_Legend_of_Zelda_Ocarina_of_Time_(2026)/screenshots/MirrorShieldDay.png"
 threshold = 0.92
 description = "Splits on the first frame of the item model appearing."
 base_image = "base_MirrorShieldDay.png"
@@ -165,7 +165,7 @@ base_image = "base_MirrorShieldDay.png"
 name = "MirrorShieldDusk"
 with_previous = true
 mask = "MirrorShieldDusk.png"
-screenshot = "screenshot_MirrorShieldDusk.png"
+screenshot = "../../presets/The_Legend_of_Zelda_Ocarina_of_Time_(2026)/screenshots/MirrorShieldDusk.png"
 threshold = 0.92
 base_image = "base_MirrorShieldDusk.png"
 then = true
@@ -174,7 +174,7 @@ then = true
 name = "MirrorShieldAlmostNight"
 with_previous = true
 mask = "MirrorShieldAlmostNight.png"
-screenshot = "screenshot_MirrorShieldAlmostNight.png"
+screenshot = "../../presets/The_Legend_of_Zelda_Ocarina_of_Time_(2026)/screenshots/MirrorShieldAlmostNight.png"
 threshold = 0.92
 base_image = "base_MirrorShieldAlmostNight.png"
 then = true
@@ -183,7 +183,7 @@ then = true
 name = "MirrorShieldNight"
 with_previous = true
 mask = "MirrorShieldNight.png"
-screenshot = "screenshot_MirrorShieldNight.png"
+screenshot = "../../presets/The_Legend_of_Zelda_Ocarina_of_Time_(2026)/screenshots/MirrorShieldNight.png"
 threshold = 0.92
 base_image = "base_MirrorShieldNight.png"
 then = true
@@ -191,7 +191,7 @@ then = true
 [[split]]
 name = "GoldenGauntlets"
 mask = "GoldenGauntlets.png"
-screenshot = "screenshot_GoldenGauntlets.png"
+screenshot = "../../presets/The_Legend_of_Zelda_Ocarina_of_Time_(2026)/screenshots/GoldenGauntlets.png"
 threshold = 0.93
 description = "Splits on the first frame the item model appears."
 base_image = "base_GoldenGauntlets.png"
@@ -199,7 +199,7 @@ base_image = "base_GoldenGauntlets.png"
 [[split]]
 name = "TrialsDummy"
 mask = "TrialsDummy.png"
-screenshot = "screenshot_TrialsDummy.png"
+screenshot = "../../presets/The_Legend_of_Zelda_Ocarina_of_Time_(2026)/screenshots/TrialsDummy.png"
 threshold = 0.93
 pause = 0.0
 dummy = true

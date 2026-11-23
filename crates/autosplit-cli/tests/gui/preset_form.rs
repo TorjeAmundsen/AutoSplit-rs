@@ -658,9 +658,10 @@ fn the_summary_names_the_first_problem_and_counts_the_rest() {
     assert_eq!(summary.as_deref(), Some("The preset needs a name. And 2 more problems."));
 }
 
-#[test_case(false => "No changes yet."; "unchanged")]
-#[test_case(true => "Ready to save."; "changed")]
-fn without_problems_the_line_says_whether_theres_something_to_save(changed: bool) -> String {
+#[test_case(false, false => "No changes yet."; "unchanged")]
+#[test_case(true, false => "Ready to save."; "changed")]
+#[test_case(false, true => "Ready to save: saving shares its screenshots and savestates with the game's other presets."; "unchanged with files to share")]
+fn without_problems_the_line_says_whether_theres_something_to_save(changed: bool, files_to_share: bool) -> String {
     // Arrange
     let mut draft = draft(&["Boss"]);
     if changed {
@@ -668,7 +669,7 @@ fn without_problems_the_line_says_whether_theres_something_to_save(changed: bool
     }
 
     // Act, with the expected value checked by test_case
-    status_line(&draft.preset, &draft.problems(), draft.has_changes())
+    status_line(&draft.preset, &draft.problems(), draft.has_changes(), files_to_share)
 }
 
 #[test]
@@ -679,7 +680,7 @@ fn with_problems_the_line_is_their_summary() {
     let problems = draft.problems();
 
     // Act
-    let line = status_line(&draft.preset, &problems, draft.has_changes());
+    let line = status_line(&draft.preset, &problems, draft.has_changes(), false);
 
     // Assert
     assert_eq!(line, "Boss: It needs a mask. Choose one.");
@@ -768,15 +769,22 @@ fn leaving_unsaved_changes_says_what_is_lost(name: &str, saved_before: bool) -> 
     discard_question(name, saved_before)
 }
 
-#[test_case(false => "These savestates are the same as ones other splits already use:\n\nStart Image: 000 (1).gzs is the same as 000.gzs\nEscape: escape.gzs is the same as 001.gzs\n\nUse the existing files, so the preset keeps one copy of each?"; "in a preset")]
-#[test_case(true => "These savestates are the same as ones the split library already has:\n\nStart Image: 000 (1).gzs is the same as 000.gzs\nEscape: escape.gzs is the same as 001.gzs\n\nUse the existing files, so the library keeps one copy of each?"; "in the library")]
-fn savestates_there_already_are_offered_instead_of_copies(library: bool) -> String {
+#[test]
+fn savestates_there_already_are_offered_instead_of_copies() {
     // Arrange
     let same = [("Start Image", "000 (1).gzs", "000.gzs"), ("Escape", "escape.gzs", "001.gzs")]
         .map(|(heading, file, kept)| (heading.to_owned(), file.to_owned(), kept.to_owned()));
 
     // Act
-    one_copy_question(&same, library)
+    let question = one_copy_question(&same);
+
+    // Assert
+    assert_eq!(
+        question,
+        "These savestates are the same as ones other splits already use:\n\nStart Image: 000 (1).gzs is the same as \
+         000.gzs\nEscape: escape.gzs is the same as 001.gzs\n\nUse the existing files, so the preset keeps one copy of \
+         each?"
+    );
 }
 
 #[test_case("006 enter deku.gzs", 15 => "006 en...ku.gzs"; "shortened in the middle")]
@@ -1352,4 +1360,16 @@ fn a_screenshot_is_saved_with_its_split_unless_its_a_fade_split() {
     let saved = draft.to_save();
     let saved: Vec<&str> = saved.splits.iter().map(|split| split.screenshot.as_str()).collect();
     assert_eq!((saved, draft.preset.splits[1].screenshot.as_str()), (vec!["boss screen.png", ""], "door screen.png"));
+}
+
+#[test]
+fn an_unchanged_preset_with_files_to_share_can_be_saved() {
+    // Arrange: the control without files to share can't be
+    let (plain, sharing) = (draft(&["Boss"]), draft(&["Boss"]).with_files_to_share(true));
+
+    // Act
+    let can_save = (plain.can_save(), sharing.can_save(), sharing.has_changes());
+
+    // Assert: closing it still doesn't ask
+    assert_eq!(can_save, (false, true, false));
 }

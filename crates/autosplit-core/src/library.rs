@@ -13,8 +13,8 @@ use std::path::{Path, PathBuf};
 use crate::image::{BgraImage, BgraView};
 use crate::imgproc::stretch_to_rgba;
 use crate::preset::{
-    LIBRARY_FILE, LibrarySplit, PresetError, PresetSplit, SplitLibrary, game_key, load_libraries, new_folder,
-    relative_text, sanitize_file_name, unique_file_name, unwritable,
+    LIBRARY_FILE, LibrarySplit, PresetError, PresetSplit, SplitFile, SplitLibrary, game_folder, game_key,
+    load_libraries, new_folder, place_shared, relative_text, sanitize_file_name, unique_file_name, unwritable,
 };
 
 /// The size base images are made at, which the Split Library shows them at.
@@ -35,6 +35,14 @@ pub struct NewStep {
     pub base_picture: BgraImage,
 }
 
+/// The game folder in `presets` whose shared screenshots and savestates the library in `folder`
+/// uses, which is named after the game as the library spells it. None when the library can't be
+/// read.
+pub fn library_game_folder(folder: &Path, presets: &Path) -> Option<PathBuf> {
+    let library = SplitLibrary::load(&folder.join(LIBRARY_FILE)).ok()?;
+    Some(game_folder(presets, &library.game))
+}
+
 /// `picture` at [`BASE_IMAGE_SIZE`], opaque.
 pub fn base_image(picture: BgraView) -> BgraImage {
     let (width, height) = BASE_IMAGE_SIZE;
@@ -45,9 +53,11 @@ pub fn base_image(picture: BgraView) -> BgraImage {
 }
 
 /// Adds a ready-made split made of `steps`, in order, to the library of `game` in `directory`,
-/// or a new library for it. Returns the library's folder.
+/// or a new library for it. Its screenshots and savestates go in the folders the game's presets
+/// in `presets` share. Returns the library's folder.
 pub fn add_ready_made(
     directory: &Path,
+    presets: &Path,
     game: &str,
     description: &str,
     steps: Vec<NewStep>,
@@ -73,12 +83,14 @@ pub fn add_ready_made(
             (folder, SplitLibrary { game: game.to_owned(), splits: Vec::new() }, true)
         }
     };
-    let written =
-        store_steps(&folder, description, steps, &HashSet::new(), &HashSet::new()).and_then(|(stored, pending)| {
+    let shared = game_folder(presets, game);
+    let written = store_steps(&folder, &shared, description, steps, &HashSet::new(), &HashSet::new()).and_then(
+        |(stored, pending)| {
             let mut now = before.clone();
             now.splits.extend(stored);
-            write_library(&folder, &before, &now, pending, &[])
-        });
+            write_library(&folder, &shared, &before, now, pending, &[])
+        },
+    );
     match written {
         Ok(()) => Ok(folder),
         Err(error) => {
@@ -92,11 +104,13 @@ pub fn add_ready_made(
 }
 
 /// Changes the `index`th ready-made split of the library in `folder`, which has to still be
-/// `expected`: its description, and its images and settings when there are new `steps`. Files of
-/// `in_use`, which a preset being edited still takes from the library, are never written over or
-/// deleted.
+/// `expected`: its description, and its images and settings when there are new `steps`. Like
+/// any write, it moves the screenshots and savestates the library still keeps itself to the
+/// folders the game's presets in `presets` share. Files of `in_use`, which a preset being edited
+/// still takes from the library, are never written over, moved or deleted.
 pub fn change_ready_made(
     folder: &Path,
+    presets: &Path,
     index: usize,
     expected: &[LibrarySplit],
     description: &str,
@@ -104,6 +118,7 @@ pub fn change_ready_made(
     in_use: &[PathBuf],
 ) -> Result<(), PresetError> {
     let before = SplitLibrary::load(&folder.join(LIBRARY_FILE))?;
+    let shared = game_folder(presets, &before.game);
     let mut chunks = expected_chunks(folder, &before, index, expected)?;
     // The files only this one uses, whose names its new files can take over
     let others: Vec<LibrarySplit> = (chunks.iter().enumerate())
@@ -119,20 +134,24 @@ pub fn change_ready_made(
                 .filter(|(old, new)| old.split.name != new.split.name && replaced.contains(&old.split.mask))
                 .map(|(old, _)| old.split.mask.to_lowercase())
                 .collect();
-            store_steps(folder, description, steps, &replaced, &renamed)?
+            store_steps(folder, &shared, description, steps, &replaced, &renamed)?
         }
         None => (described(std::mem::take(&mut chunks[index]), description), Pending::default()),
     };
     chunks[index] = stored;
     let now = SplitLibrary { game: before.game.clone(), splits: chunks.concat() };
-    write_library(folder, &before, &now, pending, in_use)
+    write_library(folder, &shared, &before, now, pending, in_use)
 }
 
 /// Deletes the `index`th ready-made split of the library in `folder`, which has to still be
-/// `expected`, with the files only it used, unless a preset being edited still takes one of them
-/// from the library, which `in_use` says.
+/// `expected`, with the masks and base images only it used, unless a preset being edited still
+/// takes one of them from the library, which `in_use` says. Its screenshots and savestates are in
+/// the folders the game's presets in `presets` share, and stay for
+/// [`sweep_shared_files`](crate::preset::sweep_shared_files), which knows whether a preset uses
+/// them.
 pub fn delete_ready_made(
     folder: &Path,
+    presets: &Path,
     index: usize,
     expected: &[LibrarySplit],
     in_use: &[PathBuf],
@@ -141,7 +160,7 @@ pub fn delete_ready_made(
     let mut chunks = expected_chunks(folder, &before, index, expected)?;
     chunks.remove(index);
     let now = SplitLibrary { game: before.game.clone(), splits: chunks.concat() };
-    write_library(folder, &before, &now, Pending::default(), in_use)
+    write_library(folder, &game_folder(presets, &before.game), &before, now, Pending::default(), in_use)
 }
 
 /// The ready-made splits of `library`, when its `index`th is still `expected`, which it may not
@@ -178,6 +197,7 @@ fn described(mut steps: Vec<LibrarySplit>, description: &str) -> Vec<LibrarySpli
 /// their own names, and some under another name until they take over an old file's.
 #[derive(Default)]
 struct Pending {
+    /// Files and folders, outer folders before what's in them.
     made: Vec<PathBuf>,
     renames: Vec<(PathBuf, PathBuf)>,
 }
@@ -185,8 +205,12 @@ struct Pending {
 impl Pending {
     /// Deletes what was written, when the library isn't written after all.
     fn discard(self) {
-        for path in self.made.iter().chain(self.renames.iter().map(|(from, _)| from)) {
-            let _ = std::fs::remove_file(path);
+        for (from, _) in &self.renames {
+            let _ = std::fs::remove_file(from);
+        }
+        // Files first, then the folders made for them, like the game's shared folders
+        for path in self.made.iter().rev() {
+            let _ = if path.is_dir() { std::fs::remove_dir(path) } else { std::fs::remove_file(path) };
         }
     }
 
@@ -199,15 +223,17 @@ impl Pending {
     }
 }
 
-/// Puts the files and base images of `steps` in `folder`, and makes their library
-/// splits. A file in the folder already, like one of a ready-made split that was inserted, is
-/// used where it is. The `replaced` files, which only the ready-made split these replace used,
+/// Puts the masks and base images of `steps` in `folder`, and their screenshots and savestates
+/// in the folders of the game folder `shared`, which the game's presets share, and makes their
+/// library splits. A mask in the folder already, like one of a ready-made split that was
+/// inserted, is used where it is. The `replaced` files, which only the ready-made split these replace used,
 /// are written over once the library is, so its new files keep their names instead of getting a
 /// number. The `renamed` masks, in lowercase, are of images given another name, so they're copied
 /// under it instead of used where they are. When something can't be found or written, what was
 /// written is deleted again.
 fn store_steps(
     folder: &Path,
+    shared: &Path,
     description: &str,
     steps: Vec<NewStep>,
     replaced: &HashSet<String>,
@@ -291,12 +317,16 @@ fn store_steps(
             let savestate = match savestate_source {
                 Some(source) => {
                     let wanted = source.file_name().map(|name| name.to_string_lossy().into_owned());
-                    place(source, wanted.unwrap_or(stem.clone()))?
+                    let wanted = wanted.unwrap_or(stem.clone());
+                    place_shared(&root, shared, SplitFile::Savestate, source, &wanted, &mut pending.made)?
                 }
                 None => String::new(),
             };
             let screenshot = match screenshot_source {
-                Some(source) => place(source, format!("screenshot_{stem}.png"))?,
+                Some(source) => {
+                    let wanted = format!("{stem}.png");
+                    place_shared(&root, shared, SplitFile::Screenshot, source, &wanted, &mut pending.made)?
+                }
                 None => String::new(),
             };
             let base = free(format!("base_{stem}.png"));
@@ -329,16 +359,57 @@ fn store_steps(
     }
 }
 
+/// Puts the screenshots and savestates `library` keeps in its own `folder`, as libraries did
+/// before they shared them with the game's presets, in the folders of the game folder `shared`
+/// instead, with [`place_shared`]. Their old files are left for writing the library to delete.
+/// Files of `in_use`, which a preset being edited still takes from the library, stay where they
+/// are until a later write.
+fn share_own_files(
+    folder: &Path,
+    shared: &Path,
+    library: &mut SplitLibrary,
+    in_use: &[PathBuf],
+    made: &mut Vec<PathBuf>,
+) -> Result<(), PresetError> {
+    let in_use: HashSet<PathBuf> = in_use.iter().filter_map(|path| std::fs::canonicalize(path).ok()).collect();
+    let root = std::fs::canonicalize(folder).map_err(|error| unwritable(folder, error))?;
+    for split in &mut library.splits {
+        for kind in SplitFile::SHARED {
+            let path = split.split.file_mut(kind);
+            if path.is_empty() {
+                continue;
+            }
+            // A missing file is left for loading to say
+            let Ok(file) = std::fs::canonicalize(root.join(&*path)) else { continue };
+            if !file.starts_with(&root) || !file.is_file() || in_use.contains(&file) {
+                continue;
+            }
+            let name = file.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
+            // Libraries named their screenshots so, to tell them from masks in one folder
+            let wanted = name.strip_prefix("screenshot_").filter(|rest| !rest.is_empty()).unwrap_or(&name);
+            *path = place_shared(&root, shared, kind, &file, wanted, made)?;
+        }
+    }
+    Ok(())
+}
+
 /// Writes `now` as the library in `folder`, with the `pending` files it names, and deletes the
-/// files `before` used that it doesn't. Nothing is written when that would write over or delete
-/// a file of `in_use`.
+/// files `before` used that it doesn't. Screenshots and savestates `now` still keeps in its own
+/// folder go to the folders of the game folder `shared`, which the game's presets share. Nothing
+/// is written when that would write over or delete a file of `in_use`.
 fn write_library(
     folder: &Path,
+    shared: &Path,
     before: &SplitLibrary,
-    now: &SplitLibrary,
-    pending: Pending,
+    mut now: SplitLibrary,
+    mut pending: Pending,
     in_use: &[PathBuf],
 ) -> Result<(), PresetError> {
+    if let Err(error) = share_own_files(folder, shared, &mut now, in_use, &mut pending.made) {
+        pending.discard();
+        return Err(error);
+    }
+    let now = &now;
     // Compared as the files they are, since names written in another case can be the same file,
     // like on Windows
     let file = |name: &String| {

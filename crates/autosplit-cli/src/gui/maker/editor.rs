@@ -10,8 +10,8 @@ use autosplit_core::filename::DEFAULT_FADE_TIME;
 use autosplit_core::image::BgraImage;
 use autosplit_core::mask::Mask;
 use autosplit_core::preset::{
-    PRESET_FILE, Preset, PresetSplit, SplitFile, delete_preset, duplicate_savestates, game_key, move_to_game_folder,
-    new_preset_folder, save_preset, screenshot_problem,
+    LeftBehind, PRESET_FILE, Preset, PresetSplit, SavedPreset, SplitFile, delete_preset, duplicate_savestates,
+    keeps_own_files, new_preset_folder, save_in_presets, screenshot_problem, shared_game_folder,
 };
 use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
 
@@ -30,7 +30,8 @@ use super::super::preset_form::{
 use super::super::recorder::PRIMARY;
 use super::super::recorder::key_character;
 use super::super::ui::{SplitField, SplitForm, SplitValues};
-use super::{Kept, ScreenshotUse, Source, game_label, presets_folder};
+use super::library::splits_folder;
+use super::{Kept, ScreenshotUse, Source, game_label, presets_folder, sweep_shared};
 use autosplit_input::Modifiers;
 use slint::winit_030::winit::event::KeyEvent;
 use slint::winit_030::winit::keyboard::{Key, NamedKey};
@@ -85,7 +86,20 @@ fn copied_in(source: Option<&Path>, path: &str) -> bool {
 
 /// The full path of a file of a split, for its tooltip, or empty without one.
 fn shown_path(maker: &super::Maker, path: &str) -> String {
-    if path.is_empty() { String::new() } else { maker.file(path).display().to_string() }
+    if path.is_empty() {
+        return String::new();
+    }
+    // Without the `..` of a file the game's presets share, which goes up a folder
+    let mut shown = PathBuf::new();
+    for part in maker.file(path).components() {
+        match part {
+            std::path::Component::ParentDir if shown.file_name().is_some() => {
+                shown.pop();
+            }
+            part => shown.push(part),
+        }
+    }
+    shown.display().to_string()
 }
 
 impl Gui {
@@ -200,7 +214,11 @@ impl Gui {
         let loaded = maker.loaded().cloned();
         let before = maker.keep();
         let (draft, source) = match (new, loaded) {
-            (false, Some(loaded)) => (Draft::edit(loaded.preset), Some(loaded.folder)),
+            (false, Some(loaded)) => {
+                let shares = shared_game_folder(&presets_folder(), &loaded.folder).is_some();
+                let files_to_share = shares && keeps_own_files(&loaded.preset);
+                (Draft::edit(loaded.preset).with_files_to_share(files_to_share), Some(loaded.folder))
+            }
             (false, None) => return,
             (true, loaded) => (Draft::new(&loaded.map(|loaded| loaded.preset.game).unwrap_or_default()), None),
         };
@@ -544,7 +562,9 @@ impl Gui {
             // Also when typing the name made it a start or reset image
             window.global::<SplitValues>().set_kind(SplitKind::of(split).index() as i32);
         }
-        window.set_problems(status_line(&edit.draft.preset, &problems, edit.draft.has_changes()).into());
+        window.set_problems(
+            status_line(&edit.draft.preset, &problems, edit.draft.has_changes(), edit.draft.files_to_share()).into(),
+        );
         window.set_problem_list(problem_list(&edit.draft.preset, &problems).into());
         window.set_problem_split(next_problem_split(&problems, selected).map_or(-1, |index| index as i32));
         window.set_has_problems(!problems.is_empty());
@@ -666,7 +686,8 @@ impl Gui {
             .unwrap_or_default();
         let mut duplicates = duplicate_savestates(from, &preset);
         duplicates.retain(|(index, _)| !saved.contains(&canonical(&from.join(&preset.splits[*index].savestate))));
-        if duplicates.is_empty() {
+        // In a game's folder, saving keeps one copy of the same savestate anyway
+        if duplicates.is_empty() || shared_game_folder(&presets_folder(), &target).is_some() {
             return self.write_draft(source, target, preset);
         }
         // Savestates with the same contents as another split's: one copy for both, if wanted
@@ -674,7 +695,7 @@ impl Gui {
         let same: Vec<(String, String, String)> = (duplicates.iter())
             .map(|(index, kept)| (split_heading(&preset, *index), file(&preset.splits[*index].savestate), file(kept)))
             .collect();
-        let text = one_copy_question(&same, false);
+        let text = one_copy_question(&same);
         let id = self.maker.borrow().edit.as_ref().map(|edit| edit.id);
         let weak = Rc::downgrade(self);
         self.show_message(Message::choice(text, ONE_COPY_LABELS, 0, move |answer| {
@@ -705,31 +726,26 @@ impl Gui {
             let maker = self.maker.borrow();
             (0..maker.splits.len()).map(|index| maker.preset_screenshot(index)).collect()
         };
-        // The game it was saved with, when it's saved in place, whose folder it's in
-        let in_place = source.as_deref() == Some(target.as_path());
-        let old_game = in_place.then(|| Preset::load(&target.join(PRESET_FILE)).ok()).flatten().map(|old| old.game);
-        let saved = match save_preset(source.as_deref(), &target, &preset) {
+        let saved = save_in_presets(&presets_folder(), &splits_folder(), source.as_deref(), &target, &preset);
+        let SavedPreset { preset: saved, folder: target, left_behind } = match saved {
             Ok(saved) => saved,
             Err(error) => return self.show_message(Message::error(format!("Couldn't save the preset. {error}"))),
         };
-        // Into its game's folder, once it's saved: when its game changed, or when it's in another
-        // game's folder still, after moving it failed the last time. A preset kept right in the
-        // presets folder from before game folders stays there until its game changes.
-        let presets = presets_folder();
-        let game_changed = old_game.is_some_and(|old| game_key(&old) != game_key(&preset.game));
-        let in_game_folder = target.parent().is_some_and(|parent| canonical(parent) != canonical(&presets));
-        let mut moved_problem = None;
-        let target = if in_place && (game_changed || in_game_folder) {
-            match move_to_game_folder(&presets, &target, &preset.game) {
-                Ok(moved) => moved,
-                Err(error) => {
-                    moved_problem = Some(error);
-                    target
-                }
+        let moved_problem = left_behind.map(|left_behind| match left_behind {
+            LeftBehind::OldCopy { old_game, error } => {
+                let old = if old_game.is_empty() { "its old game" } else { old_game.as_str() };
+                format!(
+                    "Saved the preset under {}, but {old} still has its old copy, which couldn't be deleted. \
+                     {error}: pick it under {old} and use Delete Preset.",
+                    preset.game
+                )
             }
-        } else {
-            target
-        };
+            LeftBehind::NotMoved(error) => format!(
+                "Saved the preset, but it stays in its old game's folder, since it couldn't be moved to {}'s. \
+                 {error}, by saving again.",
+                preset.game
+            ),
+        });
         // Saved marks are told by their screenshot's path, so they follow it to where it is now,
         // and go when the split's screenshot is another one
         for (index, split) in self.maker.borrow_mut().splits.iter_mut().enumerate() {
@@ -745,12 +761,7 @@ impl Gui {
         self.leave_editing();
         self.reload_presets(Some(&target), None);
         self.windows.maker.set_status(format!("Saved the preset {}.", preset.name).into());
-        if let Some(error) = moved_problem {
-            let text = format!(
-                "Saved the preset, but it stays in its old game's folder, since it couldn't be moved to {}'s. {error}, \
-                 by saving again.",
-                preset.game
-            );
+        if let Some(text) = moved_problem {
             self.show_message(Message::warning(text));
         }
     }
@@ -764,8 +775,9 @@ impl Gui {
         let deleted = maker.presets.place(maker.preset);
         drop(maker);
         let text = format!(
-            "Delete the preset {name}? Its folder is deleted with the masks, savestates and screenshots in it, which can't be undone. \
-             The split images you made with it stay in your split image folder.\n\n{}",
+            "Delete the preset {name}? Its folder is deleted with its masks, and its savestates and screenshots are too, \
+             unless another preset or the split library uses them. This can't be undone. The split images you made \
+             with it stay in your split image folder.\n\n{}",
             folder.display()
         );
         let weak = Rc::downgrade(self);
@@ -773,6 +785,9 @@ impl Gui {
             let (Some(gui), Answer::Yes) = (weak.upgrade(), answer) else { return };
             if let Err(error) = delete_preset(&folder) {
                 return gui.show_message(Message::error(format!("Couldn't delete the preset. {error}")));
+            }
+            if let Some(game_folder) = shared_game_folder(&presets_folder(), &folder) {
+                sweep_shared(&game_folder, &[]);
             }
             gui.leave_editing();
             gui.reload_presets(None, Some(&deleted));

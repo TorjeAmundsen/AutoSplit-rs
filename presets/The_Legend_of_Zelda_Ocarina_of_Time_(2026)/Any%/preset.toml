@@ -4,21 +4,21 @@ game = "The Legend of Zelda: Ocarina of Time (2026)"
 [[split]]
 name = "start_auto_splitter"
 mask = "start_auto_splitter.png"
-screenshot = "screenshots/start_auto_splitter.png"
+screenshot = "../screenshots/start_auto_splitter.png"
 threshold = 0.995
 pause = 10.0
 
 [[split]]
 name = "reset"
 mask = "reset.png"
-screenshot = "screenshots/reset.png"
+screenshot = "../screenshots/reset.png"
 threshold = 0.99
 pause = 0.0
 
 [[split]]
 name = "EnterDekuDummyTop"
 mask = "EnterDekuDummyTop.png"
-screenshot = "screenshots/EnterDekuDummyTop.png"
+screenshot = "../screenshots/EnterDekuDummyTop.png"
 threshold = 0.96
 pause = 0.0
 dummy = true
@@ -27,7 +27,7 @@ dummy = true
 name = "EnterDekuDummyCenter"
 with_previous = true
 mask = "EnterDekuDummyCenter.png"
-screenshot = "screenshots/EnterDekuDummyCenter.png"
+screenshot = "../screenshots/EnterDekuDummyCenter.png"
 threshold = 0.96
 pause = 0.0
 dummy = true
@@ -36,7 +36,7 @@ dummy = true
 name = "EnterDekuDummyBottom"
 with_previous = true
 mask = "EnterDekuDummyBottom.png"
-screenshot = "screenshots/EnterDekuDummyBottom.png"
+screenshot = "../screenshots/EnterDekuDummyBottom.png"
 threshold = 0.96
 pause = 0.0
 dummy = true
@@ -44,7 +44,7 @@ dummy = true
 [[split]]
 name = "EnterDeku"
 mask = "EnterDeku.png"
-screenshot = "screenshots/EnterDeku.png"
+screenshot = "../screenshots/EnterDeku.png"
 threshold = 0.97
 
 [[split]]
@@ -56,7 +56,7 @@ threshold = 0.999
 [[split]]
 name = "ZeldasLetter"
 mask = "ZeldasLetter.png"
-screenshot = "screenshots/ZeldasLetter.png"
+screenshot = "../screenshots/ZeldasLetter.png"
 threshold = 0.93
 delay = 683
 below = true
@@ -64,7 +64,7 @@ below = true
 [[split]]
 name = "PotionBottleDummy"
 mask = "PotionBottle.png"
-screenshot = "screenshots/PotionBottle.png"
+screenshot = "../screenshots/PotionBottleDummy.png"
 threshold = 0.93
 pause = 0.0
 dummy = true
@@ -72,19 +72,19 @@ dummy = true
 [[split]]
 name = "StealBottle"
 mask = "LoadingZone.png"
-screenshot = "screenshots/LoadingZone.png"
+screenshot = "../screenshots/EnterDeku.png"
 threshold = 0.97
 
 [[split]]
 name = "SariasSong"
 mask = "SariasSong.png"
-screenshot = "screenshots/SariasSong.png"
+screenshot = "../screenshots/SariasSong.png"
 threshold = 0.93
 
 [[split]]
 name = "GoronBraceletDummy"
 mask = "GoronBracelet.png"
-screenshot = "screenshots/GoronBracelet.png"
+screenshot = "../screenshots/GoronBraceletDummy.png"
 threshold = 0.93
 pause = 10.0
 dummy = true
@@ -92,7 +92,7 @@ dummy = true
 [[split]]
 name = "EnterTrailDummy"
 mask = "EnterDodongoCavern.png"
-screenshot = "screenshots/EnterDodongoCavern.png"
+screenshot = "../screenshots/EnterDeku.png"
 threshold = 0.97
 pause = 10.0
 dummy = true
@@ -100,19 +100,19 @@ dummy = true
 [[split]]
 name = "EnterDodongoCavern"
 mask = "EnterDodongoCavern.png"
-screenshot = "screenshots/EnterDodongoCavern.png"
+screenshot = "../screenshots/EnterDeku.png"
 threshold = 0.97
 
 [[split]]
 name = "BombBag"
 mask = "BombBag.png"
-screenshot = "screenshots/BombBag.png"
+screenshot = "../screenshots/BombBag.png"
 threshold = 0.93
 
 [[split]]
 name = "DinsFire"
 mask = "DinsFire.png"
-screenshot = "screenshots/DinsFire.png"
+screenshot = "../screenshots/DinsFire.png"
 threshold = 0.93
 delay = 683
 below = true
@@ -120,28 +120,28 @@ below = true
 [[split]]
 name = "GraveyardDummy"
 mask = "GraveyardDummy.png"
-screenshot = "screenshots/GraveyardDummy.png"
+screenshot = "../screenshots/GraveyardDummy.png"
 threshold = 0.95
 dummy = true
 
 [[split]]
 name = "EnterShadowTemple"
 mask = "EnterDodongoCavern.png"
-screenshot = "screenshots/EnterDodongoCavern.png"
+screenshot = "../screenshots/EnterDeku.png"
 threshold = 0.97
 
 [[split]]
 name = "HoverBoots"
 off = true
 mask = "HoverBoots.png"
-screenshot = "screenshots/HoverBoots.png"
+screenshot = "../screenshots/HoverBoots.png"
 threshold = 0.93
 
 [[split]]
 name = "Boat"
 off = true
 mask = "Boat.png"
-screenshot = "screenshots/Boat.png"
+screenshot = "../screenshots/Boat.png"
 threshold = 0.94
 below = true
 
@@ -154,13 +154,13 @@ threshold = 0.999
 [[split]]
 name = "Hookshot"
 mask = "Hookshot.png"
-screenshot = "screenshots/Hookshot.png"
+screenshot = "../screenshots/Hookshot.png"
 threshold = 0.93
 
 [[split]]
 name = "BoleroDummy"
 mask = "BoleroDummy.png"
-screenshot = "screenshots/BoleroDummy.png"
+screenshot = "../screenshots/BoleroDummy.png"
 threshold = 0.94
 pause = 50.0
 dummy = true
@@ -169,19 +169,19 @@ below = true
 [[split]]
 name = "EnterFireTemple"
 mask = "EnterDodongoCavern.png"
-screenshot = "screenshots/EnterDodongoCavern.png"
+screenshot = "../screenshots/EnterDeku.png"
 threshold = 0.97
 
 [[split]]
 name = "MegatonHammer"
 mask = "MegatonHammer.png"
-screenshot = "screenshots/MegatonHammer.png"
+screenshot = "../screenshots/MegatonHammer.png"
 threshold = 0.93
 
 [[split]]
 name = "MinuetDummy"
 mask = "MinuetDummy.png"
-screenshot = "screenshots/MinuetDummy.png"
+screenshot = "../screenshots/MinuetDummy.png"
 threshold = 0.94
 pause = 40.0
 dummy = true
@@ -190,40 +190,40 @@ below = true
 [[split]]
 name = "EnterForestTemple"
 mask = "EnterForestTemple.png"
-screenshot = "screenshots/EnterForestTemple.png"
+screenshot = "../screenshots/EnterDeku.png"
 threshold = 0.97
 
 [[split]]
 name = "FairyBow"
 mask = "FairyBow.png"
-screenshot = "screenshots/FairyBow.png"
+screenshot = "../screenshots/FairyBow.png"
 threshold = 0.93
 
 [[split]]
 name = "MirrorShieldDay"
 mask = "MirrorShieldDay.png"
-screenshot = "screenshots/MirrorShieldDay.png"
+screenshot = "../screenshots/MirrorShieldDay.png"
 threshold = 0.92
 
 [[split]]
 name = "MirrorShieldDusk"
 with_previous = true
 mask = "MirrorShieldDay.png"
-screenshot = "screenshots/MirrorShieldDusk.png"
+screenshot = "../screenshots/MirrorShieldDusk.png"
 threshold = 0.92
 
 [[split]]
 name = "MirrorShieldAlmostNight"
 with_previous = true
 mask = "MirrorShieldDay.png"
-screenshot = "screenshots/MirrorShieldAlmostNight.png"
+screenshot = "../screenshots/MirrorShieldAlmostNight.png"
 threshold = 0.92
 
 [[split]]
 name = "MirrorShieldNight"
 with_previous = true
 mask = "MirrorShieldDay.png"
-screenshot = "screenshots/MirrorShieldNight.png"
+screenshot = "../screenshots/MirrorShieldNight.png"
 threshold = 0.92
 
 [[split]]
@@ -235,13 +235,13 @@ threshold = 0.999
 [[split]]
 name = "GoldenGauntlets"
 mask = "GoldenGauntlets.png"
-screenshot = "screenshots/GoldenGauntlets.png"
+screenshot = "../screenshots/GoldenGauntlets.png"
 threshold = 0.93
 
 [[split]]
 name = "TrialsDummy"
 mask = "TrialsDummy.png"
-screenshot = "screenshots/TrialsDummy.png"
+screenshot = "../screenshots/TrialsDummy.png"
 threshold = 0.93
 pause = 0.0
 dummy = true
@@ -255,7 +255,7 @@ threshold = 0.999
 [[split]]
 name = "GanondoorDummy"
 mask = "GanondoorDummy.png"
-screenshot = "screenshots/GanondoorDummy.png"
+screenshot = "../screenshots/GanondoorDummy.png"
 threshold = 0.93
 pause = 0.0
 dummy = true
@@ -275,7 +275,7 @@ threshold = 0.999
 [[split]]
 name = "CollapseDummy"
 mask = "CollapseDummy.png"
-screenshot = "screenshots/CollapseDummy.png"
+screenshot = "../screenshots/CollapseDummy.png"
 threshold = 0.93
 pause = 0.0
 dummy = true
@@ -289,6 +289,6 @@ threshold = 0.999
 [[split]]
 name = "Ganon"
 mask = "Ganon.png"
-screenshot = "screenshots/Ganon.png"
+screenshot = "../screenshots/Ganon.png"
 threshold = 0.95
 delay = 316

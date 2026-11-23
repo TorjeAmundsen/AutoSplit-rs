@@ -1,5 +1,6 @@
 //! Sharing presets: exporting one as a .zip file, and importing one someone sent.
 
+use autosplit_core::preset::save_in_presets;
 use autosplit_core::preset_archive::{PresetArchive, export_preset, read_archive};
 
 use super::super::preset_form::{known_game, saved_preset_name};
@@ -125,8 +126,9 @@ impl Gui {
         };
         let text = format!(
             "{clash} Replace it with the imported one, or keep both?\n\n\
-             Replacing deletes the old preset's folder with the masks, savestates and screenshots in it, which can't \
-             be undone. The split images you made with it stay in your split image folder."
+             Replacing deletes the old preset's folder with its masks, and its savestates and screenshots too, \
+             unless another preset or the split library uses them. This can't be undone. The split images you made \
+             with it stay in your split image folder."
         );
         let weak = Rc::downgrade(self);
         self.show_message(Message::choice(text, ["Replace", "Keep Both", "Cancel"], 1, move |answer| {
@@ -145,10 +147,14 @@ impl Gui {
     /// Puts the imported preset in the presets folder, in place of `replace` if there's one, and
     /// shows it.
     fn install_import(&self, archive: &PresetArchive, replace: Option<PathBuf>) {
-        let folder = match archive.install(&presets_folder(), replace.as_deref()) {
+        let presets = presets_folder();
+        let folder = match archive.install(&presets, replace.as_deref()) {
             Ok(folder) => folder,
             Err(error) => return self.show_message(Message::error(format!("Couldn't import the preset. {error}"))),
         };
+        // Its screenshots and savestates into the folders its game's presets share. When that
+        // fails, it keeps its own, which work just as well.
+        let _ = save_in_presets(&presets, &library::splits_folder(), Some(&folder), &folder, &archive.preset);
         let errors = self.read_presets();
         let mut maker = self.maker.borrow_mut();
         // A replaced preset's masks changed under the same names

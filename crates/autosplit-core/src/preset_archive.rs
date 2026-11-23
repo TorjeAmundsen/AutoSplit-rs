@@ -10,9 +10,9 @@ use std::time::Duration;
 
 use crate::image::BgraImage;
 use crate::preset::{
-    PRESET_FILE, Preset, PresetError, SAVESTATE_NOTE, SAVESTATE_NOTE_FILE, SAVESTATES_FOLDER, SplitFile,
+    PRESET_FILE, Preset, PresetError, PresetSplit, SAVESTATE_NOTE, SAVESTATE_NOTE_FILE, SAVESTATES_FOLDER, SplitFile,
     leave_for_deleting, move_aside, new_preset_folder, remove_empty_folder, remove_leftovers, screenshot_problem,
-    unreadable, unwritable, write_through_temporary,
+    unique_file_name, unreadable, unwritable, write_through_temporary,
 };
 
 /// The most files an archive can have, far more than any preset uses.
@@ -71,13 +71,66 @@ fn used_files(preset: &Preset) -> Result<Vec<(usize, String)>, String> {
     Ok(used)
 }
 
+/// The name of `path` in the shared `folder` of the game folder a preset is in, like `x.png` for
+/// `../screenshots/x.png`, or none when it isn't one.
+fn shared_file(path: &str, folder: &str) -> Option<String> {
+    let rest = path.strip_prefix("../").or_else(|| path.strip_prefix("..\\"))?;
+    let name = rest.strip_prefix(folder)?.strip_prefix(['/', '\\'])?;
+    // As it's written in the archive: `./x.png` is `x.png`
+    inside(name).filter(|inner| !inner.contains('/'))
+}
+
+/// `preset` with the screenshots and savestates it shares with its game's other presets put in
+/// its own `screenshots` and `savestates`, as an archive has them, under a name no other file of
+/// it has. Also where each of those files is in the preset's folder, by its new path, which is
+/// empty when it shares nothing.
+fn self_contained(preset: &Preset) -> (Preset, HashMap<String, String>) {
+    let mut taken: Vec<String> =
+        (preset.splits.iter()).flat_map(PresetSplit::files).filter_map(|path| inside(path)).collect();
+    // Each shared file's path in the preset's folder, with `/`, which every system reads, unlike
+    // a `\` written on Windows, by its new path
+    let mut sources: HashMap<String, String> = HashMap::new();
+    let mut contained = preset.clone();
+    for split in &mut contained.splits {
+        for kind in SplitFile::SHARED {
+            let Some(folder) = kind.folder() else { continue };
+            let path = split.file_mut(kind);
+            let Some(name) = shared_file(path, folder) else { continue };
+            let source = format!("../{folder}/{name}");
+            *path = match sources.iter().find(|(_, from)| **from == source) {
+                Some((new, _)) => new.clone(),
+                None => {
+                    let free = unique_file_name(&name, |candidate| {
+                        let wanted = format!("{folder}/{candidate}").to_lowercase();
+                        taken.iter().any(|taken| taken.to_lowercase() == wanted)
+                    });
+                    let new = format!("{folder}/{free}");
+                    taken.push(new.clone());
+                    sources.insert(new.clone(), source);
+                    new
+                }
+            };
+        }
+    }
+    (contained, sources)
+}
+
 /// Writes the preset in `folder` to the archive `archive`, replacing it: `preset.toml` and the
-/// files it uses. A file it uses that's missing, or outside its folder, is an
+/// files it uses, with the ones it shares with its game's other presets in its own folders. A
+/// file it uses that's missing, or outside its folder and its game's shared folders, is an
 /// error, since the archive would be no use without it, and so is a preset too big to import.
 pub fn export_preset(folder: &Path, archive: &Path) -> Result<(), PresetError> {
     let preset_file = folder.join(PRESET_FILE);
     let text = std::fs::read(&preset_file).map_err(|error| unreadable(&preset_file, error))?;
     let preset = Preset::parse(&String::from_utf8_lossy(&text), &preset_file)?;
+    let (contained, sources) = self_contained(&preset);
+    // Written as it was, unless it shares files
+    let (preset, text) = if sources.is_empty() {
+        (preset, text)
+    } else {
+        let text = contained.to_toml().into_bytes();
+        (contained, text)
+    };
     let used = used_files(&preset).map_err(|reason| PresetError::Invalid { path: preset_file.clone(), reason })?;
     let too_big = |reason: String| PresetError::Unwritable { path: archive.to_owned(), reason };
     if used.len() + 1 > MAX_FILES {
@@ -86,7 +139,7 @@ pub fn export_preset(folder: &Path, archive: &Path) -> Result<(), PresetError> {
     let mut total = text.len() as u64;
     let mut files = vec![(PRESET_FILE.to_owned(), text)];
     for (_, name) in used {
-        let file = folder.join(&name);
+        let file = folder.join(sources.get(&name).unwrap_or(&name));
         let contents = std::fs::read(&file).map_err(|error| unreadable(&file, error))?;
         total += contents.len() as u64;
         if total > MAX_SIZE {
