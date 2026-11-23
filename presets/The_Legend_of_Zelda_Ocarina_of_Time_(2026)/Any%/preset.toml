@@ -70,7 +70,7 @@ pause = 0.0
 dummy = true
 
 [[split]]
-name = "LoadingZone"
+name = "StealBottle"
 mask = "LoadingZone.png"
 screenshot = "screenshots/LoadingZone.png"
 threshold = 0.97
@@ -227,7 +227,7 @@ screenshot = "screenshots/MirrorShieldNight.png"
 threshold = 0.92
 
 [[split]]
-name = "FadeToWhite"
+name = "SpiritMedallion"
 fade = "#e8e8e8"
 fade_time = 750
 threshold = 0.999
