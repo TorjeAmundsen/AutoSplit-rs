@@ -213,3 +213,31 @@ fade_time = 216
 threshold = 0.999
 base_image = "base_Trials.png"
 then = true
+
+[[split]]
+name = "FairyOcarinaDummy"
+mask = "FairyOcarinaDummy.png"
+screenshot = "../../presets/The_Legend_of_Zelda_Ocarina_of_Time_(2026)/screenshots/FairyOcarinaDummy.png"
+threshold = 0.93
+pause = 0.0
+dummy = true
+description = "Splits on loading zone to Hyrule Field after receiving the Fairy Ocarina from Saria."
+base_image = "base_FairyOcarinaDummy.png"
+
+[[split]]
+name = "ForestEscape"
+mask = "ForestEscape.png"
+screenshot = "../../presets/The_Legend_of_Zelda_Ocarina_of_Time_(2026)/screenshots/EnterDeku.png"
+threshold = 0.97
+base_image = "base_ForestEscape.png"
+then = true
+
+[[split]]
+name = "DungeonFrameDummy"
+mask = "DungeonFrameDummy.png"
+screenshot = "../../presets/The_Legend_of_Zelda_Ocarina_of_Time_(2026)/screenshots/DungeonFrameDummy.png"
+threshold = 0.95
+pause = 5.0
+dummy = true
+description = "Dummy split for entering a dungeon for the first time, detected by the unique border pattern rather than the text to stay language agnostic."
+base_image = "base_DungeonFrameDummy.png"
