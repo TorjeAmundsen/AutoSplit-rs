@@ -5,14 +5,14 @@ game = "The Legend of Zelda: Ocarina of Time (2026)"
 name = "start_auto_splitter"
 mask = "start_auto_splitter.png"
 screenshot = "../screenshots/start_auto_splitter.png"
-threshold = 0.995
-pause = 10.0
+threshold = 0.97
+pause = 150.0
 
 [[split]]
 name = "reset"
 mask = "reset.png"
 screenshot = "../screenshots/reset.png"
-threshold = 0.99
+threshold = 0.98
 pause = 0.0
 
 [[split]]
@@ -43,15 +43,31 @@ dummy = true
 
 [[split]]
 name = "EnterDeku"
+off = true
 mask = "EnterDeku.png"
 screenshot = "../screenshots/EnterDeku.png"
 threshold = 0.97
 
 [[split]]
 name = "KokiriEmerald"
+off = true
 fade = "#e8e8e8"
 fade_time = 750
 threshold = 0.999
+
+[[split]]
+name = "FairyOcarinaDummy"
+mask = "FairyOcarinaDummy.png"
+screenshot = "../screenshots/FairyOcarinaDummy.png"
+threshold = 0.93
+pause = 0.0
+dummy = true
+
+[[split]]
+name = "ForestEscape"
+mask = "ForestEscape.png"
+screenshot = "../screenshots/EnterDeku.png"
+threshold = 0.97
 
 [[split]]
 name = "ZeldasLetter"
@@ -206,6 +222,22 @@ screenshot = "../screenshots/MirrorShieldNight.png"
 threshold = 0.92
 
 [[split]]
+name = "EnterTwinrovaDummy"
+mask = "EnterTwinrovaDummy.png"
+screenshot = "../screenshots/EnterTwinrovaDummy.png"
+comparison_method = "phash"
+threshold = 0.94
+pause = 0.0
+dummy = true
+
+[[split]]
+name = "EnterTwinrova"
+off = true
+fade = "#000000"
+fade_time = 300
+threshold = 0.999
+
+[[split]]
 name = "SpiritMedallion"
 fade = "#e8e8e8"
 fade_time = 750
@@ -216,6 +248,21 @@ name = "FairyBow"
 mask = "FairyBow.png"
 screenshot = "../screenshots/FairyBow.png"
 threshold = 0.93
+
+[[split]]
+name = "GanonsCastleDummy"
+mask = "GanonsCastleDummy.png"
+screenshot = "../screenshots/DungeonFrameDummy.png"
+threshold = 0.95
+pause = 5.0
+dummy = true
+
+[[split]]
+name = "EnterGanonsCastle"
+off = true
+mask = "EnterGanonsCastle.png"
+screenshot = "../screenshots/EnterDeku.png"
+threshold = 0.97
 
 [[split]]
 name = "GoldenGauntlets"
