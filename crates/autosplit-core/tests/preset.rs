@@ -68,21 +68,42 @@ fn bundled_library_files_have_names_every_system_tells_apart() {
     // Arrange
     let (libraries, _) = load_libraries(&bundled("splits"));
 
-    for loaded in libraries {
-        let names: Vec<String> = (std::fs::read_dir(&loaded.folder).unwrap())
+    let names_in = |folder: &Path| -> Vec<String> {
+        (std::fs::read_dir(folder).unwrap())
             .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+            .collect()
+    };
+    for loaded in libraries {
+        // Act: its own files, and the ones it shares with the game's presets, each in its folder
+        let paths: Vec<&String> = (loaded.library.splits.iter())
+            .flat_map(|split| [&split.split.mask, &split.split.savestate, &split.split.screenshot, &split.base_image])
+            .filter(|path| !path.is_empty())
+            .collect();
+        let mut folders: Vec<std::path::PathBuf> = vec![loaded.folder.clone()];
+        let mut misnamed = Vec::new();
+        for path in &paths {
+            let file = loaded.folder.join(path);
+            let (folder, name) = (file.parent().unwrap().to_owned(), file.file_name().unwrap().to_string_lossy());
+            if !names_in(&folder).iter().any(|existing| *existing == name) {
+                misnamed.push(path.as_str());
+            }
+            if !folders.contains(&folder) {
+                folders.push(folder);
+            }
+        }
+        let alike: Vec<String> = (folders.iter())
+            .filter(|folder| {
+                let names = names_in(folder);
+                let lowercase: std::collections::HashSet<String> =
+                    names.iter().map(|name| name.to_lowercase()).collect();
+                lowercase.len() != names.len()
+            })
+            .map(|folder| folder.display().to_string())
             .collect();
 
-        // Act
-        let lowercase: std::collections::HashSet<String> = names.iter().map(|name| name.to_lowercase()).collect();
-        let named: Vec<&String> = (loaded.library.splits.iter())
-            .flat_map(|split| [&split.split.mask, &split.split.savestate, &split.base_image])
-            .filter(|name| !name.is_empty() && !names.contains(name))
-            .collect();
-
-        // Assert: no two files differ only in case, and the library names each as it's written,
-        // which systems that tell case apart need
-        assert_eq!((lowercase.len(), named), (names.len(), Vec::<&String>::new()), "{}", loaded.folder.display());
+        // Assert: no two files in a folder differ only in case, and the library names each as it's
+        // written, which systems that tell case apart need
+        assert_eq!((alike, misnamed), (Vec::<String>::new(), Vec::<&str>::new()), "{}", loaded.folder.display());
     }
 }
 
