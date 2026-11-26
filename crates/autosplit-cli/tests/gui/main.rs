@@ -11,9 +11,9 @@ use std::rc::Rc;
 use autosplit::gui::document::{Document, folder_text, profile_on_open};
 use autosplit::gui::log::{LOG_LINES, LogLines};
 use autosplit::gui::maker_plan::{
-    DeletedPreset, PresetList, RowPlace, WritePlan, choice_summary, images_of_splits, looks_made, move_to_base,
-    next_to_grab, plan_writes, preset_after_delete, row_places, saved_from_after_preset_save, saves_in_place,
-    screenshots_set_status, screenshots_status, screenshots_to_move, stale_to_delete, writes_over,
+    DeletedPreset, PresetList, RowPlace, WritePlan, choice_summary, images_of_splits, looks_made, move_to_backup,
+    move_to_base, next_to_grab, old_images, plan_writes, preset_after_delete, row_places, saved_from_after_preset_save,
+    saves_in_place, screenshots_set_status, screenshots_status, screenshots_to_move, stale_to_delete, writes_over,
 };
 use autosplit::gui::messages::{Answer, Buttons, Message, MessageQueue};
 use autosplit::gui::placement::{Area, beside, centered_over};
@@ -767,6 +767,70 @@ fn the_image_written_is_never_deleted_as_stale() {
 
     // Assert: deleted only when it's another file
     assert_eq!(deleted, if one_file { vec![] } else { vec![stale] });
+}
+
+#[test]
+fn a_save_of_every_split_finds_old_images_whatever_their_number() {
+    // Arrange: the preset has 42 numbers now, HoverBoots and Boat added at 18 and 19 and off, so
+    // not written. Left from an older version: 43_Ganon past the end, ShadowMedallion and Hookshot
+    // at 18 and 19, and a name with the reset keyword in it
+    let preset: Vec<String> = [
+        "reset_(0.98)_[0].png",
+        "18_HoverBoots_(0.93).png",
+        "19_Boat_(0.94)_{b}.png",
+        "20_ShadowMedallion_(0.999)_~750~_{f}.png",
+        "42_Ganon_(0.69)_#300#_^1^_{b}.png",
+    ]
+    .map(String::from)
+    .into();
+    let existing: Vec<PathBuf> = [
+        "reset_(0.98)_[0].png",
+        "18_ShadowMedallion_(0.999)_~750~_{f}.png",
+        "19_Hookshot_(0.93).png",
+        "20_ShadowMedallion_(0.999)_~750~_{f}.png",
+        "42_Ganon_(0.69)_#300#_^1^_{b}.png",
+        "43_Ganon_(0.69)_#300#_^1^_{b}.png",
+        "05_Reset Room_(0.9).png",
+        "001_SplitImage.png",
+        "picked.png",
+        "notes.txt",
+    ]
+    .map(PathBuf::from)
+    .into();
+
+    // Act
+    let old = old_images(&preset, &existing, &[PathBuf::from("picked.png")], same_name);
+
+    // Assert: the preset's images, screenshots, sources and other files stay
+    let expected = [
+        "18_ShadowMedallion_(0.999)_~750~_{f}.png",
+        "19_Hookshot_(0.93).png",
+        "43_Ganon_(0.69)_#300#_^1^_{b}.png",
+        "05_Reset Room_(0.9).png",
+    ]
+    .map(PathBuf::from);
+    assert_eq!(old, expected);
+}
+
+#[test]
+fn old_images_move_into_a_backup_folder_of_their_own() {
+    // Arrange: a backup from earlier that second, and an image deleted since it was listed
+    let folder = tempfile::tempdir().unwrap();
+    std::fs::create_dir(folder.path().join("backup_2026-11-26_143005")).unwrap();
+    std::fs::write(folder.path().join("backup_2026-11-26_143005").join("43_Ganon.png"), "earlier").unwrap();
+    let old = folder.path().join("43_Ganon.png");
+    std::fs::write(&old, "old").unwrap();
+    let gone = folder.path().join("19_Hookshot.png");
+
+    // Act
+    let (backup, moved, error) = move_to_backup(folder.path(), &[gone, old.clone()], "2026-11-26_143005");
+
+    // Assert
+    assert_eq!((&backup, moved, error), (&folder.path().join("backup_2026-11-26_143005 (1)"), 1, None));
+    assert!(!old.exists());
+    assert_eq!(std::fs::read_to_string(backup.join("43_Ganon.png")).unwrap(), "old");
+    let earlier = folder.path().join("backup_2026-11-26_143005").join("43_Ganon.png");
+    assert_eq!(std::fs::read_to_string(earlier).unwrap(), "earlier");
 }
 
 #[test_case(&["001.png"], &[], &[] => vec![PathBuf::from("001.png")]; "written from")]

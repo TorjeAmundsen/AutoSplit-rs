@@ -88,6 +88,45 @@ pub fn plan_writes(
     plan
 }
 
+/// The images a save of every split moves into a backup folder: the PNGs among a folder's
+/// `existing` files that aren't one of the preset's file names in `preset`, `writes_over` saying
+/// whether a name is a file like for [`plan_writes`]. All the preset's names count, so splits
+/// that are off or have no screenshot yet keep theirs. Not `sources` or screenshots
+/// (`NNN_SplitImage.png`) either, which aren't split images.
+pub fn old_images(
+    preset: &[String],
+    existing: &[PathBuf],
+    sources: &[PathBuf],
+    writes_over: impl Fn(&str, &Path) -> bool,
+) -> Vec<PathBuf> {
+    (existing.iter())
+        .filter(|path| is_png(path) && !sources.contains(path))
+        .filter(|path| file_name_text(path).is_some_and(|name| !is_screenshot_name(&name)))
+        .filter(|path| !preset.iter().any(|name| writes_over(name, path)))
+        .cloned()
+        .collect()
+}
+
+/// Moves `images` into a new folder in the split image `folder`, where the split image loader
+/// doesn't look, named for the time `now` like `backup_2026-11-26_143005`, or `backup_... (1)`
+/// when that's taken. Images that are gone already are left out. Returns the folder and how many
+/// moved, also when one couldn't be, with why. No folder is made when there's nothing to move.
+pub fn move_to_backup(folder: &Path, images: &[PathBuf], now: &str) -> (PathBuf, usize, Option<String>) {
+    let name = autosplit_core::preset::unique_file_name(&format!("backup_{now}"), |name| folder.join(name).exists());
+    let backup = folder.join(name);
+    let mut moved = 0;
+    for image in images.iter().filter(|image| image.is_file()) {
+        let Some(name) = image.file_name() else { continue };
+        let result = std::fs::create_dir_all(&backup).and_then(|()| std::fs::rename(image, backup.join(name)));
+        if let Err(error) = result {
+            let error = format!("Couldn't move {} to {}: {error}", image.display(), backup.display());
+            return (backup, moved, Some(error));
+        }
+        moved += 1;
+    }
+    (backup, moved, None)
+}
+
 /// The `stale` images to delete once the split images `written` are: only those of a split whose
 /// new image was written, so a split whose image failed keeps its old one. Never one of the
 /// images written, in case the file system treats its old name as the new one.
