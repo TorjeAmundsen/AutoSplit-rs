@@ -128,8 +128,9 @@ pub(super) struct Maker {
     /// The live capture's latest frame, for a base image for the split library when a split has
     /// no grab or screenshot.
     last_live: Option<Pixels>,
-    /// Splits to save once the ones being saved are, for the preset of that generation.
-    queued: Option<(u64, Vec<usize>)>,
+    /// Splits to save once the ones being saved are, for the preset of that generation, and
+    /// whether Save All queued any of them.
+    queued: Option<(u64, Vec<usize>, bool)>,
     /// Every split is shown, with a checkbox for the ones the runner can turn on or off, which
     /// Choose Splits under the list starts and Done ends. Off, splits that are off aren't shown.
     choosing: bool,
@@ -530,12 +531,12 @@ impl Gui {
         on!(weak, maker, on_use_preset_screenshot, () gui => gui.use_preset_screenshot());
         on!(weak, maker, on_save_selected, () gui => {
             let selected = gui.maker.borrow().selected;
-            gui.save_split_images(vec![selected]);
+            gui.save_split_images(vec![selected], false);
         });
         on!(weak, maker, on_save_all, () gui => {
             let enabled = gui.maker_enabled();
             let on = gui.maker.borrow().on_splits(&enabled).collect();
-            gui.save_split_images(on);
+            gui.save_split_images(on, true);
         });
         on!(weak, maker, on_split_toggled, (index) gui => gui.toggle_split(index as usize));
         on!(weak, maker, on_choose_splits, () gui => gui.choose_splits());
@@ -1037,7 +1038,7 @@ impl Gui {
         drop(maker);
         self.make_thumbnails(vec![selected]);
         // Stays on the split when its image can't be saved, to grab it again once that's fixed
-        self.after_grab(selected, self.save_split_images(vec![selected]));
+        self.after_grab(selected, self.save_split_images(vec![selected], false));
     }
 
     /// Grab on a fade split: its split image is written from its color, and the next split is
@@ -1050,7 +1051,7 @@ impl Gui {
             return;
         }
         let selected = self.maker.borrow().selected;
-        self.after_grab(selected, self.save_split_images(vec![selected]));
+        self.after_grab(selected, self.save_split_images(vec![selected], false));
     }
 
     /// Says the selected split is off, for a grab, like from the screenshot hotkey, which Grab's
