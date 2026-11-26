@@ -151,11 +151,15 @@ impl Gui {
         }
         let old_names = old.iter().filter_map(|path| file_name_text(path)).collect::<Vec<_>>().join("\n");
         // Before the list, which can be long enough to scroll
-        let warning = "Keeping them will break your runs: AutoSplit reads every image in the split image folder as a \
-                       split, so they add extra splits or make it split at the wrong time.";
+        let warning = "Keeping them will break your runs: AutoSplit reads every image in the folder as a split, so \
+                       they add extra splits or make it split at the wrong time.";
         // Enter backs them up, which can be undone, but never deletes
         let (labels, default, chosen) = if every_split {
-            text += &format!("{warning} Only keep them if you put them there yourself and know what they do.");
+            text += &format!(
+                "The split image folder has images that aren't the preset's split images, like ones left from \
+                 an older version of the preset. {warning} Only keep them if you put them there yourself and know \
+                 what they do."
+            );
             // The warning doesn't hold for them, so they're named before the list
             let lone: Vec<String> =
                 lone_keyword_images(&old, &names).iter().filter_map(|path| file_name_text(path)).collect();
@@ -167,14 +171,13 @@ impl Gui {
                     lone.join(", ")
                 );
             }
-            text += &format!(
-                "\n\nThese images aren't the preset's split images:\n{old_names}\n\nMove them into a backup folder?"
-            );
+            text += &format!("\n\nThe old images:\n{old_names}\n\nMove them into a backup folder?");
             (["Back Up Old Images", "Keep Old Images", "Cancel"], 0, OldImages::Backup(old))
         } else {
             text += &format!(
-                "{warning} Only keep them if you know what they do.\n\nThese older split images are for the same \
-                 splits under other names:\n{old_names}\n\nDelete them?"
+                "The split image folder has older images of the same splits under other names, like from \
+                 before a threshold changed. {warning} Only keep them if you know what they do.\n\nThe older \
+                 images:\n{old_names}\n\nDelete them?"
             );
             (["Delete Old Images", "Keep Old Images", "Cancel"], 1, OldImages::Delete(old))
         };
