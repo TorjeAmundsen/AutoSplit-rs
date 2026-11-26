@@ -1157,7 +1157,7 @@ export component MakerWindow inherits Window {
                         text: "Delete Preset...";
                         enabled: root.saved-preset;
                         clicked => { root.delete-preset(); }
-                        tip: root.saved-preset ? "Delete this preset's folder, with the masks, savestates and screenshots in it. Split images you made with it stay." : "A new preset has nothing to delete yet. Cancel leaves it unsaved.";
+                        tip: root.saved-preset ? "Delete this preset's folder with its masks, and its savestates and screenshots unless another preset or the split library uses them. Split images you made with it stay." : "A new preset has nothing to delete yet. Cancel leaves it unsaved.";
                     }
                 }
             }

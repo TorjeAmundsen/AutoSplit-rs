@@ -352,7 +352,7 @@ export component SplitFormPanel inherits VerticalLayout {
 
                     Tooltip {
                         Tip {
-                            text: "A screenshot of the split's screen that its split image is made from, so nobody has to grab it. For consoles whose picture is the same for everyone, like ones with only a digital output. It can't have transparent parts. Without one, the split is grabbed from the capture." + (root.form.screenshot-path == "" ? "" : "\n\n" + root.form.screenshot-path) + (root.form.screenshot-copied ? "\n\nSaving copies it into the preset's screenshots folder." : "");
+                            text: "A screenshot of the split's screen that its split image is made from, so nobody has to grab it. For consoles whose picture is the same for everyone, like ones with only a digital output. It can't have transparent parts. Without one, the split is grabbed from the capture." + (root.form.screenshot-path == "" ? "" : "\n\n" + root.form.screenshot-path) + (root.form.screenshot-copied ? "\n\nSaving keeps a copy with the game's presets, or uses one they have already." : "");
                         }
                     }
                 }
@@ -374,7 +374,7 @@ export component SplitFormPanel inherits VerticalLayout {
             if root.form.screenshot-copied: FieldProblem {
                 label-width: root.label-width;
                 color: Theme.secondary-text;
-                text: "Copied into the preset when saved.";
+                text: "Shared with its game when saved.";
             }
 
             if root.form.screenshot-overridden: FieldProblem {
@@ -592,7 +592,7 @@ export component SplitFormPanel inherits VerticalLayout {
 
                     Tooltip {
                         Tip {
-                            text: "A savestate at the split's screen, for taking its screenshot, made with a practice tool that loads savestates on the console, like gz for Ocarina of Time (.gzs). Copy Savestates puts them on the clipboard." + (root.form.savestate-path == "" ? "" : "\n\n" + root.form.savestate-path) + (root.form.savestate-copied ? "\n\nSaving copies it into the preset's savestates folder." : "");
+                            text: "A savestate at the split's screen, for taking its screenshot, made with a practice tool that loads savestates on the console, like gz for Ocarina of Time (.gzs). Copy Savestates puts them on the clipboard." + (root.form.savestate-path == "" ? "" : "\n\n" + root.form.savestate-path) + (root.form.savestate-copied ? "\n\nSaving keeps a copy with the game's presets, or uses one they have already." : "");
                         }
                     }
                 }
@@ -614,7 +614,7 @@ export component SplitFormPanel inherits VerticalLayout {
             if root.form.savestate-copied: FieldProblem {
                 label-width: root.label-width;
                 color: Theme.secondary-text;
-                text: "Copied into the preset when saved.";
+                text: "Shared with its game when saved.";
             }
         }
 

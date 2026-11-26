@@ -3,7 +3,7 @@
 //! library (`splits.toml`), ready-made splits to put in presets.
 
 use std::collections::{HashMap, HashSet};
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
@@ -129,6 +129,9 @@ pub enum SplitFile {
 impl SplitFile {
     /// Every kind, in the order everything that goes through a split's files takes them.
     pub const ALL: [Self; 3] = [Self::Mask, Self::Savestate, Self::Screenshot];
+
+    /// The kinds a game's presets and its library share in its game folder, unlike masks.
+    pub const SHARED: [Self; 2] = [Self::Screenshot, Self::Savestate];
 
     /// What it's called in messages.
     pub fn word(self) -> &'static str {
@@ -732,12 +735,14 @@ fn names_in(directory: &Path) -> Vec<(String, String)> {
 
 /// A new folder in `directory` named like `name`, which doesn't exist yet, with a number when
 /// the name is taken. Taken ignoring case, like on Windows and macOS, so a folder made on Linux
-/// can be copied there.
+/// can be copied there. Never the name of a game folder's shared `screenshots` or `savestates`,
+/// even before there is one.
 pub(crate) fn new_folder(directory: &Path, name: &str, fallback: &str) -> PathBuf {
     let base = sanitize_file_name(name, fallback);
     let taken = names_in(directory);
+    let shared = |folder: &str| [SCREENSHOTS_FOLDER, SAVESTATES_FOLDER].contains(&folder.to_lowercase().as_str());
     (numbered(&base))
-        .find(|folder| !taken.iter().any(|(lower, _)| *lower == folder.to_lowercase()))
+        .find(|folder| !shared(folder) && !taken.iter().any(|(lower, _)| *lower == folder.to_lowercase()))
         .map(|folder| directory.join(folder))
         .expect("some number is free")
 }
@@ -746,6 +751,13 @@ pub(crate) fn new_folder(directory: &Path, name: &str, fallback: &str) -> PathBu
 /// folder in `presets`, since games mostly have the same categories, like Any%.
 pub fn new_preset_folder(presets: &Path, game: &str, name: &str) -> PathBuf {
     new_folder(&game_folder(presets, game), name, "Preset")
+}
+
+/// The game folder in `presets` that the preset folder `folder` is in, whose shared screenshots
+/// and savestates it uses. None for a preset kept right in `presets` from before game folders,
+/// which keeps its own.
+pub fn shared_game_folder(presets: &Path, folder: &Path) -> Option<PathBuf> {
+    folder.parent().filter(|parent| canonical(parent) != canonical(presets)).map(Path::to_owned)
 }
 
 /// Moves the preset folder `folder` into the folder of `game` in `presets`, and returns where it
@@ -776,13 +788,17 @@ pub fn move_to_game_folder(presets: &Path, folder: &Path, game: &str) -> Result<
 }
 
 /// The folder in `presets` that `game`'s presets go in, named after the game, as it's spelled on
-/// disk when it's there in another case. Not a preset's own folder, kept right in `presets` from
-/// before game folders, which gets a number instead.
-fn game_folder(presets: &Path, game: &str) -> PathBuf {
+/// disk when it's there in another case or with other spaces in a row, which [`game_key`] takes
+/// for the same game. Not a preset's own folder, kept right in `presets` from before game
+/// folders, which gets a number instead.
+pub fn game_folder(presets: &Path, game: &str) -> PathBuf {
     let base = sanitize_file_name(game, "No_game");
     let names = names_in(presets);
+    // Like `game_key`: spaces in a row, which are a `_` each, are one
+    let squeezed = |name: &str| name.split('_').filter(|part| !part.is_empty()).collect::<Vec<_>>().join("_");
     for folder in numbered(&base) {
-        let existing = names.iter().find(|(lower, _)| *lower == folder.to_lowercase());
+        let wanted = squeezed(&folder.to_lowercase());
+        let existing = names.iter().find(|(lower, _)| squeezed(lower) == wanted);
         match existing {
             Some((_, name)) if presets.join(name).join(PRESET_FILE).exists() => continue,
             Some((_, name)) => return presets.join(name),
@@ -795,6 +811,18 @@ fn game_folder(presets: &Path, game: &str) -> PathBuf {
 /// Files a system puts in folders by itself, which don't keep a folder from being empty:
 /// macOS Finder's and Windows Explorer's.
 const SYSTEM_FILES: [&str; 3] = [".ds_store", "thumbs.db", "desktop.ini"];
+
+/// Removes `folder` when nothing's in it but [`SAVESTATE_NOTE_FILE`] and files a system puts
+/// there by itself, like a savestate folder whose savestates went to the folders its game's
+/// presets share.
+fn remove_folder_left_empty(folder: &Path) {
+    let note = SAVESTATE_NOTE_FILE.to_lowercase();
+    let system = |lower: &str| SYSTEM_FILES.contains(&lower) || lower.starts_with("._");
+    if names_in(folder).iter().all(|(lower, _)| *lower == note || system(lower)) {
+        let _ = std::fs::remove_file(folder.join(SAVESTATE_NOTE_FILE));
+        remove_empty_folder(folder);
+    }
+}
 
 /// Removes `folder` when nothing's in it but files a system puts there by itself, like the
 /// `.DS_Store` macOS writes into any folder opened in Finder.
@@ -813,6 +841,34 @@ pub(crate) fn remove_empty_folder(folder: &Path) {
 /// A path inside a preset's folder, as presets write it: relative, with `/`.
 pub(crate) fn relative_text(path: &Path) -> String {
     path.components().map(|part| part.as_os_str().to_string_lossy().into_owned()).collect::<Vec<_>>().join("/")
+}
+
+/// The path of `file` relative to the folder `from`, as presets write it, with `..` for each
+/// folder it goes up. Both are canonical paths. None when they don't share a root, like files
+/// on two drives.
+pub(crate) fn relative_path(from: &Path, file: &Path) -> Option<String> {
+    let (from, file): (Vec<_>, Vec<_>) = (from.components().collect(), file.components().collect());
+    let common = from.iter().zip(&file).take_while(|(a, b)| a == b).count();
+    if common == 0 {
+        return None;
+    }
+    let up = std::iter::repeat_n("..".to_owned(), from.len() - common);
+    let down = file[common..].iter().map(|part| part.as_os_str().to_string_lossy().into_owned());
+    Some(up.chain(down).collect::<Vec<_>>().join("/"))
+}
+
+/// The files right in `folder`, canonical and sorted, or none when it can't be read.
+pub(crate) fn files_in(folder: &Path) -> Vec<PathBuf> {
+    let Ok(entries) = std::fs::read_dir(folder) else { return Vec::new() };
+    let mut files: Vec<PathBuf> = (entries.flatten())
+        .map(|entry| entry.path())
+        .filter(|path| path.is_file())
+        .filter_map(|path| std::fs::canonicalize(path).ok())
+        .collect();
+    // In the same order on every system, so the same file is picked among ones with the same
+    // contents
+    files.sort();
+    files
 }
 
 /// The path with links and `..` resolved, to compare paths written in different ways, or the
@@ -853,7 +909,7 @@ pub fn duplicate_savestates(from: &Path, preset: &Preset) -> Vec<(usize, String)
 
 /// The first of `files` with the same contents as `file` but in another file, which can be used
 /// instead of a copy of it. Sizes are compared first, so a file of another size is never read.
-fn same_contents_as<'a>(file: &Path, files: impl IntoIterator<Item = &'a Path>) -> Option<&'a Path> {
+pub(crate) fn same_contents_as<'a>(file: &Path, files: impl IntoIterator<Item = &'a Path>) -> Option<&'a Path> {
     let own = std::fs::canonicalize(file).ok()?;
     let size = std::fs::metadata(&own).ok()?.len();
     let mut contents = None;
@@ -899,11 +955,21 @@ pub fn duplicates_among<'a>(
 /// when there's none, or absolute paths of files picked for it. Files outside `target` are copied
 /// in: masks named after their split, savestates into `savestates` under their own names,
 /// screenshots into `screenshots` named after their split, each file once, and never over a file
-/// that's there. Every file is found before anything is written, and
+/// that's there. With a `game_folder`, the folder of the game `target` is in, screenshots and
+/// savestates go in its `screenshots` and `savestates` instead, which all its presets and its
+/// library share: one there already is used where it is, and one with the same contents as a
+/// file there is used instead of a copy. Every file is found before anything is written, and
 /// when copying or writing `preset.toml` fails, what this save made is removed again, so a failed
-/// save leaves the folder as it was. Afterwards, the files the preset used before
-/// and doesn't now are deleted, and the savestate folder gets [`SAVESTATE_NOTE_FILE`]. Returns the preset as written, with relative paths.
-pub fn save_preset(source: Option<&Path>, target: &Path, preset: &Preset) -> Result<Preset, PresetError> {
+/// save leaves the folders as they were. Afterwards, the files the preset used before
+/// and doesn't now are deleted from its own folder, and the savestate folder gets
+/// [`SAVESTATE_NOTE_FILE`]. Shared files it stopped using are left for [`sweep_shared_files`].
+/// Returns the preset as written, with relative paths.
+pub fn save_preset(
+    source: Option<&Path>,
+    target: &Path,
+    game_folder: Option<&Path>,
+    preset: &Preset,
+) -> Result<Preset, PresetError> {
     let from = source.unwrap_or(target);
     let mut found = Vec::new();
     for split in &preset.splits {
@@ -918,31 +984,103 @@ pub fn save_preset(source: Option<&Path>, target: &Path, preset: &Preset) -> Res
     std::fs::create_dir_all(target).map_err(|error| unwritable(target, error))?;
     let before = Preset::load(&target.join(PRESET_FILE)).ok();
     let mut made = Vec::new();
-    match write_preset(target, preset, found, &mut made) {
+    match write_preset(target, game_folder, preset, found, &mut made) {
         Ok(saved) => {
             remove_unused_files(target, before.as_ref(), &saved);
-            let note = target.join(SAVESTATES_FOLDER).join(SAVESTATE_NOTE_FILE);
-            if note.parent().is_some_and(Path::is_dir) && !note.exists() {
-                // Only a note: the preset is saved without it
-                let _ = std::fs::write(note, SAVESTATE_NOTE);
+            if game_folder.is_some() {
+                // Emptied by moving their files to the shared folders
+                for kind in SplitFile::SHARED {
+                    remove_folder_left_empty(&target.join(kind.folder().unwrap_or_default()));
+                }
+            }
+            for folder in std::iter::once(target).chain(game_folder) {
+                let note = folder.join(SAVESTATES_FOLDER).join(SAVESTATE_NOTE_FILE);
+                if note.parent().is_some_and(Path::is_dir) && !note.exists() {
+                    // Only a note: the preset is saved without it
+                    let _ = std::fs::write(note, SAVESTATE_NOTE);
+                }
             }
             Ok(saved)
         }
         Err(error) => {
+            // Files first, then the folders they were in, also the shared ones outside `target`
+            for path in made.iter().rev() {
+                let _ = if path.is_dir() { std::fs::remove_dir(path) } else { std::fs::remove_file(path) };
+            }
             if new_folder {
                 let _ = std::fs::remove_dir_all(target);
                 if let Some(parent) = new_parent {
                     remove_empty_folder(&parent);
                 }
-            } else {
-                // Files first, then the folders they were in
-                for path in made.iter().rev() {
-                    let _ = if path.is_dir() { std::fs::remove_dir(path) } else { std::fs::remove_file(path) };
-                }
             }
             Err(error)
         }
     }
+}
+
+/// Where a preset ended up after [`save_in_presets`], and how it's not quite where it should be.
+#[derive(Debug)]
+pub struct SavedPreset {
+    pub preset: Preset,
+    pub folder: PathBuf,
+    pub left_behind: Option<LeftBehind>,
+}
+
+/// A preset's old folder that stayed after its game changed, since it couldn't be changed.
+#[derive(Debug)]
+pub enum LeftBehind {
+    /// The preset was saved in its new game's folder, and its old copy couldn't be deleted.
+    OldCopy { old_game: String, error: PresetError },
+    /// A preset kept right in `presets` from before game folders couldn't be moved into its
+    /// game's folder, so it's saved where it was.
+    NotMoved(PresetError),
+}
+
+/// Saves `preset` from its `source` folder into `target` in `presets`, with [`save_preset`], into
+/// the folders its game's presets share when `target` is in a game's folder. A preset saved in
+/// place whose game changed goes to its new game's folder: one in another game's folder is saved
+/// in a new folder there, since what it shares in the old game's folder isn't shared in the new
+/// one, and the old folder is deleted. One kept right in `presets` from before game folders is
+/// moved there. Afterwards, shared files no preset in `presets` or library in `libraries` uses
+/// anymore are deleted from the game folders it was and is in.
+pub fn save_in_presets(
+    presets: &Path,
+    libraries: &Path,
+    source: Option<&Path>,
+    target: &Path,
+    preset: &Preset,
+) -> Result<SavedPreset, PresetError> {
+    // The game it was saved with, when it's saved in place, whose folder it's in
+    let in_place = source == Some(target);
+    let old_game = in_place.then(|| Preset::load(&target.join(PRESET_FILE)).ok()).flatten().map(|old| old.game);
+    let old_game_folder = in_place.then(|| shared_game_folder(presets, target)).flatten();
+    let elsewhere = (old_game_folder.as_deref())
+        .is_some_and(|folder| canonical(folder) != canonical(&game_folder(presets, &preset.game)));
+    let save_to = if elsewhere { new_preset_folder(presets, &preset.game, &preset.name) } else { target.to_owned() };
+    let shared = shared_game_folder(presets, &save_to);
+    let saved = save_preset(source, &save_to, shared.as_deref(), preset)?;
+    let mut left_behind = None;
+    let folder = if elsewhere {
+        if let Err(error) = delete_preset(target) {
+            left_behind = Some(LeftBehind::OldCopy { old_game: old_game.unwrap_or_default(), error });
+        }
+        save_to
+    } else if old_game_folder.is_none() && old_game.is_some_and(|old| game_key(&old) != game_key(&preset.game)) {
+        // It keeps its own files until it's saved again in its game's folder
+        match move_to_game_folder(presets, target, &preset.game) {
+            Ok(moved) => moved,
+            Err(error) => {
+                left_behind = Some(LeftBehind::NotMoved(error));
+                save_to
+            }
+        }
+    } else {
+        save_to
+    };
+    for game_folder in old_game_folder.iter().chain(&shared) {
+        sweep_shared_files(game_folder, presets, libraries, &[]);
+    }
+    Ok(SavedPreset { preset: saved, folder, left_behind })
 }
 
 /// The start of the hidden name a preset's folder gets while it's deleted.
@@ -1022,10 +1160,56 @@ pub(crate) fn unwritable(path: &Path, error: std::io::Error) -> PresetError {
     PresetError::Unwritable { path: path.to_owned(), reason: error.to_string() }
 }
 
+/// Where `source`, a screenshot or savestate, is in the folder for its `kind` in `game_folder`,
+/// which the game's presets and its library share, as a path from the folder `root`: where it
+/// is, when it's there, or a file there with the same contents, or else a copy made under
+/// `wanted`, or a free name like it. Names that differ only in case count as taken, since they're
+/// one file on Windows and macOS, where the folder may be copied. The copy and the folders made
+/// for it are recorded in `made`, outer folders first.
+pub(crate) fn place_shared(
+    root: &Path,
+    game_folder: &Path,
+    kind: SplitFile,
+    source: &Path,
+    wanted: &str,
+    made: &mut Vec<PathBuf>,
+) -> Result<String, PresetError> {
+    let folder = game_folder.join(kind.folder().unwrap_or_default());
+    let missing: Vec<PathBuf> = folder.ancestors().take_while(|path| !path.exists()).map(Path::to_owned).collect();
+    std::fs::create_dir_all(&folder).map_err(|error| unwritable(&folder, error))?;
+    made.extend(missing.into_iter().rev());
+    // As it's spelled on disk, which `source` is, like `Screenshots` on Windows
+    let folder = std::fs::canonicalize(&folder).map_err(|error| unwritable(&folder, error))?;
+    let relative = |file: &Path| {
+        relative_path(root, file).ok_or_else(|| PresetError::Unwritable {
+            path: file.to_owned(),
+            reason: format!("it's on another drive than {}", root.display()),
+        })
+    };
+    if source.parent() == Some(folder.as_path()) {
+        return relative(source);
+    }
+    let existing = files_in(&folder);
+    if let Some(same) = same_contents_as(source, existing.iter().map(PathBuf::as_path)) {
+        return relative(same);
+    }
+    let taken = names_in(&folder);
+    let name = unique_file_name(wanted, |candidate| {
+        let candidate = candidate.to_lowercase();
+        taken.iter().any(|(lower, _)| *lower == candidate)
+    });
+    let copy = folder.join(name);
+    std::fs::copy(source, &copy).map_err(|error| unwritable(&copy, error))?;
+    made.push(copy.clone());
+    relative(&copy)
+}
+
 /// Copies `found`, each split's files in turn, into `target` when they're outside
-/// it, and writes `preset.toml`. Records the files and folders it makes in `made`.
+/// it, or its screenshots and savestates into the shared folders of `game_folder`, and writes
+/// `preset.toml`. Records the files and folders it makes in `made`.
 fn write_preset(
     target: &Path,
+    game_folder: Option<&Path>,
     preset: &Preset,
     found: Vec<Option<PathBuf>>,
     made: &mut Vec<PathBuf>,
@@ -1042,14 +1226,6 @@ fn write_preset(
         for kind in SplitFile::ALL {
             let field = split.file_mut(kind);
             let Some(file) = found.next().flatten() else { continue };
-            if let Ok(inside) = file.strip_prefix(&root) {
-                *field = relative_text(inside);
-                continue;
-            }
-            if let Some(copy) = copied.get(&file) {
-                *field = copy.clone();
-                continue;
-            }
             let wanted = match kind {
                 // Under its own name, which says where it is in the game
                 SplitFile::Savestate => {
@@ -1058,6 +1234,19 @@ fn write_preset(
                 }
                 SplitFile::Mask | SplitFile::Screenshot => format!("{}.png", sanitize_file_name(&name, kind.word())),
             };
+            // Masks stay in the preset's own folder
+            if let Some(game_folder) = game_folder.filter(|_| kind != SplitFile::Mask) {
+                *field = place_shared(&root, game_folder, kind, &file, &wanted, made)?;
+                continue;
+            }
+            if let Ok(inside) = file.strip_prefix(&root) {
+                *field = relative_text(inside);
+                continue;
+            }
+            if let Some(copy) = copied.get(&file) {
+                *field = copy.clone();
+                continue;
+            }
             let folder = kind.folder().map_or_else(|| target.to_owned(), |folder| target.join(folder));
             if !folder.exists() {
                 std::fs::create_dir_all(&folder).map_err(|error| unwritable(&folder, error))?;
@@ -1100,4 +1289,48 @@ fn remove_unused_files(target: &Path, before: Option<&Preset>, now: &Preset) {
             let _ = std::fs::remove_file(old);
         }
     }
+}
+
+/// Deletes the files in the shared `screenshots` and `savestates` of `game_folder` that no preset
+/// in `presets` and no library in `libraries` uses, and none of `in_use`, which a preset being
+/// edited still takes from there. Deletes nothing when a preset or library can't be read, since
+/// it may be the one that uses a file.
+pub fn sweep_shared_files(game_folder: &Path, presets: &Path, libraries: &Path, in_use: &[PathBuf]) {
+    let (loaded_presets, preset_errors) = load_presets(presets);
+    let (loaded_libraries, library_errors) = load_libraries(libraries);
+    if !preset_errors.is_empty() || !library_errors.is_empty() {
+        return;
+    }
+    let preset_files = (loaded_presets.iter()).flat_map(|loaded| {
+        loaded.preset.splits.iter().flat_map(PresetSplit::files).map(|path| loaded.folder.join(path))
+    });
+    let library_files = (loaded_libraries.iter()).flat_map(|loaded| {
+        (loaded.library.splits.iter()).flat_map(|split| split.split.files()).map(|path| loaded.folder.join(path))
+    });
+    let used: HashSet<PathBuf> = (preset_files.chain(library_files).chain(in_use.iter().cloned()))
+        .filter_map(|path| std::fs::canonicalize(path).ok())
+        .collect();
+    for kind in SplitFile::SHARED {
+        let Some(folder) = kind.folder().map(|folder| game_folder.join(folder)) else { continue };
+        // A preset's own folder from before the name was kept for these, which has more in it
+        if folder.join(PRESET_FILE).exists() {
+            continue;
+        }
+        let note = std::fs::canonicalize(folder.join(SAVESTATE_NOTE_FILE)).ok();
+        for file in files_in(&folder) {
+            if !used.contains(&file) && Some(&file) != note.as_ref() {
+                let _ = std::fs::remove_file(file);
+            }
+        }
+        remove_folder_left_empty(&folder);
+    }
+}
+
+/// Whether the preset in a game's folder still keeps a screenshot or savestate in its own folder,
+/// which saving it moves to the folders its game's presets share.
+pub fn keeps_own_files(preset: &Preset) -> bool {
+    (preset.splits.iter())
+        .flat_map(|split| SplitFile::SHARED.map(|kind| split.file(kind)))
+        .filter(|path| !path.is_empty())
+        .any(|path| Path::new(path).components().all(|part| matches!(part, Component::Normal(_) | Component::CurDir)))
 }

@@ -31,6 +31,13 @@ fn png() -> Vec<u8> {
     bytes.into_inner()
 }
 
+/// An opaque PNG `width` pixels wide, which a screenshot has to be.
+fn opaque_png(width: u32) -> Vec<u8> {
+    let mut bytes = std::io::Cursor::new(Vec::new());
+    image::RgbImage::new(width, 1).write_to(&mut bytes, image::ImageFormat::Png).unwrap();
+    bytes.into_inner()
+}
+
 /// A preset folder with `PRESET`'s files, and a file it doesn't use.
 fn preset_folder(folder: &Path) {
     std::fs::create_dir_all(folder.join("savestates")).unwrap();
@@ -137,12 +144,21 @@ fn bundled_presets_import_as_they_were_exported() {
         export_preset(&loaded.folder, &archive).unwrap();
         let folder = read_archive(&archive).unwrap().install(&dir.path().join("imported"), None).unwrap();
 
-        // Assert
+        // Assert: files shared with the game's other presets come back as the preset's own
         let imported = Preset::load(&folder.join(PRESET_FILE)).unwrap();
-        assert_eq!(imported, loaded.preset, "{}", loaded.preset.name);
-        for split in &imported.splits {
-            for path in split.files() {
-                let (original, copy) = (std::fs::read(loaded.folder.join(path)), std::fs::read(folder.join(path)));
+        let mut expected = loaded.preset.clone();
+        for split in &mut expected.splits {
+            for path in [&mut split.screenshot, &mut split.savestate] {
+                if let Some(own) = path.strip_prefix("../") {
+                    *path = own.to_owned();
+                }
+            }
+        }
+        assert_eq!(imported, expected, "{}", loaded.preset.name);
+        for (split, original) in imported.splits.iter().zip(&loaded.preset.splits) {
+            for (path, original_path) in split.files().zip(original.files()) {
+                let (original, copy) =
+                    (std::fs::read(loaded.folder.join(original_path)), std::fs::read(folder.join(path)));
                 assert_eq!(copy.unwrap(), original.unwrap(), "{} {path}", loaded.preset.name);
             }
         }
@@ -401,4 +417,83 @@ fn an_import_still_being_written_is_left_alone() {
     // Assert
     assert_eq!(names(&presets), [".importing-1", "Game"]);
     assert_eq!(folder, presets.join("Game").join("Any%"));
+}
+
+#[test]
+fn files_shared_with_a_games_other_presets_are_exported_in_the_presets_own_folders() {
+    // Arrange: Boss's screenshot is shared, and a split's own screenshot has its name already
+    let dir = tempfile::tempdir().unwrap();
+    let game = dir.path().join("Game");
+    std::fs::create_dir_all(game.join("screenshots")).unwrap();
+    std::fs::create_dir_all(game.join("savestates")).unwrap();
+    std::fs::create_dir_all(game.join("Any/screenshots")).unwrap();
+    std::fs::write(game.join("screenshots/Boss.png"), opaque_png(1)).unwrap();
+    std::fs::write(game.join("savestates/start.gzs"), b"shared state").unwrap();
+    std::fs::write(game.join("Any/screenshots/Boss.png"), opaque_png(2)).unwrap();
+    std::fs::write(game.join("Any/Boss.png"), png()).unwrap();
+    let preset = r#"name = "Any%"
+game = "Game"
+
+[[split]]
+name = "Boss"
+mask = "Boss.png"
+screenshot = "../screenshots/Boss.png"
+savestate = "../savestates/start.gzs"
+
+[[split]]
+name = "Door"
+mask = "Boss.png"
+screenshot = "screenshots/Boss.png"
+"#;
+    std::fs::write(game.join("Any").join(PRESET_FILE), preset).unwrap();
+    let archive = dir.path().join("any.zip");
+
+    // Act
+    export_preset(&game.join("Any"), &archive).unwrap();
+
+    // Assert: it imports with each split's own file
+    let folder = read_archive(&archive).unwrap().install(&dir.path().join("presets"), None).unwrap();
+    let imported = Preset::load(&folder.join(PRESET_FILE)).unwrap();
+    let paths: Vec<(&str, &str)> =
+        imported.splits.iter().map(|split| (split.screenshot.as_str(), split.savestate.as_str())).collect();
+    assert_eq!(
+        (paths, std::fs::read(folder.join("savestates/start.gzs")).unwrap()),
+        (
+            vec![("screenshots/Boss (1).png", "savestates/start.gzs"), ("screenshots/Boss.png", "")],
+            b"shared state".to_vec()
+        )
+    );
+    assert_eq!(std::fs::read(folder.join("screenshots/Boss.png")).unwrap(), opaque_png(2));
+}
+
+#[test]
+fn a_shared_path_written_another_way_is_exported_from_its_file() {
+    // Arrange: written with Windows separators and a `.`, which Linux doesn't read as folders
+    let dir = tempfile::tempdir().unwrap();
+    let game = dir.path().join("Game");
+    std::fs::create_dir_all(game.join("savestates")).unwrap();
+    std::fs::create_dir_all(game.join("Any")).unwrap();
+    std::fs::write(game.join("savestates/start.gzs"), b"shared state").unwrap();
+    std::fs::write(game.join("Any/Boss.png"), png()).unwrap();
+    let preset = r#"name = "Any%"
+game = "Game"
+
+[[split]]
+name = "Boss"
+mask = "Boss.png"
+savestate = '..\savestates\.\start.gzs'
+"#;
+    std::fs::write(game.join("Any").join(PRESET_FILE), preset).unwrap();
+    let archive = dir.path().join("any.zip");
+
+    // Act
+    export_preset(&game.join("Any"), &archive).unwrap();
+
+    // Assert
+    let folder = read_archive(&archive).unwrap().install(&dir.path().join("presets"), None).unwrap();
+    let imported = Preset::load(&folder.join(PRESET_FILE)).unwrap();
+    assert_eq!(
+        (imported.splits[0].savestate.as_str(), std::fs::read(folder.join("savestates/start.gzs")).unwrap()),
+        ("savestates/start.gzs", b"shared state".to_vec())
+    );
 }

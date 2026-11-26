@@ -9,7 +9,9 @@ use std::sync::Arc;
 use autosplit_core::image::{BgraImage, BgraView};
 use autosplit_core::imgproc::{ResizeBuffers, stretch_to_rgba};
 use autosplit_core::mask::{Mask, apply_mask, fade_image};
-use autosplit_core::preset::{LoadedPreset, Preset, PresetError, PresetSplit, SplitChoice, load_presets};
+use autosplit_core::preset::{
+    LoadedPreset, Preset, PresetError, PresetSplit, SplitChoice, load_presets, sweep_shared_files,
+};
 use autosplit_core::profile::UserProfile;
 use autosplit_core::split_folder::user_files;
 use autosplit_core::text::hex_color;
@@ -491,6 +493,13 @@ fn bundled_folder(name: &str) -> PathBuf {
 /// The folder with the bundled presets.
 fn presets_folder() -> PathBuf {
     bundled_folder("presets")
+}
+
+/// Deletes the screenshots and savestates in the shared folders of `game_folder` that no preset
+/// or library uses anymore, and none of `in_use`, which the preset being edited takes from the
+/// library.
+fn sweep_shared(game_folder: &Path, in_use: &[PathBuf]) {
+    sweep_shared_files(game_folder, &presets_folder(), &library::splits_folder(), in_use);
 }
 
 impl Gui {

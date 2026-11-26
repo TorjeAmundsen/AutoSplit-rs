@@ -217,18 +217,27 @@ pub struct Draft {
     original: Preset,
     /// Not saved anywhere yet, so it can be saved unchanged.
     new: bool,
+    /// Keeps screenshots or savestates in its own folder that saving moves to the folders its
+    /// game's presets share, so it can be saved unchanged.
+    files_to_share: bool,
 }
 
 impl Draft {
     /// Editing a saved preset.
     pub fn edit(preset: Preset) -> Self {
-        Self { original: preset.clone(), preset, new: false }
+        Self { original: preset.clone(), preset, new: false, files_to_share: false }
+    }
+
+    /// The same, when saving it unchanged moves its own screenshots or savestates to the folders
+    /// its game's presets share.
+    pub fn with_files_to_share(self, files_to_share: bool) -> Self {
+        Self { files_to_share, ..self }
     }
 
     /// A new preset for `game`, with one split to start from.
     pub fn new(game: &str) -> Self {
         let preset = Preset { name: "New Preset".into(), game: game.into(), splits: vec![new_split("Split1")] };
-        Self { original: preset.clone(), preset, new: true }
+        Self { original: preset.clone(), preset, new: true, files_to_share: false }
     }
 
     /// Why split `index` can't be compared with the split above, for the greyed out checkbox, or
@@ -266,9 +275,15 @@ impl Draft {
         self.preset != self.original
     }
 
-    /// Whether Save does something: it changed, or it's new.
+    /// Whether saving it unchanged shares its screenshots or savestates with the game's other
+    /// presets.
+    pub fn files_to_share(&self) -> bool {
+        self.files_to_share
+    }
+
+    /// Whether Save does something: it changed, it's new, or it has files to share.
     pub fn can_save(&self) -> bool {
-        self.new || self.has_changes()
+        self.new || self.files_to_share || self.has_changes()
     }
 
     /// Puts an edit of split `index` into the preset.
@@ -955,29 +970,27 @@ pub fn discard_question(name: &str, saved_before: bool) -> (String, &'static str
 /// or don't save.
 pub const ONE_COPY_LABELS: [&str; 3] = ["Use Existing Files", "Keep Copies", "Cancel"];
 
-/// Asks whether savestates that are the same as ones there already should use those instead of
-/// copies. `same` has each one's heading, its file name and the existing file's name. They're in
-/// the split `library`, or else in the preset.
-pub fn one_copy_question(same: &[(String, String, String)], library: bool) -> String {
+/// Asks whether savestates that are the same as ones other splits of the preset use should use
+/// those instead of copies. `same` has each one's heading, its file name and the existing file's
+/// name.
+pub fn one_copy_question(same: &[(String, String, String)]) -> String {
     let lines: Vec<String> =
         same.iter().map(|(heading, file, kept)| format!("{heading}: {file} is the same as {kept}")).collect();
-    let (there, keeper) = if library {
-        ("the split library already has", "the library")
-    } else {
-        ("other splits already use", "the preset")
-    };
     format!(
-        "These savestates are the same as ones {there}:\n\n{}\n\nUse the existing files, so {keeper} keeps one copy of each?",
+        "These savestates are the same as ones other splits already use:\n\n{}\n\nUse the existing files, so the preset keeps one copy of each?",
         lines.join("\n")
     )
 }
 
 /// The line under the editor: the first of `problems` and how many more there are, or else
-/// whether the preset has changes to save.
-pub fn status_line(preset: &Preset, problems: &[Problem], has_changes: bool) -> String {
+/// whether the preset has changes to save, or `files_to_share`, which saving it unchanged shares.
+pub fn status_line(preset: &Preset, problems: &[Problem], has_changes: bool, files_to_share: bool) -> String {
     match problem_summary(preset, problems) {
         Some(summary) => summary,
         None if has_changes => "Ready to save.".to_owned(),
+        None if files_to_share => {
+            "Ready to save: saving shares its screenshots and savestates with the game's other presets.".to_owned()
+        }
         None => "No changes yet.".to_owned(),
     }
 }

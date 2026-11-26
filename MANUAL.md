@@ -29,6 +29,8 @@ The folder with your split images, picked with Browse.... Only PNG images are us
 
 The part of the capture device's picture that split images are compared with, usually the whole game screen. The Capture Region picture shows it live. The region boxes set it: X and Y are where it starts, in pixels of the device's frames, and Width and Height its size. The arrow keys change a box's number by 1.
 
+The Capture Region picture, and the pictures in Make Split Images and the Live Tester, are 4:3, the shape a split image of the whole screen is compared at (320x240). A game of another shape, like a 16:9 one, looks squashed in them. That's on purpose. The split images keep the game's own shape.
+
 - For a 4:3 game on a 16:9 canvas, Crop to 4:3 sets the region to the 4:3 picture in the middle of the capture: X 240, Y 0, Width 1440 and Height 1080 on 1920x1080.
 - A game that fills the whole capture needs the whole frame, which is what OBS Virtual Camera starts with.
 - For a game of another shape, scaled to the capture's height: X = (capture width - game width) / 2, Y 0, Width = game width, Height = capture height.
@@ -100,7 +102,7 @@ Your timer needs a segment for each split that's on, apart from dummies. After t
 
 - Grab saves the capture region for the selected split, with its mask, and selects the next split, skipping splits made from the preset's screenshot and splits that are off. The screenshot hotkey does the same while the window is open, so you can play through the category and press it at each split.
 - On a [fade split](#fade-images), the button reads Grab* and saves the split image from the split's color instead of the capture, then selects the next split. It works without a capture device. The Capture Region is replaced by a note that the split needs no savestate or screen.
-- Use Screenshots... uses screenshot files instead, like the ones Take Screenshot saves. Pick one for the selected split, or several for the splits in order, skipping fade splits and splits that are off. Then press Save All, or with Advanced Make Split Images on, Save Selected for only the selected split. It's off while a fade split is selected.
+- Use Screenshots... uses screenshot files instead, like the ones Take Screenshot or [Record](#capture-region) saves. Pick one for the selected split, or several for the splits in order, skipping fade splits and splits that are off. Then press Save All, or with Advanced Make Split Images on, Save Selected for only the selected split. It's off while a fade split is selected. For a moment that lasts only a frame or two, record it with the Record screenshots hotkey and pick the right frame from the `recording_` folder, which is easier than timing a grab.
 - With Advanced Make Split Images on, Test opens the selected split's saved image in the [Live Tester](#live-tester).
 - Some presets come with screenshots for their splits, for consoles whose picture is the same for everyone, like ones with only a digital output. Those screenshots are of the console's own picture, so they only match a capture without color correction or cropping. When you pick one, and again when you pick the split image folder, the bottom line says how many splits have a screenshot and how many are left to grab. Save All writes the split images of the ones that do, and Save All is highlighted instead of Grab while one of them is selected. If a split image doesn't match your capture, select its split and grab it yourself, or use a screenshot of your own with Use Screenshots.... Yours is used instead of the preset's screenshot, and Use Preset's, beside Output Preview, goes back to the preset's. A screenshot that can't be read says so when its split is selected or saved. Grab that split instead.
 
@@ -146,7 +148,7 @@ With [Advanced Make Split Images](#other) on, the pencil button next to the pres
   - Some ready-made splits take several images in a row, like a dummy for a boss's intro text and then its death. They're inserted together, a split for each image.
   - If the preset already has a split with the same name, its row shows where: that split's number, colored like in the split list's file names, or `reset` or `start` for a reset or start image.
   - A grayed-out name can't be inserted, like a fifth reset image. When you pick it, a red line above the buttons says why.
-  - The window stays open. Saving the preset copies the masks, savestates and screenshots of inserted splits into it.
+  - The window stays open. Saving the preset copies the masks of inserted splits into it, and shares their savestates and screenshots with the game's other presets.
 
   ![Split Library: the search field above the ready-made splits on the left, and EnterDeku picked on the right, its two images, DekuCSDummy and EnterDeku, each with a picture, settings and file name, above Insert Above and Insert Below](docs/split-library.png)
 
@@ -189,10 +191,10 @@ A split without a mask yet shows the live capture as it is, so you can see the s
 
 Splits with something to fix have a red name. The bottom line shows the first problem and how many more there are. Click it, or press F8, to go to the next split with a problem. Hover over it, or the red `!` beside it, to see them all.
 
-- Save saves the preset and ends editing. Masks, savestates and screenshots picked from elsewhere are copied into the preset, and ones it doesn't use anymore are deleted. When a new savestate is the same as one another split already uses, Save asks whether to use that one instead of keeping a copy.
+- Save saves the preset and ends editing. Masks picked from elsewhere are copied into the preset. Savestates and screenshots are kept once for all of the game's presets and its split library: one that's the same as one they have already is used instead of a copy. Files nothing uses anymore are deleted. A preset from an older version that kept its own savestates and screenshots can be saved without changes, which shares them.
 - Save as New saves the changes as another preset and leaves the old one as it was. If the game already has a preset with that name, the new one is called `Name (2)`.
 - Cancel, closing the window or quitting asks before throwing changes away.
-- Delete Preset asks, then deletes the preset with the masks, savestates and screenshots it came with, and ends editing. The split images you made with it stay in your split image folder. A preset that was never saved has nothing to delete yet.
+- Delete Preset asks, then deletes the preset with its masks, and its savestates and screenshots unless another preset or the split library uses them, and ends editing. The split images you made with it stay in your split image folder. A preset that was never saved has nothing to delete yet.
 
 ## Sharing presets
 

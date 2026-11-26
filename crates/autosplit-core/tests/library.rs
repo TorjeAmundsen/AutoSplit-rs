@@ -5,9 +5,9 @@ use std::path::{Path, PathBuf};
 
 use autosplit_core::image::BgraImage;
 use autosplit_core::library::{
-    BASE_IMAGE_SIZE, NewStep, add_ready_made, base_image, change_ready_made, delete_ready_made,
+    BASE_IMAGE_SIZE, NewStep, add_ready_made, base_image, change_ready_made, delete_ready_made, library_game_folder,
 };
-use autosplit_core::preset::{LIBRARY_FILE, LibrarySplit, PresetSplit, SplitLibrary, load_libraries};
+use autosplit_core::preset::{LIBRARY_FILE, LibrarySplit, PresetError, PresetSplit, SplitLibrary, load_libraries};
 
 const GAME: &str = "The Legend of Zelda: Ocarina of Time";
 
@@ -36,6 +36,16 @@ fn screenshot() -> BgraImage {
     BgraImage::from_raw(320, 240, vec![128; 320 * 240 * 4])
 }
 
+/// Adds a ready-made split for the game to the library in `splits`, with the presets folder in it.
+fn add(splits: &Path, description: &str, steps: Vec<NewStep>) -> Result<PathBuf, PresetError> {
+    add_ready_made(splits, &splits.join("presets"), GAME, description, steps)
+}
+
+/// The presets folder next to the splits folder the library in `folder` is in.
+fn presets(folder: &Path) -> PathBuf {
+    folder.parent().unwrap().join("presets")
+}
+
 fn load(folder: &Path) -> SplitLibrary {
     SplitLibrary::load(&folder.join(LIBRARY_FILE)).unwrap()
 }
@@ -62,7 +72,7 @@ fn with_boss() -> (tempfile::TempDir, tempfile::TempDir, PathBuf) {
     let mut intro = step(preset.path(), "Ganon intro");
     intro.split.dummy = true;
     let steps = vec![intro, step(preset.path(), "Ganon")];
-    let folder = add_ready_made(splits.path(), GAME, "The intro text, then the flash", steps).unwrap();
+    let folder = add(splits.path(), "The intro text, then the flash", steps).unwrap();
     (splits, preset, folder)
 }
 
@@ -115,8 +125,7 @@ fn a_game_with_a_library_gets_another_ready_made_split() {
     let (splits, preset, folder) = with_boss();
 
     // Act
-    let added =
-        add_ready_made(splits.path(), GAME, "Bottle over the head", vec![step(preset.path(), "Bottle")]).unwrap();
+    let added = add(splits.path(), "Bottle over the head", vec![step(preset.path(), "Bottle")]).unwrap();
 
     // Assert
     let names: Vec<String> = load(&folder).splits.iter().map(|step| step.split.name.clone()).collect();
@@ -130,7 +139,7 @@ fn changing_only_the_description_keeps_the_images() {
     let before = load(&folder);
 
     // Act
-    change_ready_made(&folder, 0, &entry(&folder, 0), "Final slash on Ganon", None, &[]).unwrap();
+    change_ready_made(&folder, &presets(&folder), 0, &entry(&folder, 0), "Final slash on Ganon", None, &[]).unwrap();
 
     // Assert
     let after = load(&folder);
@@ -144,8 +153,16 @@ fn changed_images_replace_the_old_ones_and_their_files() {
     let (_splits, preset, folder) = with_boss();
 
     // Act
-    change_ready_made(&folder, 0, &entry(&folder, 0), "Just the flash", Some(vec![step(preset.path(), "Flash")]), &[])
-        .unwrap();
+    change_ready_made(
+        &folder,
+        &presets(&folder),
+        0,
+        &entry(&folder, 0),
+        "Just the flash",
+        Some(vec![step(preset.path(), "Flash")]),
+        &[],
+    )
+    .unwrap();
 
     // Assert
     let names: Vec<String> = load(&folder).splits.iter().map(|step| step.split.name.clone()).collect();
@@ -163,7 +180,8 @@ fn masks_in_the_library_already_are_used_where_they_are() {
     let again = using("Ganon", mask);
 
     // Act
-    change_ready_made(&folder, 0, &entry(&folder, 0), "Just the flash", Some(vec![again]), &[]).unwrap();
+    change_ready_made(&folder, &presets(&folder), 0, &entry(&folder, 0), "Just the flash", Some(vec![again]), &[])
+        .unwrap();
 
     // Assert: no copy, its base image under the same name, and the intro's files gone
     assert_eq!(
@@ -182,7 +200,8 @@ fn rewritten_files_keep_the_spelling_of_the_ones_they_replace() {
     let again = using("Ganon", folder.join("Ganon.png"));
 
     // Act
-    change_ready_made(&folder, 0, &entry(&folder, 0), "Just the flash", Some(vec![again]), &[]).unwrap();
+    change_ready_made(&folder, &presets(&folder), 0, &entry(&folder, 0), "Just the flash", Some(vec![again]), &[])
+        .unwrap();
 
     // Assert: the library and the folder both still say base_ganon.png
     assert_eq!(
@@ -196,10 +215,10 @@ fn deleting_a_ready_made_split_deletes_the_files_only_it_used() {
     // Arrange: a second ready-made split that uses the boss's flash mask too
     let (splits, _preset, folder) = with_boss();
     let flash = using("Flash", folder.join("Ganon.png"));
-    add_ready_made(splits.path(), GAME, "Any flash", vec![flash]).unwrap();
+    add(splits.path(), "Any flash", vec![flash]).unwrap();
 
     // Act
-    delete_ready_made(&folder, 0, &entry(&folder, 0), &[]).unwrap();
+    delete_ready_made(&folder, &presets(&folder), 0, &entry(&folder, 0), &[]).unwrap();
 
     // Assert
     let names: Vec<String> = load(&folder).splits.iter().map(|step| step.split.name.clone()).collect();
@@ -215,14 +234,14 @@ fn a_ready_made_split_that_isnt_there_is_an_error() {
     let (_splits, _preset, folder) = with_boss();
 
     // Act
-    let error = delete_ready_made(&folder, 5, &[], &[]).unwrap_err();
+    let error = delete_ready_made(&folder, &presets(&folder), 5, &[], &[]).unwrap_err();
 
     // Assert
     assert!(error.to_string().contains("changed in it since you opened it"), "{error}");
 }
 
 #[test]
-fn savestates_are_copied_into_the_library_too() {
+fn savestates_are_copied_into_the_folder_the_games_presets_share() {
     // Arrange: a split whose savestate is in its preset's savestates folder
     let (splits, preset) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
     std::fs::create_dir(preset.path().join("savestates")).unwrap();
@@ -233,13 +252,14 @@ fn savestates_are_copied_into_the_library_too() {
     deku.savestate = Some(savestate);
 
     // Act
-    let folder = add_ready_made(splits.path(), GAME, "Enter the Deku Tree", vec![deku]).unwrap();
+    let folder = add(splits.path(), "Enter the Deku Tree", vec![deku]).unwrap();
 
-    // Assert: next to the mask, under its own name, which the library says
+    // Assert: under its own name, which the library says
     let library = load(&folder);
+    let path = library.splits[0].split.savestate.as_str();
     assert_eq!(
-        (library.splits[0].split.savestate.as_str(), folder.join("004-kokiri forest.gzs").is_file()),
-        ("004-kokiri forest.gzs", true)
+        (path, std::fs::read(folder.join(path)).ok()),
+        ("../presets/The_Legend_of_Zelda_Ocarina_of_Time/savestates/004-kokiri forest.gzs", Some(b"state".to_vec()))
     );
 }
 
@@ -253,33 +273,112 @@ fn with_screenshot(contents: &[u8]) -> (tempfile::TempDir, tempfile::TempDir, Pa
     let mut deku = step(preset.path(), "EnterDeku");
     deku.split.screenshot = "screenshots/EnterDeku.png".into();
     deku.screenshot = Some(shot);
-    let folder = add_ready_made(splits.path(), GAME, "Enter the Deku Tree", vec![deku]).unwrap();
+    let folder = add(splits.path(), "Enter the Deku Tree", vec![deku]).unwrap();
     (splits, preset, folder)
 }
 
 #[test]
-fn screenshots_are_copied_into_the_library_as_they_are() {
+fn screenshots_are_copied_into_the_folder_the_games_presets_share_as_they_are() {
     // Act
     let (_splits, _preset, folder) = with_screenshot(b"full size");
 
-    // Assert: under a name of its own beside the mask and the small base image, not shrunk
+    // Assert: not shrunk
     let library = load(&folder);
+    let path = library.splits[0].split.screenshot.as_str();
     assert_eq!(
-        (library.splits[0].split.screenshot.as_str(), std::fs::read(folder.join("screenshot_EnterDeku.png")).ok()),
-        ("screenshot_EnterDeku.png", Some(b"full size".to_vec()))
+        (path, std::fs::read(folder.join(path)).ok()),
+        ("../presets/The_Legend_of_Zelda_Ocarina_of_Time/screenshots/EnterDeku.png", Some(b"full size".to_vec()))
     );
 }
 
 #[test]
-fn deleting_a_ready_made_split_deletes_its_screenshot() {
-    // Arrange
-    let (_splits, _preset, folder) = with_screenshot(b"full size");
+fn a_screenshot_a_preset_shares_already_is_used_instead_of_a_copy() {
+    // Arrange: the game's presets share a screenshot with the same contents, under another name
+    let (splits, preset) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+    let shared = splits.path().join("presets/The_Legend_of_Zelda_Ocarina_of_Time/screenshots");
+    std::fs::create_dir_all(&shared).unwrap();
+    std::fs::write(shared.join("Deku.png"), b"full size").unwrap();
+    let shot = preset.path().join("EnterDeku shot.png");
+    std::fs::write(&shot, b"full size").unwrap();
+    let mut deku = step(preset.path(), "EnterDeku");
+    deku.screenshot = Some(shot);
 
     // Act
-    delete_ready_made(&folder, 0, &entry(&folder, 0), &[]).unwrap();
+    let folder = add(splits.path(), "Enter the Deku Tree", vec![deku]).unwrap();
 
     // Assert
-    assert_eq!(files(&folder), [LIBRARY_FILE]);
+    assert_eq!(
+        (load(&folder).splits[0].split.screenshot.clone(), files(&shared)),
+        ("../presets/The_Legend_of_Zelda_Ocarina_of_Time/screenshots/Deku.png".to_owned(), vec!["Deku.png".to_owned()])
+    );
+}
+
+/// A library from before libraries shared screenshots, whose Gohma keeps its own, and its folder.
+fn with_own_screenshot() -> (tempfile::TempDir, PathBuf) {
+    let splits = tempfile::tempdir().unwrap();
+    let folder = splits.path().join("Game");
+    std::fs::create_dir(&folder).unwrap();
+    let png = BgraImage::from_raw(4, 3, vec![255; 4 * 3 * 4]).encode_png().unwrap();
+    std::fs::write(folder.join("Gohma.png"), png).unwrap();
+    std::fs::write(folder.join("screenshot_Gohma.png"), b"full size").unwrap();
+    let text = "game = \"Game\"
+
+[[split]]
+name = \"Gohma\"
+mask = \"Gohma.png\"
+screenshot = \"screenshot_Gohma.png\"
+";
+    std::fs::write(folder.join(LIBRARY_FILE), text).unwrap();
+    (splits, folder)
+}
+
+#[test]
+fn writing_a_library_moves_the_screenshots_it_keeps_itself_to_the_shared_folder() {
+    // Arrange
+    let (_splits, folder) = with_own_screenshot();
+
+    // Act: only the description changes
+    change_ready_made(&folder, &presets(&folder), 0, &entry(&folder, 0), "Gohma dies", None, &[]).unwrap();
+
+    // Assert
+    let path = load(&folder).splits[0].split.screenshot.clone();
+    assert_eq!(
+        (path.as_str(), std::fs::read(folder.join(&path)).ok(), files(&folder)),
+        (
+            "../presets/Game/screenshots/Gohma.png",
+            Some(b"full size".to_vec()),
+            vec!["Gohma.png".to_owned(), LIBRARY_FILE.to_owned()]
+        )
+    );
+}
+
+#[test]
+fn a_screenshot_a_preset_being_edited_takes_from_the_library_stays_until_a_later_write() {
+    // Arrange: the preset being edited has the library's Gohma in it
+    let (_splits, folder) = with_own_screenshot();
+    let in_use = [folder.join("screenshot_Gohma.png")];
+
+    // Act: a write about something else
+    change_ready_made(&folder, &presets(&folder), 0, &entry(&folder, 0), "Gohma dies", None, &in_use).unwrap();
+
+    // Assert
+    assert_eq!(
+        (load(&folder).splits[0].split.screenshot.as_str(), folder.join("screenshot_Gohma.png").is_file()),
+        ("screenshot_Gohma.png", true)
+    );
+}
+
+#[test]
+fn deleting_a_ready_made_split_leaves_its_shared_screenshot() {
+    // Arrange
+    let (_splits, _preset, folder) = with_screenshot(b"full size");
+    let shared = load(&folder).splits[0].split.screenshot.clone();
+
+    // Act
+    delete_ready_made(&folder, &presets(&folder), 0, &entry(&folder, 0), &[]).unwrap();
+
+    // Assert: deleting what nothing uses anymore is for sweep_shared_files, which knows the presets
+    assert_eq!((files(&folder), folder.join(shared).is_file()), (vec![LIBRARY_FILE.to_owned()], true));
 }
 
 #[test]
@@ -309,6 +408,7 @@ fn replaced_images_keep_their_file_names() {
     // Act
     change_ready_made(
         &folder,
+        &presets(&folder),
         0,
         &entry(&folder, 0),
         "The intro text, then the flash",
@@ -332,7 +432,16 @@ fn renamed_images_rename_their_files() {
     let steps = vec![kept("Ganon intro", "Ganon_intro.png"), kept("White flash", "Ganon.png")];
 
     // Act
-    change_ready_made(&folder, 0, &entry(&folder, 0), "The intro text, then the flash", Some(steps), &[]).unwrap();
+    change_ready_made(
+        &folder,
+        &presets(&folder),
+        0,
+        &entry(&folder, 0),
+        "The intro text, then the flash",
+        Some(steps),
+        &[],
+    )
+    .unwrap();
 
     // Assert: the flash's mask and base image under its new name, the old ones gone
     let library = load(&folder);
@@ -356,12 +465,12 @@ fn renamed_images_rename_their_files() {
 fn a_renamed_image_keeps_a_mask_another_ready_made_split_uses() {
     // Arrange: a flash that uses the boss's mask too
     let (splits, _preset, folder) = with_boss();
-    add_ready_made(splits.path(), GAME, "Any flash", vec![using("Flash", folder.join("Ganon.png"))]).unwrap();
+    add(splits.path(), "Any flash", vec![using("Flash", folder.join("Ganon.png"))]).unwrap();
     let steps =
         vec![using("Ganon intro", folder.join("Ganon_intro.png")), using("White flash", folder.join("Ganon.png"))];
 
     // Act
-    change_ready_made(&folder, 0, &entry(&folder, 0), "Renamed", Some(steps), &[]).unwrap();
+    change_ready_made(&folder, &presets(&folder), 0, &entry(&folder, 0), "Renamed", Some(steps), &[]).unwrap();
 
     // Assert: both still use the one mask
     let library = load(&folder);
@@ -376,11 +485,19 @@ fn files_other_ready_made_splits_use_are_never_written_over() {
     // Arrange: a flash that uses the boss's mask, then the boss made again from a new mask
     let (splits, preset, folder) = with_boss();
     let flash = using("Flash", folder.join("Ganon.png"));
-    add_ready_made(splits.path(), GAME, "Any flash", vec![flash]).unwrap();
+    add(splits.path(), "Any flash", vec![flash]).unwrap();
 
     // Act
-    change_ready_made(&folder, 0, &entry(&folder, 0), "Just the flash", Some(vec![step(preset.path(), "Ganon")]), &[])
-        .unwrap();
+    change_ready_made(
+        &folder,
+        &presets(&folder),
+        0,
+        &entry(&folder, 0),
+        "Just the flash",
+        Some(vec![step(preset.path(), "Ganon")]),
+        &[],
+    )
+    .unwrap();
 
     // Assert: the boss's new mask got a name of its own
     let library = load(&folder);
@@ -410,7 +527,8 @@ fn a_replace_that_fails_changes_nothing() {
     intro.split.dummy = true;
 
     // Act
-    let result = change_ready_made(&folder, 0, &entry(&folder, 0), "Again", Some(vec![intro, flash]), &[]);
+    let result =
+        change_ready_made(&folder, &presets(&folder), 0, &entry(&folder, 0), "Again", Some(vec![intro, flash]), &[]);
 
     // Assert: the masks, base images and library as they were
     assert!(result.is_err());
@@ -425,10 +543,32 @@ fn an_add_that_fails_leaves_nothing_behind() {
     deku.savestate = Some(preset.path().join("missing.gzs"));
 
     // Act
-    let result = add_ready_made(splits.path(), GAME, "Enter the Deku Tree", vec![deku]);
+    let result = add(splits.path(), "Enter the Deku Tree", vec![deku]);
 
     // Assert: no library folder for it either
     assert_eq!((result.is_err(), files(splits.path())), (true, Vec::<String>::new()));
+}
+
+#[test]
+fn an_add_that_fails_after_copying_a_screenshot_takes_back_the_shared_folders_it_made() {
+    // Arrange: a game without presets, whose first image's screenshot is copied before the second
+    // image's mask, a folder, can't be
+    let (splits, preset) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+    let mut first = step(preset.path(), "EnterDeku");
+    let shot = preset.path().join("shot.png");
+    std::fs::write(&shot, b"full size").unwrap();
+    first.screenshot = Some(shot);
+    let not_a_file = preset.path().join("folder.png");
+    std::fs::create_dir(&not_a_file).unwrap();
+    let second = using("Deku", not_a_file);
+    let presets = splits.path().join("presets");
+    std::fs::create_dir(&presets).unwrap();
+
+    // Act
+    let result = add_ready_made(splits.path(), &presets, GAME, "Enter the Deku Tree", vec![first, second]);
+
+    // Assert: the presets folder that was there stays, empty
+    assert_eq!((result.is_err(), files(&presets)), (true, Vec::<String>::new()));
 }
 
 #[test]
@@ -436,10 +576,10 @@ fn a_ready_made_split_that_changed_meanwhile_isnt_changed() {
     // Arrange: the boss as it was when its window opened, then a new description written
     let (_splits, _preset, folder) = with_boss();
     let opened = entry(&folder, 0);
-    change_ready_made(&folder, 0, &opened, "Changed meanwhile", None, &[]).unwrap();
+    change_ready_made(&folder, &presets(&folder), 0, &opened, "Changed meanwhile", None, &[]).unwrap();
 
     // Act
-    let error = change_ready_made(&folder, 0, &opened, "From the window", None, &[]).unwrap_err();
+    let error = change_ready_made(&folder, &presets(&folder), 0, &opened, "From the window", None, &[]).unwrap_err();
 
     // Assert
     assert_eq!(
@@ -456,9 +596,16 @@ fn files_a_preset_being_edited_uses_are_kept() {
     let in_use = [folder.join("Ganon_intro.png"), folder.join("Ganon.png")];
 
     // Act: deleting it, or replacing it with other images
-    let deleted = delete_ready_made(&folder, 0, &entry(&folder, 0), &in_use);
-    let replaced =
-        change_ready_made(&folder, 0, &entry(&folder, 0), "Flash", Some(vec![step(preset.path(), "Flash")]), &in_use);
+    let deleted = delete_ready_made(&folder, &presets(&folder), 0, &entry(&folder, 0), &in_use);
+    let replaced = change_ready_made(
+        &folder,
+        &presets(&folder),
+        0,
+        &entry(&folder, 0),
+        "Flash",
+        Some(vec![step(preset.path(), "Flash")]),
+        &in_use,
+    );
 
     // Assert
     assert!(deleted.unwrap_err().to_string().contains("Save the preset first"));
@@ -479,7 +626,7 @@ fn replacing_with_the_inserted_splits_keeps_their_files() {
     let in_use = [folder.join("Ganon_intro.png"), folder.join("Ganon.png")];
 
     // Act
-    change_ready_made(&folder, 0, &entry(&folder, 0), "Tuned", Some(steps), &in_use).unwrap();
+    change_ready_made(&folder, &presets(&folder), 0, &entry(&folder, 0), "Tuned", Some(steps), &in_use).unwrap();
 
     // Assert: the new threshold, the same files
     assert_eq!(
@@ -511,8 +658,7 @@ fn adding_waits_for_a_library_that_cant_be_read() {
     .unwrap();
 
     // Act
-    let error =
-        add_ready_made(splits.path(), GAME, "Enter the Deku Tree", vec![step(preset.path(), "EnterDeku")]).unwrap_err();
+    let error = add(splits.path(), "Enter the Deku Tree", vec![step(preset.path(), "EnterDeku")]).unwrap_err();
 
     // Assert: no second library beside it
     assert!(error.to_string().contains("can't be read"), "{error}");
@@ -539,7 +685,7 @@ mask = \"gohma.png\"
     std::fs::write(folder.path().join(LIBRARY_FILE), text).unwrap();
 
     // Act: delete the one that names it in lowercase
-    delete_ready_made(folder.path(), 1, &entry(folder.path(), 1), &[]).unwrap();
+    delete_ready_made(folder.path(), &folder.path().join("presets"), 1, &entry(folder.path(), 1), &[]).unwrap();
 
     // Assert: the other one's mask is still there
     assert!(folder.path().join("Gohma.png").is_file());
@@ -554,7 +700,7 @@ fn new_files_never_share_a_name_in_another_case() {
     lower.split.name = "gohma".into();
 
     // Act
-    let folder = add_ready_made(splits.path(), GAME, "Gohma", vec![upper, lower]).unwrap();
+    let folder = add(splits.path(), "Gohma", vec![upper, lower]).unwrap();
 
     // Assert: each its own mask and base image
     let library = load(&folder);
@@ -568,12 +714,12 @@ fn a_new_file_named_like_another_in_another_case_gets_a_number() {
     // Arrange: a library with Gohma.png, and a split named gohma, which on Linux could otherwise
     // be written beside it and collide once the library is copied to Windows
     let (splits, preset) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
-    let folder = add_ready_made(splits.path(), GAME, "Gohma", vec![step(preset.path(), "Gohma")]).unwrap();
+    let folder = add(splits.path(), "Gohma", vec![step(preset.path(), "Gohma")]).unwrap();
     let mut lower = step(preset.path(), "gohma_low");
     lower.split.name = "gohma".into();
 
     // Act
-    add_ready_made(splits.path(), GAME, "Gohma again", vec![lower]).unwrap();
+    add(splits.path(), "Gohma again", vec![lower]).unwrap();
 
     // Assert
     assert_eq!(load(&folder).splits[1].split.mask, "gohma (1).png");
@@ -587,9 +733,30 @@ fn fade_step_without_a_mask_is_added_without_one() {
     let step = NewStep { split: fade, mask: None, savestate: None, screenshot: None, base_picture: screenshot() };
 
     // Act
-    let folder = add_ready_made(directory.path(), GAME, "Fade into the Deku Tree", vec![step]).unwrap();
+    let folder = add(directory.path(), "Fade into the Deku Tree", vec![step]).unwrap();
 
     // Assert
     let added = &load(&folder).splits[0];
     assert_eq!((added.split.mask.as_str(), added.split.fade.as_deref()), ("", Some("#a0a0a0")));
+}
+
+#[test]
+fn a_librarys_shared_files_are_in_the_folder_of_its_game_as_it_spells_it() {
+    // Arrange: spelled with two spaces, which is the same game as with one, in another folder
+    let splits = tempfile::tempdir().unwrap();
+    let folder = splits.path().join("Game");
+    std::fs::create_dir(&folder).unwrap();
+    let text = "game = \"Ocarina  of Time\"
+
+[[split]]
+name = \"Gohma\"
+mask = \"Gohma.png\"
+";
+    std::fs::write(folder.join(LIBRARY_FILE), text).unwrap();
+
+    // Act
+    let game_folder = library_game_folder(&folder, &presets(&folder));
+
+    // Assert
+    assert_eq!(game_folder, Some(presets(&folder).join("Ocarina__of_Time")));
 }

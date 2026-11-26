@@ -3,14 +3,16 @@
 //! program, and changed or deleted from Split Library.
 
 use autosplit_core::filename::validate_split_name;
-use autosplit_core::library::{NewStep, add_ready_made, base_image, change_ready_made, delete_ready_made};
-use autosplit_core::preset::{LibrarySplit, PresetSplit, SplitFile, duplicates_among};
+use autosplit_core::library::{
+    NewStep, add_ready_made, base_image, change_ready_made, delete_ready_made, library_game_folder,
+};
+use autosplit_core::preset::{LibrarySplit, PresetSplit, SplitFile};
 use slint::Model;
 
 use super::super::name_parts_model;
 use super::super::preset_form::{
-    ONE_COPY_LABELS, SplitKind, changed_settings, library_file_name, library_file_parts, library_heading,
-    one_copy_question, saved_split, settings_changes, settings_problem, too_few_selected, with_settings_of,
+    SplitKind, changed_settings, library_file_name, library_file_parts, library_heading, saved_split, settings_changes,
+    settings_problem, too_few_selected, with_settings_of,
 };
 use super::super::ui::{EntryStep, LibraryEntryWindow};
 use super::library::splits_folder;
@@ -488,54 +490,8 @@ impl Gui {
                 Err(problem) => return self.show_message(Message::error(problem)),
             },
         };
-        let duplicates = self.library_duplicates(&game, steps.as_deref().unwrap_or_default());
-        let mut steps = match steps {
-            Some(steps) if !duplicates.is_empty() => steps,
-            steps => return self.write_entry(editing, &game, &description, steps, &in_use),
-        };
-        let file = |path: &Path| file_name_text(path).unwrap_or_default();
-        let same: Vec<(String, String, String)> = (duplicates.iter())
-            .map(|(place, kept)| {
-                let step = &steps[*place];
-                let savestate = step.savestate.as_deref().map(file).unwrap_or_default();
-                (library_heading(&step.split), savestate, file(kept))
-            })
-            .collect();
-        let text = one_copy_question(&same, true);
-        let weak = Rc::downgrade(self);
-        self.show_message(Message::choice(text, ONE_COPY_LABELS, 0, move |answer| {
-            let Some(gui) = weak.upgrade() else { return };
-            match answer {
-                Answer::Yes => {
-                    for (place, kept) in duplicates {
-                        steps[place].savestate = Some(kept);
-                    }
-                }
-                Answer::No => {}
-                Answer::Cancel => return,
-            }
-            gui.write_entry(editing, &game, &description, Some(steps), &in_use);
-        }));
-    }
-
-    /// The images of `steps` whose savestate is new to the library and has the same contents as
-    /// one the game's library has in another file, or an earlier image of `steps`, each with that
-    /// file. Files the images use themselves only count once an earlier image keeps theirs, so two
-    /// of them never trade files.
-    fn library_duplicates(&self, game: &str, steps: &[NewStep]) -> Vec<(usize, PathBuf)> {
-        let maker = self.maker.borrow();
-        let library: Vec<PathBuf> = (maker.library.splits_for(game).into_iter())
-            .flat_map(|(folder, _, steps)| {
-                steps.iter().filter_map(move |step| library_file(folder, &step.split.savestate))
-            })
-            .collect();
-        let files: Vec<Option<&Path>> = steps.iter().map(|step| step.savestate.as_deref()).collect();
-        let mut duplicates = duplicates_among(&files, library.iter().map(PathBuf::as_path));
-        // Only savestates new to the library: its own were kept on purpose, or before this was
-        // asked, so they aren't asked about every time
-        let saved: Vec<PathBuf> = library.iter().map(|path| canonical(path)).collect();
-        duplicates.retain(|(place, _)| files[*place].is_none_or(|file| !saved.contains(&canonical(file))));
-        duplicates
+        // Savestates the same as ones the game already has are kept once without asking
+        self.write_entry(editing, &game, &description, steps, &in_use);
     }
 
     /// Writes the ready-made split: a new one for `game` with `steps`, or the one being edited with
@@ -548,15 +504,22 @@ impl Gui {
         steps: Option<Vec<NewStep>>,
         in_use: &[PathBuf],
     ) {
+        let presets = presets_folder();
         let written = match (editing, steps) {
             (Some(Edited { folder, place, steps: expected }), steps) => {
-                change_ready_made(&folder, place, &expected, description, steps, in_use)
+                change_ready_made(&folder, &presets, place, &expected, description, steps, in_use).map(|()| folder)
             }
-            (None, Some(steps)) => add_ready_made(&splits_folder(), game, description, steps).map(|_| ()),
+            (None, Some(steps)) => add_ready_made(&splits_folder(), &presets, game, description, steps),
             (None, None) => return,
         };
-        if let Err(error) = written {
-            return self.show_message(Message::error(format!("Couldn't write the split library. {error}")));
+        let library = match written {
+            Ok(library) => library,
+            Err(error) => {
+                return self.show_message(Message::error(format!("Couldn't write the split library. {error}")));
+            }
+        };
+        if let Some(game_folder) = library_game_folder(&library, &presets) {
+            sweep_shared(&game_folder, in_use);
         }
         self.close_entry();
         self.read_library();
@@ -632,13 +595,16 @@ impl Gui {
         drop(maker);
         let in_use = self.files_in_use();
         let text = format!(
-            "Delete {name} from the split library? Its masks and base images are deleted too, unless another ready-made split uses them."
+            "Delete {name} from the split library? Its masks and base images are deleted too, unless another ready-made split uses them, and its savestates and screenshots, unless a preset or another ready-made split uses them."
         );
         let weak = Rc::downgrade(self);
         self.show_message(Message::choice(text, ["Delete", "", "Cancel"], 2, move |answer| {
             let (Some(gui), Answer::Yes) = (weak.upgrade(), answer) else { return };
-            if let Err(error) = delete_ready_made(&folder, place, &steps, &in_use) {
+            if let Err(error) = delete_ready_made(&folder, &presets_folder(), place, &steps, &in_use) {
                 return gui.show_message(Message::error(format!("Couldn't write the split library. {error}")));
+            }
+            if let Some(game_folder) = library_game_folder(&folder, &presets_folder()) {
+                sweep_shared(&game_folder, &in_use);
             }
             gui.read_library();
             gui.refresh_library();

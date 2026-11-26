@@ -6,7 +6,7 @@ name = "reset"
 mask = "reset.png"
 threshold = 0.96
 pause = 0.1
-savestate = "savestates/000 start and reset.gzs"
+savestate = "../savestates/000_start_and_reset.gzs"
 instructions = "If loading this state from outside of Link's house, you have to advance 1 frame to make the background render correctly."
 
 [[split]]
@@ -15,14 +15,14 @@ mask = "start.png"
 threshold = 0.96
 pause = 10.0
 below = true
-savestate = "savestates/000 start and reset.gzs"
+savestate = "../savestates/000_start_and_reset.gzs"
 
 [[split]]
 name = "Escape"
 mask = "001_escape.png"
 threshold = 0.97
 delay = 150
-savestate = "savestates/000-lost woods.gzs"
+savestate = "../savestates/000-lost_woods.gzs"
 
 [[split]]
 name = "KakarikoDummy"
@@ -30,7 +30,7 @@ mask = "002_hyrule_field_text.png"
 threshold = 0.95
 pause = 7.0
 dummy = true
-savestate = "savestates/001-hyrule field.gzs"
+savestate = "../savestates/001-hyrule_field.gzs"
 
 [[split]]
 name = "Kakariko"
@@ -47,7 +47,7 @@ threshold = 0.93
 pause = 35.0
 delay = 1100
 below = true
-savestate = "savestates/003-kakariko village.gzs"
+savestate = "../savestates/003-kakariko_village.gzs"
 
 [[split]]
 name = "DekuCSDummy"
@@ -55,7 +55,7 @@ mask = "005_deku_text.png"
 threshold = 0.94
 pause = 6.5
 dummy = true
-savestate = "savestates/004-kokiri forest.gzs"
+savestate = "../savestates/004-kokiri_forest.gzs"
 
 [[split]]
 name = "EnterDeku"
@@ -63,7 +63,7 @@ mask = "006_a_button_flip.png"
 threshold = 0.92
 pause = 60.0
 delay = 1000
-savestate = "savestates/005-kokiri forest.gzs"
+savestate = "../savestates/005-kokiri_forest.gzs"
 instructions = "After loading, advance 1 frame before taking your screenshot. The A button doesn't render correctly if the savestate is on the frame itself, so it had to be 1 frame before."
 
 [[split]]
@@ -73,7 +73,7 @@ threshold = 0.93
 pause = 1.0
 dummy = true
 below = true
-savestate = "savestates/016-deku_tree.gzs"
+savestate = "../savestates/016-deku_tree.gzs"
 
 [[split]]
 name = "ScrubsDummyLow"
@@ -83,7 +83,7 @@ threshold = 0.93
 pause = 1.0
 dummy = true
 below = true
-savestate = "savestates/015-deku_tree.gzs"
+savestate = "../savestates/015-deku_tree.gzs"
 
 [[split]]
 name = "Scrubs"
@@ -96,14 +96,14 @@ name = "DoubleKO"
 mask = "009_hearts.png"
 threshold = 0.95
 pause = 30.0
-savestate = "savestates/008-gohma.gzs"
+savestate = "../savestates/008-gohma.gzs"
 
 [[split]]
 name = "Ganondoor"
 mask = "003_full_fade.png"
 threshold = 0.97
 pause = 30.0
-savestate = "savestates/009-tower collapse.gzs"
+savestate = "../savestates/009-tower_collapse.gzs"
 
 [[split]]
 name = "Collapse"
@@ -119,10 +119,10 @@ mask = "010_collapse_cs_zelda_text.png"
 threshold = 0.96
 pause = 130.0
 delay = 100
-savestate = "savestates/012 collapse.gzs"
+savestate = "../savestates/012_collapse.gzs"
 
 [[split]]
 name = "Ganon"
 mask = "011_final_slash_zelda.png"
 threshold = 0.92
-savestate = "savestates/013 ganon.gzs"
+savestate = "../savestates/013_ganon.gzs"
