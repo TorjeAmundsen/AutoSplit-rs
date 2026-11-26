@@ -69,6 +69,8 @@ A few design notes:
 
 `presets/` holds the split image presets, in a folder per game named after it, like `presets/The_Legend_of_Zelda_Ocarina_of_Time/No_Wrong_Warp`, since games mostly share category names like Any%. Presets kept right in `presets/` from before still load. `splits/` holds the split library, one folder per game. `tools/convert_presets.py` converted both from AutoMask. Release builds put both folders next to the binary. A preset with a `WIP.txt` in its folder is still being made, and is left out of releases.
 
+A game's folder keeps one copy of each screenshot and savestate its presets and its library use, in its own `screenshots` and `savestates` folders. Presets point at them as `../screenshots/X.png`, and the library as `../../presets/<game folder>/screenshots/X.png`. Masks stay in each preset's and library's own folder. Saving reuses a file with the same contents instead of copying it, and a file nothing uses anymore is deleted after each save, delete, import and library write, unless a preset or library can't be read. A preset or library from before keeps its own files until it's saved, or the library written, again. Exported presets have their shared files in their own folders, so the `.zip` works on its own.
+
 For Ocarina of Time, whose practice tool is gz: splits compared together share a number, so gz lists their Copy Savestates files by name, ignoring case. Keep them in that order, like `KokiriSwordLeft` before `KokiriSwordRight`, so the savestates come up in gz in the same order as the splits. `python tools/check_savestate_order.py` lists the Ocarina of Time groups in `presets/` and `splits/` that aren't. Other games' practice tools can sort another way, so it leaves them out. CI doesn't run it.
 
 A library's `splits.toml` has a `game`, and a `[[split]]` table for each image. The tables take the same keys as a preset's splits, plus three of their own:
@@ -105,7 +107,7 @@ Debug builds (`cargo run`) can write the library, so you don't have to write `sp
 2. Select the first split and click **Add to Library...**. For a ready-made split of several images, raise **Images** to take the splits after it too.
 3. Write a description and save.
 
-This copies the masks, savestates and screenshots into the game's library folder, which is made if the game has none yet. It writes each base image at 64x48 from the split's grab or screenshot, or else from the live capture. To use another screenshot instead, click **Picture...** beside that image. Each image's name can be changed in the field above its file name, like a generic `FastBlackFade` for a split made from the preset's `ExitKokiriShop`. The preset keeps its own names.
+This copies the masks into the game's library folder, which is made if the game has none yet, and the savestates and screenshots into the game's shared folders in `presets/`. It writes each base image at 64x48 from the split's grab or screenshot, or else from the live capture. To use another screenshot instead, click **Picture...** beside that image. Each image's name can be changed in the field above its file name, like a generic `FastBlackFade` for a split made from the preset's `ExitKokiriShop`. The preset keeps its own names.
 
 In the Split Library window, **Edit...** opens an entry, and its **Change** list picks what saving changes:
 
@@ -121,7 +123,7 @@ How the writes protect the library:
 - Files that no entry uses anymore are deleted.
 - Saving refuses if the entry changed since its window opened.
 - Edit and Delete won't write over or delete a file that a split in the preset being edited still uses. Save the preset first, which copies those files into it.
-- A new savestate with the same contents as one the library has already, in another file, can use that file instead. Saving asks, and only about savestates new to the library. Saving a preset asks the same about its savestates.
+- A savestate or screenshot with the same contents as one in the game's shared folders uses that file instead of a copy, without asking.
 - A file written over one whose name differs only in case keeps the old spelling, so `splits.toml` names it the way git has it on every system.
 
 ## Release builds
@@ -180,5 +182,7 @@ Its first job sorts the files a pull request or push changed, so only what a cha
 The **CI passed** job fails when another job failed or was cancelled, and passes when they were skipped, so it's the one check for branch protection to require.
 
 The tests run in the `ci` profile, which is release without link-time optimization, because that's much quicker to build. Only runs on `main` save their build caches, which every branch can read.
+
+`.github/workflows/dev-build.yml` runs after each validate run on `main` that passes, and replaces the `latest-dev` pre-release with that run's zips. On pushes to `main`, validate versions the build like `0.4.0-dev.12+abc1234`, and fails when `Cargo.toml` still has a version that was released, so bump it after each release. Dev build skips a run that `main` has already moved past, and one that built nothing.
 
 `.github/workflows/release.yml` runs on `v*` tags. It checks that the tag matches the version in `Cargo.toml`, runs the validate workflow, and creates a draft GitHub release with the zips. A tag with a `-`, like `v0.2.0-beta`, becomes a prerelease. Linux release builds run on Ubuntu 22.04, so they work on 22.04 and newer.

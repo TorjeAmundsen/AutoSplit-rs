@@ -33,7 +33,7 @@ Toufool's AutoSplit has none of these:
 - Up to 4 split images compared for one split, grouped by their number, and up to 4 start and reset images, off by default. A 2x2 grid can show a split's images.
 - Fade images, with the `{f}` flag and an optional `~ms~` fade time, which split when the screen fades to a color and not when it cuts to it. A Fade Color Tolerance setting covers captures whose colors are a little off, and the profile only saves it when it isn't the default. Noise from the capture is left out of the similarity, unless that's turned off, which the profile saves. See [Fade images](MANUAL.md#fade-images).
 - The Live Tester, which compares a split image, or the images of one split together, with the capture outside of a run. It replaces AutoMask's tester.
-- Make Split Images, which applies a preset's masks to the capture or to screenshots and saves the split images, with savestates to copy for a practice tool. It replaces AutoMask, and its preset editor replaces AutoMask's, with a split library of ready-made splits to insert, including ones that take several images in a row.
+- Make Split Images, which applies a preset's masks to the capture, to your screenshots or to screenshots the preset comes with, and saves the split images, with savestates to copy for a practice tool. Runners can turn a preset's splits on or off for themselves. It replaces AutoMask, and its preset editor replaces AutoMask's, with a split library of ready-made splits to insert, including ones that take several images in a row.
 - Commands that work without the window: `devices`, `grab`, `run`, `check`, `compare`, `replay` and `bench`. See [Command line](MANUAL.md#command-line).
 
 ## Tests

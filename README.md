@@ -9,7 +9,7 @@ A Rust rewrite of [AutoSplit](https://github.com/Toufool/AutoSplit), the image c
 - Uses your AutoSplit split images and profiles as they are, and computes the same similarity values to the last bit.
 - Runs on Windows, Linux and macOS 11 or newer.
 - Captures from capture cards, webcams and OBS Virtual Camera. To split on a window or the screen, show it in OBS and use OBS Virtual Camera.
-- Makes split images for you: pick your category's preset in Make Split Images, play through it and grab each split, and the masked, named split images are saved into your folder. A preset editor and a Live Tester, for checking an image against the capture, are built in too.
+- Makes split images for you: pick your category's preset in Make Split Images, and the masked, named split images are saved into your folder. For a console with an HDMI output, like the Switch 2, a preset can come with a screenshot of every split, so one click makes them all. Otherwise you grab each split as you play through it, or with the preset's savestates. A preset editor and a Live Tester, for checking an image against the capture, are built in too.
 - Splits on fades to a color, like a fade to black between areas, without splitting on a cut to black like a console reset.
 - Controls LiveSplit through its AutoSplit Integration component, LiveSplit One over a local connection, Molok through signals on Linux, or any timer through hotkeys.
 - Uses little CPU, so it can run next to OBS on a weak machine. Most comparisons take well under a millisecond, see [PERFORMANCE.md](PERFORMANCE.md).
@@ -18,8 +18,8 @@ A Rust rewrite of [AutoSplit](https://github.com/Toufool/AutoSplit), the image c
 
 ## Getting started
 
-1. Download the zip for your system from the [releases](https://github.com/TorjeAmundsen/AutoSplit-rs/releases) and unzip it.
-2. Start `autosplit` (`AutoSplit.exe` on Windows).
+1. Download the zip for your system from the [releases](https://github.com/TorjeAmundsen/AutoSplit-rs/releases) and unzip it. There's no installer.
+2. Start `AutoSplit.exe` on Windows, or `autosplit` on Linux and macOS. The tutorial's [Install](TUTORIAL.md#1-install) step covers the warnings and permissions macOS and Linux ask about.
 3. Follow [TUTORIAL.md](TUTORIAL.md), which sets up OBS, makes your split images and connects your timer, step by step. Help > View Help in the program opens it too.
 
 ## Documentation
@@ -29,6 +29,10 @@ A Rust rewrite of [AutoSplit](https://github.com/Toufool/AutoSplit), the image c
 - [COMPATIBILITY.md](COMPATIBILITY.md): what works so far, how it's tested against AutoSplit, and where it behaves differently on purpose.
 - [PERFORMANCE.md](PERFORMANCE.md): comparison and capture costs, measured against AutoSplit.
 - [DEVELOPMENT.md](DEVELOPMENT.md): building, release builds, CI and the code layout.
+
+## Help
+
+For help with setting up, or anything else, message `torje` on Discord, or open an issue on [GitHub](https://github.com/TorjeAmundsen/AutoSplit-rs/issues).
 
 ## License
 
