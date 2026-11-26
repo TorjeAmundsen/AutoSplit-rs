@@ -832,20 +832,20 @@ fn splits_left_unsaved_keep_their_older_images(kept: &[(&str, &str)]) -> Vec<&'s
 fn old_images_move_into_a_backup_folder_of_their_own() {
     // Arrange: a backup from earlier that second, and an image deleted since it was listed
     let folder = tempfile::tempdir().unwrap();
-    std::fs::create_dir(folder.path().join("backup_2026-11-26_143005")).unwrap();
-    std::fs::write(folder.path().join("backup_2026-11-26_143005").join("43_Ganon.png"), "earlier").unwrap();
+    std::fs::create_dir(folder.path().join("backup_2026-11-26_143005_UTC")).unwrap();
+    std::fs::write(folder.path().join("backup_2026-11-26_143005_UTC").join("43_Ganon.png"), "earlier").unwrap();
     let old = folder.path().join("43_Ganon.png");
     std::fs::write(&old, "old").unwrap();
     let gone = folder.path().join("19_Hookshot.png");
 
     // Act
-    let (backup, moved, error) = move_to_backup(folder.path(), &[gone, old.clone()], "2026-11-26_143005");
+    let (backup, moved, error) = move_to_backup(folder.path(), &[gone, old.clone()], "2026-11-26_143005_UTC");
 
     // Assert
-    assert_eq!((&backup, moved, error), (&folder.path().join("backup_2026-11-26_143005 (1)"), 1, None));
+    assert_eq!((&backup, moved, error), (&folder.path().join("backup_2026-11-26_143005_UTC (1)"), 1, None));
     assert!(!old.exists());
     assert_eq!(std::fs::read_to_string(backup.join("43_Ganon.png")).unwrap(), "old");
-    let earlier = folder.path().join("backup_2026-11-26_143005").join("43_Ganon.png");
+    let earlier = folder.path().join("backup_2026-11-26_143005_UTC").join("43_Ganon.png");
     assert_eq!(std::fs::read_to_string(earlier).unwrap(), "earlier");
 }
 

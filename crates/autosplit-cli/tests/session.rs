@@ -3,7 +3,7 @@
 use std::sync::{Arc, Mutex, mpsc};
 use std::time::{Duration, Instant};
 
-use autosplit::console::Console;
+use autosplit::console::{Console, file_stamp};
 use autosplit::recording;
 use autosplit::screenshot::Saved;
 use autosplit::session::{Event, Notice, Session, Snapshot, UiCommand, View};
@@ -169,6 +169,15 @@ fn folder_profile(folder: &tempfile::TempDir) -> UserProfile {
 fn rename_start(folder: &tempfile::TempDir, start: &str) -> impl FnOnce() {
     let (from, to) = (folder.path().join("start_auto_splitter_first.png"), folder.path().join(start));
     move || std::fs::rename(from, to).unwrap()
+}
+
+#[test]
+fn a_file_stamp_has_no_colons_and_says_utc() {
+    // Act: 1 000 000 000 seconds after 1970 is 2001-09-09 01:46:40 UTC
+    let stamp = file_stamp(1_000_000_000);
+
+    // Assert
+    assert_eq!(stamp, "2001-09-09_014640_UTC");
 }
 
 #[test]

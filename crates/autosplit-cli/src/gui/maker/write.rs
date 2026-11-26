@@ -2,7 +2,7 @@
 //! on threads of their own.
 
 use super::*;
-use crate::console::utc_now;
+use crate::console::utc_file_stamp;
 
 /// A split image to write: what it's made from, its mask and its file. Only a fade split can be
 /// without a mask, for the whole screen.
@@ -258,8 +258,7 @@ impl Gui {
                         .filter_map(|(job, _)| Some((job.target.file_name()?.to_str()?, job.split.as_str())))
                         .collect();
                     let images = images_to_back_up(&images, &kept);
-                    let now = utc_now().trim_end_matches(" UTC").replace(' ', "_").replace(':', "");
-                    let (folder, moved, error) = move_to_backup(&folder, &images, &now);
+                    let (folder, moved, error) = move_to_backup(&folder, &images, &utc_file_stamp());
                     errors.extend(error);
                     backup = (moved > 0).then_some((folder, moved));
                 }
@@ -331,7 +330,7 @@ impl Gui {
         };
         if let Some((folder, count)) = backup {
             let name = file_name_text(&folder).unwrap_or_default();
-            moved += &format!(", moved {} to {name}", plural(count, "old image"));
+            moved += &format!(", moved {} to {name} in the split image folder", plural(count, "old image"));
         }
         self.windows.maker.set_status(format!("Saved {}{moved}.", plural(written, "split image")).into());
         if written > 0 {

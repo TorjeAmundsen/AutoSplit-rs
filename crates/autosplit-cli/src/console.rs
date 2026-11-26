@@ -152,10 +152,32 @@ fn open_log(path: &PathBuf) -> Option<File> {
 
 /// The current time in UTC, like `2026-10-06 09:13:19 UTC`.
 pub fn utc_now() -> String {
-    let seconds = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |since| since.as_secs());
+    let (date, hours, minutes, seconds) = utc_parts(now_seconds());
+    format!("{date} {hours:02}:{minutes:02}:{seconds:02} UTC")
+}
+
+/// The current time in UTC for a file name, like [`file_stamp`].
+pub fn utc_file_stamp() -> String {
+    file_stamp(now_seconds())
+}
+
+/// The time `seconds` after 1970 in UTC for a file name, like `2026-10-06_091319_UTC`: without
+/// the colons Windows doesn't allow, and sorted by name in the order they were made.
+pub fn file_stamp(seconds: u64) -> String {
+    let (date, hours, minutes, seconds) = utc_parts(seconds);
+    format!("{date}_{hours:02}{minutes:02}{seconds:02}_UTC")
+}
+
+fn now_seconds() -> u64 {
+    SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |since| since.as_secs())
+}
+
+/// The date `seconds` after 1970, like `2026-10-06`, and the hours, minutes and seconds of the
+/// day, in UTC.
+fn utc_parts(seconds: u64) -> (String, u64, u64, u64) {
     let (days, time) = (seconds / 86_400, seconds % 86_400);
     let (year, month, day) = civil_from_days(days as i64);
-    format!("{year}-{month:02}-{day:02} {:02}:{:02}:{:02} UTC", time / 3600, time / 60 % 60, time % 60)
+    (format!("{year}-{month:02}-{day:02}"), time / 3600, time / 60 % 60, time % 60)
 }
 
 /// Howard Hinnant's `civil_from_days`: the date `days` after 1970-01-01.

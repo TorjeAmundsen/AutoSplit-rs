@@ -129,7 +129,7 @@ pub fn images_to_back_up(old: &[PathBuf], kept: &[(&str, &str)]) -> Vec<PathBuf>
 }
 
 /// Moves `images` into a new folder in the split image `folder`, where the split image loader
-/// doesn't look, named for the time `now` like `backup_2026-11-26_143005`, or `backup_... (1)`
+/// doesn't look, named for the time `now` like `backup_2026-11-26_143005_UTC`, or `backup_... (1)`
 /// when that's taken. Images that are gone already are left out. Returns the folder and how many
 /// moved, also when one couldn't be, with why. No folder is made when there's nothing to move.
 pub fn move_to_backup(folder: &Path, images: &[PathBuf], now: &str) -> (PathBuf, usize, Option<String>) {
