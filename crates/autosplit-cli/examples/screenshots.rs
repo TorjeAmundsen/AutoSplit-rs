@@ -610,7 +610,7 @@ Replace them?",
             "Ganon",
             "Final slash on Ganon: the intro text, then the flash",
             vec![
-                step("Ganon intro", "base_collapse_cs.png", ["", "", ""], true, false, "XX_Ganon intro_{d}.png"),
+                step("Ganon intro", "base_FullBlackFade.png", ["", "", ""], true, false, "XX_Ganon intro_{d}.png"),
                 step("Ganon", "base_ganon.png", ["0.92", "", ""], false, false, "XX_Ganon_(0.92).png"),
             ],
             false,
@@ -671,7 +671,7 @@ Replace them?",
     let steps = vec![
         entry_step(
             "Ganon intro",
-            "base_collapse_cs.png",
+            "base_FullBlackFade.png",
             "XX_Ganon intro_{d}.png",
             "Base image from base_ganon_intro.png",
         ),
