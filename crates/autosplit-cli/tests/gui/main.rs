@@ -772,23 +772,31 @@ fn the_image_written_is_never_deleted_as_stale() {
 
 #[test]
 fn a_save_of_every_split_finds_old_images_whatever_their_number() {
-    // Arrange: 43_Ganon is past the preset's last split
+    // Arrange: 43_Ganon is past the preset's last split, and 44_Ganon.bak is a PNG too, which
+    // a folder load reads as a split image. notes.png isn't one
+    let folder = tempfile::tempdir().unwrap();
+    let png = b"\x89PNG\r\n\x1a\n";
+    let files: [(&str, &[u8]); 7] = [
+        ("42_Ganon_(0.69)_#300#_^1^_{b}.png", png),
+        ("43_Ganon_(0.69)_#300#_^1^_{b}.png", png),
+        ("44_Ganon.bak", png),
+        ("001_SplitImage.png", png),
+        ("picked.png", png),
+        ("notes.png", b"not an image"),
+        ("notes.txt", png),
+    ];
+    for (name, bytes) in files {
+        std::fs::write(folder.path().join(name), bytes).unwrap();
+    }
+    let existing: Vec<PathBuf> = files.iter().map(|(name, _)| folder.path().join(name)).collect();
     let preset: Vec<String> = ["42_Ganon_(0.69)_#300#_^1^_{b}.png".to_owned()].into();
-    let existing: Vec<PathBuf> = [
-        "42_Ganon_(0.69)_#300#_^1^_{b}.png",
-        "43_Ganon_(0.69)_#300#_^1^_{b}.png",
-        "001_SplitImage.png",
-        "picked.png",
-        "notes.txt",
-    ]
-    .map(PathBuf::from)
-    .into();
 
     // Act
-    let old = old_images(&preset, &existing, &[PathBuf::from("picked.png")], same_name);
+    let old = old_images(&preset, &existing, &[folder.path().join("picked.png")], same_name);
 
-    // Assert: the preset's image, the screenshot, the source and other files stay
-    assert_eq!(old, [PathBuf::from("43_Ganon_(0.69)_#300#_^1^_{b}.png")]);
+    // Assert: the preset's image, the screenshot, the source and files that aren't images stay
+    let expected = ["43_Ganon_(0.69)_#300#_^1^_{b}.png", "44_Ganon.bak"].map(|name| folder.path().join(name));
+    assert_eq!(old, expected);
 }
 
 #[test_case(&[] => vec!["05_Boss_(0.9).png", "05_Other.png", "19_Hookshot_(0.93).png", "reset_(0.9).png"]; "every split saved")]

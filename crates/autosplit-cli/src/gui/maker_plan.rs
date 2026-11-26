@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 
 use autosplit_core::filename::{PartKind, RESET_KEYWORD, START_KEYWORD, has_keyword, name_parts, number_prefix};
 use autosplit_core::preset::{LoadedPreset, game_key};
+use autosplit_core::split_folder::reads_as_png;
 use same_file::is_same_file;
 
 use super::paths::{canonical, file_name_text, is_png};
@@ -88,8 +89,9 @@ pub fn plan_writes(
     plan
 }
 
-/// The images a save of every split moves into a backup folder: the PNGs among a folder's
-/// `existing` files that aren't one of the preset's file names in `preset`. `writes_over` tells
+/// The images a save of every split moves into a backup folder: the files among a folder's
+/// `existing` ones that a folder load reads as split images, whatever their extension, and that
+/// aren't one of the preset's file names in `preset`. `writes_over` tells
 /// whether a name is that file, as for [`plan_writes`]. All the preset's names count, so splits
 /// that are off or have no screenshot yet keep theirs. Not `sources` or screenshots
 /// (`NNN_SplitImage.png`) either, which aren't split images.
@@ -100,7 +102,7 @@ pub fn old_images(
     writes_over: impl Fn(&str, &Path) -> bool,
 ) -> Vec<PathBuf> {
     (existing.iter())
-        .filter(|path| is_png(path) && !sources.contains(path))
+        .filter(|path| !sources.contains(path) && reads_as_png(path))
         .filter(|path| file_name_text(path).is_some_and(|name| !is_screenshot_name(&name)))
         .filter(|path| !preset.iter().any(|name| writes_over(name, path)))
         .cloned()
