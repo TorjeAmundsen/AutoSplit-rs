@@ -148,21 +148,24 @@ impl Gui {
             return true;
         }
         let old_names = old.iter().filter_map(|path| file_name_text(path)).collect::<Vec<_>>().join("\n");
-        let (labels, chosen) = if every_split {
+        // Before the list, which can be long enough to scroll
+        let warning = "Keeping them will break your runs: AutoSplit reads every image in the split image folder as a \
+                       split, so they add extra splits or make it split at the wrong time.";
+        // Enter backs them up, which can be undone, but never deletes
+        let (labels, default, chosen) = if every_split {
             text += &format!(
-                "These images in the split image folder aren't the preset's split images, and the folder would use \
-                 them too:\n{old_names}\n\nMove them into a backup folder, or keep them?"
+                "{warning} Only keep them if you put them there yourself and know what they do.\n\nThese images \
+                 aren't the preset's split images:\n{old_names}\n\nMove them into a backup folder?"
             );
-            (["Move Old Images to Backup", "Keep Old Images", "Cancel"], OldImages::Backup(old))
+            (["Back Up Old Images", "Keep Old Images", "Cancel"], 0, OldImages::Backup(old))
         } else {
             text += &format!(
-                "These older split images are for the same splits under other names, and the split image folder would \
-                 use them too:\n{old_names}\n\nDelete them, or keep them?"
+                "{warning} Only keep them if you know what they do.\n\nThese older split images are for the same \
+                 splits under other names:\n{old_names}\n\nDelete them?"
             );
-            (["Delete Old Images", "Keep Old Images", "Cancel"], OldImages::Delete(old))
+            (["Delete Old Images", "Keep Old Images", "Cancel"], 1, OldImages::Delete(old))
         };
-        // Enter keeps them: changing what else is in the folder is never the default
-        self.show_message(Message::choice(text, labels, 1, move |answer| {
+        self.show_message(Message::choice(text, labels, default, move |answer| {
             let Some(gui) = weak.upgrade() else { return };
             match answer {
                 Answer::Yes => gui.write_split_images(folder, jobs, chosen),
