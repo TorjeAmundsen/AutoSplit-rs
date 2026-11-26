@@ -11,9 +11,10 @@ use std::rc::Rc;
 use autosplit::gui::document::{Document, folder_text, profile_on_open};
 use autosplit::gui::log::{LOG_LINES, LogLines};
 use autosplit::gui::maker_plan::{
-    DeletedPreset, PresetList, RowPlace, WritePlan, choice_summary, images_of_splits, looks_made, move_to_backup,
-    move_to_base, next_to_grab, old_images, plan_writes, preset_after_delete, row_places, saved_from_after_preset_save,
-    saves_in_place, screenshots_set_status, screenshots_status, screenshots_to_move, stale_to_delete, writes_over,
+    DeletedPreset, PresetList, RowPlace, WritePlan, choice_summary, images_of_splits, images_to_back_up, looks_made,
+    move_to_backup, move_to_base, next_to_grab, old_images, plan_writes, preset_after_delete, row_places,
+    saved_from_after_preset_save, saves_in_place, screenshots_set_status, screenshots_status, screenshots_to_move,
+    stale_to_delete, writes_over,
 };
 use autosplit::gui::messages::{Answer, Buttons, Message, MessageQueue};
 use autosplit::gui::placement::{Area, beside, centered_over};
@@ -810,6 +811,21 @@ fn a_save_of_every_split_finds_old_images_whatever_their_number() {
     ]
     .map(PathBuf::from);
     assert_eq!(old, expected);
+}
+
+#[test_case(&[] => vec!["05_Boss_(0.9).png", "05_Other.png", "19_Hookshot_(0.93).png", "reset_(0.9).png"]; "every split saved")]
+#[test_case(&[("05_Boss_(0.95).png", "Boss")] => vec!["05_Other.png", "19_Hookshot_(0.93).png", "reset_(0.9).png"]; "a numbered split keeps its image under an older name")]
+#[test_case(&[("reset_(0.98)_[0].png", "reset")] => vec!["05_Boss_(0.9).png", "05_Other.png", "19_Hookshot_(0.93).png"]; "a reset split keeps the older reset images")]
+fn splits_left_unsaved_keep_their_older_images(kept: &[(&str, &str)]) -> Vec<&'static str> {
+    // Arrange: 05_Other has split 5's number but another name
+    let old = ["05_Boss_(0.9).png", "05_Other.png", "19_Hookshot_(0.93).png", "reset_(0.9).png"].map(PathBuf::from);
+
+    // Act
+    let moved = images_to_back_up(&old, kept);
+
+    // Assert: as names, checked by test_case
+    let names = ["05_Boss_(0.9).png", "05_Other.png", "19_Hookshot_(0.93).png", "reset_(0.9).png"];
+    names.into_iter().filter(|name| moved.contains(&PathBuf::from(name))).collect()
 }
 
 #[test]

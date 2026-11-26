@@ -8,6 +8,8 @@ use crate::console::utc_now;
 /// without a mask, for the whole screen.
 pub(super) struct Job {
     index: usize,
+    /// The split's name, which finds its older images.
+    split: String,
     source: Source,
     mask: Option<Arc<Mask>>,
     target: PathBuf,
@@ -19,8 +21,8 @@ pub(super) enum OldImages {
     Keep,
     /// The older images of single splits, deleted for the splits whose new image was written.
     Delete(Vec<PathBuf>),
-    /// The images a save of every split leaves behind, moved into a backup folder when every
-    /// split image was written.
+    /// The images a save of every split leaves behind, moved into a backup folder, but not those
+    /// of splits whose image failed.
     Backup(Vec<PathBuf>),
 }
 
@@ -73,9 +75,16 @@ impl Gui {
             return false;
         };
         let names = self.maker_file_names();
-        let sources: Vec<(usize, Source)> = {
+        let split_names: Vec<String> = (self.maker.borrow().shown())
+            .map(|preset| preset.splits.iter().map(|split| split.name.clone()).collect())
+            .unwrap_or_default();
+        let (sources, unsaved): (Vec<(usize, Source)>, Vec<usize>) = {
             let maker = self.maker.borrow();
-            indexes.into_iter().filter_map(|index| Some((index, maker.source(index)?))).collect()
+            let sources: Vec<(usize, Source)> =
+                indexes.iter().filter_map(|&index| Some((index, maker.source(index)?))).collect();
+            // Nothing to make theirs from yet, like splits not grabbed
+            let unsaved = indexes.iter().copied().filter(|index| !sources.iter().any(|(at, _)| at == index)).collect();
+            (sources, unsaved)
         };
         let mut jobs = Vec::new();
         for (index, source) in sources {
@@ -85,7 +94,13 @@ impl Gui {
                 _ => self.maker_mask(index).map(Some),
             };
             match mask {
-                Ok(mask) => jobs.push(Job { index, source, mask, target: folder.join(&names[index]) }),
+                Ok(mask) => jobs.push(Job {
+                    index,
+                    split: split_names[index].clone(),
+                    source,
+                    mask,
+                    target: folder.join(&names[index]),
+                }),
                 Err(error) => {
                     self.show_message(Message::error(error));
                     return false;
@@ -105,8 +120,15 @@ impl Gui {
         let writes_over = |name: &str, path: &Path| writes_over(&folder, name, path);
         let plan = plan_writes(&written, &names, &existing, &sources, writes_over);
         // A save of every split moves all the images that aren't the preset's, whatever their
-        // number, so ones of splits removed from the preset go too
-        let old = if every_split { old_images(&names, &existing, &sources, writes_over) } else { plan.stale };
+        // number, so ones of splits removed from the preset go too, but not those of splits
+        // left unsaved
+        let old = if every_split {
+            let kept: Vec<(&str, &str)> =
+                unsaved.iter().map(|&index| (names[index].as_str(), split_names[index].as_str())).collect();
+            images_to_back_up(&old_images(&names, &existing, &sources, writes_over), &kept)
+        } else {
+            plan.stale
+        };
         if plan.overwrites.is_empty() && old.is_empty() {
             self.write_split_images(folder, jobs, OldImages::Keep);
             return true;
@@ -217,14 +239,13 @@ impl Gui {
                         }
                     }
                 }
-                // A split whose image failed may only have an old one, which it keeps until saved again
-                OldImages::Backup(_) if results.iter().any(|written| written.result.is_err()) => {
-                    errors.push(
-                        "The old images weren't moved to a backup folder, since not every split image was saved."
-                            .into(),
-                    );
-                }
                 OldImages::Backup(images) => {
+                    // A split whose image failed keeps its older ones, until it's saved again
+                    let kept: Vec<(&str, &str)> = (jobs.iter().zip(&results))
+                        .filter(|(_, written)| written.result.is_err())
+                        .filter_map(|(job, _)| Some((job.target.file_name()?.to_str()?, job.split.as_str())))
+                        .collect();
+                    let images = images_to_back_up(&images, &kept);
                     let now = utc_now().trim_end_matches(" UTC").replace(' ', "_").replace(':', "");
                     let (folder, moved, error) = move_to_backup(&folder, &images, &now);
                     errors.extend(error);
