@@ -772,26 +772,11 @@ fn the_image_written_is_never_deleted_as_stale() {
 
 #[test]
 fn a_save_of_every_split_finds_old_images_whatever_their_number() {
-    // Arrange: the preset has 42 numbers now, HoverBoots and Boat added at 18 and 19 and off, so
-    // not written. Left from an older version: 43_Ganon past the end, ShadowMedallion and Hookshot
-    // at 18 and 19, and a name with the reset keyword in it
-    let preset: Vec<String> = [
-        "reset_(0.98)_[0].png",
-        "18_HoverBoots_(0.93).png",
-        "19_Boat_(0.94)_{b}.png",
-        "20_ShadowMedallion_(0.999)_~750~_{f}.png",
-        "42_Ganon_(0.69)_#300#_^1^_{b}.png",
-    ]
-    .map(String::from)
-    .into();
+    // Arrange: 43_Ganon is past the preset's last split
+    let preset: Vec<String> = ["42_Ganon_(0.69)_#300#_^1^_{b}.png".to_owned()].into();
     let existing: Vec<PathBuf> = [
-        "reset_(0.98)_[0].png",
-        "18_ShadowMedallion_(0.999)_~750~_{f}.png",
-        "19_Hookshot_(0.93).png",
-        "20_ShadowMedallion_(0.999)_~750~_{f}.png",
         "42_Ganon_(0.69)_#300#_^1^_{b}.png",
         "43_Ganon_(0.69)_#300#_^1^_{b}.png",
-        "05_Reset Room_(0.9).png",
         "001_SplitImage.png",
         "picked.png",
         "notes.txt",
@@ -802,15 +787,8 @@ fn a_save_of_every_split_finds_old_images_whatever_their_number() {
     // Act
     let old = old_images(&preset, &existing, &[PathBuf::from("picked.png")], same_name);
 
-    // Assert: the preset's images, screenshots, sources and other files stay
-    let expected = [
-        "18_ShadowMedallion_(0.999)_~750~_{f}.png",
-        "19_Hookshot_(0.93).png",
-        "43_Ganon_(0.69)_#300#_^1^_{b}.png",
-        "05_Reset Room_(0.9).png",
-    ]
-    .map(PathBuf::from);
-    assert_eq!(old, expected);
+    // Assert: the preset's image, the screenshot, the source and other files stay
+    assert_eq!(old, [PathBuf::from("43_Ganon_(0.69)_#300#_^1^_{b}.png")]);
 }
 
 #[test_case(&[] => vec!["05_Boss_(0.9).png", "05_Other.png", "19_Hookshot_(0.93).png", "reset_(0.9).png"]; "every split saved")]

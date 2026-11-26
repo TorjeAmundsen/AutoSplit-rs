@@ -89,8 +89,8 @@ pub fn plan_writes(
 }
 
 /// The images a save of every split moves into a backup folder: the PNGs among a folder's
-/// `existing` files that aren't one of the preset's file names in `preset`, `writes_over` saying
-/// whether a name is a file like for [`plan_writes`]. All the preset's names count, so splits
+/// `existing` files that aren't one of the preset's file names in `preset`. `writes_over` tells
+/// whether a name is that file, as for [`plan_writes`]. All the preset's names count, so splits
 /// that are off or have no screenshot yet keep theirs. Not `sources` or screenshots
 /// (`NNN_SplitImage.png`) either, which aren't split images.
 pub fn old_images(
@@ -145,21 +145,13 @@ pub fn lone_keyword_images(old: &[PathBuf], preset: &[String]) -> Vec<PathBuf> {
 /// Moves `images` into a new folder in the split image `folder`, where the split image loader
 /// doesn't look, named for the time `now` like `backup_2026-11-26_143005_UTC`, or `backup_... (1)`
 /// when that's taken. Images that are gone already are left out. Returns the folder and how many
-/// moved, also when one couldn't be, with why. No folder is made when there's nothing to move.
+/// moved, also when one couldn't be, with why, like [`move_to_base`]. No folder is made when
+/// there's nothing to move.
 pub fn move_to_backup(folder: &Path, images: &[PathBuf], now: &str) -> (PathBuf, usize, Option<String>) {
     let name = autosplit_core::preset::unique_file_name(&format!("backup_{now}"), |name| folder.join(name).exists());
     let backup = folder.join(name);
-    let mut moved = 0;
-    for image in images.iter().filter(|image| image.is_file()) {
-        let Some(name) = image.file_name() else { continue };
-        let result = std::fs::create_dir_all(&backup).and_then(|()| std::fs::rename(image, backup.join(name)));
-        if let Err(error) = result {
-            let error = format!("Couldn't move {} to {}: {error}", image.display(), backup.display());
-            return (backup, moved, Some(error));
-        }
-        moved += 1;
-    }
-    (backup, moved, None)
+    let (moves, error) = move_into(&backup, images, &backup.display().to_string());
+    (backup, moves.len(), error)
 }
 
 /// The `stale` images to delete once the split images `written` are: only those of a split whose
@@ -326,21 +318,30 @@ pub fn screenshots_to_move(done: &[PathBuf], failed: &[PathBuf], keep: &[PathBuf
 /// `001_SplitImage (1).png`, since screenshot numbers are used again once theirs moved. Returns
 /// where each went, also when one couldn't be moved, with why.
 pub fn move_to_base(folder: &Path, sources: &[PathBuf]) -> (Vec<(PathBuf, PathBuf)>, Option<String>) {
+    let Ok(real_folder) = std::fs::canonicalize(folder) else { return (Vec::new(), None) };
+    let in_folder: Vec<PathBuf> = (sources.iter())
+        .filter(|source| source.parent().map(canonical).as_ref() == Some(&real_folder))
+        .cloned()
+        .collect();
+    move_into(&folder.join("base"), &in_folder, "the base folder")
+}
+
+/// Moves `files` into the folder `into`, made once one moves, each under its name or a free one
+/// like `name (1).png`. Files that are gone already are left out. Returns where each went, and
+/// when one couldn't be moved, why, saying it was moved to `place`, and that the files after it
+/// stay where they are.
+fn move_into(into: &Path, files: &[PathBuf], place: &str) -> (Vec<(PathBuf, PathBuf)>, Option<String>) {
     let mut moves = Vec::new();
-    let Ok(real_folder) = std::fs::canonicalize(folder) else { return (moves, None) };
-    for source in sources {
-        let in_folder = source.parent().map(canonical).as_ref() == Some(&real_folder);
-        let (Some(parent), Some(name)) = (source.parent(), file_name_text(source)) else { continue };
-        if !in_folder || !source.is_file() {
-            continue;
-        }
-        let base = parent.join("base");
-        let target = base.join(autosplit_core::preset::unique_file_name(&name, |name| base.join(name).exists()));
-        let result = std::fs::create_dir_all(&base).and_then(|()| std::fs::rename(source, &target));
+    let files: Vec<&PathBuf> = files.iter().filter(|file| file.is_file()).collect();
+    for (at, file) in files.iter().enumerate() {
+        let Some(name) = file_name_text(file) else { continue };
+        let target = into.join(autosplit_core::preset::unique_file_name(&name, |name| into.join(name).exists()));
+        let result = std::fs::create_dir_all(into).and_then(|()| std::fs::rename(file, &target));
         if let Err(error) = result {
-            return (moves, Some(format!("Couldn't move {} to the base folder: {error}", source.display())));
+            let rest = if at + 1 < files.len() { ". The files after it are still where they were." } else { "" };
+            return (moves, Some(format!("Couldn't move {} to {place}: {error}{rest}", file.display())));
         }
-        moves.push((source.clone(), target));
+        moves.push(((*file).clone(), target));
     }
     (moves, None)
 }

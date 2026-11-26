@@ -18,6 +18,7 @@ pub(super) struct Job {
 /// What a save does with older images in the split image folder once its split images are
 /// written.
 pub(super) enum OldImages {
+    /// Leaves them where they are.
     Keep,
     /// The older images of single splits, deleted for the splits whose new image was written.
     Delete(Vec<PathBuf>),
@@ -118,15 +119,15 @@ impl Gui {
                 Source::Preset(_) | Source::Grabbed(_) | Source::Fade(_) => None,
             })
             .collect();
-        let writes_over = |name: &str, path: &Path| writes_over(&folder, name, path);
-        let plan = plan_writes(&written, &names, &existing, &sources, writes_over);
+        let in_folder = |name: &str, path: &Path| writes_over(&folder, name, path);
+        let plan = plan_writes(&written, &names, &existing, &sources, in_folder);
         // A save of every split moves all the images that aren't the preset's, whatever their
         // number, so ones of splits removed from the preset go too, but not those of splits
         // left unsaved
         let old = if every_split {
             let kept: Vec<(&str, &str)> =
                 unsaved.iter().map(|&index| (names[index].as_str(), split_names[index].as_str())).collect();
-            images_to_back_up(&old_images(&names, &existing, &sources, writes_over), &kept)
+            images_to_back_up(&old_images(&names, &existing, &sources, in_folder), &kept)
         } else {
             plan.stale
         };
@@ -269,9 +270,9 @@ impl Gui {
                         .filter_map(|(job, _)| Some((job.target.file_name()?.to_str()?, job.split.as_str())))
                         .collect();
                     let images = images_to_back_up(&images, &kept);
-                    let (folder, moved, error) = move_to_backup(&folder, &images, &utc_file_stamp());
+                    let (backup_folder, moved, error) = move_to_backup(&folder, &images, &utc_file_stamp());
                     errors.extend(error);
-                    backup = (moved > 0).then_some((folder, moved));
+                    backup = (moved > 0).then_some((backup_folder, moved));
                 }
             }
             let (moves, error) = move_to_base(&folder, &screenshots_to_move(&done, &failed, &keep));
