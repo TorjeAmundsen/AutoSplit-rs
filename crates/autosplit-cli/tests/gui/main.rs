@@ -11,10 +11,10 @@ use std::rc::Rc;
 use autosplit::gui::document::{Document, folder_text, profile_on_open};
 use autosplit::gui::log::{LOG_LINES, LogLines};
 use autosplit::gui::maker_plan::{
-    DeletedPreset, PresetList, RowPlace, WritePlan, choice_summary, images_of_splits, images_to_back_up, looks_made,
-    move_to_backup, move_to_base, next_to_grab, old_images, plan_writes, preset_after_delete, row_places,
-    saved_from_after_preset_save, saves_in_place, screenshots_set_status, screenshots_status, screenshots_to_move,
-    stale_to_delete, writes_over,
+    DeletedPreset, PresetList, RowPlace, WritePlan, choice_summary, images_of_splits, images_to_back_up,
+    lone_keyword_images, looks_made, move_to_backup, move_to_base, next_to_grab, old_images, plan_writes,
+    preset_after_delete, row_places, saved_from_after_preset_save, saves_in_place, screenshots_set_status,
+    screenshots_status, screenshots_to_move, stale_to_delete, writes_over,
 };
 use autosplit::gui::messages::{Answer, Buttons, Message, MessageQueue};
 use autosplit::gui::placement::{Area, beside, centered_over};
@@ -826,6 +826,23 @@ fn splits_left_unsaved_keep_their_older_images(kept: &[(&str, &str)]) -> Vec<&'s
     // Assert: as names, checked by test_case
     let names = ["05_Boss_(0.9).png", "05_Other.png", "19_Hookshot_(0.93).png", "reset_(0.9).png"];
     names.into_iter().filter(|name| moved.contains(&PathBuf::from(name))).collect()
+}
+
+#[test_case(&["03_EnterDeku_(0.97).png"] => vec!["reset.png", "start_auto_splitter.png"]; "the preset has neither")]
+#[test_case(&["reset_(0.98)_[0].png", "03_EnterDeku_(0.97).png"] => vec!["start_auto_splitter.png"]; "the preset has its own reset image")]
+fn reset_and_start_images_the_preset_has_none_of_are_named(preset: &[&str]) -> Vec<&'static str> {
+    // Arrange: a numbered image is never one of them
+    let old = ["03_Other.png", "reset.png", "start_auto_splitter.png"].map(PathBuf::from);
+    let preset: Vec<String> = preset.iter().map(|name| (*name).to_owned()).collect();
+
+    // Act
+    let lone = lone_keyword_images(&old, &preset);
+
+    // Assert: as names, checked by test_case
+    ["03_Other.png", "reset.png", "start_auto_splitter.png"]
+        .into_iter()
+        .filter(|name| lone.contains(&PathBuf::from(name)))
+        .collect()
 }
 
 #[test]

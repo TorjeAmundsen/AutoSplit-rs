@@ -19,9 +19,9 @@ use slint::{ComponentHandle, ModelRc, Rgba8Pixel, SharedPixelBuffer, SharedStrin
 
 use super::document::Document;
 use super::maker_plan::{
-    PresetList, choice_summary, images_of_splits, images_to_back_up, looks_made, move_to_backup, move_to_base,
-    next_to_grab, old_images, plan_writes, row_places, saves_in_place, screenshots_set_status, screenshots_status,
-    screenshots_to_move, stale_to_delete, writes_over,
+    PresetList, choice_summary, images_of_splits, images_to_back_up, lone_keyword_images, looks_made, move_to_backup,
+    move_to_base, next_to_grab, old_images, plan_writes, row_places, saves_in_place, screenshots_set_status,
+    screenshots_status, screenshots_to_move, stale_to_delete, writes_over,
 };
 use super::messages::{Answer, Message};
 use super::paths::{canonical, file_name_text};

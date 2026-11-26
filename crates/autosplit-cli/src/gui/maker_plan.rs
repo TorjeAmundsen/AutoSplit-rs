@@ -128,6 +128,20 @@ pub fn images_to_back_up(old: &[PathBuf], kept: &[(&str, &str)]) -> Vec<PathBuf>
     (old.iter()).filter(|path| !of_numbered.contains(path) && !of_keyword(path)).cloned().collect()
 }
 
+/// The reset and start images among the `old` ones when the preset, all its file names in
+/// `preset`, has none of that kind: likely the user's own, and moving them turns off resetting or
+/// starting by itself.
+pub fn lone_keyword_images(old: &[PathBuf], preset: &[String]) -> Vec<PathBuf> {
+    let keys: Vec<SplitKey> = preset.iter().filter_map(|name| split_key(name)).collect();
+    (old.iter())
+        .filter(|path| {
+            let key = file_name_text(path).and_then(|name| split_key(&name));
+            key.is_some_and(|key| matches!(key, SplitKey::Start | SplitKey::Reset) && !keys.contains(&key))
+        })
+        .cloned()
+        .collect()
+}
+
 /// Moves `images` into a new folder in the split image `folder`, where the split image loader
 /// doesn't look, named for the time `now` like `backup_2026-11-26_143005_UTC`, or `backup_... (1)`
 /// when that's taken. Images that are gone already are left out. Returns the folder and how many

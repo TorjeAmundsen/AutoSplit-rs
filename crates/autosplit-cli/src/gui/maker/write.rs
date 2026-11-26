@@ -154,9 +154,20 @@ impl Gui {
                        split, so they add extra splits or make it split at the wrong time.";
         // Enter backs them up, which can be undone, but never deletes
         let (labels, default, chosen) = if every_split {
+            text += &format!("{warning} Only keep them if you put them there yourself and know what they do.");
+            // The warning doesn't hold for them, so they're named before the list
+            let lone: Vec<String> =
+                lone_keyword_images(&old, &names).iter().filter_map(|path| file_name_text(path)).collect();
+            if !lone.is_empty() {
+                let them = if lone.len() == 1 { "it" } else { "them" };
+                text += &format!(
+                    "\n\n{} may be your own: the preset has no reset or start image like {them}. Moving {them} \
+                     turns off resetting or starting by itself, so keep the images if you use {them}.",
+                    lone.join(", ")
+                );
+            }
             text += &format!(
-                "{warning} Only keep them if you put them there yourself and know what they do.\n\nThese images \
-                 aren't the preset's split images:\n{old_names}\n\nMove them into a backup folder?"
+                "\n\nThese images aren't the preset's split images:\n{old_names}\n\nMove them into a backup folder?"
             );
             (["Back Up Old Images", "Keep Old Images", "Cancel"], 0, OldImages::Backup(old))
         } else {
