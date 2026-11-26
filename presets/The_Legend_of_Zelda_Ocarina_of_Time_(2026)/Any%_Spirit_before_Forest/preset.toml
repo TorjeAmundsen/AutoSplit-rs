@@ -56,10 +56,37 @@ fade_time = 750
 threshold = 0.999
 
 [[split]]
-name = "FairyOcarinaDummy"
-mask = "FairyOcarinaDummy.png"
-screenshot = "../screenshots/FairyOcarinaDummy.png"
-threshold = 0.93
+name = "ForestEscapeDummy1"
+mask = "ForestEscapeDummy1.png"
+screenshot = "../screenshots/ForestEscapeDummy1.png"
+threshold = 0.92
+pause = 0.0
+dummy = true
+
+[[split]]
+name = "ForestEscapeDummy2"
+with_previous = true
+mask = "ForestEscapeDummy2.png"
+screenshot = "../screenshots/ForestEscapeDummy2.png"
+threshold = 0.92
+pause = 0.0
+dummy = true
+
+[[split]]
+name = "ForestEscapeDummy3"
+with_previous = true
+mask = "ForestEscapeDummy3.png"
+screenshot = "../screenshots/ForestEscapeDummy3.png"
+threshold = 0.92
+pause = 0.0
+dummy = true
+
+[[split]]
+name = "ForestEscapeDummy4"
+with_previous = true
+mask = "ForestEscapeDummy4.png"
+screenshot = "../screenshots/ForestEscapeDummy4.png"
+threshold = 0.92
 pause = 0.0
 dummy = true
 
@@ -322,5 +349,7 @@ threshold = 0.999
 name = "Ganon"
 mask = "Ganon.png"
 screenshot = "../screenshots/Ganon.png"
-threshold = 0.95
-delay = 316
+comparison_method = "histograms"
+threshold = 0.69
+delay = 300
+below = true

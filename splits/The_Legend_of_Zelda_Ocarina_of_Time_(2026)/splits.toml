@@ -12,8 +12,8 @@ base_image = "base_start_auto_splitter.png"
 [[split]]
 name = "reset"
 mask = "reset.png"
-screenshot = "../../presets/The_Legend_of_Zelda_Ocarina_of_Time_(2026)/screenshots/reset (1).png"
-threshold = 0.995
+screenshot = "../../presets/The_Legend_of_Zelda_Ocarina_of_Time_(2026)/screenshots/reset.png"
+threshold = 0.98
 pause = 0.0
 description = "Resets when you're about to start a new file."
 base_image = "base_reset.png"
@@ -215,24 +215,6 @@ base_image = "base_Trials.png"
 then = true
 
 [[split]]
-name = "FairyOcarinaDummy"
-mask = "FairyOcarinaDummy.png"
-screenshot = "../../presets/The_Legend_of_Zelda_Ocarina_of_Time_(2026)/screenshots/FairyOcarinaDummy.png"
-threshold = 0.93
-pause = 0.0
-dummy = true
-description = "Splits on loading zone to Hyrule Field after receiving the Fairy Ocarina from Saria."
-base_image = "base_FairyOcarinaDummy.png"
-
-[[split]]
-name = "ForestEscape"
-mask = "ForestEscape.png"
-screenshot = "../../presets/The_Legend_of_Zelda_Ocarina_of_Time_(2026)/screenshots/EnterDeku.png"
-threshold = 0.97
-base_image = "base_ForestEscape.png"
-then = true
-
-[[split]]
 name = "DungeonFrameDummy"
 mask = "DungeonFrameDummy.png"
 screenshot = "../../presets/The_Legend_of_Zelda_Ocarina_of_Time_(2026)/screenshots/DungeonFrameDummy.png"
@@ -241,3 +223,54 @@ pause = 5.0
 dummy = true
 description = "Dummy split for entering a dungeon for the first time, detected by the unique border pattern rather than the text to stay language agnostic."
 base_image = "base_DungeonFrameDummy.png"
+
+[[split]]
+name = "ForestEscapeDummy1"
+mask = "ForestEscapeDummy1.png"
+screenshot = "../../presets/The_Legend_of_Zelda_Ocarina_of_Time_(2026)/screenshots/ForestEscapeDummy1.png"
+threshold = 0.92
+pause = 0.0
+dummy = true
+description = "Splits on first frame of loading screen after Forest Escape."
+base_image = "base_ForestEscapeDummy1.png"
+
+[[split]]
+name = "ForestEscapeDummy2"
+with_previous = true
+mask = "ForestEscapeDummy2.png"
+screenshot = "../../presets/The_Legend_of_Zelda_Ocarina_of_Time_(2026)/screenshots/ForestEscapeDummy2.png"
+threshold = 0.92
+pause = 0.0
+dummy = true
+base_image = "base_ForestEscapeDummy2.png"
+then = true
+
+[[split]]
+name = "ForestEscapeDummy3"
+with_previous = true
+mask = "ForestEscapeDummy3.png"
+screenshot = "../../presets/The_Legend_of_Zelda_Ocarina_of_Time_(2026)/screenshots/ForestEscapeDummy3.png"
+threshold = 0.92
+pause = 0.0
+dummy = true
+base_image = "base_ForestEscapeDummy3.png"
+then = true
+
+[[split]]
+name = "ForestEscapeDummy4"
+with_previous = true
+mask = "ForestEscapeDummy4.png"
+screenshot = "../../presets/The_Legend_of_Zelda_Ocarina_of_Time_(2026)/screenshots/ForestEscapeDummy4.png"
+threshold = 0.92
+pause = 0.0
+dummy = true
+base_image = "base_ForestEscapeDummy4.png"
+then = true
+
+[[split]]
+name = "ForestEscape"
+mask = "ForestEscape.png"
+screenshot = "../../presets/The_Legend_of_Zelda_Ocarina_of_Time_(2026)/screenshots/EnterDeku.png"
+threshold = 0.97
+base_image = "base_ForestEscape.png"
+then = true
