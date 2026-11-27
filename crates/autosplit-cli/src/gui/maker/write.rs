@@ -186,16 +186,17 @@ impl Gui {
                 );
             }
             text += &format!(
-                "\n\nThe old images:\n{old_names}\n\nBack them up into a folder in the split image folder, delete \
-                 them for good, or keep them?"
+                "\n\nThe old images:\n{old_names}\n\nBack them up into a folder in the split image folder, keep \
+                 them, or delete them for good?"
             );
-            let labels = ["Back Up", "Delete", "Keep", "Cancel"];
+            // Delete away from the default, so a slip from it doesn't delete
+            let labels = ["Back Up", "Keep", "Delete", "Cancel"];
             self.show_message(Message::choice4(text, labels, 0, move |answer| {
                 let Some(gui) = weak.upgrade() else { return };
                 let chosen = match answer {
                     Answer::Yes => OldImages::Backup(old),
-                    Answer::Other => OldImages::DeleteAll(old),
                     Answer::No => OldImages::Keep,
+                    Answer::Other => OldImages::DeleteAll(old),
                     Answer::Cancel => return,
                 };
                 gui.write_split_images(folder, jobs, chosen, true);

@@ -11,7 +11,7 @@ pub enum Buttons {
     Warning,
     /// A question, titled "AutoSplit".
     YesNoCancel,
-    /// A question with four buttons: Yes, an extra choice, No and Cancel. Always made with
+    /// A question with four buttons: Yes, No, an extra choice and Cancel. Always made with
     /// [`Message::choice4`], which gives the labels, so the ones in [`Buttons::labels`] are only
     /// placeholders.
     Choice4,
@@ -31,7 +31,7 @@ impl Buttons {
         match self {
             Self::Ok | Self::Warning => ["OK", "", "", ""],
             Self::YesNoCancel => ["Yes", "No", "Cancel", ""],
-            Self::Choice4 => ["Yes", "Other", "No", "Cancel"],
+            Self::Choice4 => ["Yes", "No", "Other", "Cancel"],
         }
     }
 
@@ -39,8 +39,8 @@ impl Buttons {
     pub fn answer(self, button: usize) -> Answer {
         match (self, button) {
             (Self::Ok | Self::Warning, _) | (Self::YesNoCancel | Self::Choice4, 0) => Answer::Yes,
-            (Self::YesNoCancel, 1) | (Self::Choice4, 2) => Answer::No,
-            (Self::Choice4, 1) => Answer::Other,
+            (Self::YesNoCancel | Self::Choice4, 1) => Answer::No,
+            (Self::Choice4, 2) => Answer::Other,
             _ => Answer::Cancel,
         }
     }
@@ -61,7 +61,7 @@ pub enum Answer {
     Yes,
     No,
     Cancel,
-    /// The extra choice of a question with four buttons, between Yes and No, like Delete between
+    /// The extra choice of a question with four buttons, between No and Cancel, like Delete after
     /// Back Up and Keep. Questions with three buttons never answer it.
     Other,
 }
@@ -116,8 +116,8 @@ impl Message {
         message
     }
 
-    /// A question with four buttons that say what they do. They answer by their place: Yes,
-    /// [`Answer::Other`], No, Cancel. `default` is the one Enter picks.
+    /// A question with four buttons that say what they do. They answer by their place: Yes, No,
+    /// [`Answer::Other`], Cancel. `default` is the one Enter picks.
     pub fn choice4(
         text: impl Into<String>,
         labels: [&'static str; 4],

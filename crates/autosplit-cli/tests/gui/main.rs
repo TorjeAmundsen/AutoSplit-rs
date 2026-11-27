@@ -196,8 +196,8 @@ fn questions_get_their_answer(button: Option<usize>) -> Option<Answer> {
 }
 
 #[test_case(Some(0) => Some(Answer::Yes); "the first button")]
-#[test_case(Some(1) => Some(Answer::Other); "the second button")]
-#[test_case(Some(2) => Some(Answer::No); "the third button")]
+#[test_case(Some(1) => Some(Answer::No); "the second button")]
+#[test_case(Some(2) => Some(Answer::Other); "the third button")]
 #[test_case(Some(3) => Some(Answer::Cancel); "cancel")]
 #[test_case(None => Some(Answer::Cancel); "closed")]
 fn questions_with_four_buttons_get_their_answer(button: Option<usize>) -> Option<Answer> {
@@ -205,7 +205,7 @@ fn questions_with_four_buttons_get_their_answer(button: Option<usize>) -> Option
     let mut queue = MessageQueue::default();
     let answer = Rc::new(Cell::new(None));
     let given = answer.clone();
-    let labels = ["Back Up", "Delete", "Keep", "Cancel"];
+    let labels = ["Back Up", "Keep", "Delete", "Cancel"];
     queue.push(Message::choice4("Back them up?", labels, 0, move |answer| given.set(Some(answer))));
 
     // Act
@@ -429,7 +429,7 @@ fn choices_have_their_labels_and_default() {
 fn choices_with_four_buttons_have_their_labels_and_default() {
     // Arrange
     let mut queue = MessageQueue::default();
-    let labels = ["Back Up", "Delete", "Keep", "Cancel"];
+    let labels = ["Back Up", "Keep", "Delete", "Cancel"];
 
     // Act: a default that isn't the first button, which a box gets without one
     let shown = queue.push(Message::choice4("Back them up?", labels, 2, |_| {})).unwrap();
