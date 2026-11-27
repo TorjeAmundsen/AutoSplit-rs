@@ -1767,7 +1767,7 @@ impl Gui {
                 match answer {
                     Answer::Yes => gui.save_profile(false, Some(Box::new(then))),
                     Answer::No => then(&gui),
-                    Answer::Cancel => {}
+                    Answer::Cancel | Answer::Other => {}
                 }
             },
         ));
@@ -1816,7 +1816,7 @@ impl Gui {
     }
 
     fn present_message(&self, shown: messages::Shown) {
-        let [primary, secondary, tertiary] = shown.labels;
+        let [primary, secondary, tertiary, quaternary] = shown.labels;
         if self.messages_inline() {
             self.show_inline_message(InlineMessage {
                 shown: true,
@@ -1825,6 +1825,7 @@ impl Gui {
                 primary: primary.into(),
                 secondary: secondary.into(),
                 tertiary: tertiary.into(),
+                quaternary: quaternary.into(),
                 default_button: shown.default as i32,
             });
             return self.set_all_blocked(true);
@@ -1834,6 +1835,7 @@ impl Gui {
         self.windows.message.set_primary(primary.into());
         self.windows.message.set_secondary(secondary.into());
         self.windows.message.set_tertiary(tertiary.into());
+        self.windows.message.set_quaternary(quaternary.into());
         self.windows.message.set_default_button(shown.default as i32);
         self.set_all_blocked(true);
         let message = &self.windows.message;

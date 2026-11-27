@@ -23,6 +23,7 @@ export component MessageWindow inherits Window {
     in property <string> primary: "OK";
     in property <string> secondary;
     in property <string> tertiary;
+    in property <string> quaternary;
     // The button Enter picks, drawn as the default one
     in property <int> default-button: 0;
     callback answered(int);
@@ -88,6 +89,12 @@ export component MessageWindow inherits Window {
                 primary: root.default-button == 2;
                 clicked => { root.answered(2); }
             }
+
+            if root.quaternary != "": Button {
+                text: root.quaternary;
+                primary: root.default-button == 3;
+                clicked => { root.answered(3); }
+            }
         }
     }
 }
@@ -103,6 +110,7 @@ export struct InlineMessage {
     primary: string,
     secondary: string,
     tertiary: string,
+    quaternary: string,
     // The button Enter picks, drawn as the default one
     default-button: int,
 }
@@ -174,6 +182,12 @@ export component MessageOverlay inherits Rectangle {
                     text: root.message.tertiary;
                     primary: root.message.default-button == 2;
                     clicked => { root.answered(2); }
+                }
+
+                if root.message.quaternary != "": Button {
+                    text: root.message.quaternary;
+                    primary: root.message.default-button == 3;
+                    clicked => { root.answered(3); }
                 }
             }
         }

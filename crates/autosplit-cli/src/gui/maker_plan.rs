@@ -109,12 +109,12 @@ pub fn old_images(
         .collect()
 }
 
-/// The `old` images to move into a backup folder, without those of the splits in `kept`, each its
+/// The `old` images to back up or delete, without those of the splits in `kept`, each its
 /// file name and its name, which aren't written: one may only have an image under an older name,
 /// like after the preset changed its threshold, and would be left without. A numbered split's are
 /// found by number and name, like [`images_of_splits`] finds them, so another split's image with
 /// its number still moves. A reset or start split keeps every reset or start image.
-pub fn images_to_back_up(old: &[PathBuf], kept: &[(&str, &str)]) -> Vec<PathBuf> {
+pub fn images_to_clear(old: &[PathBuf], kept: &[(&str, &str)]) -> Vec<PathBuf> {
     let keys: Vec<SplitKey> = kept.iter().filter_map(|(file, _)| split_key(file)).collect();
     let numbered: Vec<(usize, &str)> = (kept.iter())
         .filter_map(|&(file, name)| match split_key(file)? {

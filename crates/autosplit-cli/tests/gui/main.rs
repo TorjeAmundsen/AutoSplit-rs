@@ -11,7 +11,7 @@ use std::rc::Rc;
 use autosplit::gui::document::{Document, folder_text, profile_on_open};
 use autosplit::gui::log::{LOG_LINES, LogLines};
 use autosplit::gui::maker_plan::{
-    DeletedPreset, PresetList, RowPlace, WritePlan, choice_summary, images_of_splits, images_to_back_up,
+    DeletedPreset, PresetList, RowPlace, WritePlan, choice_summary, images_of_splits, images_to_clear,
     lone_keyword_images, looks_made, move_to_backup, move_to_base, next_to_grab, old_images, plan_writes,
     preset_after_delete, row_places, saved_from_after_preset_save, saves_in_place, screenshots_set_status,
     screenshots_status, screenshots_to_move, stale_to_delete, writes_over,
@@ -184,6 +184,27 @@ fn questions_get_their_answer(button: Option<usize>) -> Option<Answer> {
     let answer = Rc::new(Cell::new(None));
     let given = answer.clone();
     queue.push(Message::question("Save?", move |answer| given.set(Some(answer))));
+
+    // Act
+    let (answered, _) = queue.answer(button);
+    if let Some((answered, reply)) = answered {
+        answered(reply);
+    }
+
+    // Assert, with the expected value checked by test_case
+    answer.get()
+}
+
+#[test_case(Some(1) => Some(Answer::Other); "the second button")]
+#[test_case(Some(2) => Some(Answer::No); "the third button")]
+#[test_case(Some(3) => Some(Answer::Cancel); "cancel")]
+fn questions_with_four_buttons_get_their_answer(button: Option<usize>) -> Option<Answer> {
+    // Arrange
+    let mut queue = MessageQueue::default();
+    let answer = Rc::new(Cell::new(None));
+    let given = answer.clone();
+    let labels = ["Back Up", "Delete", "Keep", "Cancel"];
+    queue.push(Message::choice4("Back them up?", labels, 0, move |answer| given.set(Some(answer))));
 
     // Act
     let (answered, _) = queue.answer(button);
@@ -399,7 +420,7 @@ fn choices_have_their_labels_and_default() {
     let shown = queue.push(Message::choice("Delete them?", ["Delete", "Keep", "Cancel"], 1, |_| {})).unwrap();
 
     // Assert
-    assert_eq!((shown.labels, shown.default), (["Delete", "Keep", "Cancel"], 1));
+    assert_eq!((shown.labels, shown.default), (["Delete", "Keep", "Cancel", ""], 1));
 }
 
 fn shown(capture_method: &str, devices: &[DeviceInfo], scanning: bool) -> Shown {
@@ -807,7 +828,7 @@ fn splits_left_unsaved_keep_their_older_images(kept: &[(&str, &str)]) -> Vec<&'s
     let old = ["05_Boss_(0.9).png", "05_Other.png", "19_Hookshot_(0.93).png", "reset_(0.9).png"].map(PathBuf::from);
 
     // Act
-    let moved = images_to_back_up(&old, kept);
+    let moved = images_to_clear(&old, kept);
 
     // Assert: as names, checked by test_case
     let names = ["05_Boss_(0.9).png", "05_Other.png", "19_Hookshot_(0.93).png", "reset_(0.9).png"];

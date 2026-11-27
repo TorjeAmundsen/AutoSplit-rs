@@ -712,7 +712,7 @@ impl Gui {
                     }
                 }
                 Answer::No => {}
-                Answer::Cancel => return,
+                Answer::Cancel | Answer::Other => return,
             }
             gui.write_draft(source, target, preset);
         }));
