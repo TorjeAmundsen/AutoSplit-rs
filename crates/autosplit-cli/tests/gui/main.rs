@@ -195,9 +195,11 @@ fn questions_get_their_answer(button: Option<usize>) -> Option<Answer> {
     answer.get()
 }
 
+#[test_case(Some(0) => Some(Answer::Yes); "the first button")]
 #[test_case(Some(1) => Some(Answer::Other); "the second button")]
 #[test_case(Some(2) => Some(Answer::No); "the third button")]
 #[test_case(Some(3) => Some(Answer::Cancel); "cancel")]
+#[test_case(None => Some(Answer::Cancel); "closed")]
 fn questions_with_four_buttons_get_their_answer(button: Option<usize>) -> Option<Answer> {
     // Arrange
     let mut queue = MessageQueue::default();
@@ -421,6 +423,19 @@ fn choices_have_their_labels_and_default() {
 
     // Assert
     assert_eq!((shown.labels, shown.default), (["Delete", "Keep", "Cancel", ""], 1));
+}
+
+#[test]
+fn choices_with_four_buttons_have_their_labels_and_default() {
+    // Arrange
+    let mut queue = MessageQueue::default();
+    let labels = ["Back Up", "Delete", "Keep", "Cancel"];
+
+    // Act: a default that isn't the first button, which a box gets without one
+    let shown = queue.push(Message::choice4("Back them up?", labels, 2, |_| {})).unwrap();
+
+    // Assert
+    assert_eq!((shown.labels, shown.default, shown.buttons), (labels, 2, Buttons::Choice4));
 }
 
 fn shown(capture_method: &str, devices: &[DeviceInfo], scanning: bool) -> Shown {
