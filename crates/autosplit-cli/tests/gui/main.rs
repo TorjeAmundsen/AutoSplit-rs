@@ -882,8 +882,9 @@ fn a_save_of_every_split_finds_old_images_whatever_their_number() {
     assert_eq!(old, expected);
 }
 
-/// `05_Bo?ss.png` with a `?` that isn't text: a Latin-1 byte on Unix, a lone surrogate on
-/// Windows, which both allow in file names.
+/// `05_Bo?ss.png` with a `?` that isn't text: a Latin-1 byte on Linux, a lone surrogate on
+/// Windows, which both allow in file names. macOS refuses such names, so there's none there.
+#[cfg(not(target_os = "macos"))]
 fn name_not_text() -> std::ffi::OsString {
     #[cfg(unix)]
     {
@@ -898,6 +899,7 @@ fn name_not_text() -> std::ffi::OsString {
     }
 }
 
+#[cfg(not(target_os = "macos"))]
 #[test]
 fn a_backed_up_image_keeps_a_name_that_isnt_text() {
     // Arrange
