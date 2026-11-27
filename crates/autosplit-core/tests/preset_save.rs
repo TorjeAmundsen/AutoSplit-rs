@@ -310,8 +310,8 @@ fn a_replaced_mask_keeps_its_name() {
 }
 
 #[test]
-fn a_failed_save_puts_back_a_replaced_mask() {
-    // Arrange: Boss's new mask is copied over the old one's name, then Door's mask, a folder,
+fn a_failed_save_keeps_a_replaced_mask() {
+    // Arrange: Boss's new mask is copied to take the old one's name, then Door's mask, a folder,
     // can't be
     let picked = tempfile::tempdir().unwrap();
     let mask = file(&picked.path().join("new.png"), "new");
@@ -330,6 +330,23 @@ fn a_failed_save_puts_back_a_replaced_mask() {
         (error.is_err(), files(folder.path()), std::fs::read_to_string(folder.path().join("Boss.png")).unwrap()),
         (true, vec!["Boss.png".to_owned(), PRESET_FILE.to_owned()], "old".to_owned())
     );
+}
+
+#[test]
+fn new_files_left_by_a_save_that_stopped_partway_are_deleted() {
+    // Arrange: a save stopped after writing preset.toml, before its new Door mask took the old
+    // one's place
+    let folder = tempfile::tempdir().unwrap();
+    file(&folder.path().join("Door.png"), "old");
+    file(&folder.path().join(".replacing-Door.png"), "new");
+    let loaded = preset(vec![split("Door", "Door.png")]);
+    std::fs::write(folder.path().join(PRESET_FILE), loaded.to_toml()).unwrap();
+
+    // Act
+    save_preset(Some(folder.path()), folder.path(), None, &loaded).unwrap();
+
+    // Assert
+    assert_eq!(files(folder.path()), ["Door.png", PRESET_FILE]);
 }
 
 #[test]
@@ -922,36 +939,71 @@ fn a_preset_whose_game_changed_takes_its_shared_files_to_the_new_games_folder() 
     );
 }
 
-#[test_case(false => ("../screenshots/Boss.png".to_owned(), "new".to_owned()); "only this preset uses it")]
-#[test_case(true => ("../screenshots/Boss (1).png".to_owned(), "old".to_owned()); "another preset uses it")]
-fn a_replaced_shared_screenshot_keeps_its_name_unless_another_uses_it(shared: bool) -> (String, String) {
-    // Arrange: a preset of the game with the Boss screenshot, and maybe another using it too
+#[test_case(None => ("../screenshots/Boss.png".to_owned(), "new".to_owned(), vec!["Boss.png".to_owned()]); "only this preset uses it")]
+#[test_case(Some(true) => ("../screenshots/Boss (1).png".to_owned(), "old".to_owned(), vec!["Boss (1).png".to_owned(), "Boss.png".to_owned()]); "another preset uses it")]
+#[test_case(Some(false) => ("../screenshots/Boss (1).png".to_owned(), "old".to_owned(), vec!["Boss (1).png".to_owned(), "Boss.png".to_owned()]); "another preset cant be read")]
+fn a_replaced_shared_screenshot_keeps_its_name_unless_another_may_use_it(
+    other: Option<bool>,
+) -> (String, String, Vec<String>) {
+    // Arrange: a preset of the game with the Boss screenshot, and maybe another, which uses it
+    // too or can't be read
     let root = tempfile::tempdir().unwrap();
     let (presets, libraries) = (root.path().join("presets"), root.path().join("splits"));
     let game = presets.join("Game");
     file(&game.join("screenshots/Boss.png"), "old");
     let picked = tempfile::tempdir().unwrap();
     let screenshot = file(&picked.path().join("new.png"), "new");
-    let mut folders = vec![game.join("Any%")];
-    if shared {
-        folders.push(game.join("100%"));
+    let old = preset(vec![pictured("Boss", "Boss.png", "../screenshots/Boss.png")]);
+    let any = game.join("Any%");
+    file(&any.join("Boss.png"), "mask");
+    file(&any.join(PRESET_FILE), &old.to_toml());
+    if let Some(readable) = other {
+        file(&game.join("100%/Boss.png"), "mask");
+        file(&game.join("100%").join(PRESET_FILE), &if readable { old.to_toml() } else { "not = [toml".into() });
     }
-    for folder in &folders {
-        file(&folder.join("Boss.png"), "mask");
-        let old = preset(vec![pictured("Boss", "Boss.png", "../screenshots/Boss.png")]);
-        std::fs::write(folder.join(PRESET_FILE), old.to_toml()).unwrap();
-    }
-    let any = &folders[0];
 
     // Act
-    let saved =
-        save_in_presets(&presets, &libraries, Some(any), any, &preset(vec![pictured("Boss", "Boss.png", &screenshot)]))
-            .unwrap();
+    let saved = save_in_presets(
+        &presets,
+        &libraries,
+        Some(&any),
+        &any,
+        &preset(vec![pictured("Boss", "Boss.png", &screenshot)]),
+    )
+    .unwrap();
 
-    // Assert: the old screenshot is gone unless the other preset uses it
-    let count = files(&game.join("screenshots")).len();
-    assert_eq!(count, if shared { 2 } else { 1 });
-    (saved.preset.splits[0].screenshot.clone(), std::fs::read_to_string(game.join("screenshots/Boss.png")).unwrap())
+    // Assert: the old screenshot is gone unless another preset may use it
+    (
+        saved.preset.splits[0].screenshot.clone(),
+        std::fs::read_to_string(game.join("screenshots/Boss.png")).unwrap(),
+        files(&game.join("screenshots")),
+    )
+}
+
+#[test_case("old" => ("../screenshots/Door.png".to_owned(), vec!["Boss.png".to_owned(), "Door.png".to_owned()]); "the replaced one's contents")]
+#[test_case("new" => ("../screenshots/Boss.png".to_owned(), vec!["Boss.png".to_owned()]); "the new one's contents")]
+fn a_screenshot_like_one_a_save_replaces_or_writes_is_used_as_it_ends_up(door: &str) -> (String, Vec<String>) {
+    // Arrange: Boss's shared screenshot is replaced, and Door's has the same contents as the old
+    // or the new one
+    let root = tempfile::tempdir().unwrap();
+    let (presets, libraries) = (root.path().join("presets"), root.path().join("splits"));
+    let game = presets.join("Game");
+    file(&game.join("screenshots/Boss.png"), "old");
+    let any = game.join("Any%");
+    file(&any.join("Boss.png"), "mask");
+    file(&any.join(PRESET_FILE), &preset(vec![pictured("Boss", "Boss.png", "../screenshots/Boss.png")]).to_toml());
+    let picked = tempfile::tempdir().unwrap();
+    let boss = file(&picked.path().join("boss.png"), "new");
+    let door_screenshot = file(&picked.path().join("door.png"), door);
+    let splits = vec![pictured("Boss", "Boss.png", &boss), pictured("Door", "Boss.png", &door_screenshot)];
+
+    // Act
+    let saved = save_in_presets(&presets, &libraries, Some(&any), &any, &preset(splits)).unwrap();
+
+    // Assert: Door's screenshot has its contents
+    let door_path = saved.preset.splits[1].screenshot.clone();
+    assert_eq!(std::fs::read_to_string(any.join(&door_path)).unwrap(), door);
+    (door_path, files(&game.join("screenshots")))
 }
 
 #[test]
