@@ -16,6 +16,12 @@ threshold = 0.98
 pause = 0.0
 
 [[split]]
+name = "KokiriSword"
+mask = "KokiriSword.png"
+screenshot = "../screenshots/KokiriSword.png"
+threshold = 0.93
+
+[[split]]
 name = "EnterDekuDummyTop"
 mask = "EnterDekuDummyTop.png"
 screenshot = "../screenshots/EnterDekuDummyTop.png"
@@ -45,7 +51,7 @@ dummy = true
 name = "EnterDeku"
 off = true
 mask = "EnterDeku.png"
-screenshot = "../screenshots/EnterDeku.png"
+screenshot = "../screenshots/LoadingZone.png"
 threshold = 0.97
 
 [[split]]
@@ -93,7 +99,7 @@ dummy = true
 [[split]]
 name = "ForestEscape"
 mask = "ForestEscape.png"
-screenshot = "../screenshots/EnterDeku.png"
+screenshot = "../screenshots/LoadingZone.png"
 threshold = 0.97
 
 [[split]]
@@ -115,7 +121,7 @@ dummy = true
 [[split]]
 name = "StealBottle"
 mask = "LoadingZone.png"
-screenshot = "../screenshots/EnterDeku.png"
+screenshot = "../screenshots/LoadingZone.png"
 threshold = 0.97
 
 [[split]]
@@ -135,7 +141,7 @@ dummy = true
 [[split]]
 name = "EnterTrailDummy"
 mask = "EnterDodongoCavern.png"
-screenshot = "../screenshots/EnterDeku.png"
+screenshot = "../screenshots/LoadingZone.png"
 threshold = 0.97
 pause = 10.0
 dummy = true
@@ -143,7 +149,7 @@ dummy = true
 [[split]]
 name = "EnterDodongoCavern"
 mask = "EnterDodongoCavern.png"
-screenshot = "../screenshots/EnterDeku.png"
+screenshot = "../screenshots/LoadingZone.png"
 threshold = 0.97
 
 [[split]]
@@ -170,7 +176,7 @@ dummy = true
 [[split]]
 name = "EnterShadowTemple"
 mask = "EnterDodongoCavern.png"
-screenshot = "../screenshots/EnterDeku.png"
+screenshot = "../screenshots/LoadingZone.png"
 threshold = 0.97
 
 [[split]]
@@ -212,7 +218,7 @@ below = true
 [[split]]
 name = "EnterFireTemple"
 mask = "EnterDodongoCavern.png"
-screenshot = "../screenshots/EnterDeku.png"
+screenshot = "../screenshots/LoadingZone.png"
 threshold = 0.97
 
 [[split]]
@@ -233,7 +239,7 @@ below = true
 [[split]]
 name = "EnterForestTemple"
 mask = "EnterForestTemple.png"
-screenshot = "../screenshots/EnterDeku.png"
+screenshot = "../screenshots/LoadingZone.png"
 threshold = 0.97
 
 [[split]]
@@ -303,7 +309,7 @@ dummy = true
 name = "EnterGanonsCastle"
 off = true
 mask = "EnterGanonsCastle.png"
-screenshot = "../screenshots/EnterDeku.png"
+screenshot = "../screenshots/LoadingZone.png"
 threshold = 0.97
 
 [[split]]

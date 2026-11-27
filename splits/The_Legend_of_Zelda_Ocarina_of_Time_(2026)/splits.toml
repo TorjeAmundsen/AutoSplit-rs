@@ -132,7 +132,7 @@ base_image = "base_HoverBoots.png"
 [[split]]
 name = "LoadingZone"
 mask = "LoadingZone.png"
-screenshot = "../../presets/The_Legend_of_Zelda_Ocarina_of_Time_(2026)/screenshots/EnterDeku.png"
+screenshot = "../../presets/The_Legend_of_Zelda_Ocarina_of_Time_(2026)/screenshots/LoadingZone.png"
 threshold = 0.97
 description = "Splits on the first frame of the little triforce loading icon appearing in the bottom right. Happens 4 frames after full black fade (66ms)."
 base_image = "base_LoadingZone.png"
@@ -270,7 +270,15 @@ then = true
 [[split]]
 name = "ForestEscape"
 mask = "ForestEscape.png"
-screenshot = "../../presets/The_Legend_of_Zelda_Ocarina_of_Time_(2026)/screenshots/EnterDeku.png"
+screenshot = "../../presets/The_Legend_of_Zelda_Ocarina_of_Time_(2026)/screenshots/LoadingZone.png"
 threshold = 0.97
 base_image = "base_ForestEscape.png"
 then = true
+
+[[split]]
+name = "KokiriSword"
+mask = "KokiriSword.png"
+screenshot = "../../presets/The_Legend_of_Zelda_Ocarina_of_Time_(2026)/screenshots/KokiriSword.png"
+threshold = 0.93
+description = "Splits on the first frame the item model appears."
+base_image = "base_KokiriSword.png"
