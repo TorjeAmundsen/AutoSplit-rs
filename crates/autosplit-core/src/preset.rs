@@ -1017,7 +1017,11 @@ fn save_replacing(
         Ok(saved) => {
             // The preset names them now, so they take the old files' place
             for (hidden, file) in &replacing.renames {
-                std::fs::rename(hidden, file).map_err(|error| unwritable(file, error))?;
+                // Saved already, with the old file under its name until a later save replaces it
+                std::fs::rename(hidden, file).map_err(|error| PresetError::Unwritable {
+                    path: file.clone(),
+                    reason: format!("{error}. Close any program that has it open, then save again"),
+                })?;
             }
             remove_unused_files(target, before.as_ref(), &saved);
             if game_folder.is_some() {

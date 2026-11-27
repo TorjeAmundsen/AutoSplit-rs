@@ -940,13 +940,14 @@ fn a_preset_whose_game_changed_takes_its_shared_files_to_the_new_games_folder() 
 }
 
 #[test_case(None => ("../screenshots/Boss.png".to_owned(), "new".to_owned(), vec!["Boss.png".to_owned()]); "only this preset uses it")]
-#[test_case(Some(true) => ("../screenshots/Boss (1).png".to_owned(), "old".to_owned(), vec!["Boss (1).png".to_owned(), "Boss.png".to_owned()]); "another preset uses it")]
-#[test_case(Some(false) => ("../screenshots/Boss (1).png".to_owned(), "old".to_owned(), vec!["Boss (1).png".to_owned(), "Boss.png".to_owned()]); "another preset cant be read")]
+#[test_case(Some("preset") => ("../screenshots/Boss (1).png".to_owned(), "old".to_owned(), vec!["Boss (1).png".to_owned(), "Boss.png".to_owned()]); "another preset uses it")]
+#[test_case(Some("library") => ("../screenshots/Boss (1).png".to_owned(), "old".to_owned(), vec!["Boss (1).png".to_owned(), "Boss.png".to_owned()]); "a library uses it")]
+#[test_case(Some("broken") => ("../screenshots/Boss (1).png".to_owned(), "old".to_owned(), vec!["Boss (1).png".to_owned(), "Boss.png".to_owned()]); "another preset cant be read")]
 fn a_replaced_shared_screenshot_keeps_its_name_unless_another_may_use_it(
-    other: Option<bool>,
+    other: Option<&str>,
 ) -> (String, String, Vec<String>) {
-    // Arrange: a preset of the game with the Boss screenshot, and maybe another, which uses it
-    // too or can't be read
+    // Arrange: a preset of the game with the Boss screenshot, and maybe another preset or a
+    // library using it too, or a preset that can't be read
     let root = tempfile::tempdir().unwrap();
     let (presets, libraries) = (root.path().join("presets"), root.path().join("splits"));
     let game = presets.join("Game");
@@ -957,9 +958,22 @@ fn a_replaced_shared_screenshot_keeps_its_name_unless_another_may_use_it(
     let any = game.join("Any%");
     file(&any.join("Boss.png"), "mask");
     file(&any.join(PRESET_FILE), &old.to_toml());
-    if let Some(readable) = other {
-        file(&game.join("100%/Boss.png"), "mask");
-        file(&game.join("100%").join(PRESET_FILE), &if readable { old.to_toml() } else { "not = [toml".into() });
+    match other {
+        Some("library") => {
+            let library = "game = \"Game\"
+
+[[split]]
+name = \"Boss\"
+screenshot =                            \"../../presets/Game/screenshots/Boss.png\"
+";
+            file(&libraries.join("Game").join(LIBRARY_FILE), library);
+        }
+        Some(kind) => {
+            file(&game.join("100%/Boss.png"), "mask");
+            let text = if kind == "preset" { old.to_toml() } else { "not = [toml".into() };
+            file(&game.join("100%").join(PRESET_FILE), &text);
+        }
+        None => {}
     }
 
     // Act
