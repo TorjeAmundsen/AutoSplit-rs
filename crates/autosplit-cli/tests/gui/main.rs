@@ -869,6 +869,38 @@ fn a_save_of_every_split_finds_old_images_whatever_their_number() {
     assert_eq!(old, expected);
 }
 
+/// `05_Bo?ss.png` with a `?` that isn't text: a Latin-1 byte on Unix, a lone surrogate on
+/// Windows, which both allow in file names.
+fn name_not_text() -> std::ffi::OsString {
+    #[cfg(unix)]
+    {
+        use std::os::unix::ffi::OsStringExt;
+        std::ffi::OsString::from_vec(b"05_Bo\xF6ss.png".to_vec())
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::ffi::OsStringExt;
+        let name: Vec<u16> = "05_Bo".encode_utf16().chain([0xD800]).chain("ss.png".encode_utf16()).collect();
+        std::ffi::OsString::from_wide(&name)
+    }
+}
+
+#[test]
+fn a_backed_up_image_keeps_a_name_that_isnt_text() {
+    // Arrange
+    let folder = tempfile::tempdir().unwrap();
+    let name = name_not_text();
+    let image = folder.path().join(&name);
+    std::fs::write(&image, "old").unwrap();
+
+    // Act
+    let (backup, moved, error) = move_to_backup(folder.path(), &[image], "2026-11-27_120000_UTC");
+
+    // Assert
+    assert_eq!((moved, error), (1, None));
+    assert_eq!(std::fs::read_to_string(backup.join(&name)).unwrap(), "old");
+}
+
 #[test]
 fn deleting_old_images_skips_ones_already_gone_and_says_why_others_failed() {
     // Arrange: one to delete, one deleted by hand meanwhile, then a folder, which can't be

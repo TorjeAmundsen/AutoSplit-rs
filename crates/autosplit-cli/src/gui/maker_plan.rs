@@ -359,8 +359,14 @@ fn move_into(into: &Path, files: &[PathBuf], place: &str) -> (Vec<(PathBuf, Path
     let mut moves = Vec::new();
     let files: Vec<&PathBuf> = files.iter().filter(|file| file.is_file()).collect();
     for (at, file) in files.iter().enumerate() {
-        let Some(name) = file_name_text(file) else { continue };
-        let target = into.join(autosplit_core::preset::unique_file_name(&name, |name| into.join(name).exists()));
+        let Some(name) = file.file_name() else { continue };
+        // Its own name, which on Linux needn't be text, or a free one made from it as text
+        let target = if into.join(name).exists() {
+            let name = name.to_string_lossy();
+            into.join(autosplit_core::preset::unique_file_name(&name, |name| into.join(name).exists()))
+        } else {
+            into.join(name)
+        };
         let result = std::fs::create_dir_all(into).and_then(|()| std::fs::rename(file, &target));
         if let Err(error) = result {
             let rest = if at + 1 < files.len() { ". The files after it are still where they were." } else { "" };
