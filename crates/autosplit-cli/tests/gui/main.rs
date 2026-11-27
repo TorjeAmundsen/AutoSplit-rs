@@ -812,12 +812,38 @@ fn a_save_of_every_split_finds_old_images_whatever_their_number() {
     let existing: Vec<PathBuf> = files.iter().map(|(name, _)| folder.path().join(name)).collect();
     let preset: Vec<String> = ["42_Ganon_(0.69)_#300#_^1^_{b}.png".to_owned()].into();
 
+    // Sources are canonical, like `\\?\C:\...` on Windows, where the folder's own paths aren't
+    let source = std::fs::canonicalize(folder.path().join("picked.png")).unwrap();
+
     // Act
-    let old = old_images(&preset, &existing, &[folder.path().join("picked.png")], same_name);
+    let old = old_images(&preset, &existing, &[source], same_name);
 
     // Assert: the preset's image, the screenshot, the source and files that aren't images stay
     let expected = ["43_Ganon_(0.69)_#300#_^1^_{b}.png", "44_Ganon.bak"].map(|name| folder.path().join(name));
     assert_eq!(old, expected);
+}
+
+#[cfg(unix)]
+#[test]
+fn a_link_among_old_images_is_backed_up_not_the_file_it_points_to() {
+    // Arrange: an old image kept outside the folder, linked into it under an older name
+    let outside = tempfile::tempdir().unwrap();
+    let target = outside.path().join("boss.png");
+    std::fs::write(&target, b"\x89PNG\r\n\x1a\n").unwrap();
+    let folder = tempfile::tempdir().unwrap();
+    let link = folder.path().join("07_Boss_(0.9).png");
+    std::os::unix::fs::symlink(&target, &link).unwrap();
+    let existing = autosplit_core::split_folder::user_files(folder.path()).unwrap();
+    let preset = ["07_Boss_(0.95).png".to_owned()];
+
+    // Act
+    let old = old_images(&preset, &existing, &[], same_name);
+    let (backup, moved, error) = move_to_backup(folder.path(), &old, "2026-11-27_120000_UTC");
+
+    // Assert: the link moved, and the file it points to is still where it was
+    assert_eq!((old, moved, error), (vec![link], 1, None));
+    assert!(std::fs::symlink_metadata(backup.join("07_Boss_(0.9).png")).unwrap().file_type().is_symlink());
+    assert_eq!(std::fs::read(&target).unwrap(), b"\x89PNG\r\n\x1a\n");
 }
 
 #[test_case(&[] => vec!["05_Boss_(0.9).png", "05_Other.png", "19_Hookshot_(0.93).png", "reset_(0.9).png"]; "every split saved")]

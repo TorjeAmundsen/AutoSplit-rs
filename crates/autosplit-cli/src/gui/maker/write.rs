@@ -112,8 +112,9 @@ impl Gui {
             }
         }
         let written: Vec<String> = jobs.iter().map(|job| names[job.index].clone()).collect();
-        let existing: Vec<PathBuf> =
-            user_files(&folder).unwrap_or_default().iter().map(|path| canonical(path)).collect();
+        // As the folder lists them, never made canonical: a link is deleted or moved itself, not
+        // the file it points to, which can be outside the folder
+        let existing: Vec<PathBuf> = user_files(&folder).unwrap_or_default();
         // Every split's screenshot, also of splits not saved now
         let sources: Vec<PathBuf> = (self.maker.borrow().splits.iter())
             .filter_map(|split| match split.shot.as_ref()? {

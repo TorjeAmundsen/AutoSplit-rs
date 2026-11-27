@@ -62,9 +62,10 @@ pub fn writes_over(folder: &Path, name: &str, path: &Path) -> bool {
 /// Writing `names` into a folder that has `existing` files, where `writes_over` says whether
 /// writing a name writes over an existing file, like [`writes_over`] does. The split images of the
 /// preset, all its file names in `preset`, are never stale, like the ones compared for the same
-/// split. `sources`, the files the split images are made from, aren't either, and neither are
-/// screenshots (`NNN_SplitImage.png`): their numbers count from 1 where split images count from
-/// 0, so they'd look like the next split's.
+/// split. `sources`, the files the split images are made from, canonical, aren't either, and
+/// neither are screenshots (`NNN_SplitImage.png`): their numbers count from 1 where split images
+/// count from 0, so they'd look like the next split's. `existing` are the folder's own paths, so
+/// a link is its own entry.
 pub fn plan_writes(
     names: &[String],
     preset: &[String],
@@ -78,7 +79,7 @@ pub fn plan_writes(
         let Some(existing_name) = file_name_text(path) else { continue };
         if names.iter().any(|name| writes_over(name, path)) {
             plan.overwrites.push(existing_name);
-        } else if !sources.contains(path)
+        } else if !sources.contains(&canonical(path))
             && !preset.iter().any(|name| writes_over(name, path))
             && !is_screenshot_name(&existing_name)
             && split_key(&existing_name).is_some_and(|key| keys.contains(&key))
@@ -93,8 +94,9 @@ pub fn plan_writes(
 /// `existing` ones that a folder load reads as split images, whatever their extension, and that
 /// aren't one of the preset's file names in `preset`. `writes_over` tells
 /// whether a name is that file, as for [`plan_writes`]. All the preset's names count, so splits
-/// that are off or have no screenshot yet keep theirs. Not `sources` or screenshots
-/// (`NNN_SplitImage.png`) either, which aren't split images.
+/// that are off or have no screenshot yet keep theirs. Not `sources`, canonical, or screenshots
+/// (`NNN_SplitImage.png`) either, which aren't split images. `existing` are the folder's own
+/// paths, so a link in it is returned, not the file it points to.
 pub fn old_images(
     preset: &[String],
     existing: &[PathBuf],
@@ -102,7 +104,7 @@ pub fn old_images(
     writes_over: impl Fn(&str, &Path) -> bool,
 ) -> Vec<PathBuf> {
     (existing.iter())
-        .filter(|path| !sources.contains(path) && reads_as_png(path))
+        .filter(|path| !sources.contains(&canonical(path)) && reads_as_png(path))
         .filter(|path| file_name_text(path).is_some_and(|name| !is_screenshot_name(&name)))
         .filter(|path| !preset.iter().any(|name| writes_over(name, path)))
         .cloned()
