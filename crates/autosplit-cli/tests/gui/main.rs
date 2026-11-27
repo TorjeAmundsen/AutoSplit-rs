@@ -11,7 +11,7 @@ use std::rc::Rc;
 use autosplit::gui::document::{Document, folder_text, profile_on_open};
 use autosplit::gui::log::{LOG_LINES, LogLines};
 use autosplit::gui::maker_plan::{
-    DeletedPreset, PresetList, RowPlace, WritePlan, choice_summary, images_of_splits, images_to_clear,
+    DeletedPreset, PresetList, RowPlace, WritePlan, choice_summary, delete_images, images_of_splits, images_to_clear,
     lone_keyword_images, looks_made, move_to_backup, move_to_base, next_to_grab, old_images, plan_writes,
     preset_after_delete, row_places, saved_from_after_preset_save, saves_in_place, screenshots_set_status,
     screenshots_status, screenshots_to_move, stale_to_delete, writes_over,
@@ -821,6 +821,25 @@ fn a_save_of_every_split_finds_old_images_whatever_their_number() {
     // Assert: the preset's image, the screenshot, the source and files that aren't images stay
     let expected = ["43_Ganon_(0.69)_#300#_^1^_{b}.png", "44_Ganon.bak"].map(|name| folder.path().join(name));
     assert_eq!(old, expected);
+}
+
+#[test]
+fn deleting_old_images_skips_ones_already_gone_and_says_why_others_failed() {
+    // Arrange: one to delete, one deleted by hand meanwhile, then a folder, which can't be
+    // deleted as a file
+    let folder = tempfile::tempdir().unwrap();
+    let old = folder.path().join("43_Ganon.png");
+    std::fs::write(&old, "old").unwrap();
+    let gone = folder.path().join("19_Hookshot.png");
+    let stuck = folder.path().join("20_Stuck.png");
+    std::fs::create_dir(&stuck).unwrap();
+
+    // Act
+    let (deleted, errors) = delete_images(&[old.clone(), gone, stuck.clone()]);
+
+    // Assert
+    assert_eq!((deleted, old.exists(), errors.len()), (1, false, 1));
+    assert!(errors[0].starts_with(&format!("Couldn't delete {}: ", stuck.display())), "{errors:?}");
 }
 
 #[cfg(unix)]

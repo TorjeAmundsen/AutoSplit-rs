@@ -29,6 +29,14 @@ pub(super) enum OldImages {
     DeleteAll(Vec<PathBuf>),
 }
 
+/// What a save did with older images, for its status line.
+pub(super) enum Cleared {
+    /// How many were deleted.
+    Deleted(usize),
+    /// The backup folder, and how many were moved into it.
+    BackedUp(PathBuf, usize),
+}
+
 /// A split image the thread wrote, or couldn't: for split `index`, made from `source`.
 pub(super) struct Written {
     index: usize,
@@ -177,7 +185,7 @@ impl Gui {
             }
             text += &format!(
                 "\n\nThe old images:\n{old_names}\n\nBack them up into a folder in the split image folder, delete \
-                 them, or keep them?"
+                 them for good, or keep them?"
             );
             let labels = ["Back Up", "Delete", "Keep", "Cancel"];
             self.show_message(Message::choice4(text, labels, 0, move |answer| {
@@ -195,7 +203,7 @@ impl Gui {
         text += &format!(
             "The split image folder has older images of the same splits under other names, like from before a \
              threshold changed. {warning} Only keep them if you know what they do.\n\nThe older \
-             images:\n{old_names}\n\nDelete them?"
+             images:\n{old_names}\n\nDelete them for good?"
         );
         let labels = ["Delete Old Images", "Keep Old Images", "Cancel"];
         self.show_message(Message::choice(text, labels, 1, move |answer| {
@@ -278,39 +286,22 @@ impl Gui {
                 .filter(|(_, written)| written.result.is_err())
                 .filter_map(|(job, _)| Some((job.target.file_name()?.to_str()?, job.split.as_str())))
                 .collect();
-            // What the status line says was done with them
-            let mut cleared = String::new();
-            let delete = |paths: &[PathBuf], errors: &mut Vec<String>| {
-                let mut deleted = 0;
-                for path in paths {
-                    match std::fs::remove_file(path) {
-                        Ok(()) => deleted += 1,
-                        Err(error) => errors.push(format!("Couldn't delete {}: {error}", path.display())),
-                    }
-                }
-                deleted
+            let mut delete = |images: &[PathBuf]| {
+                let (deleted, failed) = delete_images(images);
+                errors.extend(failed);
+                (deleted > 0).then_some(Cleared::Deleted(deleted))
             };
-            match old {
-                OldImages::Keep => {}
-                OldImages::Delete(stale) => {
-                    delete(&stale_to_delete(&stale, &written), &mut errors);
-                }
-                OldImages::DeleteAll(images) => {
-                    let deleted = delete(&images_to_clear(&images, &failed_splits), &mut errors);
-                    if deleted > 0 {
-                        cleared = format!(", deleted {}", plural(deleted, "old image"));
-                    }
-                }
+            let cleared = match old {
+                OldImages::Keep => None,
+                OldImages::Delete(stale) => delete(&stale_to_delete(&stale, &written)),
+                OldImages::DeleteAll(images) => delete(&images_to_clear(&images, &failed_splits)),
                 OldImages::Backup(images) => {
                     let images = images_to_clear(&images, &failed_splits);
                     let (backup_folder, moved, error) = move_to_backup(&folder, &images, &utc_file_stamp());
                     errors.extend(error);
-                    if moved > 0 {
-                        let name = file_name_text(&backup_folder).unwrap_or_default();
-                        cleared = format!(", moved {} to {name} in the split image folder", plural(moved, "old image"));
-                    }
+                    (moved > 0).then_some(Cleared::BackedUp(backup_folder, moved))
                 }
-            }
+            };
             let (moves, error) = move_to_base(&folder, &screenshots_to_move(&done, &failed, &keep));
             errors.extend(error);
             with_gui(move |gui| gui.split_images_written(generation, results, moves, cleared, errors));
@@ -330,7 +321,7 @@ impl Gui {
         generation: u64,
         results: Vec<Written>,
         moves: Vec<(PathBuf, PathBuf)>,
-        cleared: String,
+        cleared: Option<Cleared>,
         mut errors: Vec<String>,
     ) {
         self.end_work();
@@ -377,7 +368,14 @@ impl Gui {
             format!(", moved {} to the base folder", plural(moves.len(), "screenshot"))
         };
         // What was done with old images, after the screenshots
-        moved += &cleared;
+        match cleared {
+            Some(Cleared::Deleted(count)) => moved += &format!(", deleted {}", plural(count, "old image")),
+            Some(Cleared::BackedUp(folder, count)) => {
+                let name = file_name_text(&folder).unwrap_or_default();
+                moved += &format!(", backed up {} to {name} in the split image folder", plural(count, "old image"));
+            }
+            None => {}
+        }
         self.windows.maker.set_status(format!("Saved {}{moved}.", plural(written, "split image")).into());
         if written > 0 {
             self.windows.maker.invoke_split_images_saved(ModelRc::from(saved_rows.as_slice()), preview_saved);

@@ -146,6 +146,22 @@ pub fn lone_keyword_images(old: &[PathBuf], preset: &[String]) -> Vec<PathBuf> {
         .collect()
 }
 
+/// Deletes `images`, leaving out ones that are gone already, like after they were deleted by hand
+/// while the save asked about them. Returns how many were deleted, and why each of the others
+/// couldn't be.
+pub fn delete_images(images: &[PathBuf]) -> (usize, Vec<String>) {
+    let mut deleted = 0;
+    let mut errors = Vec::new();
+    for image in images {
+        match std::fs::remove_file(image) {
+            Ok(()) => deleted += 1,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => errors.push(format!("Couldn't delete {}: {error}", image.display())),
+        }
+    }
+    (deleted, errors)
+}
+
 /// Moves `images` into a new folder in the split image `folder`, where the split image loader
 /// doesn't look, named for the time `now` like `backup_2026-11-26_143005_UTC`, or `backup_... (1)`
 /// when that's taken. Images that are gone already are left out. Returns the folder and how many
