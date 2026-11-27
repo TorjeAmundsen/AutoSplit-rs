@@ -939,6 +939,11 @@ impl Gui {
         on!(always weak, windows.tester, on_inline_answered, (button) gui => gui.message_answered(usize::try_from(button).ok()));
         on!(always weak, windows.maker, on_inline_answered, (button) gui => gui.message_answered(usize::try_from(button).ok()));
         on!(always weak, message, on_dismissed, () gui => gui.message_answered(None));
+        // Some X11 window managers keep the size a window had, like for showing it
+        on!(always weak, message, on_details_toggled, () gui => {
+            let message = &gui.windows.message;
+            fit_window(message.window(), message.get_fitted_width(), message.get_fitted_height());
+        });
         on!(always weak, message.window(), on_close_requested, () gui => {
             gui.message_answered(None);
         } else slint::CloseRequestResponse::KeepWindowShown);
@@ -1827,6 +1832,8 @@ impl Gui {
                 tertiary: tertiary.into(),
                 quaternary: quaternary.into(),
                 default_button: shown.default as i32,
+                details: shown.details.into(),
+                details_label: shown.details_label.into(),
             });
             return self.set_all_blocked(true);
         }
@@ -1837,6 +1844,9 @@ impl Gui {
         self.windows.message.set_tertiary(tertiary.into());
         self.windows.message.set_quaternary(quaternary.into());
         self.windows.message.set_default_button(shown.default as i32);
+        self.windows.message.set_details(shown.details.into());
+        self.windows.message.set_details_label(shown.details_label.into());
+        self.windows.message.set_details_shown(false);
         self.set_all_blocked(true);
         let message = &self.windows.message;
         fit_window(message.window(), message.get_fitted_width(), message.get_fitted_height());

@@ -4,6 +4,51 @@
 import { Palette, ScrollView } from "std-widgets.slint";
 import { Button, Theme } from "widgets.slint";
 
+// A list a message shows only when asked, like the files a question is about: a button that
+// shows or hides it, `gap` below what's above, and the list, which scrolls past 200px. No height
+// without a list. Placed by hand instead of with if, since a window's preferred height doesn't
+// follow an element that an if adds after the window was made, and the message window is made
+// once for every message.
+component Details inherits Rectangle {
+    in property <string> text;
+    in property <string> label;
+    in-out property <bool> shown;
+    in property <length> gap;
+    callback toggled();
+    property <bool> has-list: root.text != "";
+    property <length> list-height: root.shown ? min(list.preferred-height, 200px) : 0px;
+    height: root.has-list ? root.gap + 24px + (root.shown ? 8px + root.list-height : 0px) : 0px;
+    visible: root.has-list;
+
+    Button {
+        x: 0;
+        y: root.gap;
+        width: self.preferred-width;
+        height: 24px;
+        text: (root.shown ? "Hide " : "Show ") + root.label;
+        clicked => {
+            root.shown = !root.shown;
+            root.toggled();
+        }
+    }
+
+    ScrollView {
+        x: 0;
+        y: root.gap + 24px + 8px;
+        width: root.width;
+        height: root.list-height;
+        visible: root.shown;
+        content-height: list.preferred-height;
+
+        list := Text {
+            width: root.width - 16px;
+            color: Theme.text;
+            text: root.text;
+            wrap: word-wrap;
+        }
+    }
+}
+
 export component MessageWindow inherits Window {
     in property <string> window-title: "AutoSplit";
     title: root.window-title;
@@ -26,6 +71,17 @@ export component MessageWindow inherits Window {
     in property <string> quaternary;
     // The button Enter picks, drawn as the default one
     in property <int> default-button: 0;
+    // A list shown only when asked, like the files a question is about, and what it holds, like
+    // 17 files. None when empty
+    in property <string> details;
+    in property <string> details-label;
+    in-out property <bool> details-shown;
+    // Four buttons share the row evenly, since they only fit side by side with little room
+    // left, which would otherwise sit unevenly at the left
+    property <bool> four: root.quaternary != "";
+    property <length> four-width: (root.width - 28px - 3 * 8px) / 4;
+    // The list was shown or hidden, so the window is fitted to its new height
+    callback details-toggled();
     callback answered(int);
     // Escape, like closing the box
     callback dismissed();
@@ -51,9 +107,9 @@ export component MessageWindow inherits Window {
         }
     }
 
+    // The gaps are paddings, so a message without a list has no gap for it
     layout := VerticalLayout {
         padding: 14px;
-        spacing: 14px;
 
         // A long message, like a list of files, scrolls instead of growing past the screen
         ScrollView {
@@ -68,30 +124,47 @@ export component MessageWindow inherits Window {
             }
         }
 
+        Details {
+            text: root.details;
+            label: root.details-label;
+            shown <=> root.details-shown;
+            gap: 14px;
+            toggled => {
+                // Enter and Escape still answer the box
+                keys.focus();
+                root.details-toggled();
+            }
+        }
+
         HorizontalLayout {
+            padding-top: 14px;
             alignment: end;
             spacing: 8px;
 
             Button {
                 text: root.primary;
+                width: root.four ? root.four-width : self.preferred-width;
                 primary: root.default-button == 0;
                 clicked => { root.answered(0); }
             }
 
             if root.secondary != "": Button {
                 text: root.secondary;
+                width: root.four ? root.four-width : self.preferred-width;
                 primary: root.default-button == 1;
                 clicked => { root.answered(1); }
             }
 
             if root.tertiary != "": Button {
                 text: root.tertiary;
+                width: root.four ? root.four-width : self.preferred-width;
                 primary: root.default-button == 2;
                 clicked => { root.answered(2); }
             }
 
             if root.quaternary != "": Button {
                 text: root.quaternary;
+                width: root.four ? root.four-width : self.preferred-width;
                 primary: root.default-button == 3;
                 clicked => { root.answered(3); }
             }
@@ -113,12 +186,23 @@ export struct InlineMessage {
     quaternary: string,
     // The button Enter picks, drawn as the default one
     default-button: int,
+    // A list shown only when asked, and what it holds, like the message window's
+    details: string,
+    details-label: string,
 }
 
 export component MessageOverlay inherits Rectangle {
     in property <InlineMessage> message;
     callback answered(int);
     background: Palette.background.with-alpha(0.85);
+    // Hidden again for each message, since the overlay stays while one follows another
+    property <bool> details-shown;
+    // Four buttons share the row evenly, like the message window's
+    property <bool> four: root.message.quaternary != "";
+    property <length> four-width: (card.width - 28px - 3 * 8px) / 4;
+    changed message => {
+        self.details-shown = false;
+    }
 
     // Clicks and the wheel stay off the window under it
     TouchArea {
@@ -137,55 +221,71 @@ export component MessageOverlay inherits Rectangle {
         border-radius: 4px;
         border-color: Theme.outline;
 
+        // The gaps after the message are paddings, so one without a list has no gap for it
         layout := VerticalLayout {
             padding: 14px;
-            spacing: 10px;
 
-            Text {
-                text: root.message.title;
-                font-weight: 600;
-                color: Theme.text;
-            }
+            VerticalLayout {
+                spacing: 10px;
 
-            // A long message, like a list of files, scrolls instead of growing past the window
-            ScrollView {
-                vertical-stretch: 1;
-                preferred-height: body.preferred-height;
-                min-height: min(body.preferred-height, 60px);
-                content-height: body.preferred-height;
-
-                body := Text {
-                    width: card.width - 28px - 16px;
+                Text {
+                    text: root.message.title;
+                    font-weight: 600;
                     color: Theme.text;
-                    text: root.message.message;
-                    wrap: word-wrap;
+                }
+
+                // A long message, like a list of files, scrolls instead of growing past the window
+                ScrollView {
+                    vertical-stretch: 1;
+                    preferred-height: body.preferred-height;
+                    min-height: min(body.preferred-height, 60px);
+                    content-height: body.preferred-height;
+
+                    body := Text {
+                        width: card.width - 28px - 16px;
+                        color: Theme.text;
+                        text: root.message.message;
+                        wrap: word-wrap;
+                    }
                 }
             }
 
+            Details {
+                text: root.message.details;
+                label: root.message.details-label;
+                shown <=> root.details-shown;
+                gap: 10px;
+            }
+
             HorizontalLayout {
+                padding-top: 10px;
                 alignment: end;
                 spacing: 8px;
 
                 Button {
                     text: root.message.primary;
+                    width: root.four ? root.four-width : self.preferred-width;
                     primary: root.message.default-button == 0;
                     clicked => { root.answered(0); }
                 }
 
                 if root.message.secondary != "": Button {
                     text: root.message.secondary;
+                    width: root.four ? root.four-width : self.preferred-width;
                     primary: root.message.default-button == 1;
                     clicked => { root.answered(1); }
                 }
 
                 if root.message.tertiary != "": Button {
                     text: root.message.tertiary;
+                    width: root.four ? root.four-width : self.preferred-width;
                     primary: root.message.default-button == 2;
                     clicked => { root.answered(2); }
                 }
 
                 if root.message.quaternary != "": Button {
                     text: root.message.quaternary;
+                    width: root.four ? root.four-width : self.preferred-width;
                     primary: root.message.default-button == 3;
                     clicked => { root.answered(3); }
                 }

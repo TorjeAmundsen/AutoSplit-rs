@@ -148,22 +148,34 @@ impl Gui {
             self.write_split_images(folder, jobs, OldImages::Keep, every_split);
             return true;
         }
+        // The files, which can be many, are in a list the message shows when asked, so the
+        // question and its warning fit without scrolling
         let mut text = String::new();
+        let mut details = String::new();
         if !plan.overwrites.is_empty() {
-            text += &format!("These split images are replaced:\n{}\n\n", plan.overwrites.join("\n"));
+            let count = plural(plan.overwrites.len(), "split image");
+            text += &format!("Saving replaces {count} in the split image folder.");
+            details += &format!("Replaced:\n{}", plan.overwrites.join("\n"));
         }
+        let files = plural(plan.overwrites.len() + old.len(), "file");
         let weak = Rc::downgrade(self);
         if old.is_empty() {
-            text += "Replace them?";
-            self.show_message(Message::choice(text, ["Replace", "", "Cancel"], 0, move |answer| {
+            text += " Replace them?";
+            let message = Message::choice(text, ["Replace", "", "Cancel"], 0, move |answer| {
                 if let (Some(gui), Answer::Yes) = (weak.upgrade(), answer) {
                     gui.write_split_images(folder, jobs, OldImages::Keep, every_split);
                 }
-            }));
+            });
+            self.show_message(message.with_details(files, details));
             return true;
         }
+        if !text.is_empty() {
+            text += "\n\n";
+        }
+        if !details.is_empty() {
+            details += "\n\n";
+        }
         let old_names = old.iter().filter_map(|path| file_name_text(path)).collect::<Vec<_>>().join("\n");
-        // Before the list, which can be long enough to scroll
         let warning = "Keeping them will break your runs: AutoSplit reads every image in the folder as a split, so \
                        they add extra splits or make it split at the wrong time.";
         // Enter backs them up, which can be undone, but never deletes
@@ -173,7 +185,7 @@ impl Gui {
                  an older version of the preset. {warning} Only keep them if you put them there yourself and know \
                  what they do."
             );
-            // The warning doesn't hold for them, so they're named before the list
+            // The warning doesn't hold for them, so they're named in the message itself
             let lone: Vec<String> =
                 lone_keyword_images(&old, &names).iter().filter_map(|path| file_name_text(path)).collect();
             if !lone.is_empty() {
@@ -185,13 +197,11 @@ impl Gui {
                     lone.join(", ")
                 );
             }
-            text += &format!(
-                "\n\nThe old images:\n{old_names}\n\nBack them up into a folder in the split image folder, keep \
-                 them, or delete them for good?"
-            );
+            text += "\n\nBack them up into a folder in the split image folder, keep them, or delete them for good?";
+            details += &format!("Old images:\n{old_names}");
             // Delete away from the default, so a slip from it doesn't delete
             let labels = ["Back Up", "Keep", "Delete", "Cancel"];
-            self.show_message(Message::choice4(text, labels, 0, move |answer| {
+            let message = Message::choice4(text, labels, 0, move |answer| {
                 let Some(gui) = weak.upgrade() else { return };
                 let chosen = match answer {
                     Answer::Yes => OldImages::Backup(old),
@@ -200,23 +210,25 @@ impl Gui {
                     Answer::Cancel => return,
                 };
                 gui.write_split_images(folder, jobs, chosen, true);
-            }));
+            });
+            self.show_message(message.with_details(files, details));
             return true;
         }
         text += &format!(
             "The split image folder has older images of the same splits under other names, like from before a \
-             threshold changed. {warning} Only keep them if you know what they do.\n\nThe older \
-             images:\n{old_names}\n\nDelete them for good?"
+             threshold changed. {warning} Only keep them if you know what they do.\n\nDelete them for good?"
         );
+        details += &format!("Older images:\n{old_names}");
         let labels = ["Delete Old Images", "Keep Old Images", "Cancel"];
-        self.show_message(Message::choice(text, labels, 1, move |answer| {
+        let message = Message::choice(text, labels, 1, move |answer| {
             let Some(gui) = weak.upgrade() else { return };
             match answer {
                 Answer::Yes => gui.write_split_images(folder, jobs, OldImages::Delete(old), false),
                 Answer::No => gui.write_split_images(folder, jobs, OldImages::Keep, false),
                 Answer::Cancel | Answer::Other => {}
             }
-        }));
+        });
+        self.show_message(message.with_details(files, details));
         true
     }
 

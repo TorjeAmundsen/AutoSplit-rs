@@ -426,6 +426,19 @@ fn choices_have_their_labels_and_default() {
 }
 
 #[test]
+fn a_message_shows_its_list_only_when_asked() {
+    // Arrange
+    let mut queue = MessageQueue::default();
+    let message = Message::choice("Delete them?", ["Delete", "Keep", "Cancel"], 1, |_| {});
+
+    // Act
+    let shown = queue.push(message.with_details("2 files", "43_Ganon.png\n44_Ganon.png")).unwrap();
+
+    // Assert
+    assert_eq!((shown.details_label.as_str(), shown.details.as_str()), ("2 files", "43_Ganon.png\n44_Ganon.png"));
+}
+
+#[test]
 fn choices_with_four_buttons_have_their_labels_and_default() {
     // Arrange
     let mut queue = MessageQueue::default();

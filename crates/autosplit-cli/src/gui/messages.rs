@@ -77,6 +77,10 @@ pub struct Shown {
     pub labels: [&'static str; 4],
     /// The button Enter picks.
     pub default: usize,
+    /// A list the box shows only when asked, like the files a question is about, and what it
+    /// holds, like `17 files`, for the toggle's `Show 17 files`. Empty for none.
+    pub details: String,
+    pub details_label: String,
 }
 
 pub struct Message {
@@ -86,8 +90,22 @@ pub struct Message {
 
 impl Message {
     fn new(text: impl Into<String>, buttons: Buttons, answered: Option<Answered>) -> Self {
-        let shown = Shown { text: text.into(), buttons, labels: buttons.labels(), default: 0 };
+        let shown = Shown {
+            text: text.into(),
+            buttons,
+            labels: buttons.labels(),
+            default: 0,
+            details: String::new(),
+            details_label: String::new(),
+        };
         Self { shown, answered }
+    }
+
+    /// Adds `details`, a list shown only when asked, so a long one doesn't push the question out
+    /// of sight. `label` says what it holds, like `17 files`.
+    pub fn with_details(mut self, label: impl Into<String>, details: impl Into<String>) -> Self {
+        (self.shown.details_label, self.shown.details) = (label.into(), details.into());
+        self
     }
 
     pub fn error(text: impl Into<String>) -> Self {

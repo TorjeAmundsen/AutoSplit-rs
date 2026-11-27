@@ -102,6 +102,8 @@ fn main() {
         secondary: "No".into(),
         tertiary: "Cancel".into(),
         quaternary: "".into(),
+        details: "".into(),
+        details_label: "".into(),
         default_button: 0,
     };
     main.set_inline_message(question.clone());
@@ -395,6 +397,8 @@ Replace them?",
         secondary: "".into(),
         tertiary: "Cancel".into(),
         quaternary: "".into(),
+        details: "".into(),
+        details_label: "".into(),
         ..question
     });
     save(&window, PhysicalSize::new(828, 672), &folder.join("maker-inline-message.png"));
