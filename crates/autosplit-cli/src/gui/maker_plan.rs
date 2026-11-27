@@ -7,6 +7,7 @@ use autosplit_core::filename::{PartKind, RESET_KEYWORD, START_KEYWORD, has_keywo
 use autosplit_core::preset::{LoadedPreset, game_key};
 use autosplit_core::split_folder::reads_as_png;
 use same_file::is_same_file;
+use unicode_normalization::UnicodeNormalization;
 
 use super::paths::{canonical, file_name_text, is_png};
 use crate::screenshot::is_screenshot_name;
@@ -188,25 +189,29 @@ pub fn stale_to_delete(stale: &[PathBuf], written: &[PathBuf]) -> Vec<PathBuf> {
 }
 
 /// The split images among a folder's `existing` files of `splits`, each its number and name,
-/// like the splits just turned off: PNGs named for one of them, its number, by value, so
-/// `5_Boss` and `05_Boss` are both 5, then `_` and its name, followed by the extension or by
-/// `_` and a setting, like `_(0.9)`. The name is checked too, since an image from an older version of the
-/// preset can have the number of another split. Not reset or start images, and not screenshots
-/// (`NNN_SplitImage`), whose numbers count from 1.
+/// like the splits just turned off: files a folder load reads as split images, whatever their
+/// extension, named for one of them, its number, by value, so `5_Boss` and `05_Boss` are both 5,
+/// then `_` and its name, followed by the extension or by `_` and a setting, like `_(0.9)`, or
+/// nothing. The name is checked too, since an image from an older version of the preset can have
+/// the number of another split, in either Unicode form, since a name made on a Mac can have its
+/// `é` as `e` and an accent. Not reset or start images, and not screenshots (`NNN_SplitImage`),
+/// whose numbers count from 1.
 pub fn images_of_splits(existing: &[PathBuf], splits: &[(usize, &str)]) -> Vec<PathBuf> {
     let of_split = |file: &str, number: usize, name: &str| {
         let Some(SplitKey::Number(found)) = split_key(file) else { return false };
         let digits = number_prefix(file).map_or(0, str::len);
-        let rest = file[digits..].strip_prefix('_').and_then(|rest| rest.strip_prefix(name));
-        // The extension, or a setting, not more of a longer name like Boss_2's
+        let (file, name): (String, String) = (file[digits..].nfc().collect(), name.nfc().collect());
+        let rest = file.strip_prefix('_').and_then(|rest| rest.strip_prefix(name.as_str()));
+        // The extension, a setting or nothing, not more of a longer name like Boss_2's
         let ends = |rest: &str| {
-            rest.starts_with('.')
+            rest.is_empty()
+                || rest.starts_with('.')
                 || rest.strip_prefix('_').is_some_and(|setting| setting.starts_with(['(', '[', '#', '@', '{', '^']))
         };
         found == number as u64 && rest.is_some_and(ends)
     };
     (existing.iter())
-        .filter(|path| is_png(path))
+        .filter(|path| reads_as_png(path))
         .filter(|path| {
             file_name_text(path).is_some_and(|file| {
                 !is_screenshot_name(&file) && splits.iter().any(|&(number, name)| of_split(&file, number, name))

@@ -737,6 +737,37 @@ fn images_of_splits_turned_off_are_found_by_number_and_name() {
 }
 
 #[test]
+fn images_of_splits_are_found_by_their_contents_not_their_extension() {
+    // Arrange: a PNG without an extension, and a file named like a PNG that isn't one
+    let folder = tempfile::tempdir().unwrap();
+    let image = folder.path().join("05_Boss");
+    std::fs::write(&image, b"\x89PNG\r\n\x1a\n").unwrap();
+    let not_image = folder.path().join("05_Boss.png");
+    std::fs::write(&not_image, "not an image").unwrap();
+
+    // Act
+    let images = images_of_splits(&[image.clone(), not_image], &[(5, "Boss")]);
+
+    // Assert
+    assert_eq!(images, [image]);
+}
+
+#[test]
+fn images_of_splits_match_names_in_either_unicode_form() {
+    // Arrange: the split is named with a composed é, the file with e and a combining accent,
+    // like a name made on a Mac
+    let folder = tempfile::tempdir().unwrap();
+    let image = folder.path().join("05_Cafe\u{301}_(0.9).png");
+    std::fs::write(&image, b"\x89PNG\r\n\x1a\n").unwrap();
+
+    // Act
+    let images = images_of_splits(std::slice::from_ref(&image), &[(5, "Caf\u{e9}")]);
+
+    // Assert
+    assert_eq!(images, [image]);
+}
+
+#[test]
 fn saving_replaces_files_with_the_same_name() {
     // Act
     let plan = plan(&["05_Bottle_(0.93).png"], &["05_Bottle_(0.93).png", "06_Boss_(0.9).png"]);
