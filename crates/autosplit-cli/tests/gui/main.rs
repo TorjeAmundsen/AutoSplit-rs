@@ -951,11 +951,11 @@ fn splits_left_unsaved_keep_their_older_images(kept: &[(&str, &str)]) -> Vec<&'s
     let old = ["05_Boss_(0.9).png", "05_Other.png", "19_Hookshot_(0.93).png", "reset_(0.9).png"].map(PathBuf::from);
 
     // Act
-    let moved = images_to_clear(&old, kept);
+    let cleared = images_to_clear(&old, kept);
 
     // Assert: as names, checked by test_case
     let names = ["05_Boss_(0.9).png", "05_Other.png", "19_Hookshot_(0.93).png", "reset_(0.9).png"];
-    names.into_iter().filter(|name| moved.contains(&PathBuf::from(name))).collect()
+    names.into_iter().filter(|name| cleared.contains(&PathBuf::from(name))).collect()
 }
 
 #[test_case(&["03_EnterDeku_(0.97).png"] => vec!["reset.png", "start_auto_splitter.png"]; "the preset has neither")]

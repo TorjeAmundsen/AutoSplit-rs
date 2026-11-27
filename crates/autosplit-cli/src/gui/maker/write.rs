@@ -20,12 +20,14 @@ pub(super) struct Job {
 pub(super) enum OldImages {
     /// Leaves them where they are.
     Keep,
-    /// The older images of single splits, deleted for the splits whose new image was written.
+    /// Saving single splits: their older images under other names, deleted for the splits whose
+    /// new image was written.
     Delete(Vec<PathBuf>),
-    /// The images a save of every split leaves behind, moved into a backup folder, but not those
-    /// of splits whose image failed.
+    /// Save All: every image in the folder that isn't the preset's, like ones of splits it no
+    /// longer has, moved into a backup folder, but not those of splits whose image failed.
     Backup(Vec<PathBuf>),
-    /// The same images as [`OldImages::Backup`], deleted instead.
+    /// Save All: all the images [`OldImages::Backup`] moves, not only older ones of the splits
+    /// saved like [`OldImages::Delete`], deleted instead.
     DeleteAll(Vec<PathBuf>),
 }
 

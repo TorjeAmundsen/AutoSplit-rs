@@ -11,7 +11,9 @@ pub enum Buttons {
     Warning,
     /// A question, titled "AutoSplit".
     YesNoCancel,
-    /// A question with four buttons: Yes, another answer, No and Cancel.
+    /// A question with four buttons: Yes, an extra choice, No and Cancel. Always made with
+    /// [`Message::choice4`], which gives the labels, so the ones in [`Buttons::labels`] are only
+    /// placeholders.
     Choice4,
 }
 
@@ -52,13 +54,15 @@ impl Buttons {
     }
 }
 
-/// Yes, or OK.
+/// How a message box was answered: Yes, which is also OK, No, Cancel, or the extra choice of a
+/// question with four buttons.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Answer {
     Yes,
     No,
     Cancel,
-    /// The second button of a question with four.
+    /// The extra choice of a question with four buttons, between Yes and No, like Delete between
+    /// Back Up and Keep. Questions with three buttons never answer it.
     Other,
 }
 
