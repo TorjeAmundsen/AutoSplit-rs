@@ -11,6 +11,10 @@ pub enum Buttons {
     Warning,
     /// A question, titled "AutoSplit".
     YesNoCancel,
+    /// A question with four buttons: Yes, No, an extra choice and Cancel. Always made with
+    /// [`Message::choice4`], which gives the labels, so the ones in [`Buttons::labels`] are only
+    /// placeholders.
+    Choice4,
 }
 
 impl Buttons {
@@ -18,22 +22,25 @@ impl Buttons {
         match self {
             Self::Ok => "Error",
             Self::Warning => "Warning",
-            Self::YesNoCancel => "AutoSplit",
+            Self::YesNoCancel | Self::Choice4 => "AutoSplit",
         }
     }
 
-    pub fn labels(self) -> [&'static str; 3] {
+    /// The buttons' texts, an empty one not shown.
+    pub fn labels(self) -> [&'static str; 4] {
         match self {
-            Self::Ok | Self::Warning => ["OK", "", ""],
-            Self::YesNoCancel => ["Yes", "No", "Cancel"],
+            Self::Ok | Self::Warning => ["OK", "", "", ""],
+            Self::YesNoCancel => ["Yes", "No", "Cancel", ""],
+            Self::Choice4 => ["Yes", "No", "Other", "Cancel"],
         }
     }
 
     /// The answer of a button, by its position in [`Buttons::labels`].
     pub fn answer(self, button: usize) -> Answer {
         match (self, button) {
-            (Self::Ok | Self::Warning, _) | (Self::YesNoCancel, 0) => Answer::Yes,
-            (Self::YesNoCancel, 1) => Answer::No,
+            (Self::Ok | Self::Warning, _) | (Self::YesNoCancel | Self::Choice4, 0) => Answer::Yes,
+            (Self::YesNoCancel | Self::Choice4, 1) => Answer::No,
+            (Self::Choice4, 2) => Answer::Other,
             _ => Answer::Cancel,
         }
     }
@@ -42,17 +49,21 @@ impl Buttons {
     pub fn dismissed(self) -> Answer {
         match self {
             Self::Ok | Self::Warning => Answer::Yes,
-            Self::YesNoCancel => Answer::Cancel,
+            Self::YesNoCancel | Self::Choice4 => Answer::Cancel,
         }
     }
 }
 
-/// Yes, or OK.
+/// How a message box was answered: Yes, which is also OK, No, Cancel, or the extra choice of a
+/// question with four buttons.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Answer {
     Yes,
     No,
     Cancel,
+    /// The extra choice of a question with four buttons, between No and Cancel, like Delete after
+    /// Back Up and Keep. Questions with three buttons never answer it.
+    Other,
 }
 
 pub type Answered = Box<dyn FnOnce(Answer)>;
@@ -63,9 +74,13 @@ pub struct Shown {
     pub text: String,
     pub buttons: Buttons,
     /// The buttons' texts, by their place in [`Buttons::labels`]. An empty one isn't shown.
-    pub labels: [&'static str; 3],
+    pub labels: [&'static str; 4],
     /// The button Enter picks.
     pub default: usize,
+    /// A list the box shows only when asked, like the files a question is about, and what it
+    /// holds, like `17 files`, for the toggle's `Show 17 files`. Empty for none.
+    pub details: String,
+    pub details_label: String,
 }
 
 pub struct Message {
@@ -75,8 +90,22 @@ pub struct Message {
 
 impl Message {
     fn new(text: impl Into<String>, buttons: Buttons, answered: Option<Answered>) -> Self {
-        let shown = Shown { text: text.into(), buttons, labels: buttons.labels(), default: 0 };
+        let shown = Shown {
+            text: text.into(),
+            buttons,
+            labels: buttons.labels(),
+            default: 0,
+            details: String::new(),
+            details_label: String::new(),
+        };
         Self { shown, answered }
+    }
+
+    /// Adds `details`, a list shown only when asked, so a long one doesn't push the question out
+    /// of sight. `label` says what it holds, like `17 files`.
+    pub fn with_details(mut self, label: impl Into<String>, details: impl Into<String>) -> Self {
+        (self.shown.details_label, self.shown.details) = (label.into(), details.into());
+        self
     }
 
     pub fn error(text: impl Into<String>) -> Self {
@@ -99,7 +128,21 @@ impl Message {
         default: usize,
         answered: impl FnOnce(Answer) + 'static,
     ) -> Self {
+        let [yes, no, cancel] = labels;
         let mut message = Self::question(text, answered);
+        (message.shown.labels, message.shown.default) = ([yes, no, cancel, ""], default);
+        message
+    }
+
+    /// A question with four buttons that say what they do. They answer by their place: Yes, No,
+    /// [`Answer::Other`], Cancel. `default` is the one Enter picks.
+    pub fn choice4(
+        text: impl Into<String>,
+        labels: [&'static str; 4],
+        default: usize,
+        answered: impl FnOnce(Answer) + 'static,
+    ) -> Self {
+        let mut message = Self::new(text, Buttons::Choice4, Some(Box::new(answered)));
         (message.shown.labels, message.shown.default) = (labels, default);
         message
     }

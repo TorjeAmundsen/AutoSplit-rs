@@ -19,8 +19,9 @@ use slint::{ComponentHandle, ModelRc, Rgba8Pixel, SharedPixelBuffer, SharedStrin
 
 use super::document::Document;
 use super::maker_plan::{
-    PresetList, choice_summary, images_of_splits, looks_made, move_to_base, next_to_grab, plan_writes, row_places,
-    saves_in_place, screenshots_set_status, screenshots_status, screenshots_to_move, stale_to_delete, writes_over,
+    PresetList, choice_summary, delete_images, images_of_splits, images_to_clear, lone_keyword_images, looks_made,
+    move_to_backup, move_to_base, next_to_grab, old_images, plan_writes, row_places, saves_in_place,
+    screenshots_set_status, screenshots_status, screenshots_to_move, stale_to_delete, writes_over,
 };
 use super::messages::{Answer, Message};
 use super::paths::{canonical, file_name_text};
@@ -127,8 +128,9 @@ pub(super) struct Maker {
     /// The live capture's latest frame, for a base image for the split library when a split has
     /// no grab or screenshot.
     last_live: Option<Pixels>,
-    /// Splits to save once the ones being saved are, for the preset of that generation.
-    queued: Option<(u64, Vec<usize>)>,
+    /// Splits to save once the ones being saved are, for the preset of that generation, and
+    /// whether Save All queued any of them.
+    queued: Option<(u64, Vec<usize>, bool)>,
     /// Every split is shown, with a checkbox for the ones the runner can turn on or off, which
     /// Choose Splits under the list starts and Done ends. Off, splits that are off aren't shown.
     choosing: bool,
@@ -529,12 +531,12 @@ impl Gui {
         on!(weak, maker, on_use_preset_screenshot, () gui => gui.use_preset_screenshot());
         on!(weak, maker, on_save_selected, () gui => {
             let selected = gui.maker.borrow().selected;
-            gui.save_split_images(vec![selected]);
+            gui.save_split_images(vec![selected], false);
         });
         on!(weak, maker, on_save_all, () gui => {
             let enabled = gui.maker_enabled();
             let on = gui.maker.borrow().on_splits(&enabled).collect();
-            gui.save_split_images(on);
+            gui.save_split_images(on, true);
         });
         on!(weak, maker, on_split_toggled, (index) gui => gui.toggle_split(index as usize));
         on!(weak, maker, on_choose_splits, () gui => gui.choose_splits());
@@ -1036,7 +1038,7 @@ impl Gui {
         drop(maker);
         self.make_thumbnails(vec![selected]);
         // Stays on the split when its image can't be saved, to grab it again once that's fixed
-        self.after_grab(selected, self.save_split_images(vec![selected]));
+        self.after_grab(selected, self.save_split_images(vec![selected], false));
     }
 
     /// Grab on a fade split: its split image is written from its color, and the next split is
@@ -1049,7 +1051,7 @@ impl Gui {
             return;
         }
         let selected = self.maker.borrow().selected;
-        self.after_grab(selected, self.save_split_images(vec![selected]));
+        self.after_grab(selected, self.save_split_images(vec![selected], false));
     }
 
     /// Says the selected split is off, for a grab, like from the screenshot hotkey, which Grab's

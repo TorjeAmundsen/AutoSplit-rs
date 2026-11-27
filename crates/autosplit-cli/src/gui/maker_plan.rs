@@ -5,7 +5,9 @@ use std::path::{Path, PathBuf};
 
 use autosplit_core::filename::{PartKind, RESET_KEYWORD, START_KEYWORD, has_keyword, name_parts, number_prefix};
 use autosplit_core::preset::{LoadedPreset, game_key};
+use autosplit_core::split_folder::reads_as_png;
 use same_file::is_same_file;
+use unicode_normalization::UnicodeNormalization;
 
 use super::paths::{canonical, file_name_text, is_png};
 use crate::screenshot::is_screenshot_name;
@@ -61,9 +63,10 @@ pub fn writes_over(folder: &Path, name: &str, path: &Path) -> bool {
 /// Writing `names` into a folder that has `existing` files, where `writes_over` says whether
 /// writing a name writes over an existing file, like [`writes_over`] does. The split images of the
 /// preset, all its file names in `preset`, are never stale, like the ones compared for the same
-/// split. `sources`, the files the split images are made from, aren't either, and neither are
-/// screenshots (`NNN_SplitImage.png`): their numbers count from 1 where split images count from
-/// 0, so they'd look like the next split's.
+/// split. `sources`, the files the split images are made from, canonical, aren't either, and
+/// neither are screenshots (`NNN_SplitImage.png`): their numbers count from 1 where split images
+/// count from 0, so they'd look like the next split's. `existing` are the folder's own paths, so
+/// a link is its own entry.
 pub fn plan_writes(
     names: &[String],
     preset: &[String],
@@ -77,7 +80,7 @@ pub fn plan_writes(
         let Some(existing_name) = file_name_text(path) else { continue };
         if names.iter().any(|name| writes_over(name, path)) {
             plan.overwrites.push(existing_name);
-        } else if !sources.contains(path)
+        } else if !sources.contains(&canonical(path))
             && !preset.iter().any(|name| writes_over(name, path))
             && !is_screenshot_name(&existing_name)
             && split_key(&existing_name).is_some_and(|key| keys.contains(&key))
@@ -86,6 +89,90 @@ pub fn plan_writes(
         }
     }
     plan
+}
+
+/// The images a save of every split moves into a backup folder: the files among a folder's
+/// `existing` ones that a folder load reads as split images, whatever their extension, and that
+/// aren't one of the preset's file names in `preset`. `writes_over` tells
+/// whether a name is that file, as for [`plan_writes`]. All the preset's names count, so splits
+/// that are off or have no screenshot yet keep theirs. Not `sources`, canonical, or screenshots
+/// (`NNN_SplitImage.png`) either, which aren't split images. `existing` are the folder's own
+/// paths, so a link in it is returned, not the file it points to.
+pub fn old_images(
+    preset: &[String],
+    existing: &[PathBuf],
+    sources: &[PathBuf],
+    writes_over: impl Fn(&str, &Path) -> bool,
+) -> Vec<PathBuf> {
+    (existing.iter())
+        .filter(|path| !sources.contains(&canonical(path)) && reads_as_png(path))
+        .filter(|path| file_name_text(path).is_some_and(|name| !is_screenshot_name(&name)))
+        .filter(|path| !preset.iter().any(|name| writes_over(name, path)))
+        .cloned()
+        .collect()
+}
+
+/// The `old` images to back up or delete, without those of the splits in `kept`, each its
+/// file name and its name, which aren't written: one may only have an image under an older name,
+/// like after the preset changed its threshold, and would be left without. A numbered split's are
+/// found by number and name, like [`images_of_splits`] finds them, so another split's image with
+/// its number is still cleared. A reset or start split keeps every reset or start image.
+pub fn images_to_clear(old: &[PathBuf], kept: &[(&str, &str)]) -> Vec<PathBuf> {
+    let keys: Vec<SplitKey> = kept.iter().filter_map(|(file, _)| split_key(file)).collect();
+    let numbered: Vec<(usize, &str)> = (kept.iter())
+        .filter_map(|&(file, name)| match split_key(file)? {
+            SplitKey::Number(number) => Some((usize::try_from(number).ok()?, name)),
+            SplitKey::Start | SplitKey::Reset => None,
+        })
+        .collect();
+    let of_numbered = images_of_splits(old, &numbered);
+    let of_keyword = |path: &Path| {
+        let key = file_name_text(path).and_then(|name| split_key(&name));
+        key.is_some_and(|key| matches!(key, SplitKey::Start | SplitKey::Reset) && keys.contains(&key))
+    };
+    (old.iter()).filter(|path| !of_numbered.contains(path) && !of_keyword(path)).cloned().collect()
+}
+
+/// The reset and start images among the `old` ones when the preset, all its file names in
+/// `preset`, has none of that kind: likely the user's own, and moving them turns off resetting or
+/// starting by itself.
+pub fn lone_keyword_images(old: &[PathBuf], preset: &[String]) -> Vec<PathBuf> {
+    let keys: Vec<SplitKey> = preset.iter().filter_map(|name| split_key(name)).collect();
+    (old.iter())
+        .filter(|path| {
+            let key = file_name_text(path).and_then(|name| split_key(&name));
+            key.is_some_and(|key| matches!(key, SplitKey::Start | SplitKey::Reset) && !keys.contains(&key))
+        })
+        .cloned()
+        .collect()
+}
+
+/// Deletes `images`, leaving out ones that are gone already, like after they were deleted by hand
+/// while the save asked about them. Returns how many were deleted, and why each of the others
+/// couldn't be.
+pub fn delete_images(images: &[PathBuf]) -> (usize, Vec<String>) {
+    let mut deleted = 0;
+    let mut errors = Vec::new();
+    for image in images {
+        match std::fs::remove_file(image) {
+            Ok(()) => deleted += 1,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => errors.push(format!("Couldn't delete {}: {error}", image.display())),
+        }
+    }
+    (deleted, errors)
+}
+
+/// Moves `images` into a new folder in the split image `folder`, where the split image loader
+/// doesn't look, named for the time `now` like `backup_2026-11-26_143005_UTC`, or `backup_... (1)`
+/// when that's taken. Images that are gone already are left out. Returns the folder and how many
+/// moved, also when one couldn't be, with why, like [`move_to_base`]. No folder is made when
+/// there's nothing to move.
+pub fn move_to_backup(folder: &Path, images: &[PathBuf], now: &str) -> (PathBuf, usize, Option<String>) {
+    let name = autosplit_core::preset::unique_file_name(&format!("backup_{now}"), |name| folder.join(name).exists());
+    let backup = folder.join(name);
+    let (moves, error) = move_into(&backup, images, &backup.display().to_string());
+    (backup, moves.len(), error)
 }
 
 /// The `stale` images to delete once the split images `written` are: only those of a split whose
@@ -102,25 +189,29 @@ pub fn stale_to_delete(stale: &[PathBuf], written: &[PathBuf]) -> Vec<PathBuf> {
 }
 
 /// The split images among a folder's `existing` files of `splits`, each its number and name,
-/// like the splits just turned off: PNGs named for one of them, its number, by value, so
-/// `5_Boss` and `05_Boss` are both 5, then `_` and its name, followed by the extension or by
-/// `_` and a setting, like `_(0.9)`. The name is checked too, since an image from an older version of the
-/// preset can have the number of another split. Not reset or start images, and not screenshots
-/// (`NNN_SplitImage`), whose numbers count from 1.
+/// like the splits just turned off: files a folder load reads as split images, whatever their
+/// extension, named for one of them, its number, by value, so `5_Boss` and `05_Boss` are both 5,
+/// then `_` and its name, followed by the extension or by `_` and a setting, like `_(0.9)`, or
+/// nothing. The name is checked too, since an image from an older version of the preset can have
+/// the number of another split, in either Unicode form, since a name made on a Mac can have its
+/// `é` as `e` and an accent. Not reset or start images, and not screenshots (`NNN_SplitImage`),
+/// whose numbers count from 1.
 pub fn images_of_splits(existing: &[PathBuf], splits: &[(usize, &str)]) -> Vec<PathBuf> {
     let of_split = |file: &str, number: usize, name: &str| {
         let Some(SplitKey::Number(found)) = split_key(file) else { return false };
         let digits = number_prefix(file).map_or(0, str::len);
-        let rest = file[digits..].strip_prefix('_').and_then(|rest| rest.strip_prefix(name));
-        // The extension, or a setting, not more of a longer name like Boss_2's
+        let (file, name): (String, String) = (file[digits..].nfc().collect(), name.nfc().collect());
+        let rest = file.strip_prefix('_').and_then(|rest| rest.strip_prefix(name.as_str()));
+        // The extension, a setting or nothing, not more of a longer name like Boss_2's
         let ends = |rest: &str| {
-            rest.starts_with('.')
+            rest.is_empty()
+                || rest.starts_with('.')
                 || rest.strip_prefix('_').is_some_and(|setting| setting.starts_with(['(', '[', '#', '@', '{', '^']))
         };
         found == number as u64 && rest.is_some_and(ends)
     };
     (existing.iter())
-        .filter(|path| is_png(path))
+        .filter(|path| reads_as_png(path))
         .filter(|path| {
             file_name_text(path).is_some_and(|file| {
                 !is_screenshot_name(&file) && splits.iter().any(|&(number, name)| of_split(&file, number, name))
@@ -252,21 +343,36 @@ pub fn screenshots_to_move(done: &[PathBuf], failed: &[PathBuf], keep: &[PathBuf
 /// `001_SplitImage (1).png`, since screenshot numbers are used again once theirs moved. Returns
 /// where each went, also when one couldn't be moved, with why.
 pub fn move_to_base(folder: &Path, sources: &[PathBuf]) -> (Vec<(PathBuf, PathBuf)>, Option<String>) {
+    let Ok(real_folder) = std::fs::canonicalize(folder) else { return (Vec::new(), None) };
+    let in_folder: Vec<PathBuf> = (sources.iter())
+        .filter(|source| source.parent().map(canonical).as_ref() == Some(&real_folder))
+        .cloned()
+        .collect();
+    move_into(&folder.join("base"), &in_folder, "the base folder")
+}
+
+/// Moves `files` into the folder `into`, made once one moves, each under its name or a free one
+/// like `name (1).png`. Files that are gone already are left out. Returns where each went, and
+/// when one couldn't be moved, why, saying it was moved to `place`, and that the files after it
+/// stay where they are.
+fn move_into(into: &Path, files: &[PathBuf], place: &str) -> (Vec<(PathBuf, PathBuf)>, Option<String>) {
     let mut moves = Vec::new();
-    let Ok(real_folder) = std::fs::canonicalize(folder) else { return (moves, None) };
-    for source in sources {
-        let in_folder = source.parent().map(canonical).as_ref() == Some(&real_folder);
-        let (Some(parent), Some(name)) = (source.parent(), file_name_text(source)) else { continue };
-        if !in_folder || !source.is_file() {
-            continue;
-        }
-        let base = parent.join("base");
-        let target = base.join(autosplit_core::preset::unique_file_name(&name, |name| base.join(name).exists()));
-        let result = std::fs::create_dir_all(&base).and_then(|()| std::fs::rename(source, &target));
+    let files: Vec<&PathBuf> = files.iter().filter(|file| file.is_file()).collect();
+    for (at, file) in files.iter().enumerate() {
+        let Some(name) = file.file_name() else { continue };
+        // Its own name, which on Linux needn't be text, or a free one made from it as text
+        let target = if into.join(name).exists() {
+            let name = name.to_string_lossy();
+            into.join(autosplit_core::preset::unique_file_name(&name, |name| into.join(name).exists()))
+        } else {
+            into.join(name)
+        };
+        let result = std::fs::create_dir_all(into).and_then(|()| std::fs::rename(file, &target));
         if let Err(error) = result {
-            return (moves, Some(format!("Couldn't move {} to the base folder: {error}", source.display())));
+            let rest = if at + 1 < files.len() { ". The files after it are still where they were." } else { "" };
+            return (moves, Some(format!("Couldn't move {} to {place}: {error}{rest}", file.display())));
         }
-        moves.push((source.clone(), target));
+        moves.push(((*file).clone(), target));
     }
     (moves, None)
 }

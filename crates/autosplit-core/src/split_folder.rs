@@ -300,7 +300,7 @@ fn lowercase_name(path: &Path) -> Option<String> {
 /// Whether a folder load would read the file as a split image: it isn't a text file and doesn't
 /// start like another kind of file. A file that can't be read is kept, which a folder load
 /// refuses, so the tester says why too.
-fn reads_as_png(path: &Path) -> bool {
+pub fn reads_as_png(path: &Path) -> bool {
     use std::io::Read;
     if path.extension().is_some_and(|extension| extension.eq_ignore_ascii_case("txt")) {
         return false;

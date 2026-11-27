@@ -11,9 +11,10 @@ use std::rc::Rc;
 use autosplit::gui::document::{Document, folder_text, profile_on_open};
 use autosplit::gui::log::{LOG_LINES, LogLines};
 use autosplit::gui::maker_plan::{
-    DeletedPreset, PresetList, RowPlace, WritePlan, choice_summary, images_of_splits, looks_made, move_to_base,
-    next_to_grab, plan_writes, preset_after_delete, row_places, saved_from_after_preset_save, saves_in_place,
-    screenshots_set_status, screenshots_status, screenshots_to_move, stale_to_delete, writes_over,
+    DeletedPreset, PresetList, RowPlace, WritePlan, choice_summary, delete_images, images_of_splits, images_to_clear,
+    lone_keyword_images, looks_made, move_to_backup, move_to_base, next_to_grab, old_images, plan_writes,
+    preset_after_delete, row_places, saved_from_after_preset_save, saves_in_place, screenshots_set_status,
+    screenshots_status, screenshots_to_move, stale_to_delete, writes_over,
 };
 use autosplit::gui::messages::{Answer, Buttons, Message, MessageQueue};
 use autosplit::gui::placement::{Area, beside, centered_over};
@@ -183,6 +184,29 @@ fn questions_get_their_answer(button: Option<usize>) -> Option<Answer> {
     let answer = Rc::new(Cell::new(None));
     let given = answer.clone();
     queue.push(Message::question("Save?", move |answer| given.set(Some(answer))));
+
+    // Act
+    let (answered, _) = queue.answer(button);
+    if let Some((answered, reply)) = answered {
+        answered(reply);
+    }
+
+    // Assert, with the expected value checked by test_case
+    answer.get()
+}
+
+#[test_case(Some(0) => Some(Answer::Yes); "the first button")]
+#[test_case(Some(1) => Some(Answer::No); "the second button")]
+#[test_case(Some(2) => Some(Answer::Other); "the third button")]
+#[test_case(Some(3) => Some(Answer::Cancel); "cancel")]
+#[test_case(None => Some(Answer::Cancel); "closed")]
+fn questions_with_four_buttons_get_their_answer(button: Option<usize>) -> Option<Answer> {
+    // Arrange
+    let mut queue = MessageQueue::default();
+    let answer = Rc::new(Cell::new(None));
+    let given = answer.clone();
+    let labels = ["Back Up", "Keep", "Delete", "Cancel"];
+    queue.push(Message::choice4("Back them up?", labels, 0, move |answer| given.set(Some(answer))));
 
     // Act
     let (answered, _) = queue.answer(button);
@@ -398,7 +422,33 @@ fn choices_have_their_labels_and_default() {
     let shown = queue.push(Message::choice("Delete them?", ["Delete", "Keep", "Cancel"], 1, |_| {})).unwrap();
 
     // Assert
-    assert_eq!((shown.labels, shown.default), (["Delete", "Keep", "Cancel"], 1));
+    assert_eq!((shown.labels, shown.default), (["Delete", "Keep", "Cancel", ""], 1));
+}
+
+#[test]
+fn a_message_shows_its_list_only_when_asked() {
+    // Arrange
+    let mut queue = MessageQueue::default();
+    let message = Message::choice("Delete them?", ["Delete", "Keep", "Cancel"], 1, |_| {});
+
+    // Act
+    let shown = queue.push(message.with_details("2 files", "43_Ganon.png\n44_Ganon.png")).unwrap();
+
+    // Assert
+    assert_eq!((shown.details_label.as_str(), shown.details.as_str()), ("2 files", "43_Ganon.png\n44_Ganon.png"));
+}
+
+#[test]
+fn choices_with_four_buttons_have_their_labels_and_default() {
+    // Arrange
+    let mut queue = MessageQueue::default();
+    let labels = ["Back Up", "Keep", "Delete", "Cancel"];
+
+    // Act: a default that isn't the first button, which a box gets without one
+    let shown = queue.push(Message::choice4("Back them up?", labels, 2, |_| {})).unwrap();
+
+    // Assert
+    assert_eq!((shown.labels, shown.default, shown.buttons), (labels, 2, Buttons::Choice4));
 }
 
 fn shown(capture_method: &str, devices: &[DeviceInfo], scanning: bool) -> Shown {
@@ -700,6 +750,37 @@ fn images_of_splits_turned_off_are_found_by_number_and_name() {
 }
 
 #[test]
+fn images_of_splits_are_found_by_their_contents_not_their_extension() {
+    // Arrange: a PNG without an extension, and a file named like a PNG that isn't one
+    let folder = tempfile::tempdir().unwrap();
+    let image = folder.path().join("05_Boss");
+    std::fs::write(&image, b"\x89PNG\r\n\x1a\n").unwrap();
+    let not_image = folder.path().join("05_Boss.png");
+    std::fs::write(&not_image, "not an image").unwrap();
+
+    // Act
+    let images = images_of_splits(&[image.clone(), not_image], &[(5, "Boss")]);
+
+    // Assert
+    assert_eq!(images, [image]);
+}
+
+#[test]
+fn images_of_splits_match_names_in_either_unicode_form() {
+    // Arrange: the split is named with a composed é, the file with e and a combining accent,
+    // like a name made on a Mac
+    let folder = tempfile::tempdir().unwrap();
+    let image = folder.path().join("05_Cafe\u{301}_(0.9).png");
+    std::fs::write(&image, b"\x89PNG\r\n\x1a\n").unwrap();
+
+    // Act
+    let images = images_of_splits(std::slice::from_ref(&image), &[(5, "Caf\u{e9}")]);
+
+    // Assert
+    assert_eq!(images, [image]);
+}
+
+#[test]
 fn saving_replaces_files_with_the_same_name() {
     // Act
     let plan = plan(&["05_Bottle_(0.93).png"], &["05_Bottle_(0.93).png", "06_Boss_(0.9).png"]);
@@ -767,6 +848,167 @@ fn the_image_written_is_never_deleted_as_stale() {
 
     // Assert: deleted only when it's another file
     assert_eq!(deleted, if one_file { vec![] } else { vec![stale] });
+}
+
+#[test]
+fn a_save_of_every_split_finds_old_images_whatever_their_number() {
+    // Arrange: 43_Ganon is past the preset's last split, and 44_Ganon.bak is a PNG too, which
+    // a folder load reads as a split image. notes.png isn't one
+    let folder = tempfile::tempdir().unwrap();
+    let png = b"\x89PNG\r\n\x1a\n";
+    let files: [(&str, &[u8]); 7] = [
+        ("42_Ganon_(0.69)_#300#_^1^_{b}.png", png),
+        ("43_Ganon_(0.69)_#300#_^1^_{b}.png", png),
+        ("44_Ganon.bak", png),
+        ("001_SplitImage.png", png),
+        ("picked.png", png),
+        ("notes.png", b"not an image"),
+        ("notes.txt", png),
+    ];
+    for (name, bytes) in files {
+        std::fs::write(folder.path().join(name), bytes).unwrap();
+    }
+    let existing: Vec<PathBuf> = files.iter().map(|(name, _)| folder.path().join(name)).collect();
+    let preset: Vec<String> = ["42_Ganon_(0.69)_#300#_^1^_{b}.png".to_owned()].into();
+
+    // Sources are canonical, like `\\?\C:\...` on Windows, where the folder's own paths aren't
+    let source = std::fs::canonicalize(folder.path().join("picked.png")).unwrap();
+
+    // Act
+    let old = old_images(&preset, &existing, &[source], same_name);
+
+    // Assert: the preset's image, the screenshot, the source and files that aren't images stay
+    let expected = ["43_Ganon_(0.69)_#300#_^1^_{b}.png", "44_Ganon.bak"].map(|name| folder.path().join(name));
+    assert_eq!(old, expected);
+}
+
+/// `05_Bo?ss.png` with a `?` that isn't text: a Latin-1 byte on Linux, a lone surrogate on
+/// Windows, which both allow in file names. macOS refuses such names, so there's none there.
+#[cfg(not(target_os = "macos"))]
+fn name_not_text() -> std::ffi::OsString {
+    #[cfg(unix)]
+    {
+        use std::os::unix::ffi::OsStringExt;
+        std::ffi::OsString::from_vec(b"05_Bo\xF6ss.png".to_vec())
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::ffi::OsStringExt;
+        let name: Vec<u16> = "05_Bo".encode_utf16().chain([0xD800]).chain("ss.png".encode_utf16()).collect();
+        std::ffi::OsString::from_wide(&name)
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+#[test]
+fn a_backed_up_image_keeps_a_name_that_isnt_text() {
+    // Arrange
+    let folder = tempfile::tempdir().unwrap();
+    let name = name_not_text();
+    let image = folder.path().join(&name);
+    std::fs::write(&image, "old").unwrap();
+
+    // Act
+    let (backup, moved, error) = move_to_backup(folder.path(), &[image], "2026-11-27_120000_UTC");
+
+    // Assert
+    assert_eq!((moved, error), (1, None));
+    assert_eq!(std::fs::read_to_string(backup.join(&name)).unwrap(), "old");
+}
+
+#[test]
+fn deleting_old_images_skips_ones_already_gone_and_says_why_others_failed() {
+    // Arrange: one to delete, one deleted by hand meanwhile, then a folder, which can't be
+    // deleted as a file
+    let folder = tempfile::tempdir().unwrap();
+    let old = folder.path().join("43_Ganon.png");
+    std::fs::write(&old, "old").unwrap();
+    let gone = folder.path().join("19_Hookshot.png");
+    let stuck = folder.path().join("20_Stuck.png");
+    std::fs::create_dir(&stuck).unwrap();
+
+    // Act
+    let (deleted, errors) = delete_images(&[old.clone(), gone, stuck.clone()]);
+
+    // Assert
+    assert_eq!((deleted, old.exists(), errors.len()), (1, false, 1));
+    assert!(errors[0].starts_with(&format!("Couldn't delete {}: ", stuck.display())), "{errors:?}");
+}
+
+#[cfg(unix)]
+#[test]
+fn a_link_among_old_images_is_backed_up_not_the_file_it_points_to() {
+    // Arrange: an old image kept outside the folder, linked into it under an older name
+    let outside = tempfile::tempdir().unwrap();
+    let target = outside.path().join("boss.png");
+    std::fs::write(&target, b"\x89PNG\r\n\x1a\n").unwrap();
+    let folder = tempfile::tempdir().unwrap();
+    let link = folder.path().join("07_Boss_(0.9).png");
+    std::os::unix::fs::symlink(&target, &link).unwrap();
+    let existing = autosplit_core::split_folder::user_files(folder.path()).unwrap();
+    let preset = ["07_Boss_(0.95).png".to_owned()];
+
+    // Act
+    let old = old_images(&preset, &existing, &[], same_name);
+    let (backup, moved, error) = move_to_backup(folder.path(), &old, "2026-11-27_120000_UTC");
+
+    // Assert: the link moved, and the file it points to is still where it was
+    assert_eq!((old, moved, error), (vec![link], 1, None));
+    assert!(std::fs::symlink_metadata(backup.join("07_Boss_(0.9).png")).unwrap().file_type().is_symlink());
+    assert_eq!(std::fs::read(&target).unwrap(), b"\x89PNG\r\n\x1a\n");
+}
+
+#[test_case(&[] => vec!["05_Boss_(0.9).png", "05_Other.png", "19_Hookshot_(0.93).png", "reset_(0.9).png"]; "every split saved")]
+#[test_case(&[("05_Boss_(0.95).png", "Boss")] => vec!["05_Other.png", "19_Hookshot_(0.93).png", "reset_(0.9).png"]; "a numbered split keeps its image under an older name")]
+#[test_case(&[("reset_(0.98)_[0].png", "reset")] => vec!["05_Boss_(0.9).png", "05_Other.png", "19_Hookshot_(0.93).png"]; "a reset split keeps the older reset images")]
+fn splits_left_unsaved_keep_their_older_images(kept: &[(&str, &str)]) -> Vec<&'static str> {
+    // Arrange: 05_Other has split 5's number but another name
+    let old = ["05_Boss_(0.9).png", "05_Other.png", "19_Hookshot_(0.93).png", "reset_(0.9).png"].map(PathBuf::from);
+
+    // Act
+    let cleared = images_to_clear(&old, kept);
+
+    // Assert: as names, checked by test_case
+    let names = ["05_Boss_(0.9).png", "05_Other.png", "19_Hookshot_(0.93).png", "reset_(0.9).png"];
+    names.into_iter().filter(|name| cleared.contains(&PathBuf::from(name))).collect()
+}
+
+#[test_case(&["03_EnterDeku_(0.97).png"] => vec!["reset.png", "start_auto_splitter.png"]; "the preset has neither")]
+#[test_case(&["reset_(0.98)_[0].png", "03_EnterDeku_(0.97).png"] => vec!["start_auto_splitter.png"]; "the preset has its own reset image")]
+fn reset_and_start_images_the_preset_has_none_of_are_named(preset: &[&str]) -> Vec<&'static str> {
+    // Arrange: a numbered image is never one of them
+    let old = ["03_Other.png", "reset.png", "start_auto_splitter.png"].map(PathBuf::from);
+    let preset: Vec<String> = preset.iter().map(|name| (*name).to_owned()).collect();
+
+    // Act
+    let lone = lone_keyword_images(&old, &preset);
+
+    // Assert: as names, checked by test_case
+    ["03_Other.png", "reset.png", "start_auto_splitter.png"]
+        .into_iter()
+        .filter(|name| lone.contains(&PathBuf::from(name)))
+        .collect()
+}
+
+#[test]
+fn old_images_move_into_a_backup_folder_of_their_own() {
+    // Arrange: a backup from earlier that second, and an image deleted since it was listed
+    let folder = tempfile::tempdir().unwrap();
+    std::fs::create_dir(folder.path().join("backup_2026-11-26_143005_UTC")).unwrap();
+    std::fs::write(folder.path().join("backup_2026-11-26_143005_UTC").join("43_Ganon.png"), "earlier").unwrap();
+    let old = folder.path().join("43_Ganon.png");
+    std::fs::write(&old, "old").unwrap();
+    let gone = folder.path().join("19_Hookshot.png");
+
+    // Act
+    let (backup, moved, error) = move_to_backup(folder.path(), &[gone, old.clone()], "2026-11-26_143005_UTC");
+
+    // Assert
+    assert_eq!((&backup, moved, error), (&folder.path().join("backup_2026-11-26_143005_UTC (1)"), 1, None));
+    assert!(!old.exists());
+    assert_eq!(std::fs::read_to_string(backup.join("43_Ganon.png")).unwrap(), "old");
+    let earlier = folder.path().join("backup_2026-11-26_143005_UTC").join("43_Ganon.png");
+    assert_eq!(std::fs::read_to_string(earlier).unwrap(), "earlier");
 }
 
 #[test_case(&["001.png"], &[], &[] => vec![PathBuf::from("001.png")]; "written from")]

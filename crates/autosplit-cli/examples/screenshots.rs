@@ -101,6 +101,9 @@ fn main() {
         primary: "Yes".into(),
         secondary: "No".into(),
         tertiary: "Cancel".into(),
+        quaternary: "".into(),
+        details: "".into(),
+        details_label: "".into(),
         default_button: 0,
     };
     main.set_inline_message(question.clone());
@@ -158,7 +161,7 @@ fn main() {
 
     let message = MessageWindow::new().unwrap();
     message.set_message("Do you want to save changes made to settings file settings.toml?".into());
-    let [primary, secondary, tertiary] = Buttons::YesNoCancel.labels();
+    let [primary, secondary, tertiary, _] = Buttons::YesNoCancel.labels();
     message.set_primary(primary.into());
     message.set_secondary(secondary.into());
     message.set_tertiary(tertiary.into());
@@ -393,6 +396,9 @@ Replace them?",
         primary: "Replace".into(),
         secondary: "".into(),
         tertiary: "Cancel".into(),
+        quaternary: "".into(),
+        details: "".into(),
+        details_label: "".into(),
         ..question
     });
     save(&window, PhysicalSize::new(828, 672), &folder.join("maker-inline-message.png"));

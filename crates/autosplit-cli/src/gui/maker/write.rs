@@ -2,14 +2,41 @@
 //! on threads of their own.
 
 use super::*;
+use crate::console::utc_file_stamp;
 
 /// A split image to write: what it's made from, its mask and its file. Only a fade split can be
 /// without a mask, for the whole screen.
 pub(super) struct Job {
     index: usize,
+    /// The split's name, which finds its older images.
+    split: String,
     source: Source,
     mask: Option<Arc<Mask>>,
     target: PathBuf,
+}
+
+/// What a save does with older images in the split image folder once its split images are
+/// written.
+pub(super) enum OldImages {
+    /// Leaves them where they are.
+    Keep,
+    /// Saving single splits: their older images under other names, deleted for the splits whose
+    /// new image was written.
+    Delete(Vec<PathBuf>),
+    /// Save All: every image in the folder that isn't the preset's, like ones of splits it no
+    /// longer has, moved into a backup folder, but not those of splits whose image failed.
+    Backup(Vec<PathBuf>),
+    /// Save All: all the images [`OldImages::Backup`] moves, not only older ones of the splits
+    /// saved like [`OldImages::Delete`], deleted instead.
+    DeleteAll(Vec<PathBuf>),
+}
+
+/// What a save did with older images, for its status line.
+pub(super) enum Cleared {
+    /// How many were deleted.
+    Deleted(usize),
+    /// The backup folder, and how many were moved into it.
+    BackedUp(PathBuf, usize),
 }
 
 /// A split image the thread wrote, or couldn't: for split `index`, made from `source`.
@@ -33,8 +60,10 @@ impl Job {
 
 impl Gui {
     /// Writes the split images of `indexes` that have something to make them from, after asking
-    /// about files they replace. Returns false when they can't be saved.
-    pub(super) fn save_split_images(self: &Rc<Self>, indexes: Vec<usize>) -> bool {
+    /// about files they replace. `every_split` is for Save All, which offers to back up every
+    /// image that isn't the preset's, where saving single splits offers to delete their older
+    /// ones. Returns false when they can't be saved.
+    pub(super) fn save_split_images(self: &Rc<Self>, indexes: Vec<usize>, every_split: bool) -> bool {
         if self.refused_for_problems() {
             return false;
         }
@@ -47,7 +76,7 @@ impl Gui {
         if indexes.is_empty() {
             return false;
         }
-        if self.queued_behind_saving(&indexes) {
+        if self.queued_behind_saving(&indexes, every_split) {
             return true;
         }
         let Some(folder) = self.split_image_folder().filter(|folder| folder.is_dir()) else {
@@ -58,9 +87,18 @@ impl Gui {
             return false;
         };
         let names = self.maker_file_names();
-        let sources: Vec<(usize, Source)> = {
+        let split_names: Vec<String> = (self.maker.borrow().shown())
+            .map(|preset| preset.splits.iter().map(|split| split.name.clone()).collect())
+            .unwrap_or_default();
+        let (sources, unsaved): (Vec<(usize, Source)>, Vec<usize>) = {
             let maker = self.maker.borrow();
-            indexes.into_iter().filter_map(|index| Some((index, maker.source(index)?))).collect()
+            let sources: Vec<(usize, Source)> =
+                indexes.iter().filter_map(|&index| Some((index, maker.source(index)?))).collect();
+            // The splits that are on and not saved now, like ones not grabbed yet. All of them,
+            // since Save All queued behind another save only queues the ones it can save
+            let unsaved =
+                maker.on_splits(&enabled).filter(|index| !sources.iter().any(|(at, _)| at == index)).collect();
+            (sources, unsaved)
         };
         let mut jobs = Vec::new();
         for (index, source) in sources {
@@ -70,7 +108,13 @@ impl Gui {
                 _ => self.maker_mask(index).map(Some),
             };
             match mask {
-                Ok(mask) => jobs.push(Job { index, source, mask, target: folder.join(&names[index]) }),
+                Ok(mask) => jobs.push(Job {
+                    index,
+                    split: split_names[index].clone(),
+                    source,
+                    mask,
+                    target: folder.join(&names[index]),
+                }),
                 Err(error) => {
                     self.show_message(Message::error(error));
                     return false;
@@ -78,8 +122,9 @@ impl Gui {
             }
         }
         let written: Vec<String> = jobs.iter().map(|job| names[job.index].clone()).collect();
-        let existing: Vec<PathBuf> =
-            user_files(&folder).unwrap_or_default().iter().map(|path| canonical(path)).collect();
+        // As the folder lists them, never made canonical: a link is deleted or moved itself, not
+        // the file it points to, which can be outside the folder
+        let existing: Vec<PathBuf> = user_files(&folder).unwrap_or_default();
         // Every split's screenshot, also of splits not saved now
         let sources: Vec<PathBuf> = (self.maker.borrow().splits.iter())
             .filter_map(|split| match split.shot.as_ref()? {
@@ -87,58 +132,121 @@ impl Gui {
                 Source::Preset(_) | Source::Grabbed(_) | Source::Fade(_) => None,
             })
             .collect();
-        let plan = plan_writes(&written, &names, &existing, &sources, |name, path| writes_over(&folder, name, path));
-        if plan.overwrites.is_empty() && plan.stale.is_empty() {
-            self.write_split_images(folder, jobs, Vec::new());
+        let in_folder = |name: &str, path: &Path| writes_over(&folder, name, path);
+        let plan = plan_writes(&written, &names, &existing, &sources, in_folder);
+        // A save of every split moves all the images that aren't the preset's, whatever their
+        // number, so ones of splits removed from the preset go too, but not those of splits
+        // left unsaved
+        let old = if every_split {
+            let kept: Vec<(&str, &str)> =
+                unsaved.iter().map(|&index| (names[index].as_str(), split_names[index].as_str())).collect();
+            images_to_clear(&old_images(&names, &existing, &sources, in_folder), &kept)
+        } else {
+            plan.stale
+        };
+        if plan.overwrites.is_empty() && old.is_empty() {
+            self.write_split_images(folder, jobs, OldImages::Keep, every_split);
             return true;
         }
+        // The files, which can be many, are in a list the message shows when asked, so the
+        // question and its warning fit without scrolling
         let mut text = String::new();
+        let mut details = String::new();
         if !plan.overwrites.is_empty() {
-            text += &format!("These split images are replaced:\n{}\n\n", plan.overwrites.join("\n"));
+            let count = plural(plan.overwrites.len(), "split image");
+            text += &format!("Saving replaces {count} in the split image folder.");
+            details += &format!("Replaced:\n{}", plan.overwrites.join("\n"));
         }
+        let files = plural(plan.overwrites.len() + old.len(), "file");
         let weak = Rc::downgrade(self);
-        if plan.stale.is_empty() {
-            text += "Replace them?";
-            self.show_message(Message::choice(text, ["Replace", "", "Cancel"], 0, move |answer| {
+        if old.is_empty() {
+            text += " Replace them?";
+            let message = Message::choice(text, ["Replace", "", "Cancel"], 0, move |answer| {
                 if let (Some(gui), Answer::Yes) = (weak.upgrade(), answer) {
-                    gui.write_split_images(folder, jobs, Vec::new());
+                    gui.write_split_images(folder, jobs, OldImages::Keep, every_split);
                 }
-            }));
+            });
+            self.show_message(message.with_details(files, details));
             return true;
         }
-        let stale: Vec<String> = plan.stale.iter().filter_map(|path| file_name_text(path)).collect();
+        if !text.is_empty() {
+            text += "\n\n";
+        }
+        if !details.is_empty() {
+            details += "\n\n";
+        }
+        let old_names = old.iter().filter_map(|path| file_name_text(path)).collect::<Vec<_>>().join("\n");
+        let warning = "Keeping them will break your runs: AutoSplit reads every image in the folder as a split, so \
+                       they add extra splits or make it split at the wrong time.";
+        // Enter backs them up, which can be undone, but never deletes
+        if every_split {
+            text += &format!(
+                "The split image folder has images that aren't the preset's split images, like ones left from \
+                 an older version of the preset. {warning} Only keep them if you put them there yourself and know \
+                 what they do."
+            );
+            // The warning doesn't hold for them, so they're named in the message itself
+            let lone: Vec<String> =
+                lone_keyword_images(&old, &names).iter().filter_map(|path| file_name_text(path)).collect();
+            if !lone.is_empty() {
+                let them = if lone.len() == 1 { "it" } else { "them" };
+                text += &format!(
+                    "\n\n{} may be your own: the preset has no reset or start image like {them}. Backing up or \
+                     deleting {them} turns off resetting or starting by itself, so keep the images if you use \
+                     {them}.",
+                    lone.join(", ")
+                );
+            }
+            text += "\n\nBack them up into a folder in the split image folder, keep them, or delete them for good?";
+            details += &format!("Old images:\n{old_names}");
+            // Delete away from the default, so a slip from it doesn't delete
+            let labels = ["Back Up", "Keep", "Delete", "Cancel"];
+            let message = Message::choice4(text, labels, 0, move |answer| {
+                let Some(gui) = weak.upgrade() else { return };
+                let chosen = match answer {
+                    Answer::Yes => OldImages::Backup(old),
+                    Answer::No => OldImages::Keep,
+                    Answer::Other => OldImages::DeleteAll(old),
+                    Answer::Cancel => return,
+                };
+                gui.write_split_images(folder, jobs, chosen, true);
+            });
+            self.show_message(message.with_details(files, details));
+            return true;
+        }
         text += &format!(
-            "These older split images are for the same splits under other names, and the split image folder would \
-             use them too:\n{}\n\nDelete them, or keep them?",
-            stale.join("\n")
+            "The split image folder has older images of the same splits under other names, like from before a \
+             threshold changed. {warning} Only keep them if you know what they do.\n\nDelete them for good?"
         );
-        let stale = plan.stale;
+        details += &format!("Older images:\n{old_names}");
         let labels = ["Delete Old Images", "Keep Old Images", "Cancel"];
-        // Enter keeps them: deleting is never the default
-        self.show_message(Message::choice(text, labels, 1, move |answer| {
+        let message = Message::choice(text, labels, 1, move |answer| {
             let Some(gui) = weak.upgrade() else { return };
             match answer {
-                Answer::Yes => gui.write_split_images(folder, jobs, stale),
-                Answer::No => gui.write_split_images(folder, jobs, Vec::new()),
-                Answer::Cancel => {}
+                Answer::Yes => gui.write_split_images(folder, jobs, OldImages::Delete(old), false),
+                Answer::No => gui.write_split_images(folder, jobs, OldImages::Keep, false),
+                Answer::Cancel | Answer::Other => {}
             }
-        }));
+        });
+        self.show_message(message.with_details(files, details));
         true
     }
 
     /// While split images are being saved, saves `indexes` after them instead, since two saves
     /// at once could write the same files or move the same screenshots. Returns whether it did.
-    fn queued_behind_saving(&self, indexes: &[usize]) -> bool {
+    fn queued_behind_saving(&self, indexes: &[usize], every_split: bool) -> bool {
         let mut maker = self.maker.borrow_mut();
         if !maker.saving {
             return false;
         }
         let generation = maker.generation;
-        let queued = maker.queued.get_or_insert_with(|| (generation, Vec::new()));
+        let queued = maker.queued.get_or_insert_with(|| (generation, Vec::new(), false));
         // Ones queued for a preset chosen before don't count
         if queued.0 != generation {
-            *queued = (generation, Vec::new());
+            *queued = (generation, Vec::new(), false);
         }
+        // Saved together, so once Save All queued, the save is of every split
+        queued.2 |= every_split;
         for &index in indexes {
             if !queued.1.contains(&index) {
                 queued.1.push(index);
@@ -149,12 +257,18 @@ impl Gui {
         true
     }
 
-    /// Writes split images on a thread of their own, then deletes the `stale` ones of the splits
-    /// written and moves their screenshots out of the split image folder.
-    pub(super) fn write_split_images(self: &Rc<Self>, folder: PathBuf, jobs: Vec<Job>, stale: Vec<PathBuf>) {
-        // Asked about while another save started
+    /// Writes split images on a thread of their own, then does what `old` says with older images
+    /// and moves their screenshots out of the split image folder. `every_split` is for Save All.
+    pub(super) fn write_split_images(
+        self: &Rc<Self>,
+        folder: PathBuf,
+        jobs: Vec<Job>,
+        old: OldImages,
+        every_split: bool,
+    ) {
+        // Asked about while another save started, which asks again
         let indexes: Vec<usize> = jobs.iter().map(|job| job.index).collect();
-        if self.queued_behind_saving(&indexes) {
+        if self.queued_behind_saving(&indexes, every_split) {
             return;
         }
         self.windows.maker.set_status(format!("Saving {}...", plural(jobs.len(), "split image")).into());
@@ -182,14 +296,30 @@ impl Gui {
             let written: Vec<PathBuf> =
                 results.iter().filter_map(|written| written.result.as_ref().ok().cloned()).collect();
             let mut errors: Vec<String> = Vec::new();
-            for path in stale_to_delete(&stale, &written) {
-                if let Err(error) = std::fs::remove_file(&path) {
-                    errors.push(format!("Couldn't delete {}: {error}", path.display()));
+            // A split whose image failed keeps its older ones, until it's saved again
+            let failed_splits: Vec<(&str, &str)> = (jobs.iter().zip(&results))
+                .filter(|(_, written)| written.result.is_err())
+                .filter_map(|(job, _)| Some((job.target.file_name()?.to_str()?, job.split.as_str())))
+                .collect();
+            let mut delete = |images: &[PathBuf]| {
+                let (deleted, failed) = delete_images(images);
+                errors.extend(failed);
+                (deleted > 0).then_some(Cleared::Deleted(deleted))
+            };
+            let cleared = match old {
+                OldImages::Keep => None,
+                OldImages::Delete(stale) => delete(&stale_to_delete(&stale, &written)),
+                OldImages::DeleteAll(images) => delete(&images_to_clear(&images, &failed_splits)),
+                OldImages::Backup(images) => {
+                    let images = images_to_clear(&images, &failed_splits);
+                    let (backup_folder, moved, error) = move_to_backup(&folder, &images, &utc_file_stamp());
+                    errors.extend(error);
+                    (moved > 0).then_some(Cleared::BackedUp(backup_folder, moved))
                 }
-            }
+            };
             let (moves, error) = move_to_base(&folder, &screenshots_to_move(&done, &failed, &keep));
             errors.extend(error);
-            with_gui(move |gui| gui.split_images_written(generation, results, moves, errors));
+            with_gui(move |gui| gui.split_images_written(generation, results, moves, cleared, errors));
         });
         if let Err(error) = spawned {
             self.maker.borrow_mut().saving = false;
@@ -206,6 +336,7 @@ impl Gui {
         generation: u64,
         results: Vec<Written>,
         moves: Vec<(PathBuf, PathBuf)>,
+        cleared: Option<Cleared>,
         mut errors: Vec<String>,
     ) {
         self.end_work();
@@ -243,14 +374,23 @@ impl Gui {
             }
         }
         let generation_now = maker.generation;
-        let queued = maker.queued.take().filter(|(queued, _)| *queued == generation_now);
+        let queued = maker.queued.take().filter(|(queued, _, _)| *queued == generation_now);
         let preview_saved = saved_rows.get(maker.selected).copied().unwrap_or(false);
         drop(maker);
-        let moved = if moves.is_empty() {
+        let mut moved = if moves.is_empty() {
             String::new()
         } else {
             format!(", moved {} to the base folder", plural(moves.len(), "screenshot"))
         };
+        // What was done with old images, after the screenshots
+        match cleared {
+            Some(Cleared::Deleted(count)) => moved += &format!(", deleted {}", plural(count, "old image")),
+            Some(Cleared::BackedUp(folder, count)) => {
+                let name = file_name_text(&folder).unwrap_or_default();
+                moved += &format!(", backed up {} to {name} in the split image folder", plural(count, "old image"));
+            }
+            None => {}
+        }
         self.windows.maker.set_status(format!("Saved {}{moved}.", plural(written, "split image")).into());
         if written > 0 {
             self.windows.maker.invoke_split_images_saved(ModelRc::from(saved_rows.as_slice()), preview_saved);
@@ -260,8 +400,8 @@ impl Gui {
         if !errors.is_empty() {
             self.show_message(Message::error(errors.join("\n\n")));
         }
-        if let Some((_, indexes)) = queued {
-            self.save_split_images(indexes);
+        if let Some((_, indexes, every_split)) = queued {
+            self.save_split_images(indexes, every_split);
         }
         // Once nothing's being written, so a file still being written isn't left after deleting
         if !self.maker.borrow().saving {

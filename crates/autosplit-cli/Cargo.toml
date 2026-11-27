@@ -21,6 +21,7 @@ rfd = "0.17.2"
 same-file = "1.0.6"
 slint = { version = "1.19.0", default-features = false, features = ["std", "backend-winit", "backend-winit-x11", "backend-winit-wayland", "renderer-software", "compat-1-2", "raw-window-handle-06", "unstable-winit-030"] }
 tungstenite = { version = "0.30.0", default-features = false, features = ["handshake"] }
+unicode-normalization = "0.1.26"
 unicode-width = "0.2.2"
 
 [target.'cfg(windows)'.dependencies]

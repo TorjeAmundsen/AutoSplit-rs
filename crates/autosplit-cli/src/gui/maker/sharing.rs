@@ -139,7 +139,7 @@ impl Gui {
                     archive.preset.name = both;
                     gui.install_import(&archive, None);
                 }
-                Answer::Cancel => {}
+                Answer::Cancel | Answer::Other => {}
             }
         }));
     }
