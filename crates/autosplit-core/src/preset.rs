@@ -977,14 +977,14 @@ pub fn save_preset(
 }
 
 /// [`save_preset`], where the shared files the preset stops using don't count as there either
-/// when they aren't in `elsewhere`, the files other presets and libraries use. Without it,
+/// when they aren't in `used_elsewhere`, the files other presets and libraries use. Without it,
 /// they're never written over, since another may use them.
 fn save_replacing(
     source: Option<&Path>,
     target: &Path,
     game_folder: Option<&Path>,
     preset: &Preset,
-    elsewhere: Option<&HashSet<PathBuf>>,
+    used_elsewhere: Option<&HashSet<PathBuf>>,
 ) -> Result<Preset, PresetError> {
     let from = source.unwrap_or(target);
     let mut found = Vec::new();
@@ -1009,7 +1009,7 @@ fn save_replacing(
         remove_replacing_leftovers(folder);
     }
     let mut replacing = Replacing {
-        old: replaced_files(target, &shared_folders, before.as_ref(), &found, elsewhere),
+        old: replaced_files(target, &shared_folders, before.as_ref(), &found, used_elsewhere),
         renames: Vec::new(),
     };
     let mut made = Vec::new();
@@ -1092,8 +1092,9 @@ pub fn save_in_presets(
     let save_to = if elsewhere { new_preset_folder(presets, &preset.game, &preset.name) } else { target.to_owned() };
     let shared = shared_game_folder(presets, &save_to);
     // Only a preset saved in place has shared files it can stop using
-    let used_elsewhere = (shared.is_some() && save_to == target).then(|| used_files(presets, libraries, Some(target)));
-    let saved = save_replacing(source, &save_to, shared.as_deref(), preset, used_elsewhere.flatten().as_ref())?;
+    let used_elsewhere =
+        (shared.is_some() && !elsewhere).then(|| used_files(presets, libraries, Some(target))).flatten();
+    let saved = save_replacing(source, &save_to, shared.as_deref(), preset, used_elsewhere.as_ref())?;
     let mut left_behind = None;
     let folder = if elsewhere {
         if let Err(error) = delete_preset(target) {
@@ -1310,24 +1311,22 @@ impl Replacing {
 }
 
 /// The files `before` used that none of `found` is, which new files can replace: the ones in the
-/// preset's own folder `target`, and the ones in `shared_folders` that aren't in `elsewhere`,
+/// preset's own folder `target`, and the ones in `shared_folders` that aren't in `used_elsewhere`,
 /// the files other presets and libraries use, when that's known.
 fn replaced_files(
     target: &Path,
     shared_folders: &[PathBuf],
     before: Option<&Preset>,
     found: &[Option<PathBuf>],
-    elsewhere: Option<&HashSet<PathBuf>>,
+    used_elsewhere: Option<&HashSet<PathBuf>>,
 ) -> HashSet<PathBuf> {
     let (Some(before), Ok(root)) = (before, std::fs::canonicalize(target)) else { return HashSet::new() };
     let shared: Vec<PathBuf> = shared_folders.iter().filter_map(|folder| std::fs::canonicalize(folder).ok()).collect();
     let kept: HashSet<&PathBuf> = found.iter().flatten().collect();
-    (before.splits.iter())
-        .flat_map(PresetSplit::files)
-        .filter_map(|path| std::fs::canonicalize(root.join(path)).ok())
+    (preset_files(&root, before).into_iter())
         .filter(|file| {
             let in_shared = file.parent().is_some_and(|folder| shared.iter().any(|shared| shared == folder))
-                && elsewhere.is_some_and(|elsewhere| !elsewhere.contains(file));
+                && used_elsewhere.is_some_and(|used| !used.contains(file));
             !kept.contains(file) && file.is_file() && (file.starts_with(&root) || in_shared)
         })
         .collect()
@@ -1407,20 +1406,22 @@ fn write_preset(
 /// are, however their paths are written. Files the preset never used aren't its to delete.
 fn remove_unused_files(target: &Path, before: Option<&Preset>, now: &Preset) {
     let Ok(root) = std::fs::canonicalize(target) else { return };
-    let paths = |preset: &Preset| -> Vec<PathBuf> {
-        (preset.splits.iter())
-            .flat_map(PresetSplit::files)
-            // Missing files are left out: there's nothing to delete
-            .filter_map(|path| std::fs::canonicalize(root.join(path)).ok())
-            .collect()
-    };
-    let used: HashSet<PathBuf> = paths(now).into_iter().collect();
+    let used = preset_files(&root, now);
     // Only in the preset's own folder, whatever the old file says
-    for old in before.map(paths).unwrap_or_default() {
+    for old in before.map(|before| preset_files(&root, before)).unwrap_or_default() {
         if old.starts_with(&root) && !used.contains(&old) && old.is_file() {
             let _ = std::fs::remove_file(old);
         }
     }
+}
+
+/// The files `preset` in the folder `root` uses, as the files they are, however their paths are
+/// written. Missing files are left out.
+fn preset_files(root: &Path, preset: &Preset) -> HashSet<PathBuf> {
+    (preset.splits.iter())
+        .flat_map(PresetSplit::files)
+        .filter_map(|path| std::fs::canonicalize(root.join(path)).ok())
+        .collect()
 }
 
 /// The files the presets in `presets` and the libraries in `libraries` use, but for the preset in
