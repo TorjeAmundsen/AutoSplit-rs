@@ -290,6 +290,66 @@ fn copies_dont_replace_files_that_are_there() {
 }
 
 #[test]
+fn a_replaced_mask_keeps_its_name() {
+    // Arrange: the preset's Boss mask, and a new one picked for it
+    let picked = tempfile::tempdir().unwrap();
+    let mask = file(&picked.path().join("new.png"), "new");
+    let folder = tempfile::tempdir().unwrap();
+    file(&folder.path().join("Boss.png"), "old");
+    save_preset(Some(folder.path()), folder.path(), None, &preset(vec![split("Boss", "Boss.png")])).unwrap();
+
+    // Act
+    let saved = save_preset(Some(folder.path()), folder.path(), None, &preset(vec![split("Boss", &mask)])).unwrap();
+
+    // Assert
+    assert_eq!(
+        (saved.splits[0].mask.as_str(), std::fs::read_to_string(folder.path().join("Boss.png")).unwrap()),
+        ("Boss.png", "new".to_owned())
+    );
+    assert_eq!(files(folder.path()), ["Boss.png", PRESET_FILE]);
+}
+
+#[test]
+fn a_failed_save_keeps_a_replaced_mask() {
+    // Arrange: Boss's new mask is copied to take the old one's name, then Door's mask, a folder,
+    // can't be
+    let picked = tempfile::tempdir().unwrap();
+    let mask = file(&picked.path().join("new.png"), "new");
+    let not_a_file = picked.path().join("folder.png");
+    std::fs::create_dir(&not_a_file).unwrap();
+    let folder = tempfile::tempdir().unwrap();
+    file(&folder.path().join("Boss.png"), "old");
+    save_preset(Some(folder.path()), folder.path(), None, &preset(vec![split("Boss", "Boss.png")])).unwrap();
+
+    // Act
+    let splits = vec![split("Boss", &mask), split("Door", &not_a_file.display().to_string())];
+    let error = save_preset(Some(folder.path()), folder.path(), None, &preset(splits));
+
+    // Assert
+    assert_eq!(
+        (error.is_err(), files(folder.path()), std::fs::read_to_string(folder.path().join("Boss.png")).unwrap()),
+        (true, vec!["Boss.png".to_owned(), PRESET_FILE.to_owned()], "old".to_owned())
+    );
+}
+
+#[test]
+fn new_files_left_by_a_save_that_stopped_partway_are_deleted() {
+    // Arrange: a save stopped after writing preset.toml, before its new Door mask took the old
+    // one's place
+    let folder = tempfile::tempdir().unwrap();
+    file(&folder.path().join("Door.png"), "old");
+    file(&folder.path().join(".replacing-Door.png"), "new");
+    let loaded = preset(vec![split("Door", "Door.png")]);
+    std::fs::write(folder.path().join(PRESET_FILE), loaded.to_toml()).unwrap();
+
+    // Act
+    save_preset(Some(folder.path()), folder.path(), None, &loaded).unwrap();
+
+    // Assert
+    assert_eq!(files(folder.path()), ["Door.png", PRESET_FILE]);
+}
+
+#[test]
 fn files_in_the_folder_stay_where_they_are() {
     // Arrange
     let folder = tempfile::tempdir().unwrap();
@@ -877,6 +937,87 @@ fn a_preset_whose_game_changed_takes_its_shared_files_to_the_new_games_folder() 
             vec!["B/Any%/Boss.png".to_owned(), format!("B/Any%/{PRESET_FILE}"), "B/screenshots/Boss.png".to_owned()]
         )
     );
+}
+
+#[test_case(None => ("../screenshots/Boss.png".to_owned(), "new".to_owned(), vec!["Boss.png".to_owned()]); "only this preset uses it")]
+#[test_case(Some("preset") => ("../screenshots/Boss (1).png".to_owned(), "old".to_owned(), vec!["Boss (1).png".to_owned(), "Boss.png".to_owned()]); "another preset uses it")]
+#[test_case(Some("library") => ("../screenshots/Boss (1).png".to_owned(), "old".to_owned(), vec!["Boss (1).png".to_owned(), "Boss.png".to_owned()]); "a library uses it")]
+#[test_case(Some("broken") => ("../screenshots/Boss (1).png".to_owned(), "old".to_owned(), vec!["Boss (1).png".to_owned(), "Boss.png".to_owned()]); "another preset cant be read")]
+fn a_replaced_shared_screenshot_keeps_its_name_unless_another_may_use_it(
+    other: Option<&str>,
+) -> (String, String, Vec<String>) {
+    // Arrange: a preset of the game with the Boss screenshot, and maybe another preset or a
+    // library using it too, or a preset that can't be read
+    let root = tempfile::tempdir().unwrap();
+    let (presets, libraries) = (root.path().join("presets"), root.path().join("splits"));
+    let game = presets.join("Game");
+    file(&game.join("screenshots/Boss.png"), "old");
+    let picked = tempfile::tempdir().unwrap();
+    let screenshot = file(&picked.path().join("new.png"), "new");
+    let old = preset(vec![pictured("Boss", "Boss.png", "../screenshots/Boss.png")]);
+    let any = game.join("Any%");
+    file(&any.join("Boss.png"), "mask");
+    file(&any.join(PRESET_FILE), &old.to_toml());
+    match other {
+        Some("library") => {
+            let library = "game = \"Game\"
+
+[[split]]
+name = \"Boss\"
+screenshot =                            \"../../presets/Game/screenshots/Boss.png\"
+";
+            file(&libraries.join("Game").join(LIBRARY_FILE), library);
+        }
+        Some(kind) => {
+            file(&game.join("100%/Boss.png"), "mask");
+            let text = if kind == "preset" { old.to_toml() } else { "not = [toml".into() };
+            file(&game.join("100%").join(PRESET_FILE), &text);
+        }
+        None => {}
+    }
+
+    // Act
+    let saved = save_in_presets(
+        &presets,
+        &libraries,
+        Some(&any),
+        &any,
+        &preset(vec![pictured("Boss", "Boss.png", &screenshot)]),
+    )
+    .unwrap();
+
+    // Assert: the old screenshot is gone unless another preset may use it
+    (
+        saved.preset.splits[0].screenshot.clone(),
+        std::fs::read_to_string(game.join("screenshots/Boss.png")).unwrap(),
+        files(&game.join("screenshots")),
+    )
+}
+
+#[test_case("old" => ("../screenshots/Door.png".to_owned(), vec!["Boss.png".to_owned(), "Door.png".to_owned()]); "the replaced one's contents")]
+#[test_case("new" => ("../screenshots/Boss.png".to_owned(), vec!["Boss.png".to_owned()]); "the new one's contents")]
+fn a_screenshot_like_one_a_save_replaces_or_writes_is_used_as_it_ends_up(door: &str) -> (String, Vec<String>) {
+    // Arrange: Boss's shared screenshot is replaced, and Door's has the same contents as the old
+    // or the new one
+    let root = tempfile::tempdir().unwrap();
+    let (presets, libraries) = (root.path().join("presets"), root.path().join("splits"));
+    let game = presets.join("Game");
+    file(&game.join("screenshots/Boss.png"), "old");
+    let any = game.join("Any%");
+    file(&any.join("Boss.png"), "mask");
+    file(&any.join(PRESET_FILE), &preset(vec![pictured("Boss", "Boss.png", "../screenshots/Boss.png")]).to_toml());
+    let picked = tempfile::tempdir().unwrap();
+    let boss = file(&picked.path().join("boss.png"), "new");
+    let door_screenshot = file(&picked.path().join("door.png"), door);
+    let splits = vec![pictured("Boss", "Boss.png", &boss), pictured("Door", "Boss.png", &door_screenshot)];
+
+    // Act
+    let saved = save_in_presets(&presets, &libraries, Some(&any), &any, &preset(splits)).unwrap();
+
+    // Assert: Door's screenshot has its contents
+    let door_path = saved.preset.splits[1].screenshot.clone();
+    assert_eq!(std::fs::read_to_string(any.join(&door_path)).unwrap(), door);
+    (door_path, files(&game.join("screenshots")))
 }
 
 #[test]
